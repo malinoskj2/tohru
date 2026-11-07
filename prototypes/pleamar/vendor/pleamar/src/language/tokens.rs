@@ -1,0 +1,246 @@
+//! From text to tokens: numbers with their unit, colours, names with dots.
+
+use super::CompileError;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TokenKind {
+    Id(String),
+    Num(f32),
+    /// An angle written with `deg`, already in radians: `45deg`. A number
+    /// everywhere; apart only so that `sin(30deg)` can be told apart.
+    Angle(f32),
+    /// A duration, already in seconds: `320ms`, `14s`.
+    Dur(f32),
+    Color([f32; 3]),
+    Str(String),
+    Sym(&'static str),
+    Line,
+}
+
+#[derive(Clone, Debug)]
+pub struct Token {
+    pub kind: TokenKind,
+    pub line: usize,
+    pub col: usize,
+}
+
+const SYMBOLS: [&str; 25] = [
+    "->", "..", "<=", ">=", "==", "!=", "{", "}", "(", ")", "[", "]", ",", ":", ";", "=", "~", "+",
+    "-", "*", "/", "<", ">", "%", "|",
+];
+
+pub fn tokenize(source: &str) -> Result<Vec<Token>, CompileError> {
+    let mut tokens = Vec::new();
+    // Inside a parenthesis a line break ends nothing.
+    let mut parens = 0usize;
+    for (n, line) in source.lines().enumerate() {
+        let c: Vec<char> = line.chars().collect();
+        let mut i = 0;
+        while i < c.len() {
+            let (ch, col) = (c[i], i + 1);
+            // `win[i].screen`: what follows a `]` with a dot is the rest of the name.
+            let after_index = ch == '.'
+                && matches!(
+                    tokens.last(),
+                    Some(Token {
+                        kind: TokenKind::Sym("]"),
+                        ..
+                    })
+                )
+                && c.get(i + 1)
+                    .is_some_and(|x| x.is_alphabetic() || *x == '_' || *x == '$');
+            let mut push = |kind: TokenKind| {
+                tokens.push(Token {
+                    kind,
+                    line: n + 1,
+                    col,
+                })
+            };
+            if ch.is_whitespace() {
+                i += 1;
+            } else if ch == '/' && c.get(i + 1) == Some(&'/') {
+                break;
+            } else if ch == '"' {
+                // `\"` is a quote in it and `\\` a backslash; any other backslash is itself
+                // (`"C:\Users"` stays as it is written).
+                let mut text = String::new();
+                let mut j = i + 1;
+                let closed = loop {
+                    match c.get(j) {
+                        None => break false,
+                        Some('"') => break true,
+                        Some('\\') if matches!(c.get(j + 1), Some('"') | Some('\\')) => {
+                            text.push(c[j + 1]);
+                            j += 2;
+                        }
+                        Some(x) => {
+                            text.push(*x);
+                            j += 1;
+                        }
+                    }
+                };
+                if !closed {
+                    return Err(CompileError::at(
+                        n + 1,
+                        col,
+                        "this string is not closed: the quote is missing (a quote inside it is written \\\")",
+                    ));
+                }
+                push(TokenKind::Str(text));
+                i = j + 1;
+            } else if ch == '#' {
+                let hex: String = c[i + 1..]
+                    .iter()
+                    .take_while(|x| x.is_ascii_hexdigit())
+                    .collect();
+                // #151616, or the three-digit shortcut: #fff is #ffffff.
+                let length = hex.len();
+                let hex: String = match length {
+                    6 => hex,
+                    3 => hex.chars().flat_map(|c| [c, c]).collect(),
+                    _ => {
+                        return Err(CompileError::at(
+                            n + 1,
+                            col,
+                            "a colour is six hex digits (#151616) or three (#fff)",
+                        ));
+                    }
+                };
+                let v = |k: usize| u8::from_str_radix(&hex[k..k + 2], 16).unwrap() as f32 / 255.0;
+                push(TokenKind::Color([v(0), v(2), v(4)]));
+                i += length + 1;
+            } else if ch.is_ascii_digit()
+                || (ch == '.' && c.get(i + 1).is_some_and(|x| x.is_ascii_digit()))
+            {
+                let mut j = i;
+                while j < c.len()
+                    && (c[j].is_ascii_digit() || (c[j] == '.' && c.get(j + 1) != Some(&'.')))
+                {
+                    j += 1;
+                }
+                let number: f32 = c[i..j]
+                    .iter()
+                    .collect::<String>()
+                    .parse()
+                    .map_err(|_| CompileError::at(n + 1, col, "this number cannot be read"))?;
+                let unit: String = c[j..]
+                    .iter()
+                    .take_while(|x| x.is_ascii_alphabetic() || **x == '%')
+                    .collect();
+                let kind = match unit.as_str() {
+                    "" | "px" => TokenKind::Num(number),
+                    "%" => TokenKind::Num(number / 100.0),
+                    "deg" => TokenKind::Angle(number.to_radians()),
+                    "ms" => TokenKind::Dur(number / 1000.0),
+                    "s" => TokenKind::Dur(number),
+                    other if super::vocabulary::UNITS.contains(&other) => unreachable!(
+                        "'{other}' is in the vocabulary, but the tokenizer cannot convert it"
+                    ),
+                    other => {
+                        return Err(CompileError::at(
+                            n + 1,
+                            j + 1,
+                            format!(
+                                "I don't know the unit '{other}': valid ones are {}",
+                                super::vocabulary::UNITS.join(", ")
+                            ),
+                        ));
+                    }
+                };
+                push(kind);
+                i = j + unit.chars().count();
+            } else if after_index || ch.is_alphabetic() || ch == '_' || ch == '$' {
+                let mut j = i + after_index as usize;
+                while j < c.len()
+                    && (c[j].is_alphanumeric()
+                        || c[j] == '_'
+                        || c[j] == '$'
+                        || (c[j] == '.'
+                            && c.get(j + 1)
+                                .is_some_and(|x| x.is_alphanumeric() || *x == '_' || *x == '$')))
+                {
+                    j += 1;
+                }
+                push(TokenKind::Id(c[i..j].iter().collect()));
+                i = j;
+            } else {
+                let rest: String = c[i..].iter().take(2).collect();
+                let s = SYMBOLS
+                    .iter()
+                    .find(|s| rest.starts_with(**s))
+                    .ok_or_else(|| {
+                        CompileError::at(n + 1, col, format!("I don't know what to do with '{ch}'"))
+                    })?;
+                match *s {
+                    "(" => parens += 1,
+                    ")" => parens = parens.saturating_sub(1),
+                    _ => {}
+                }
+                push(TokenKind::Sym(s));
+                i += s.len();
+            }
+        }
+        if parens == 0 {
+            tokens.push(Token {
+                kind: TokenKind::Line,
+                line: n + 1,
+                col: c.len() + 1,
+            });
+        }
+    }
+    // A block may open on the line after its header, as in many languages: the
+    // ends of line between a header and its `{` (blank ones and comments too) are
+    // not there. (Nothing begins with a `{` of its own.)
+    let mut kept: Vec<Token> = Vec::with_capacity(tokens.len());
+    for t in tokens {
+        if t.kind == TokenKind::Sym("{") {
+            while matches!(
+                kept.last(),
+                Some(Token {
+                    kind: TokenKind::Line,
+                    ..
+                })
+            ) {
+                kept.pop();
+            }
+        }
+        kept.push(t);
+    }
+    Ok(kept)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strings(source: &str) -> Vec<String> {
+        tokenize(source)
+            .unwrap()
+            .into_iter()
+            .filter_map(|t| {
+                if let TokenKind::Str(s) = t.kind {
+                    Some(s)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_quote_and_a_backslash_can_be_written_in_a_string() {
+        assert_eq!(strings(r#"text "say \"hi\"""#), vec![r#"say "hi""#]);
+        assert_eq!(strings(r#"text "ends in \\" { }"#), vec![r"ends in \"]);
+        // Any other backslash is itself.
+        assert_eq!(strings(r#"text "C:\Users\n""#), vec![r"C:\Users\n"]);
+        assert!(tokenize(r#"text "open \""#).is_err());
+    }
+
+    #[test]
+    fn a_block_may_open_on_the_next_line() {
+        let same = tokenize("group {\n box { }\n}").unwrap();
+        let apart = tokenize("group\n// a comment\n\n{\n box { }\n}").unwrap();
+        let kinds = |t: &[Token]| t.iter().map(|t| t.kind.clone()).collect::<Vec<_>>();
+        assert_eq!(kinds(&same), kinds(&apart));
+    }
+}

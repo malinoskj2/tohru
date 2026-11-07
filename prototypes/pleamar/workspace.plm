@@ -1,0 +1,43 @@
+scene Workspace {
+ surface { size: full, 42; anchor: top; margin: 0; reserve: 31 }
+ permissions { services: "workspaces", "workspaces.focus" }
+ shader ribbon = file "ribbon.wgsl"
+ fact v1 = 0
+ fact v2 = 0
+ fact v3 = 0
+ fact v4 = 0
+ fact v5 = 0
+ fact v6 = 0
+ fact v7 = 0
+ fact v8 = 0
+ fact v9 = 0
+ fact v10 = 0
+ fact v11 = 0
+ fact v12 = 0
+ fact v13 = 0
+ fact v14 = 0
+ fact v15 = 0
+ fact v16 = 0
+ fact v17 = 0
+ fact v18 = 0
+ fact v19 = 0
+ fact v20 = 0
+ fact v21 = 0
+ fact v22 = 0
+ fact v23 = 0
+ fact v24 = 0
+ fact target = 1
+ event go ->
+ box { from: 100, 0; size: screen.width - 200, 31; corner: 10; color: #160e14; opacity: 70% }
+ shader ribbon { at: 110, -5.5; size: 104, 42; values: v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23, v24 }
+ box cell1 { from: 122, 4.5; size: 16, 22; color: #ffffff; opacity: 0% }
+ on press cell1 { emit go(1) }
+ box cell2 { from: 138, 4.5; size: 16, 22; color: #ffffff; opacity: 0% }
+ on press cell2 { emit go(2) }
+ box cell3 { from: 154, 4.5; size: 16, 22; color: #ffffff; opacity: 0% }
+ on press cell3 { emit go(3) }
+ box cell4 { from: 170, 4.5; size: 16, 22; color: #ffffff; opacity: 0% }
+ on press cell4 { emit go(4) }
+ box cell5 { from: 186, 4.5; size: 16, 22; color: #ffffff; opacity: 0% }
+ on press cell5 { emit go(5) }
+}

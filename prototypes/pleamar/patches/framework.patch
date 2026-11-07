@@ -1,0 +1,152 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -7,6 +7,8 @@
+ repository = "https://github.com/k4ditano/pleamar"
+ 
+ [dependencies]
++thiserror = "=2.0.20"
++anyhow = "=1.0.103"
+ arboard = { version = "3.6.1", default-features = false, features = ["wayland-data-control"] }
+ bytemuck = { version = "1.25.2", features = ["derive"] }
+ chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -8,6 +8,9 @@
+ //! monitor, their scale and the mouse); the logic one, which decides; and the render one, which is the
+ //! only one that animates.
+ 
++mod workspace_track;
++mod workspace_ipc;
++mod workspace_motion;
+ pub mod scene;
+ mod scenes;
+ mod skill;
+@@ -300,7 +303,7 @@
+     // No terminal to be stopped on, for the programs it starts.
+     platform::leave_terminal();
+     // The agents' skill, written again if this pleamar is not the one it speaks of.
+-    skill::refresh_quietly();
++    // Prototype: do not install editor skills when running a benchmark.
+     let blocked = Arc::new(AtomicBool::new(false));
+     let (to_render, from_render) = channel();
+     terminal::set_waker(to_render.clone());
+--- a/src/logic_luau.rs
++++ b/src/logic_luau.rs
+@@ -785,6 +785,37 @@
+             }
+         })?;
+         g.set("fact", Self::live_table(&lua, get, set)?)?;
++        let track = Arc::new(Mutex::new(crate::workspace_track::Track::default()));
++        let mut epoch: Option<Instant> = None;
++        let mode = std::env::var("WORKSPACE_MODE").unwrap_or_else(|_| "live".into());
++        g.set("workspace_mode", mode.clone())?;
++        let replay = Arc::new(Mutex::new(crate::workspace_track::Replay::new(mode == "active")));
++        let epoch = Arc::new(Mutex::new(epoch.take()));
++        g.set("workspace_sway", lua.create_function(|_, ()| Ok(std::env::var_os("SWAYSOCK").is_some()))?)?;
++        g.set("workspace_external", lua.create_function(|_, ()| {
++            crate::workspace_ipc::active().map_err(mlua::Error::external)
++        })?)?;
++        g.set("workspace_select", lua.create_function(|_, target: usize| {
++            let result: anyhow::Result<()> = crate::workspace_ipc::select(target).map_err(Into::into);
++            result.map_err(mlua::Error::external)
++        })?)?;
++        g.set("workspace_tick", lua.create_function(move |lua, target: usize| {
++            let now = Instant::now();
++            let mut epoch = epoch.lock().map_err(|_| mlua::Error::runtime("epoch mutex poisoned"))?;
++            let elapsed = epoch.get_or_insert(now).elapsed().as_secs_f64()*1000.0;
++            if mode == "replay" || mode == "active" {
++                let mut replay = replay.lock().map_err(|_| mlua::Error::runtime("replay mutex poisoned"))?;
++                replay.advance_ms(elapsed);
++                let values = lua.create_sequence_from(replay.track.shader_values())?;
++                return Ok((values, mode == "active" || elapsed < 12000.0, elapsed));
++            }
++            let mut t = track.lock().map_err(|_| mlua::Error::runtime("track mutex poisoned"))?;
++            t.advance(now);
++            t.sync(5, Some(target), now);
++            let values = lua.create_sequence_from(t.shader_values())?;
++            Ok((values, t.animating(), elapsed))
++        })?)?;
++
+ 
+         // text["notice.title"] = "…"
+         let (tx, c) = (self.tx.clone(), self.c.clone());
+--- a/src/gpu.rs
++++ b/src/gpu.rs
+@@ -7,7 +7,7 @@
+ use std::ops::Range;
+ 
+ const PER_SHAPE: usize = 20;
+-const PER_ELEMENT: usize = 64;
++const PER_ELEMENT: usize = 80;
+ /// How many groups with opacity or effects can be blending in the same frame.
+ /// They share a few layers: each one is painted into one right before it is
+ /// blended (see `paint`), so this is not memory, only a sanity limit.
+@@ -2845,7 +2845,7 @@
+                         self.glass_regions.push((b, Behind::Read));
+                         self.glass_marks.push(self.element_count() as u32);
+                     }
+-                    let mut v = [0f32; 8];
++                    let mut v = [0f32; 24];
+                     for (slot, e) in v.iter_mut().zip(values) {
+                         *slot = e.eval(c);
+                     }
+@@ -2867,7 +2867,8 @@
+                             e[12..15].copy_from_slice(k);
+                             e[15] = 1.0;
+                         }
+-                        e[16..24].copy_from_slice(&v);
++                        e[16..24].copy_from_slice(&v[..8]);
++                        e[64..80].copy_from_slice(&v[8..24]);
+                         e[24..28].copy_from_slice(&[t, px, py, over]);
+                         e[36..40].copy_from_slice(&d);
+                         e[40] = corner;
+--- a/src/shaders.rs
++++ b/src/shaders.rs
+@@ -31,6 +31,10 @@
+     hovered: f32,
+     a: vec4<f32>,
+     b: vec4<f32>,
++    c: vec4<f32>,
++    d: vec4<f32>,
++    e: vec4<f32>,
++    f: vec4<f32>,
+     color: vec4<f32>,
+     color2: vec4<f32>,
+     origin: vec2<f32>,
+@@ -281,6 +285,10 @@
+     s.scale = u.header.w;
+     s.a = el.line;
+     s.b = el.light;
++    s.c = el.extra0;
++    s.d = el.extra1;
++    s.e = el.extra2;
++    s.f = el.extra3;
+     s.color = el.color0;
+     s.color2 = el.color1;
+     s.layer = -1;
+--- a/src/shape.wgsl
++++ b/src/shape.wgsl
+@@ -44,6 +44,10 @@
+     glass2: vec4<f32>,    // glass: towards its light (x, y), whether it has one, dome
+     glass3: vec4<f32>,    // glass: dispersion, ripple, -, -
+     glass4: vec4<f32>,    // glass: tint, saturation, mirror, highlight
++    extra0: vec4<f32>,
++    extra1: vec4<f32>,
++    extra2: vec4<f32>,
++    extra3: vec4<f32>,
+ };
+ 
+ const ELLIPSE: u32 = 0u;
+--- a/src/language/compiler.rs
++++ b/src/language/compiler.rs
+@@ -4460,8 +4460,8 @@
+                     break;
+                 }
+             }
+-            if values.len() > 8 {
+-                return c.error("a shader takes up to eight numbers: `s.a` and `s.b`, four each");
++            if values.len() > 24 {
++                return c.error("patched shader takes up to 24 numbers: s.a through s.f");
+             }
+         }
+         let mut colors = Vec::new();
