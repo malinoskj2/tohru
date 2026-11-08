@@ -86,8 +86,9 @@ let
     '';
     nativeBuildInputs = [ pkg-config makeWrapper ];
     buildInputs = [ fontconfig wayland libxkbcommon linux-pam libffi ];
-    # Upstream's broader tests include desktop services; run our narrow binding test.
-    cargoTestFlags = [ "--lib" "tohru_settings::" ];
+    # Owned native boundaries only; includes the isolated role-install regression.
+    # Upstream's broader tests can require desktop services and remain separate.
+    cargoTestFlags = [ "--lib" "tohru_" ];
     postBuild = ''
       cargo build --offline --locked --release --jobs 1 \
         --bin tohru-capture-clipboard --target ${stdenvNoCC.hostPlatform.rust.rustcTarget}
