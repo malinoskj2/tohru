@@ -20,11 +20,11 @@ fn controller() -> Lua {
     let lua = Lua::new();
     lua.load(r#"
         fact = {['audio.volume']=-1, ['audio.muted']=false, ['sound_outputs.count']=0, sound_open=false}
-        text, handlers, timers, calls = {}, {}, {}, {}
+        text, model, handlers, timers, calls = {}, {}, {}, {}, {}
         function on(name, callback) handlers[name]=callback end
         function after(ms, callback) assert(ms==50); timers[1]=callback; return 1 end
         function cancel(id) timers[id]=nil end
-        sys = {call=function(name, value, extra)
+        sys = {watch=function(name, callback) assert(name=='audio'); audio_watch=callback;return true end,call=function(name, value, extra)
             if denied then error('sound server refused') end
             table.insert(calls, {name=name, value=value, extra=extra})
         end}
@@ -71,8 +71,8 @@ fn native_input_apps_and_output_selection_use_typed_current_ids_only() {
         fact['sound_inputs.count']=5;handlers.sound_list_page(1);assert(fact.sound_list_page==1)
         handlers.sound_list_page(1);assert(fact.sound_list_page==1)
         handlers.sound_tab(2);assert(fact.sound_list_page==0 and fact.sound_row_id==8)
-        fact['sound_apps.0.id']=9;handlers.sound_details_step(1);assert(#calls==5, 'stale keyboard target cannot mutate replacement stream')
-        fact['sound_apps.0.id']=8
+        fact['sound_apps.0.id']=9;handlers.audio_report();assert(#calls==5 and fact.sound_row_id==9, 'replacement reselects outlined row without issuing a request')
+        fact['sound_apps.0.id']=8;handlers.audio_report()
         fact['sound_inputs.0.default']=true;handlers.audio_report()
         handlers.audio_set(0.2);handlers.audio_input_set(0.7);handlers.audio_input_set(0.8)
         assert(#calls==6 and calls[6].name=='audio.volume' and calls[6].value==0.2)
@@ -218,6 +218,15 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         fact={['audio.volume']=0.2, ['audio.muted']=false, ['sound_outputs.count']=1,
               sound_open=false, sound_dragging=false, cal_open=false}
         text,model,handlers,timers,calls,modules={},{},{},{},{},{}
+        local model_rows={}
+        model=setmetatable({}, {__index=function(_,key)return model_rows[key]end,
+            __newindex=function(_,name,rows)
+                model_rows[name]=rows;fact[name..'.count']=#rows
+                for i,row in ipairs(rows) do for key,value in pairs(row) do
+                    local path=name..'.'..(i-1)..'.'..key
+                    if type(value)=='string' then text[path]=value else fact[path]=value end
+                end end
+            end})
         function on(name, callback)
             handlers[name]=handlers[name] or {}; table.insert(handlers[name],callback)
         end
@@ -240,7 +249,8 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
                 return {{name='PRIVATE-1',x=0,y=0,width=1280,height=720,scale=1,transform=0,routable=true}}
              end,
              watch=function(name,callback)
-                if name=='clock' then callback({year=2026,month=11,day=7,weekday=6,hour=12,minute=0})
+                if name=='audio' then audio_watch=callback
+                elseif name=='clock' then callback({year=2026,month=11,day=7,weekday=6,hour=12,minute=0})
                 else callback({}) end
                 return true
              end}

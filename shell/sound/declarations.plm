@@ -3,7 +3,11 @@ part SoundState {
  model sound_outputs max 32 { id: number; name: text; default: bool }
  model sound_inputs max 32 { id: number; name: text; default: bool }
  model sound_apps max 64 { id: number; name: text; title: text; volume: number; muted: bool; playing: bool }
- service audio as audio { volume: number = -1; muted: bool; input: number = -1; input_muted: bool; outputs: sound_outputs; inputs: sound_inputs; apps: sound_apps }
+ // Exactly one whole-report native audio watch populates these fields/models.
+ fact audio.volume = -1
+ fact audio.muted = false
+ fact audio.input = -1
+ fact audio.input_muted = false
  fact sound_details = false
  fact sound_tab = 0
  fact sound_list_page = 0

@@ -1,11 +1,18 @@
 # Native sound controls
 
-Root scene `tohru` uses pinned Pleamar declarative `service audio` and direct
-`audio.step`, `audio.volume`, `audio.mute` and the supported input/app/default
-commands. The declarative service keeps
-one subscription through scene/logic reload; this avoids creating another raw
-`sys.watch` thread every VM replacement. It observes ordinary audio events for
-the bar; no high-rate `audio.level`/microphone meter or closed-panel stream starts.
+Root scene `tohru` uses one existing native `sys.watch("audio")` whole-report
+subscription and the supported output/input/app commands. Each report fills the
+plain audio facts and bounded native models, reconciles the selected ID/index,
+and publishes CLI status/OSD once. It does not also declare `service audio` or
+start an additional observer, high-rate `audio.level` stream or manual poll.
+Native HUBS reuses the same owner/name/watch subscription across VM reload and
+replays its last report. The native audio backend still collects its normal
+input/app fields while closed; this view adds no extra closed-panel stream.
+
+When migrating from an older declarative-audio scene, restart the ordinary shell
+process once: native HUBS distinguishes the old `service:<alias>` tag from `watch`
+and retains a superseded hub until that process exits. A VM/scene reload alone
+cannot stop the old hub. No live desktop activation or takeover is performed here.
 
 The bar sound icon opens a native xdg popup. Native placement anchors its 300px
 panel at the sound button center minus150px, 6px below the31px bar; native slide
@@ -82,7 +89,10 @@ Applications remain native per-stream reports, capped64 (devices32 each), four
 rows per page. Names/titles, level, mute and playing come from the native service;
 there is no aggregate app model or alternate process/audio catalog. UI events
 carry native IDs, which must still exist in the current bounded report before a
-command is issued. Closed/replaced stream IDs fail visibly. Native request
+command is issued. Explicit commands for removed stream IDs fail visibly. Keyboard selection
+preserves its native ID through reordering, moves its outline/page with that ID,
+and clamps/reselects the current row when the identity disappears. Whole-report
+updates refresh same-count name/title/volume/mute/playing changes too. Native request
 acceptance remains distinct from subsequent state observation. Device/app status
 is included in schema2 `audio status --json` for CLI ID discovery, with text fields
 bounded256 UTF-8 bytes and explicit capacities/selection limitation.

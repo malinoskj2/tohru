@@ -7,15 +7,6 @@ part SoundView {
  on scroll sound_button { emit audio_step(wheel) }
  // Native popup position is in the parent bar's coordinates and slides to fit.
 
- on change audio.volume { emit audio_report }
- on change audio.muted { emit audio_report }
- on change audio.input { emit audio_report }
- on change audio.input_muted { emit audio_report }
- on change sound_inputs.count { emit audio_report }
- on change sound_apps.count { emit audio_report }
- for device in sound_inputs { on change device.default { emit audio_report } }
- for device in sound_outputs { on change device.default { emit audio_report } }
- on change sound_outputs.count { emit audio_report }
  on key Tab while sound_open and sound_details { emit sound_tab_next }
  on key Left while sound_open and sound_details { emit sound_details_step(-1) }
  on key Right while sound_open and sound_details { emit sound_details_step(1) }

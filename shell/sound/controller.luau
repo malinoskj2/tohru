@@ -1,4 +1,4 @@
--- One declarative native audio service owns observation across logic reloads.
+-- One native whole-report audio watch is reused across logic reloads.
 -- Commands only publish acknowledgements/errors; reported levels remain authoritative.
 return function(observed)
     local pending, timer = nil, nil
@@ -7,8 +7,23 @@ return function(observed)
         if type(id) ~= "number" or id ~= id or id < 0 or id > 4294967295 or id ~= math.floor(id) then return nil end
         for i=0, math.min(maximum, fact[list .. ".count"] or 0)-1 do
             local prefix=list .. "." .. i .. "."
-            if fact[prefix .. "id"] == id then return prefix end
+            if fact[prefix .. "id"] == id then return prefix, i end
         end
+    end
+    local function active_list()
+        if fact.sound_tab == 0 then return "sound_outputs",32 end
+        if fact.sound_tab == 1 then return "sound_inputs",32 end
+        return "sound_apps",64
+    end
+    local function reconcile()
+        local list, maximum=active_list()
+        local count=math.min(maximum,fact[list .. ".count"] or 0)
+        if count == 0 then fact.sound_row_focus=-1;fact.sound_row_id=-1;fact.sound_list_page=0;return end
+        local _, index=row(list,fact.sound_row_id,maximum)
+        if not index then index=math.clamp(fact.sound_row_focus or 0,0,count-1) end
+        fact.sound_row_focus=index
+        fact.sound_row_id=fact[list .. "." .. index .. ".id"] or -1
+        fact.sound_list_page=math.floor(index/4)
     end
     local function label(value)
         local pieces, bytes = {}, 0
@@ -43,9 +58,7 @@ return function(observed)
         for i=0, math.min(32, fact["sound_inputs.count"] or 0)-1 do
             if fact["sound_inputs." .. i .. ".default"] then fact.sound_input_ready = true; break end
         end
-        local list=fact.sound_tab == 0 and "sound_outputs" or fact.sound_tab == 1 and "sound_inputs" or "sound_apps"
-        local count=fact[list .. ".count"] or 0
-        fact.sound_list_page=math.clamp(fact.sound_list_page or 0,0,math.max(0,math.ceil(count/4)-1))
+        reconcile()
         fact.audio_failed = last_error ~= ""
         text.audio_error = last_error
         local input_volume=fact["audio.input"]
@@ -155,15 +168,17 @@ return function(observed)
     on("sound_tab", tab)
     on("sound_tab_next", function() tab(((fact.sound_tab or 0)+1)%3) end)
     on("sound_row_move", function(delta)
-        if delta == -1 or delta == 1 then focus_row((fact.sound_row_focus or -1)+delta) end
+        if delta == -1 or delta == 1 then reconcile();focus_row((fact.sound_row_focus or -1)+delta) end
     end)
     on("sound_details_step", function(direction)
+        reconcile()
         if direction ~= -1 and direction ~= 1 then return end
         if fact.sound_tab == 1 then input_step(direction)
         elseif fact.sound_tab == 2 then app_step(fact.sound_row_id or -1,direction)
         else flush(); call("audio.step",direction*0.05) end
     end)
     on("sound_details_activate", function()
+        reconcile()
         if fact.sound_tab == 0 then select_output(fact.sound_row_id or -1)
         elseif fact.sound_tab == 2 then mute_app(fact.sound_row_id or -1)
         elseif fact.sound_input_ready then flush(); call("audio.input_mute") end
@@ -214,5 +229,19 @@ return function(observed)
         if observed then observed() end
     end)
     publish()
+    -- Native HUBS retains this one owner/name/watch subscription and replays its
+    -- last report on VM replacement. Do not also declare service audio.
+    sys.watch("audio", function(value)
+        if type(value) ~= "table" then reject("Invalid native audio report"); return end
+        model.sound_outputs=value.outputs or {}
+        model.sound_inputs=value.inputs or {}
+        model.sound_apps=value.apps or {}
+        fact["audio.volume"]=type(value.volume) == "number" and value.volume or -1
+        fact["audio.muted"]=value.muted == true
+        fact["audio.input"]=type(value.input) == "number" and value.input or -1
+        fact["audio.input_muted"]=value.input_muted == true
+        publish()
+        if observed then observed() end
+    end)
     return {close = close}
 end
