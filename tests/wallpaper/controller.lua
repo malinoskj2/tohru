@@ -83,3 +83,7 @@ assert(not pcall(controller.randomize, oversized, {}, {"/new/a.png"}, canonical)
 next = controller.randomize({["DP-1"] = "/pictures/alias.png", ["DP-2"] = "/outside/still.png"}, {}, files, canonical)
 assert(next["DP-1"] == files[2] and next["DP-2"] == "/outside/still.png")
 print("Wallpaper randomization no-op bounds and implicit alias fixtures passed")
+local exact = {}
+for i = 1, 32 do exact["OUTPUT-" .. i] = "/pictures/a.png" end
+assert(controller.randomize(exact, {}, {}, canonical)["OUTPUT-32"] == "/pictures/a.png")
+assert(not pcall(controller.randomize, exact, {"NEW"}, files, canonical))
