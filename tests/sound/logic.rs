@@ -140,3 +140,78 @@ fn command_error_has_a_visible_panel_boundary() {
     assert!(view.contains("116 + audio_failed * 62"));
     assert!(root.contains("116 + audio_failed * 62"));
 }
+
+#[test]
+fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
+    let lua = Lua::new();
+    lua.load(r#"
+        fact={['audio.volume']=0.2, ['audio.muted']=false, ['sound_outputs.count']=1,
+              sound_open=false, sound_dragging=false, cal_open=false}
+        text,model,handlers,timers,calls,modules={},{},{},{},{},{}
+        function on(name, callback)
+            handlers[name]=handlers[name] or {}; table.insert(handlers[name],callback)
+        end
+        function dispatch(name,value)
+            for _,callback in ipairs(handlers[name] or {}) do callback(value) end
+        end
+        function after(ms,callback) timers[1]=callback; return 1 end
+        function cancel(id) timers[id]=nil end
+        -- Match native direction: emit and fact writes do NOT call Lua handlers.
+        function emit(name) table.insert(calls,{render_only=name}) end
+        function require(name) return modules[name] end
+        sys={call=function(name,value) table.insert(calls,{name=name,value=value}) end,
+             watch=function(name,callback)
+                if name=='clock' then callback({year=2026,month=11,day=7,weekday=6,hour=12,minute=0})
+                else callback({}) end
+                return true
+             end}
+        json={encode=function(value) return 'snapshot' end}
+        tohru_settings={snapshot=function() return {
+            ['bar.mooncoil']={value=false},['appearance.corners']={value=true},
+            ['bar.preferred_output']={value='legacy'}
+        } end}
+    "#).exec().unwrap();
+    let modules: mlua::Table = lua.globals().get("modules").unwrap();
+    for (name, source) in [
+        (
+            "sound/controller",
+            include_str!("../../shell/sound/controller.luau"),
+        ),
+        (
+            "bar/controller",
+            include_str!("../../shell/bar/controller.luau"),
+        ),
+        (
+            "calendar/controller",
+            include_str!("../../shell/calendar/controller.luau"),
+        ),
+    ] {
+        modules
+            .set(name, lua.load(source).eval::<mlua::Function>().unwrap())
+            .unwrap();
+    }
+    lua.load(include_str!("../../shell/bar.luau"))
+        .exec()
+        .unwrap();
+    lua.load(
+        r#"
+        dispatch('calendar_open'); assert(fact.cal_open and not fact.sound_open)
+        dispatch('sound_open_request'); assert(fact.sound_open and not fact.cal_open)
+        fact.sound_dragging=true; dispatch('audio_set',0.8)
+        dispatch('calendar_open')
+        assert(fact.cal_open and not fact.sound_open and not fact.sound_dragging)
+        assert(timers[1]==nil and calls[#calls].name=='audio.volume')
+        dispatch('panel_close'); dispatch('panel_close')
+        assert(not fact.cal_open and not fact.sound_open)
+        dispatch('sound_toggle'); assert(fact.sound_open and not fact.cal_open)
+        dispatch('calendar_toggle'); assert(fact.cal_open and not fact.sound_open)
+        dispatch('calendar_close'); assert(not fact.cal_open)
+        dispatch('sound_open_request'); fact.sound_dragging=true
+        dispatch('audio_set',0.6); fact.sound_open=false
+        dispatch('fact:sound_open',false)
+        assert(not fact.sound_dragging and timers[1]==nil)
+    "#,
+    )
+    .exec()
+    .unwrap();
+}
