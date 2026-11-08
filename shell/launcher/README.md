@@ -61,8 +61,14 @@ category precedence, pin order, native launch refusal,100 actions including last
 action, history/persistence snapshot, bounds and1200-app virtualization.
 `lua tests/launcher/search.lua` checks the approved simple matching order and
 stable bound, and `lua tests/launcher/geometry.lua` checks retained visual row
-movement across sections. `pleamar --check shell/launcher/entry.plm` passes the pinned compiler. Actual
-native private entrypoint/persistence/input checks are still required before
-this slice is called runtime-checked; coordinator must allocate the GPU slot.
+movement across sections. `pleamar --check shell/launcher/entry.plm` passes the pinned compiler. Actual native private entrypoint/input/launch/persistence checks passed on
+Sway with NVIDIA RTX5090 Vulkan/GLES2, without the optional plugin. The runner
+uses its own exact catalog, SVG and marker script, real native field/key/menu
+paths, and restart persistence. Scope and raw results are in progress/B.md.
+Run only after coordinator GPU allocation:
+`python3 tests/bar/native.py --launcher-only --runtime PATH`.
+Raw development runtime needs native apps.launch dependencies `setsid` and `sh`
+in PATH (Pillow is used for screenshot pixel evidence); S owns production package
+PATH. Fixture code preflights setsid and pins XDG_DATA_DIRS to its own directory.
 S owns final startup/CLI/root/setting integration; this is not complete launcher
 visual or native metadata parity while the independent pending decisions remain.
