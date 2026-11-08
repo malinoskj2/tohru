@@ -1,0 +1,12 @@
+// Compile-only native dependency boundary. Viewport has actual protocol type but
+// no registry/Wayland/decoder role is started; the full output owner follows.
+#![expect(dead_code, reason="compile-only actual EGL API boundary before outer owner integration")]
+#[path="WAKE_SOURCE"] mod wake;
+use wake::Wake;
+#[path="MPV_SOURCE"] mod mpv;
+mod wayland {
+    use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
+    pub(super) struct Viewport(pub WpViewport);
+    impl Viewport {pub(super) fn destination(&self,w:i32,h:i32){self.0.set_destination(w,h);}}
+}
+#[path="EGL_SOURCE"] mod egl;

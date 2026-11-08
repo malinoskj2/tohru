@@ -39,6 +39,8 @@ pub enum Error {
     Output,
     #[error("video wallpaper requires an absolute local supported media path of at most4096 bytes")]
     Path,
+    #[error("video frame geometry is invalid or exceeds32Mi pixels")]
+    Geometry,
     #[error("video snapshot revision must increase")]
     Revision,
 }
@@ -149,6 +151,65 @@ impl Backoff {
     pub fn retry_at(self) -> Instant {
         self.retry_at
     }
+}
+
+/// Output metadata used to size only video buffers; compositor layout remains authoritative.
+#[derive(Clone, Copy, Debug)]
+pub struct OutputPixels {
+    pub logical: Option<(u32, u32)>,
+    /// Native mode dimensions before output rotation.
+    pub mode: Option<(u32, u32)>,
+    pub rotated: bool,
+    pub integer_scale: u32,
+}
+
+impl OutputPixels {
+    /// Match the upright native mode when viewporter is available; otherwise
+    /// use the compositor's integer buffer scale without guessing fractional scale.
+    ///
+    /// # Errors
+    /// Rejects missing/zero dimensions, multiplication overflow and frames over32Mi pixels.
+    pub fn size(self, logical: (u32, u32), viewport: bool) -> Result<(u32, u32), Error> {
+        let physical = match (viewport, self.logical, self.mode) {
+            (true, Some(output), Some(mut mode)) => {
+                if self.rotated {
+                    mode = (mode.1, mode.0);
+                }
+                (
+                    scaled(logical.0, mode.0, output.0)?,
+                    scaled(logical.1, mode.1, output.1)?,
+                )
+            }
+            _ => (
+                logical
+                    .0
+                    .checked_mul(self.integer_scale)
+                    .ok_or(Error::Geometry)?,
+                logical
+                    .1
+                    .checked_mul(self.integer_scale)
+                    .ok_or(Error::Geometry)?,
+            ),
+        };
+        if physical.0 == 0
+            || physical.1 == 0
+            || u64::from(physical.0) * u64::from(physical.1) > 32 * 1024 * 1024
+        {
+            return Err(Error::Geometry);
+        }
+        Ok(physical)
+    }
+}
+
+fn scaled(logical: u32, pixels: u32, whole: u32) -> Result<u32, Error> {
+    if logical == 0 || pixels == 0 || whole == 0 {
+        return Err(Error::Geometry);
+    }
+    let numerator = u64::from(logical) * u64::from(pixels);
+    let denominator = u64::from(whole);
+    // Division before outward rounding avoids addition overflow for large metadata.
+    u32::try_from(numerator / denominator + u64::from(numerator % denominator != 0))
+        .map_err(|_| Error::Geometry)
 }
 
 #[cfg(test)]

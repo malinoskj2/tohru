@@ -13,11 +13,13 @@ struct Fixture {
     fail_option: bool,
     need_frame: bool,
     renders: Vec<(i32, i32, bool)>,
+    end_file: Option<(c_int, c_int)>,
 }
 struct Payload {
     event: Event,
     property: Property,
     flag: c_int,
+    end: EndFile,
 }
 thread_local! {static FIXTURE:RefCell<Fixture>=RefCell::new(Fixture::default());}
 fn fixture<T>(f: impl FnOnce(&mut Fixture) -> T) -> T {
@@ -116,10 +118,18 @@ extern "C" fn mpv_wait_event(_: *mut Handle, _: f64) -> *const Event {
                 data: ptr::null_mut(),
             },
             flag: c_int::from(value.unwrap_or(false)),
+            end: EndFile {
+                reason: 0,
+                error: 0,
+            },
         });
         if value.is_some() {
             payload.property.data = ptr::from_mut(&mut payload.flag).cast();
             payload.event.data = ptr::from_mut(&mut payload.property).cast();
+        }
+        if let (7, Some((reason, error))) = (id, f.end_file) {
+            payload.end = EndFile { reason, error };
+            payload.event.data = ptr::from_mut(&mut payload.end).cast();
         }
         f.last = Some(payload);
         ptr::from_ref(&f.last.as_ref().unwrap().event)
@@ -237,6 +247,9 @@ fn startup_is_paused_muted_local_only_and_retirement_orders_render_before_core()
             ("config", "no"),
             ("load-scripts", "no"),
             ("access-references", "no"),
+            ("autoload-files", "no"),
+            ("demuxer-max-bytes", "32MiB"),
+            ("demuxer-max-back-bytes", "8MiB"),
         ] {
             assert!(f.options.contains(&(pair.0.into(), pair.1.into())));
         }
@@ -317,7 +330,10 @@ fn failed_initialization_drops_owned_core_and_backend_termination_is_not_success
     reset();
     let (mut player, _) = player();
     fixture(|f| f.events.push_front((7, -13, 0, None)));
-    assert!(matches!(player.events(Instant::now()), Err(Error::Ended)));
+    assert!(matches!(
+        player.events(Instant::now()),
+        Err(Error::Ended { .. })
+    ));
 }
 #[test]
 fn callback_signal_coalesces_without_work_or_unbounded_queue() {
@@ -328,4 +344,56 @@ fn callback_signal_coalesces_without_work_or_unbounded_queue() {
     receiver.drain().unwrap();
     wake.notify();
     receiver.drain().unwrap();
+}
+
+#[test]
+fn startup_pause_deadlines_and_terminal_request_remain_truthful() {
+    reset();
+    let (mut player, _) = player();
+    assert!(player.deadline().is_some());
+    let now = Instant::now();
+    player.events(now).unwrap();
+    assert!(player.deadline().is_none());
+    fixture(|f| f.hold_pause = true);
+    player.pause(false, now).unwrap();
+    assert_eq!(player.deadline(), Some(now + Duration::from_millis(500)));
+    fixture(|f| f.events.push_front((22, 0, 2, Some(false))));
+    player.events(now).unwrap();
+    player.terminal_pause().unwrap();
+    // Enqueueing the one final safety request is not a pause acknowledgment.
+    assert_eq!(player.paused(), Some(false));
+    fixture(|f| assert!(f.sequence.ends_with(&["unpause", "pause"])));
+}
+
+#[test]
+fn native_end_file_reports_actual_decode_error_and_preserves_unknown_reason() {
+    reset();
+    let (mut player, _) = player();
+    fixture(|f| {
+        f.end_file = Some((4, -13));
+        f.events.push_front((7, 0, 0, None));
+    });
+    assert!(matches!(
+        player.events(Instant::now()),
+        Err(Error::Api {
+            operation: "media decode/open",
+            code: -13
+        })
+    ));
+    fixture(|f| {
+        f.end_file = Some((0, 0));
+        f.events.push_front((7, 0, 0, None));
+    });
+    assert!(matches!(
+        player.events(Instant::now()),
+        Err(Error::Ended { reason: 0 })
+    ));
+    fixture(|f| {
+        f.end_file = None;
+        f.events.push_front((7, 0, 0, None));
+    });
+    assert!(matches!(
+        player.events(Instant::now()),
+        Err(Error::Ended { reason: -1 })
+    ));
 }

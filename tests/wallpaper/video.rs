@@ -98,3 +98,52 @@ fn failed_players_back_off_to_a_bounded_retry_interval() {
     }
     assert_eq!(retry.retry_at() - now, Duration::from_secs(10));
 }
+
+#[test]
+fn video_buffers_follow_fractional_output_mode_and_upright_rotation() {
+    let value = OutputPixels {
+        logical: Some((2048, 1152)),
+        mode: Some((2560, 1440)),
+        rotated: false,
+        integer_scale: 2,
+    };
+    assert_eq!(value.size((2048, 1152), true).unwrap(), (2560, 1440));
+    assert_eq!(value.size((2048, 1152), false).unwrap(), (4096, 2304));
+    assert_eq!(value.size((801, 601), true).unwrap(), (1002, 752));
+    let portrait = OutputPixels {
+        logical: Some((1152, 2048)),
+        rotated: true,
+        ..value
+    };
+    assert_eq!(portrait.size((1152, 2048), true).unwrap(), (1440, 2560));
+}
+
+#[test]
+fn video_geometry_unknown_metadata_uses_honest_integer_scale_and_rejects_overflow() {
+    let value = OutputPixels {
+        logical: None,
+        mode: None,
+        rotated: false,
+        integer_scale: 1,
+    };
+    assert_eq!(value.size((1920, 1080), true).unwrap(), (1920, 1080));
+    assert_eq!(value.size((0, 1080), true), Err(Error::Geometry));
+    assert_eq!(value.size((u32::MAX, 2), true), Err(Error::Geometry));
+    assert_eq!(
+        OutputPixels {
+            integer_scale: 2,
+            ..value
+        }
+        .size((u32::MAX, 1), false),
+        Err(Error::Geometry)
+    );
+    assert_eq!(
+        OutputPixels {
+            logical: Some((0, 0)),
+            mode: Some((1920, 1080)),
+            ..value
+        }
+        .size((1920, 1080), true),
+        Err(Error::Geometry)
+    );
+}

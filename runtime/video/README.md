@@ -1,138 +1,176 @@
-# Integrated video renderer source
+# Integrated video source and verification state
 
-The approved scope is an in-process renderer using an established decoder/playback
-backend, integrated with the shell's assignment/output/settings/lifetime owners.
-It does not authorize spawning mpvpaper as the replacement owner, a separate
-wallpaper daemon/repository, implementing codecs, or CPU screenshot/readback loops.
+This is the approved in-process libmpv0.41 render-API boundary on video-only
+Wayland/EGL per-output background surfaces. It uses the existing native package,
+EGL6/SCTK0.21/Wayland0.31 and the safe wayland-egl0.32.11 window wrapper. There is
+no mpvpaper process, standalone service, command socket, custom decoder, CPU
+screenshot loop, or second general shell renderer. Earlier GStreamer/DMA-BUF
+investigation is superseded: NVIDIA CUDA/GL output cannot be assumed to export
+hardware DMA-BUF; using libmpv's own GL render API avoids native Vulkan texture
+interop changes.
 
-Source anchors at pinned Pleamar dc902feb:
+Current evidence is **source/compile-only**. Actual pinned EGL/MPV/wake modules
+pass an allocated offline Cargo API check and Clippy with jobs1. Policy/startup,
+selected actual report/query methods and MPV wrapper behavior pass cheap cached
+Rust fixtures; MPV tests supply fake SDK symbols. Full native actor/Wayland/root
+assembly, linked library/driver/codec behavior, private pixels and shutdown/output
+measurements remain gates. No video role/decoder/EGL context has been started.
 
-- `src/platform/mod.rs` exposes no playback service (service/query/command dispatch).
-- `src/dmabuf.rs:1–10,46–105` already imports BGRA/RGBA/NV12 decoder-style DMA-BUF
-  planes into Vulkan/wgpu and contains `YuvToRgb` integration; use this native
-  path before introducing another rendering backend.
-- `src/platform/thumbnails.rs:78–118` exposes a `Frame` with optional on-card
-  buffer; its `OnCard` private read/reader/skipped coordination is owned by native
-  thumbnail capture, not a general decoder submission API. Do not impersonate a
-  thumbnail or reuse its global frame cache as an undocumented playback API.
-- `src/scene.rs` `PieceContent::Dmabuf`/`DmabufPiece`, consumed in `src/render.rs`
-  and `Gpu::copy_dmabuf`, carries external buffers for compositor/window pieces;
-  not exposed as a scene image/ordinary shell playback API.
+## Ownership and entry points
 
-A practical candidate is a minimal GStreamer decode pipeline feeding hardware
-DMA-BUF frames through a narrow explicit image-source boundary, reusing native
-import/conversion. This would need one focused existing Rust package, thin native
-binding installation, dependencies/pin through S, bounded frame ownership and
-native frame wakeup, and independent review. This is investigation, not a chosen
-or verified backend: availability of hardware-backed export, correct format,
-modifier, synchronization and buffer lifetimes must be established before code
-commits promise the renderer. libmpv render API is another established backend;
-its OpenGL rendering requires an interoperable texture boundary for the existing
-Vulkan path, rather than a second general shell renderer.
+S owns common manifests, native preparation, root settings/CLI/role bindings,
+Nix/dependency pins and verified provider hooks. W owns these files and tests.
 
-Retained j2bar lifecycle anchors (`/home/jesse/projects/j2bar`, read-only):
+1. Root foundation exposes `#[path = "../runtime/video/mod.rs"] pub mod video;`.
+   Copy that module and tests/wallpaper/video.rs preserving paths. This uses only
+   std and existing thiserror2.0.20; foundation Rust1.85/dependencies stay intact.
+2. Install native.rs as **native `src/tohru_video/mod.rs`**, and
+   egl.rs/mpv.rs/wake.rs/startup.rs/wayland.rs beside it. Add `mod tohru_video;` in
+   native src/lib.rs, gated to Linux. Native direct dependencies: existing anyhow1.0.103/libc0.2.189,
+   EGL6/SCTK0.21.1/Wayland0.31.15/protocols0.32.13, thiserror2.0.20,
+   wayland-egl0.32.11 and libmpv0.41 dev/link/runtime closure. Backend dependencies
+   do not enter foundation. S owns exact full transitive lock preservation.
+   Native cfg(test) also needs tests/wallpaper/{mpv,video_startup}.rs copied to
+   native tests/wallpaper/ so the installed module test paths remain valid.
+3. Apply **wallpaper/catalog.patch before video/status.patch**. The latter adds
+   only readonly `video.status` dispatch. A scene needs base `video` read
+   permission; no public video publishing/command service is added.
+4. Root's existing accepted-settings/projection owner calls
+   `tohru_video::publish(snapshot, to_render.clone())`. Snapshot contains only the
+   accepted video output→path projection, wallpaper enabled flag, strictly
+   increasing **video observation** revision, verified logind and actual dedicated
+   locker `Protection`, and verified visible-workspace occupancy. Filter provider
+   occupancy to relevant assigned outputs (max32); missing/lost/unsupported
+   observations are Unknown. Never substitute root-local lock.held for another
+   role's actual protected state, or false for an unavailable provider. Update on
+   provider changes/recovery/loss as well as config acceptance.
+5. Root declares outgoing `wallpaper_video_changed` (own wallpaper/state.plm).
+   Actor sends the existing native ExternalSignal; controller's optional second
+   argument is a status getter, e.g. `function() return sys.ask("video.status") end`.
+   Instantiate it in production and keep root permission base `video`. Actual
+   query acknowledges the one coalesced pending notification. Static/private
+   entries omit the callback safely. Source fields wallpaper_video_status and
+   wallpaper_video_error are independent of assignment diagnostics; root UI shows
+   actual per-output error/protection/pause information rather than claiming
+   accepted config proves rendering. Callback reads immediately on initialization
+   and exposes refresh_video for root adapters/reload recovery.
+6. S forwards `tohru_video::shutdown()` during orderly root teardown before
+   platform destruction and reports errors. This stops/joins the owner and its
+   bounded startup watcher and retires every owned backend. Keep role authorization
+   at the root binding; other roles/plugins must not submit accepted snapshots.
 
-- `src/app/wallpaper.rs:627–640`: only connected assigned outputs reach video;
-  unlocked requires both logind false and trusted shell lock authority.
-- `src/wallpaper/video.rs:259–297`: a snapshot reports visible-workspace occupancy;
-  unknown occupancy is paused, as are locked/unknown-lock states.
-- `video.rs:319–380`: player starts paused, muted, looping, cover crop, hardware
-  decode automatic; never decode before visibility/unlocked state is confirmed.
-- `video.rs:497–504,543–700`: stop/reap on removal/reassignment/shutdown, recheck
-  observation revision before unpause, fail closed on disconnected observations
-  and unacknowledged pause, bounded retry rather than a restart spin.
-- Current source uses mpvpaper; the target implementation must integrate ownership
-  here rather than copy that external-process ownership architecture unchanged.
+## State, bounds and failure behavior
 
-W currently holds no decoder/thread/backend processes, display/bus/GPU/build slot
-or live wallpaper ownership. Actual backend compile, frame rendering, decoder
-pause/reassignment/hotplug/shutdown and memory/process/resource evidence remain
-unverified. Root/shared native changes remain S-owned, with precise requested
-patch boundaries required before simultaneous integration.
+Snapshot validates max32 assignments/occupancy records, literal native output
+names, absolute UTF-8 paths≤4096 and retained video extensions mp4/webm/mkv/mov/gif.
+Disabled/unassigned/disconnected outputs stop their core/surface. Connected players
+start paused, muted, audio/subtitles/config/scripts/input/reference/paired-file
+loading disabled, loop-file inf, cover panscan1 and hardware decode automatic.
+Both actual protection providers Clear and known Empty occupancy are required for
+continuous playback. Unknown/protected/occupied states pause; status preserves
+actual source Unknown/Clear/Protected and requested/observed pause separately.
+libmpv may predecode its initial paused frame, as the retained paused-player
+backend does; presenting/resizing that frozen frame does not enable playback.
 
-## Backend choice constraints verified during source investigation
+Root updates replace one immutable Arc snapshot; steady frames do not clone its
+path map. One nonblocking coalesced wake and one pending renderer notice avoid
+update/frame queues. Each player has at most one pending pause command; a safety
+pause superseding pending unpause retires instead of growing a command queue.
+Acknowledgment deadline500ms, file startup10s, layer configure2s and registry
+bootstrap2s. Fresh private connection cancellation is allowed only before GL;
+Ready removes the cancellation socket. The video connection uses explicit
+WAYLAND_DISPLAY/XDG_RUNTIME_DIR and SDK from_socket; it never consumes or mutates
+inherited WAYLAND_SOCKET that could belong to primary rendering. FD-only contexts
+without an explicit named endpoint fail honestly (existing secondary native
+capture connections also need an available endpoint after primary consumption).
+Each retry has one owned/joined SDK bootstrap watcher; no watcher is detached.
+A responsive connection/bootstrap failure retries with bounded backoff. While no
+video assignment is enabled, the owner parks without opening a connection.
+Disabling/removing the last accepted video drops the complete private backend
+graph/connection before parking, while keeping the root-facing owner available
+for a later accepted enable/assignment snapshot.
+Snapshot updates wake the owner but cannot bypass a pending failure deadline.
 
-The official [GStreamer NVIDIA H.264 decoder pad contract](https://gstreamer.freedesktop.org/documentation/nvcodec/nvh264dec.html)
-lists CUDA/GL memory outputs; direct DMA-BUF export cannot be assumed for the
-reference NVIDIA card. Thus the DMA-BUF candidate above is not yet a demonstrated
-minimal hardware path. The official [DMA-BUF design](https://gstreamer.freedesktop.org/documentation/additional/design/dmabuf.html)
-requires preserving per-buffer memory/plane metadata rather than treating every
-sample as a flat RGBA upload. [AppSink](https://gstreamer.freedesktop.org/documentation/rust/stable/latest/docs/gstreamer_app/struct.AppSink.html)
-can bound queued buffers and avoid EOS waiting; that does not itself establish
-bounded decoder shutdown or cross-API synchronization.
+One native frame callback per output paces commits, EGL swap interval0 avoids
+waiting for an occluded surface inside a blocking swap, SDK frame timestamps
+control target time. Wayland owns output/layer add/update/remove/close and empty
+input regions; keyboard none/reserve-1/background avoid shell input/reservation.
+Viewport uses upright physical mode/logical ratios, including fractional scale
+and90/270 rotation. For this all-anchor full-output role native configure gives
+logical extent when xdg-output metadata is absent. Without viewporter, actual
+native integer buffer scale is used. Frames are capped32Mi pixels. libmpv forward
+packet-cache budget32MiB/back-cache8MiB use native options; the SDK documents
+small packet-limit overruns and separate decoder buffers, so these are not a hard
+process/RSS/VRAM cap. Aggregate media memory/decoder concurrency remain measured
+gates; no custom packet/frame copying decoder is introduced.
 
-Local installed mpv0.41.0 headers exist at
-`/nix/store/sf4alw13ap5rzfhrr116zdq47q396c85-mpv-0.41.0-dev/include/mpv/`.
-Its public render API is OpenGL or software; do not infer Vulkan render API support
-from mpv's separate Vulkan video-output driver. The pinned Pleamar Cargo.toml
-already includes dynamic khronos-egl6 and smithay-client-toolkit0.21. A focused
-in-process libmpv renderer on per-output EGL background surfaces may avoid a new
-GPU texture-import patch altogether, but requires agreeing the native surface
-owner boundary with S: root owner submits assignments/visibility, renderer owns
-only video surfaces/contexts/callbacks, and root teardown joins/stops that owner.
-This is a proposed boundary, not permission to launch a separate daemon/player
-or a tested implementation. Check codec/plugin availability, library ABI and
-license packaging before committing concrete backend bindings.
+Path replacement/removal/hotplug retires old player before reuse. Responsive
+failures back off100ms..10s; retries clear only after30s healthy ownership, not
+merely successful async load/configure enqueue. Root revision is rechecked before
+unpause/presentation. Report separates running/paused/pausing/failure/unknown and
+retained handles; shutdown remains queryable as stopping until join completes.
+Render context frees before final core termination, callback boxes outlive core
+threads, then EGL surface/window/viewport/layer/context/display/connection follow.
+If original GL cannot be rebound or foreign destruction fails, dependent objects
+are retained rather than freed unsafely, best-effort terminal pause is explicitly
+unacknowledged, status reports cleanup unproven/retained cores, and new video reuse
+is blocked. Fatal cleanup sends the existing native ToRender::Quit to terminate
+the containing owned root role, so OS teardown can reclaim retained dependencies.
+This binding must never be installed as a publisher in the locker or other roles.
+A failed core is not reported
+as still Playing; unavailable pause is omitted, not false.
 
-## Approved concrete boundary and initial policy
+Native kernel/filesystem connection operations or opaque EGL/codec/driver calls
+can delay shutdown; no hard kernel/driver termination deadline or immediate GPU
+memory deallocation is claimed. False cleanup_unproven means no unproven teardown has been observed; while the
+owner is running, it does not mean teardown has occurred. A normal Stopped report
+is owning API evidence, not a GPU-fence/VRAM measurement. Responsive normal cleanup,
+error paths and actual hardware behavior still need private runtime evidence.
 
-Coordinator approved in-process libmpv0.41 render API on video-only Wayland/EGL
-per-output surfaces. Reuse native EGL6/SCTK0.21/wayland-client0.31; the safe
-wayland-egl0.32.11 window wrapper is the one requested additional dependency.
-The earlier GStreamer discussion records rejected investigation, not the chosen
-implementation. No mpvpaper/player process, custom decoder, screenshot loop or
-second general shell renderer.
+## Reproduction and precise gates
 
-`mod.rs` is the root foundation's std/thiserror-only video policy. S exposes
-`#[path = "../runtime/video/mod.rs"] pub mod video;` and copies its owning tests
-under tests/wallpaper/video.rs during preparation. `Snapshot` bounds32 video
-assignments/occupancy observations, validates literal output names/video paths,
-and keeps actual root revision. Backend native code validates a whole snapshot
-before publication. Disabled/disconnected/unassigned outputs stop their owner;
-unknown/protected logind or dedicated-locker observations pause, as does unknown
-or occupied visible workspace. Both observations Clear and occupancy Empty are
-required for Playing. Dedicated locker state must describe its actual protected
-role, never a different process-local lock.held. Missing observations are Unknown.
+- `python3 tests/wallpaper/check_cpu.py`: scoped catalog/probe and pure video policy.
+- `python3 tests/wallpaper/check_video_source.py`: cached dependency rustc/Clippy,
+  no Cargo graph.6 policy +3 startup +9 report/query/supervisor +7 fake-SDK MPV cases
+  (report harness also repeats policy/startup). Explicit controller holder and
+  renderer enum fixtures do not exercise native protocol/actor startup. The two
+  newest inactive-report/re-enable supervisor cases and latest supervisor changes
+  are source-only and have not been executed; the earlier report harness had7
+  passing cases. No current9-case pass is claimed.
+- `python3 tests/wallpaper/check_video.py --headers /absolute/mpv0.41/include`:
+  compile-only SDK ABI/layout/signatures plus fake-SDK actual wrapper tests.
+- `python3 tests/wallpaper/check_egl.py`: **allocated heavy slot only**, actual
+  EGL/SCTK/Wayland API fixture, offline cargo check/Clippy jobs1/owned target;
+  explicit viewport type fixture. Completed0/0; slot released, no native execution.
+- `python3 tests/wallpaper/check_native_video.py`: **new allocated slot only**,
+  prepared full actor check/Clippy with exact existing direct pins. Not yet run;
+  SysValue/ToRender remain explicit framework type fixtures. SDK's production
+  transitive lock/full native root/feature-mode assembly is S's separate check.
 
-Root supplies accepted video projection and verified observations. Native owner
-must coalesce updates, recheck revision before unpause, create paused/muted/looping
-cover players, retire removed/reassigned/disconnected players and drop render
-contexts before backend cores and EGL/Wayland objects. Failures back off100ms up
-to10s. Policy tests execute27 protection/occupancy combinations, assignment
-lifecycle/bounds and retry saturation; these do not instantiate a decoder.
-`python3 tests/wallpaper/check_cpu.py` includes these4 tests (17 total at this
-checkpoint), Clippy and existing scoped metadata/probe checks. No full native
-build or GL/decoder role has been allocated or started.
+All logs/argv/exit/source hashes live in worktree-root .tmp/check-results; no
+check success infers a runtime result. Actual gates: linked ABI/backend options,
+codec errors/GIF/loop/cover, hardware decoding, paused first frame and visibility
+revision races, actual dedicated locker authority and provider loss, physical
+scale/rotation, surfaces/input/hotplug/assignment churn, process/thread/fd/decoder/
+GL/Wayland cleanup and GPU memory/pacing. Only coordinator-allocated private
+sandbox displays/buses/GPU tests may run; no live wallpaper/service takeover.
 
-## libmpv FFI source checkpoint (outer native owner still pending)
+## Attribution and package license
 
-`mpv.rs` is a private thread-affine owning client/render wrapper. Constructor's
-unsafe contract requires the outer video-only EGL owner to keep the same context
-current during render/drop and retain its display/resolver. The wrapper creates
-no external process or IPC server. It sets paused/no audio/no subtitles/loop/cover
-and automatic hardware decode, disables config/scripts/input/reference loading,
-uses async file/pause commands, observes actual pause, bounds one pending pause
-request and requires500ms acknowledgment. A superseded pending unpause retires
-instead of accumulating commands. Startup/file end/overflow/errors remain errors.
-Frame timing comes from the SDK; default-framebuffer rendering supplies physical
-size, flip and nonblocking target-time/skip parameters. Callbacks only wake the
-owner. Render context is freed before core termination; its stable callback box
-outlives the final core thread termination. Outer EGL failure/teardown handling
-must uphold this contract before runtime integration can be claimed.
+Local SDK0.41 public client/render headers are ISC; preserve
+MPV-CLIENT-LICENSE with the package/these bindings. The client header explicitly
+says core is GPLv2+ by default unless built with gpl=false; installed AppStream
+metadata reports GPL-2.0-or-later AND LGPL-2.0-or-later. These header notices do not
+relicense the core/FFmpeg dependencies. S must select/preserve the actual library
+build's licenses/notices/source attribution with its exact compatible pin, rather
+than assume the wrapper notice covers it. Offline derivation flags were not
+available (known .drv missing); no substitute/fetch/build was started to obtain
+those flags. No claim about actual core configuration or redistribution terms is
+made from version alone.
 
-S native-package dependency: direct thiserror2.0.20 (already selected by the root
-foundation), in addition to the requested safe wayland-egl0.32.11 and libmpv0.41.
-No backend dependency enters the Rust1.85 foundation module. FFI structs have
-compile-time size/offset assertions for this64-bit Linux target; C compile-only
-checks verify selected SDK layouts/constants/function signatures and ABI2.5.
-
-```
-python3 tests/wallpaper/check_video.py --headers /absolute/mpv0.41/include
-```
-
-Five actual wrapper tests use explicit fake SDK symbols: paused/local startup,
-render-before-core drop/error cleanup, bounded/acknowledged/superseded pause,
-frame geometry/timing/skip and coalesced wake. C header compile/5tests/Clippy all
-exit0. Fake symbols do not load libmpv, connect Wayland, decode video or create GL;
-actual linked backend/codec/license/driver/rendering/cleanup remain allocated
-runtime gates. The wrapper is not yet a complete video owner or advertised player.
+Retained behavior references, read-only j2bar:
+app/wallpaper.rs627–640 and wallpaper/video.rs259–297,319–380,497–700. Those use an
+external mpvpaper; this implementation retains assignment/protection/occupancy/
+paused-loop-cover/retirement behavior within the existing native process instead.
+Pinned Pleamar source is dc902feb/0.7.27. Existing DMA-BUF/thumbnail internals are
+not impersonated or exposed as a general video image submission API.
