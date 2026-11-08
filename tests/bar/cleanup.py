@@ -46,3 +46,25 @@ with patch.object(Path, 'write_text', return_value=0):
         raise AssertionError('cleanup failure was hidden')
 assert ('app', 'terminate') in calls and ('compositor', 'terminate') in calls and ('log', 'close') in calls
 print('Actual cleanup helper attempts every owner before evidence failure; timeout escalates to kill')
+assert ('broken', 'kill') in calls and ('broken', 'wait') in calls
+calls.clear()
+class BrokenOwner(Process):
+    def kill(self):
+        calls.append((self.label, 'kill'))
+        raise OSError('injected kill failure')
+    def wait(self, timeout):
+        calls.append((self.label, 'wait'))
+        raise OSError('injected reap failure')
+with patch.object(Path, 'write_text', return_value=0):
+    try:
+        finish_owned([Process('healthy'), BrokenOwner('same-owner', broken=True)], [], Path('/no-write'), [])
+    except ExceptionGroup as error:
+        assert len(error.exceptions) == 3
+        assert any('stop failure' in str(item) for item in error.exceptions)
+        assert any('kill failure' in str(item) for item in error.exceptions)
+        assert any('reap failure' in str(item) for item in error.exceptions)
+    else:
+        raise AssertionError('same-owner cleanup failures hidden')
+assert ('same-owner', 'terminate') in calls and ('same-owner', 'kill') in calls and ('same-owner', 'wait') in calls
+assert ('healthy', 'terminate') in calls and ('healthy', 'wait') in calls
+print('Same-owner terminate failure still kills/reaps; all cleanup failures aggregate and other owners continue')
