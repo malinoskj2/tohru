@@ -1,11 +1,12 @@
 # Private session/auth entry points
 
 These are independent development scenes, not root imports or production activation.
-**The native IPC accepts arbitrary fact writes, including `engaged=false`, and can
-release the lock without PAM. Production lock safety/activation is blocked pending
-a native boundary decision. Authenticated UI behavior below does not establish
-security against native IPC control.**
-Use the existing pinned runtime; do not build another runtime for scene changes.
+Use the assembled pinned runtime with reviewed native lock release-authority and
+secret-export protections. An unpatched upstream runtime permits IPC unlock and
+secret reads and is unsuitable for these scenes. Native resize/hotplug/edit/export/
+reload/crash checks have passed on frozen53f8ea2; controlled fixture PAM and final
+native idle/guard integration remain acceptance gates. No physical-session safety
+or activation is inferred. Scene-only changes reuse the compiled runtime.
 After coordinator GPU allocation, on private compositor and private buses only:
 
 ```sh
@@ -61,14 +62,15 @@ The test executes actual Lua-compatible entry scripts with fake native boundarie
 and a deterministic timer. It checks confirmation expiration/cancellation, native
 routing, missing/late acknowledgment, lock retention on denial/unavailable PAM,
 reload retention, and polkit cancellation/duplicate answer protection. This is
-not a native Luau/compositor/PAM/helper integration test. Runtime focus, native
-acknowledgment rule delivery, multioutput/hotplug, locker crash and reload behavior,
-private authority/helper flows and denied auth still need private runtime tests.
-The native popup outside-click grab decision remains separate and pending.
+not a native Luau/compositor/PAM/helper integration test. Frozen53f8ea2 private native tests cover acknowledgment delivery, actual keyboard
+editing under publicfalse, multioutput resize/hotplug, crash fail-locked and reload.
+Private controlled PAM/account-denial and polkit authority/helper flows remain
+unverified. Native popup click grab/Escape and CLI idle Escape behavior are accepted;
+no catcher/backend extension is added.
 
 Presentation is an initial native scene implementation with glass; source-matched
 layout/motion, wallpaper treatment, font/assets, authentication transitions and
-matched screenshots remain unfinished. No visual parity, native-glass acceptance,
+matched screenshots remain unfinished. No visual parity or independent visual acceptance,
 physical-session safety or performance gate is claimed.
 
 `menu_toggle` closes an open menu and cancels any confirmation; opening resets
@@ -76,6 +78,18 @@ selection and errors. The root owns its visible menu control: this feature scene
 has only a 1px transparent anchor surface, without a duplicate visible button.
 
 After coordinator GPU allocation, `tests/session/native.sh --runtime /absolute/pleamar`
-runs only private menu/lock protocol checks; it never calls PAM or a power action.
-The current suite deliberately demonstrates the unpatched IPC release gap and
-must be updated to assert denial when the authorized native patch lands.
+runs private menu/lock protocol checks without PAM/power by default. Optional
+explicit guarded fixture modes are documented in tests/session/pam_fixture.py;
+they require executable wtype/bwrap, exact private namespace/policy guard, synthetic
+credentials and a separate authorized allocation. Optional notifications workload
+uses private buses and an owned null audio sink. There is never a host-PAM fallback.
+See L progress log for exact frozen artifact/hashes and evidence paths.
+
+The ordinary-root private idle include is `shell/session/idle.part.plm` plus
+`require("session/idle")`; `idle.plm` is its standalone parser/fixture entry.
+Native copy/install hooks and API are in `runtime/idle/README.md`; the new adapters
+are source checkpoints awaiting native compilation/protocol validation. Dedicated
+locker `state_request` emits `idle_lock_state`0/1 to fixed root `tohru` using actual
+native held query, solely a timing hint. The locker-local native logind delay
+helper bypasses Lua/PAM liveness and requires confirmed local held authority;
+no public fact/event or ordinary-root hint can release its descriptor.

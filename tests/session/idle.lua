@@ -24,3 +24,21 @@ assert(env.text.idle_status:find('unavailable'))
 fail=false;handlers.idle_caffeine_toggle();assert(not env.fact.idle_caffeine)
 handlers.idle_resume();assert(calls[#calls][1]=='resume')
 print('ordinary root native idle entry: passed')
+
+-- Actual private native fixture uses the same module/configuration boundary;
+-- no event, including off/lock tests, may ever arm a suspend timeout.
+local probe_handlers,configs={},{}
+local probe_env=setmetatable({
+    require=function(name)
+        assert(name=='idle')
+        return {configure=function(config)configs[#configs+1]=config;return true end}
+    end,
+    on=function(name,fn)probe_handlers[name]=fn end,
+    tohru_idle={stop=function()end},
+},{__index=_G})
+assert(loadfile('shell/session/idle_probe.luau','t',probe_env))()
+probe_handlers.fixture_arm_lock();probe_handlers.fixture_arm_off();probe_handlers.fixture_disable()
+for _,config in ipairs(configs) do
+    assert(config.suspend_unlocked_seconds==0 and config.suspend_locked_seconds==0)
+end
+assert(configs[2].lock_seconds==1 and configs[3].screen_off_locked_seconds==1)

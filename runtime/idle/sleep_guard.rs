@@ -18,6 +18,7 @@ pub(super) struct Guard {
     thread: Option<JoinHandle<()>>,
     _delay: Arc<Mutex<Delay<OwnedFd>>>,
 }
+
 fn acquire(connection: &Connection) -> Result<OwnedFd> {
     let reply = connection.call_method(
         Some(LOGIND),
@@ -50,6 +51,7 @@ pub(crate) fn native_held() {
         delay.acknowledge();
     }
 }
+
 impl Guard {
     pub(super) fn start(render: Sender<ToRender>, logic: Sender<Event>) -> Result<Self> {
         let connection = Builder::system()?
@@ -131,6 +133,7 @@ impl Guard {
         })
     }
 }
+
 impl Drop for Guard {
     fn drop(&mut self) {
         if let Some(connection) = self.connection.take() {

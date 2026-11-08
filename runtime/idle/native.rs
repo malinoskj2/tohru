@@ -8,12 +8,11 @@ mod observer;
 mod screensaver;
 #[path = "tohru_idle/sleep_guard.rs"]
 mod sleep_guard;
-pub(crate) use sleep_guard::native_held;
-static GUARD: OnceLock<Mutex<Option<sleep_guard::Guard>>> = OnceLock::new();
 use crate::scene::{Event, ToRender};
 use anyhow::{Context, Result};
 use mlua::{Lua, Table};
 use observer::{Observer, Sink};
+pub(crate) use sleep_guard::native_held;
 use std::sync::{
     Arc, Mutex, OnceLock,
     atomic::{AtomicBool, Ordering},
@@ -24,7 +23,9 @@ use std::time::Duration;
 use tohru_shell::idle::input::Cancellation;
 use tohru_shell::idle::{Config, Timeouts};
 
+static GUARD: OnceLock<Mutex<Option<sleep_guard::Guard>>> = OnceLock::new();
 static OWNER: OnceLock<Mutex<Option<Owner>>> = OnceLock::new();
+
 struct Owner {
     logind: Option<logind::Watch>,
     service: Option<screensaver::Service>,

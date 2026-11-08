@@ -5,6 +5,7 @@
 pub mod cookies;
 pub mod delay;
 pub mod input;
+pub mod logind_state;
 
 use std::time::{Duration, Instant};
 
