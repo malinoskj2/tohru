@@ -1,4 +1,6 @@
 //! Read-only catalog of regular media files directly in an explicitly chosen folder.
+pub mod preset;
+
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};

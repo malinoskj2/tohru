@@ -14,7 +14,7 @@ S integration request:
   normal unmanaged TOML persistence through the shared owner.
 - Include `wallpaper/state.plm`, `wallpaper/view.plm` and install
   `local wallpaper = require("wallpaper/controller")(assign)` before initial
-  settings publication. Call `wallpaper.publish(enabled, assignments)` on every
+  settings publication. Call `wallpaper.publish(enabled, assignments, fit)` on every
   accepted snapshot/reload. `assign(output, path_or_nil)` changes one map member
   atomically through that owner and republishes; it must propagate failures.
 - `wallpaper_assign` reads `wallpaper_request_output`/`wallpaper_request_path`;
@@ -146,3 +146,19 @@ stop before owner teardown. At most one deadline exists, stale/reentrant callbac
 cannot revive it, and errors retry at the next configured interval. Root action,
 primary output selection, typed setting and preset fallback are not installed by
 this module; see runtime/wallpaper/RETAINED-COVERAGE.md for the exact open hooks.
+
+## Fixed preset choices and rotation action
+
+The picker exposes six built-ins through the exact wallpaper.preset mutation;
+root must grant that exact service in addition to readonly wallpaper. Native
+PRESETS.md defines the closed preset/palette API and bounded cache. Snapshot read
+adds optional preset and canonical palette (default mocha for private legacy
+entries). `commit(map, optional_preset)` persists map/metadata atomically;
+`save_folder(folder, optional_map)` accepts initial folder rotation together.
+An optional sixth factory callback receives the actual native preset result after
+acceptance. `picker.preset(output,name)` and `picker.rotate(output)` require root's
+actual explicit output; use rotate as the native timer action and propagate false
+as an error. Six chip controls extend content to≈590 logical pixels; S owns root
+Settings container sizing and typed preset/change/palette/proposal hooks. The
+standalone source window is588x640. These new scene controls and native cache
+code have not been compiled/run;17 mock-boundary production Lua cases pass.

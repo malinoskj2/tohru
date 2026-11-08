@@ -36,7 +36,18 @@ part WallpaperPickerView {
             text "Randomize output" { at: 85, 471; anchor: center; size: 11; color: #cdd6f4 }
             text "Randomize saved" { at: 265, 471; anchor: center; size: 11; color: #cdd6f4 }
             text "Clear assignment" { at: 450, 471; anchor: center; size: 11; color: #cdd6f4 }
-            text wallpaper_picker_error { at: 0, 500; anchor: left top; width: 540; lines: 2; size: 11; color: #f38ba8 }
+            row wallpaper_preset_choices { at: 0, 496; gap: 12
+                for preset in wallpaper_picker_presets {
+                    group { size: 80, 28
+                        box preset_hit { from: 0, 0; size: 80, 28; corner: 6; color: #313244; cursor: pointer }
+                        box { from: 0, 0; size: 80, 28; corner: 6; stroke: if(preset.selected, 1, 0); color: #b4befe }
+                        text preset.name { at: 40, 14; anchor: center; size: 10; color: #cdd6f4 }
+                        on press preset_hit { emit wallpaper_picker_preset(preset.row_id) }
+                    }
+                }
+            }
+            text wallpaper_picker_warning { at: 0, 532; anchor: left top; width: 540; lines: 2; size: 10; color: #f9e2af }
+            text wallpaper_picker_error { at: 0, 560; anchor: left top; width: 540; lines: 2; size: 11; color: #f38ba8 }
             on press wallpaper_folder_load { emit wallpaper_picker_folder_submit }
             on submit wallpaper_picker_folder { emit wallpaper_picker_folder_submit }
             on press wallpaper_output_previous { emit wallpaper_picker_output(-1) }

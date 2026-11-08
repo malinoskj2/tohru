@@ -2,7 +2,9 @@
 
 `mod.rs` belongs to the existing tohru-shell library; `probe.rs` is its thin
 `tohru-wallpaper-probe` binary. `native.rs` installs as the pinned runtime's
-`src/tohru_wallpaper.rs`; `catalog.patch` adds only the public query dispatch.
+`src/tohru_wallpaper/mod.rs` with `presets.rs`/`raster.rs` beside it;
+`catalog.patch` adds the read query dispatch. The separately granted fixed preset
+mutation is documented in PRESETS.md.
 This is a wallpaper-only operation, not an arbitrary filesystem/command service.
 
 S shared hooks (W does not modify shared files):
@@ -13,7 +15,8 @@ S shared hooks (W does not modify shared files):
    and `serde_json=1.0.151` dependencies. No new package/crate. Root existing
    thiserror2.0.20 supplies typed catalog errors.
 3. During native preparation, copy the root module/tests/probe with their paths,
-   install `native.rs` as `src/tohru_wallpaper.rs`, add `mod tohru_wallpaper;` and
+   install `native.rs` as `src/tohru_wallpaper/mod.rs` with the two sibling modules
+   (replace the earlier single-file installation), add `mod tohru_wallpaper;` and
    apply `catalog.patch`. Native already has libc/serde_json; no decoder or
    playback dependencies are needed for this catalog.
 4. Build/install probe **next to the actual Pleamar executable**, including Nix
@@ -118,3 +121,13 @@ Source-only19-patch application plus source/legacy/metadata guards pass via
 read growth, geometry/allocation policy and malformed decode, but no Rust/native
 compile or image decode has run. Source tests do not close actual special-file,
 replacement/growth, codec allocation, animated-budget and pixel/runtime gates.
+
+## Fixed built-in presets
+
+See PRESETS.md for the new explicit wallpaper.preset operation, closed domain,
+fixed cache bounds/atomicity, source-only evidence, required namespace/test copy
+changes, production permissions and root callback metadata. Add preset.rs to the
+foundation module copies and its unit test to foundation tests/wallpaper. Native
+adapter/cache tests are pending; no PNG/media/cache generation has run. Updated
+native-adapter check_cpu.py now needs native Rust1.88/image PNG and is not a claim
+that those dependencies enter foundation Rust1.85.

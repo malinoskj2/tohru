@@ -14,7 +14,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 W_PATCHES = {
     'runtime/wallpaper/catalog.patch', 'runtime/wallpaper/image-reset.patch',
-    'runtime/wallpaper/fit.patch', 'runtime/wallpaper/raster-limits.patch', 'runtime/capture/native.patch',
+    'runtime/wallpaper/fit.patch', 'runtime/wallpaper/raster-limits.patch', 'runtime/wallpaper/presets.patch', 'runtime/capture/native.patch',
     'runtime/capture/layout-link.patch', 'runtime/capture/image-lifecycle.patch',
     'runtime/capture/output-events.patch',
 }
@@ -37,10 +37,12 @@ def main():
         patches.insert(patches.index('runtime/wallpaper/image-reset.patch') + 1, 'runtime/wallpaper/fit.patch')
     if 'runtime/wallpaper/raster-limits.patch' not in patches:
         patches.insert(patches.index('runtime/capture/image-lifecycle.patch') + 1, 'runtime/wallpaper/raster-limits.patch')
+    if 'runtime/wallpaper/presets.patch' not in patches:
+        patches.insert(patches.index('runtime/wallpaper/raster-limits.patch') + 1, 'runtime/wallpaper/presets.patch')
     required = ['runtime/wallpaper/catalog.patch', 'runtime/wallpaper/image-reset.patch',
                 'runtime/wallpaper/fit.patch', 'runtime/capture/native.patch',
                 'runtime/capture/layout-link.patch', 'runtime/capture/image-lifecycle.patch',
-                'runtime/wallpaper/raster-limits.patch', 'runtime/capture/output-events.patch']
+                'runtime/wallpaper/raster-limits.patch', 'runtime/wallpaper/presets.patch', 'runtime/capture/output-events.patch']
     assert [patches.index(p) for p in required] == sorted(patches.index(p) for p in required)
     stamp = str(time.time_ns())
     work = ROOT / '.tmp' / ('capture-patch-stack-' + stamp)
@@ -126,6 +128,9 @@ def main():
         assert guard in compact, guard
 
     assert 'ToRender::ReleaseCapture(name)' in (source / 'src/render.rs').read_text()
+    logic = (source / 'src/logic_luau.rs').read_text()
+    assert 'capture_query_mutates(name) || name == "wallpaper.preset"' in logic
+    assert 'check_service_permission(&c, &name, query_mutates(&name))?' in logic
     record('PASS: complete ordered patch application; original collision reproduced; frozen source dimensions and release hooks retained.')
     print('PASS:', len(patches), 'patches;', len(files), 'existing source files;', total, 'bytes')
     print('Evidence:', log)

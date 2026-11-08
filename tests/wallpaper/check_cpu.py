@@ -11,7 +11,7 @@ work = root / ".tmp/wallpaper-picker-cpu"
 evidence = root / ".tmp/check-results"
 evidence.mkdir(parents=True, exist_ok=True)
 (work / "src/lib.rs").write_text('''extern crate self as tohru_shell;
-#[derive(Debug)] pub enum SysValue {Text(String),List(Vec<SysValue>)}
+#[derive(Debug)] pub enum SysValue {Text(String),List(Vec<SysValue>),Map(Vec<(String,SysValue)>),Bool(bool)}
 pub mod platform {pub use crate::SysValue;}
 #[path=WALLPAPER] pub mod wallpaper;
 #[path=NATIVE] mod native;
@@ -35,7 +35,7 @@ fn main(){
 name="tohru-wallpaper-cpu-check"
 version="0.0.0"
 edition="2024"
-rust-version="1.85"
+rust-version="1.88"
 [lib]
 name="tohru_shell"
 [dependencies]
@@ -43,6 +43,7 @@ thiserror="=2.0.20"
 anyhow="=1.0.103"
 serde_json="=1.0.151"
 libc="=0.2.189"
+image={version="=0.25.10",default-features=false,features=["png"]}
 [lints.rust]
 unsafe_code="deny"
 unreachable_pub="warn"
@@ -60,7 +61,9 @@ path="src/query.rs"
 '''.replace("PROBE", json.dumps(str(root / "runtime/wallpaper/probe.rs"))))
 target = root / ".tmp/wallpaper-cpu/target"
 def check(command, name):
-    result = subprocess.run(command, cwd=root, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    environment=__import__("os").environ.copy()
+    environment["TOHRU_TEST_ARTIFACT_DIR"]=str(root / ".tmp")
+    result = subprocess.run(command, cwd=root, env=environment, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     (evidence / name).write_text(result.stdout)
     print(f"{name}: exit {result.returncode}", flush=True)
     if result.returncode:
