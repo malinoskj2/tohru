@@ -63,19 +63,38 @@ fn drain(pipe: &mut impl Read, bytes: &mut Vec<u8>, limit: usize) -> Result<bool
     }
 }
 
-/// Only called for `sys.ask("wallpaper.catalog", absolute_chosen_folder)`.
+/// Read-only requests for explicitly selected folders or assigned media paths.
 pub(crate) fn query(name: &str, args: &[SysValue]) -> Result<SysValue, String> {
-    let ("wallpaper.catalog", [SysValue::Text(folder)]) = (name, args) else {
-        return Err("wallpaper.catalog takes one explicitly chosen absolute folder".into());
+    let paths: Vec<&str> = match (name, args) {
+        ("wallpaper.catalog", [SysValue::Text(folder)]) => vec![folder.as_str()],
+        ("wallpaper.identities", [SysValue::List(paths)]) if paths.len() <= 32 => paths.iter().map(|path| {
+            let SysValue::Text(path) = path else { return Err("wallpaper identities must be file paths".to_owned()) };
+            if tohru_shell::wallpaper::kind(Path::new(path)).is_none() { return Err("unsupported wallpaper media path".to_owned()); }
+            Ok(path.as_str())
+        }).collect::<Result<_,_>>()?,
+        _ => return Err("wallpaper.catalog takes a chosen folder; wallpaper.identities takes at most32 chosen media paths".into()),
     };
-    tohru_shell::wallpaper::validate_folder(Path::new(folder)).map_err(|e| e.to_string())?;
+    for path in &paths {
+        tohru_shell::wallpaper::validate_folder(Path::new(path)).map_err(|e| e.to_string())?;
+    }
     let executable =
         std::env::current_exe().map_err(|e| format!("locating wallpaper probe: {e}"))?;
     let executable = executable
         .parent()
         .ok_or("wallpaper runtime executable has no parent")?
         .join("tohru-wallpaper-probe");
-    probe(&executable, folder, DEADLINE)
+    if name == "wallpaper.catalog" {
+        probe(&executable, paths[0], DEADLINE)
+    } else {
+        let mut arguments = vec!["--identities"];
+        arguments.extend(paths);
+        let expected = arguments.len() - 1;
+        let response = request_probe(&executable, &arguments, false, DEADLINE)?;
+        if !matches!(&response, SysValue::List(values) if values.len() == expected) {
+            return Err("wallpaper identity response count differs from request".into());
+        }
+        Ok(response)
+    }
 }
 
 fn protect_parent(parent: libc::pid_t) -> io::Result<()> {
@@ -91,11 +110,20 @@ fn protect_parent(parent: libc::pid_t) -> io::Result<()> {
 }
 
 fn probe(executable: &Path, folder: &str, deadline: Duration) -> Result<SysValue, String> {
+    request_probe(executable, &[folder], true, deadline)
+}
+
+fn request_probe(
+    executable: &Path,
+    arguments: &[&str],
+    catalog: bool,
+    deadline: Duration,
+) -> Result<SysValue, String> {
     // SAFETY: getpid has no arguments or side effects.
     let parent = unsafe { libc::getpid() };
     let mut command = Command::new(executable);
     command
-        .arg(folder)
+        .args(arguments)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -147,7 +175,7 @@ fn probe(executable: &Path, folder: &str, deadline: Duration) -> Result<SysValue
             for file in &files {
                 tohru_shell::wallpaper::validate_folder(Path::new(file))
                     .map_err(|e| e.to_string())?;
-                if tohru_shell::wallpaper::kind(Path::new(file)).is_none() {
+                if catalog && tohru_shell::wallpaper::kind(Path::new(file)).is_none() {
                     return Err("wallpaper catalog returned an unsupported media type".into());
                 }
             }

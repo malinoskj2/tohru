@@ -63,3 +63,24 @@ actual patched image/live-name/sweep methods with narrow type/I/O fixtures and
 checks cold/missing/empty/same-version and last-reference sweep behavior. The
 patch also installs an actual native text unit regression; full native compilation
 and private GPU old-output/new-cold-path pixel verification remain required.
+
+## Explicit assignment identities
+
+`sys.ask("wallpaper.identities", {absolute_media_path, ...})` returns canonical
+identities in request order for at most32 explicitly assigned/chosen paths. It
+uses the same fixed-sibling probe,5s deadline, bounded transport and read-only
+`wallpaper` permission; it never lists unrelated directories or opens media
+contents. Regular target files are required, symlink aliases canonicalize, and a
+canonical identity may lack a media extension even though the chosen alias has
+one. Identities are comparison keys, not a silent rewrite of accepted paths.
+This lets retained randomization compare existing alias assignments against the
+canonical catalog without adding a general filesystem/command API. Missing files
+fail honestly, preserving the old all-or-nothing proposal. S installs updated
+catalog.patch/native/probe/domain files; no new dependencies/common modules.
+
+`python3 tests/wallpaper/check_cpu.py` runs actual scoped catalog/identity and
+native transport tests, Clippy, builds the real probe plus an explicit adapter
+fixture beside it, and exercises actual query→probe catalog/alias/missing-file
+results. These checks use local metadata; no display, decoder or native role is
+started. Rust1.85 is declared by this fixture, but the installed toolchain is
+newer, so an actual MSRV toolchain check remains distinct.

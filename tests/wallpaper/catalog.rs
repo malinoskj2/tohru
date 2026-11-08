@@ -102,3 +102,38 @@ fn bounds_json_size_before_serializing_long_paths() {
     }
     assert!(matches!(catalog(&dir.0), Err(Error::TooLarge)));
 }
+
+#[test]
+fn chosen_media_identities_are_regular_canonical_and_bounded() {
+    let dir = Folder::new();
+    let path = dir.0.join("chosen.PNG");
+    fs::write(&path, b"metadata only").unwrap();
+    assert_eq!(
+        identities(std::slice::from_ref(&path)).unwrap(),
+        vec![path.to_str().unwrap()]
+    );
+    assert!(identities(&vec![path.clone(); 33]).is_err());
+    assert!(identities(&[dir.0.join("missing.png")]).is_err());
+    assert!(identities(&[dir.0.clone()]).is_err());
+    assert!(identities(&[PathBuf::from("relative.png")]).is_err());
+    assert!(identities(&[dir.0.join("unrelated.txt")]).is_err());
+    assert!(identities(&[]).unwrap().is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn assigned_alias_identity_can_point_to_a_regular_target_without_media_extension() {
+    use std::os::unix::fs::symlink;
+    let dir = Folder::new();
+    let target = dir.0.join("original-image");
+    let alias = dir.0.join("alias.png");
+    fs::write(&target, b"metadata only").unwrap();
+    symlink(&target, &alias).unwrap();
+    assert_eq!(
+        identities(&[alias]).unwrap(),
+        vec![target.to_str().unwrap()]
+    );
+    let directory_alias = dir.0.join("directory.png");
+    symlink(&dir.0, &directory_alias).unwrap();
+    assert!(identities(&[directory_alias]).is_err());
+}
