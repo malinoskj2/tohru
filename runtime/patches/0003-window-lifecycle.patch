@@ -10,29 +10,32 @@
  mod skill;
 --- a/src/scene.rs
 +++ b/src/scene.rs
-@@ -2444,6 +2444,7 @@
+@@ -2444,6 +2444,8 @@
      /// plugged in.
      Sheet(Box<crate::gpu::NewSheet>),
      SheetGone(u32),
 +    WindowClosed(usize),
++    WindowsReady,
      /// The compositor has already shown that sheet's last frame and wants another.
      Frame(u32),
      /// What was seen on screen behind a glass, with it on top.
 --- a/src/render.rs
 +++ b/src/render.rs
-@@ -633,6 +633,7 @@
+@@ -633,6 +633,8 @@
      // Which edge each surface is attached to right now, so as not to ask for it twice.
      let mut levels_set: Vec<crate::scene::Level> = Vec::new();
      let mut reserves_set: Vec<i32> = Vec::new();
 +    let mut window_intents: Vec<crate::tohru_window::Intent> = Vec::new();
++    let mut windows_ready = false;
      // How many frames a second at most right now: `rate:`, or its lower one
      // while its `while` holds. 0 is the monitor's.
      let mut rate_now: u32 = 0;
-@@ -1138,6 +1139,20 @@
+@@ -1138,6 +1140,21 @@
                      }
                      assign_pace(g, &mut sheets, size, op.no_vsync);
                      region = vec![[i32::MIN; 4]];
 +                }
++                ToRender::WindowsReady => { windows_ready = true; }
 +                ToRender::WindowClosed(which) => {
 +                    if let Some(surface) = scene.surfaces.get(which).filter(|surface| surface.window.is_some() && !surface.lock_screen) {
 +                        window_intents.resize_with(scene.surfaces.len(), Default::default);
@@ -49,7 +52,7 @@
                  }
                  ToRender::SheetGone(id) => {
                      sheets.retain(|l| l.id != id);
-@@ -4398,9 +4413,28 @@
+@@ -4398,9 +4415,28 @@
                  screens_set[k] = Some(wants);
              }
          }
@@ -57,7 +60,7 @@
 +        // lock faces keep their own independent ownership/lifecycle.
 +        window_intents.resize_with(scene.surfaces.len(), Default::default);
 +        for (which, surface) in scene.surfaces.iter().enumerate() {
-+            if surface.window.is_none() || surface.lock_screen || surface.open.is_none() {
++            if !windows_ready || surface.window.is_none() || surface.lock_screen || surface.open.is_none() {
 +                continue;
 +            }
 +            if let Some(wanted) = window_intents[which].update(open(which)) {
@@ -104,30 +107,119 @@
      /// The same queue, for the window's own commits (see `WaylandWindow::shown`).
      shared: Arc<Mutex<Option<Sender<Show>>>>,
 +    // Last: native role outlives all frame resources and its queued worker.
-+    conditional_window: Option<Window>,
++    conditional_window: Option<ConditionalWindow>,
  }
 
  struct OwnFrame {
-@@ -285,7 +287,10 @@
+@@ -285,7 +287,17 @@
              let (wl, device) = (self.wl.clone(), device.clone());
              let connection = DMABUFS.get().map(|d| d.connection.clone());
              let lock_face = self.lock_face.clone();
-+            let conditional_window = self.conditional_window.clone();
++            let conditional_worker = match self.conditional_window.clone() {
++                Some(window) => match ConditionalWorker::start(window) {
++                    Some(worker) => Some(worker),
++                    None => return tx,
++                },
++                None => None,
++            };
              let _ = std::thread::Builder::new().name("frames shown".into()).spawn(move || {
 +                // Capture the owning wrapper for the entire worker, not a raw proxy.
-+                let _conditional_window = conditional_window;
++                let worker = conditional_worker;
++                let conditional_window = worker.as_ref().and_then(|worker| worker.0.as_ref());
                  for job in rx {
                      match job {
                          Show::Frame { buffer, px, pieces, sent } => {
-@@ -875,6 +880,7 @@
+@@ -293,6 +305,7 @@
+                             // The compositor reads it as it is: not before the card has finished it.
+                             sent.wait(&device, std::time::Duration::from_secs(1));
+                             if lock_face.as_ref().is_some_and(|face| !face.life.current()) { continue; }
++                            conditional_commit(conditional_window, || {
+                             wl.attach(Some(&buffer), 0, 0);
+                             match pieces {
+                                 None => wl.damage_buffer(0, 0, px.0 as i32, px.1 as i32),
+@@ -303,13 +316,14 @@
+                                 }
+                             }
+                             wl.commit();
++                            });
+                         }
+                         Show::Forget(buffers) => buffers.iter().for_each(|b| b.destroy()),
+                         Show::Commit => {
+-                            if lock_face.as_ref().is_none_or(|face| face.life.current()) { wl.commit(); }
++                            if lock_face.as_ref().is_none_or(|face| face.life.current()) { conditional_commit(conditional_window, || wl.commit()); }
+                         }
+                         Show::Run(f) => {
+-                            if lock_face.as_ref().is_none_or(|face| face.life.current()) { f(); }
++                            if lock_face.as_ref().is_none_or(|face| face.life.current()) { conditional_commit(conditional_window, f); }
+                         }
+                         Show::Settled(done) => {
+                             if let Some(c) = &connection {
+@@ -874,7 +888,45 @@
+     life: crate::tohru_lock::authority::Face,
  }
 
++#[derive(Clone)]
++struct ConditionalWindow {
++    _window: Window,
++    life: Arc<crate::tohru_window::Retirement>,
++}
++
++fn conditional_commit(window: Option<&ConditionalWindow>, action: impl FnOnce()) {
++    match window {
++        Some(window) => window.life.if_current(action),
++        None => action(),
++    }
++}
++
++struct ConditionalWorker(Option<ConditionalWindow>);
++
++impl ConditionalWorker {
++    fn start(window: ConditionalWindow) -> Option<Self> {
++        if !window.life.start_worker() { return None; }
++        Some(Self(Some(window)))
++    }
++}
++
++impl Drop for ConditionalWorker {
++    fn drop(&mut self) {
++        let Some(window) = self.0.take() else { return };
++        let life = window.life.clone();
++        // Release this worker's native owner BEFORE notifying the event loop.
++        drop(window);
++        if life.finish_worker() {
++            if let Some(native) = MOVABLE_LAYERS.get() {
++                native.connection.display().sync(&native.qh, WindowRefresh);
++                let _ = native.connection.flush();
++            }
++        }
++    }
++}
++
  struct WaylandWindow {
-+    conditional_window: Option<Window>,
++    conditional_window: Option<ConditionalWindow>,
      lock_face: Option<LockFaceLease>,
      wl: wl_surface::WlSurface,
      compositor: CompositorState,
-@@ -963,7 +969,7 @@
+@@ -909,7 +961,7 @@
+                 let _ = tx.send(Show::Commit);
+             }
+             None => {
+-                self.wl.commit();
++                conditional_commit(self.conditional_window.as_ref(), || self.wl.commit());
+                 if let Some(c) = MOVABLE_LAYERS.get() {
+                     let _ = c.connection.flush();
+                 }
+@@ -928,7 +980,8 @@
+
+ impl PlatformWindow for WaylandWindow {
+     fn is_current(&self) -> bool {
+-        self.lock_face.as_ref().is_none_or(|face| face.life.current())
++        self.conditional_window.as_ref().is_none_or(|window| window.life.current())
++            && self.lock_face.as_ref().is_none_or(|face| face.life.current())
+     }
+
+     fn update_input_region(&self, boxes: &[[i32; 4]]) {
+@@ -963,7 +1016,7 @@
      }
 
      fn own_frames(&self) -> Option<Box<dyn gpu::Frames>> {
@@ -136,16 +228,16 @@
      }
 
      fn desktop_place(&self) -> Option<(String, (i32, i32))> {
-@@ -1161,6 +1167,8 @@
+@@ -1161,6 +1214,8 @@
      /// A layer: which edges it's stuck to and with what margins, to know
      /// where it lands on its monitor; and what's needed to see what's behind.
      backdrop: Option<Arc<BackdropTarget>>,
 +    // Last field: pending GPU target drops before the final native owning wrapper.
-+    conditional_window: Option<Window>,
++    conditional_window: Option<ConditionalWindow>,
  }
 
  struct State {
-@@ -1176,6 +1184,7 @@
+@@ -1176,6 +1231,7 @@
      wanted: Vec<Surface>,
      extra_height: u32,
      placed: Vec<Placed>,
@@ -153,7 +245,23 @@
      /// The monitors the compositor has finished telling about (`new_output`): only these are placed on again when
      /// another comes or goes. One still being told about has no size yet, and a surface as big as the monitor that
      /// keeps a reserve, placed on it then, stuck to its four edges, where layer-shell ignores the reserve: Calima's
-@@ -1284,6 +1293,12 @@
+@@ -1206,6 +1262,15 @@
+     card_buffers: std::collections::HashMap<u32, (Arc<super::CardBackdrop>, WlBuffer)>,
+ }
+
++impl Drop for State {
++    fn drop(&mut self) {
++        for placed in self.placed.iter().chain(&self.retired_windows) {
++            if let Some(window) = &placed.conditional_window { window.life.retire(); }
++        }
++    }
++}
++
++
+ /// The Wayland objects that tell us nothing.
+ struct Silent;
+ impl<I: Proxy> Dispatch2<I, State> for Silent {
+@@ -1284,6 +1349,12 @@
              if self.wanted[which].lock_screen {
                  continue;
              }
@@ -166,11 +274,11 @@
              let already = self.placed.iter().filter(|p| &p.output == output && p.which == which).count();
              let wants = Self::copies_wanted_on(&self.wanted[which], &name, number);
              for k in already..wants {
-@@ -1305,13 +1320,14 @@
+@@ -1305,13 +1376,14 @@
                  window.set_min_size(Some((p.width, height)));
                  let id = next_surface_id();
                  window.commit();
-+                let conditional_window = p.open.is_some().then(|| window.clone());
++                let conditional_window = p.open.is_some().then(|| ConditionalWindow { _window: window.clone(), life: Arc::default() });
                  let role = Role::Window(window);
                  let viewport = self.viewporter.as_ref().map(|v| v.get_viewport(role.wl(), qh, Silent));
                  let fractional_scale = self.fractional_scales.as_ref().map(|m| m.get_fractional_scale(role.wl(), qh, ScaleFor(id)));
@@ -182,7 +290,7 @@
                  continue;
              }
              let layer = self.layers.create_layer_surface(qh, wl, level, Some("pleamar"), Some(output));
-@@ -1346,7 +1362,7 @@
+@@ -1346,7 +1418,7 @@
              layer.commit();
              let surface = self.wgpu_surface_for(layer.wl_surface());
              let backdrop = Some(backdrop);
@@ -191,7 +299,7 @@
              LAYERS_PLACED.fetch_add(1, Ordering::Relaxed);
              }
          }
-@@ -1386,6 +1402,32 @@
+@@ -1386,6 +1458,34 @@
      /// What the render asked to move (`rescreen`): each surface's layers off
      /// the monitors it no longer names, and onto the one it does. The render
      /// keeps its sheet's state, as for a monitor that comes back.
@@ -200,6 +308,7 @@
 +            .into_iter().partition(|placed| placed.which == which && matches!(placed.role, Role::Window(_)));
 +        self.placed = remaining;
 +        for mut placed in windows {
++            if let Some(window) = &placed.conditional_window { window.life.retire(); }
 +            // pending means configure has not handed this target to render. Its
 +            // owning guard is last in Placed, so target destruction precedes it.
 +            if placed.pending.take().is_some() {
@@ -218,13 +327,22 @@
 +                && said_of(placed.which).window_open == Some(false))
 +            .map(|placed| placed.which).collect();
 +        for which in closing { self.retire_window(which); }
++        self.retired_windows.retain(|placed| placed.conditional_window.as_ref().is_none_or(|window| !window.life.ready()));
 +        self.place_on_all(qh, None);
 +    }
 +
      fn rescreen(&mut self, qh: &QueueHandle<State>) {
          let asked = std::mem::take(&mut *RESCREENS.lock().unwrap());
          if asked.is_empty() {
-@@ -1472,6 +1514,8 @@
+@@ -1430,6 +1530,7 @@
+             let _ = self.to_render.send(ToRender::SheetGone(id));
+         }
+         for p in self.placed.iter().filter(|p| &p.output == output) {
++            if let Some(window) = &p.conditional_window { window.life.retire(); }
+             let _ = self.to_render.send(ToRender::SheetGone(p.id));
+             forget_parent(p.role.wl());
+             if let Some(c) = MOVABLE_LAYERS.get() {
+@@ -1472,6 +1573,8 @@
      name: String,
      mhz: i32,
  }
@@ -233,7 +351,7 @@
 
  struct OpenPopup {
      k: usize,
-@@ -1809,6 +1853,12 @@
+@@ -1809,6 +1912,12 @@
  /// The render has let go of surface `id`: if it was the face of a monitor that
  /// went while locked, it can be destroyed now.
  pub fn sheet_released(id: u32) {
@@ -246,7 +364,7 @@
      let Some(c) = LOCKS.get() else { return };
      let mut engaged = c.engaged.lock().unwrap();
      let Some(e) = engaged.as_mut() else { return };
-@@ -1890,6 +1940,7 @@
+@@ -1890,6 +1999,7 @@
  #[derive(Clone, Copy, Default)]
  struct Said {
      zone: Option<i32>,
@@ -254,7 +372,7 @@
      anchor: Option<SurfaceAnchor>,
      level: Option<Level>,
  }
-@@ -1910,6 +1961,32 @@
+@@ -1910,6 +2020,35 @@
      RESCREENS.lock().unwrap().push((which, screen.to_owned()));
      c.connection.display().sync(&c.qh, Rescreen);
      let _ = c.connection.flush();
@@ -280,14 +398,17 @@
 +impl Dispatch2<wayland_client::protocol::wl_callback::WlCallback, State> for WindowReleased {
 +    fn event(&self, state: &mut State, _: &wayland_client::protocol::wl_callback::WlCallback, event: wayland_client::protocol::wl_callback::Event, _: &Connection, qh: &QueueHandle<State>) {
 +        if let wayland_client::protocol::wl_callback::Event::Done { .. } = event {
-+            state.retired_windows.retain(|placed| placed.id != self.0);
++            if let Some(window) = state.retired_windows.iter().find(|placed| placed.id == self.0)
++                .and_then(|placed| placed.conditional_window.as_ref()) {
++                window.life.gpu_released();
++            }
 +            state.refresh_windows(qh);
 +        }
 +    }
  }
 
  struct Rescreen;
-@@ -2106,6 +2183,16 @@
+@@ -2106,6 +2245,16 @@
  impl WindowHandler for State {
      /// Someone clicked the close button. That one closes; if it was the last one, it's over.
      fn request_close(&mut self, _: &Connection, _: &QueueHandle<Self>, v: &Window) {
@@ -304,7 +425,7 @@
          self.surface_gone(&v.wl_surface().clone());
          if self.placed.is_empty() {
              self.quit = true;
-@@ -2134,7 +2221,7 @@
+@@ -2134,7 +2283,7 @@
              let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
                  id: a.id,
                  target: gpu::Target::Surface(surface),
@@ -313,7 +434,7 @@
                  scale: a.parent.scale,
                  size: a.size,
                  mhz: a.parent.mhz,
-@@ -2224,6 +2311,7 @@
+@@ -2224,6 +2373,7 @@
          wanted,
          extra_height,
          placed: Vec::new(),
@@ -321,7 +442,15 @@
          announced: Vec::new(),
          pointer: None,
          pointer_seats: Vec::new(),
-@@ -2358,7 +2446,7 @@
+@@ -2240,6 +2390,7 @@
+     match XdgShell::bind(&globals, &qh) {
+         Ok(xdg) => {
+             let _ = MOVABLE_LAYERS.set(MovableLayers { connection: connection.clone(), qh: qh.clone(), placed: Mutex::default(), said: Mutex::default() });
++            let _ = state.to_render.send(ToRender::WindowsReady);
+             let _ = POPUPS.set(Popups {
+                 qh: qh.clone(),
+                 compositor: state.compositor.clone(),
+@@ -2358,7 +2509,7 @@
              let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
                  id: p.id,
                  target: gpu::Target::Surface(surface),
@@ -330,7 +459,7 @@
                  scale: p.scale,
                  size,
                  mhz,
-@@ -2442,7 +2530,7 @@
+@@ -2442,7 +2593,7 @@
              Box::new(gpu::NewSheet {
                  id: face.id,
                  target: gpu::Target::Surface(paints),

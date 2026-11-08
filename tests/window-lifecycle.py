@@ -35,8 +35,14 @@ def main():
     assert "announced: Vec<wl_output::WlOutput>" in wayland
     assert "conditional_window: p.conditional_window.clone()" in wayland
     assert "conditional_window: self.conditional_window.clone()" in wayland
-    assert "let conditional_window = self.conditional_window.clone();" in wayland
-    assert "let _conditional_window = conditional_window;\n                for job in rx" in wayland
+    assert "ConditionalWorker::start(window)" in wayland
+    assert "let worker = conditional_worker;" in wayland
+    assert "conditional_commit(conditional_window, ||" in wayland
+    assert "window.life.retire();" in wayland
+    assert "window.life.gpu_released();" in wayland
+    assert "!window.life.ready()" in wayland
+    assert wayland.index("MOVABLE_LAYERS.set(") < wayland.index("send(ToRender::WindowsReady)")
+    assert "ToRender::WindowsReady => { windows_ready = true; }" in render
     assert "mem::forget(window)" not in wayland, "ordinary owners must retire rather than accumulate"
     placed = declaration(wayland, "struct Placed {")
     assert placed.rindex("conditional_window:") > placed.index("pending:")
@@ -46,6 +52,7 @@ use std::sync::{Arc, Mutex};
 #[path = "VISIBILITY"] mod visibility;
 pub struct Native;
 #[derive(Clone)] struct Window(Arc<Native>);
+type ConditionalWindow = Window;
 type LayerSurface = ();
 type WpViewport = ();
 type WpFractionalScaleV1 = ();
@@ -95,21 +102,29 @@ struct Surface { window: Option<()>, lock_screen: bool, open: Option<bool> }
 struct Scene { surfaces: Vec<Surface> }
 static REQUESTS: Mutex<Vec<(usize,bool)>> = Mutex::new(Vec::new());
 mod platform { pub fn window_open(which: usize, wanted: bool) { super::REQUESTS.lock().unwrap().push((which,wanted)); } }
-fn coordinate(scene: &Scene, window_intents: &mut Vec<visibility::Intent>, requested: bool) {
+fn coordinate(scene: &Scene, window_intents: &mut Vec<visibility::Intent>, requested: bool, windows_ready: bool) {
     let open = |_: usize| requested;
 COORDINATION
 }
 #[test] fn actual_coordination_first_open_needs_no_sheet_or_gpu() {
     let scene = Scene { surfaces: vec![Surface { window: Some(()), lock_screen: false, open: Some(false) }] };
     let mut intents = Vec::new();
-    coordinate(&scene, &mut intents, false);
-    coordinate(&scene, &mut intents, true);
-    coordinate(&scene, &mut intents, true);
+    coordinate(&scene, &mut intents, true, false); // renderer before native transport
+    assert!(REQUESTS.lock().unwrap().is_empty());
+    coordinate(&scene, &mut intents, false, true);
+    coordinate(&scene, &mut intents, true, true);
+    coordinate(&scene, &mut intents, true, true);
     intents[0].closed();
-    coordinate(&scene, &mut intents, true); // WM close must not immediately reopen.
-    coordinate(&scene, &mut intents, false);
-    coordinate(&scene, &mut intents, true); // explicit reopen without output change.
+    coordinate(&scene, &mut intents, true, true); // WM close must not immediately reopen.
+    coordinate(&scene, &mut intents, false, true);
+    coordinate(&scene, &mut intents, true, true); // explicit reopen without output change.
     assert_eq!(*REQUESTS.lock().unwrap(), vec![(0,false),(0,true),(0,true)]);
+    REQUESTS.lock().unwrap().clear();
+    let mut initial_true = Vec::new();
+    coordinate(&scene, &mut initial_true, true, false);
+    coordinate(&scene, &mut initial_true, true, true);
+    coordinate(&scene, &mut initial_true, true, true);
+    assert_eq!(*REQUESTS.lock().unwrap(), vec![(0,true)]);
 }
 '''
     for key, value in {

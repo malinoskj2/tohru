@@ -30,6 +30,14 @@ Proposed implementation:
 - Desired visibility runs before the GPU-none gate. Static window-only scenes use
   the existing message/appointment rest mechanism while awaiting first open;
   existing time-dependent advancement is retained. No new timer or polling owner.
+- The Wayland transport publishes WindowsReady after its actual movable-window
+  state is initialized. Renderer intents stay unsent until that event, preventing
+  startup true or an early IPC request being lost before native setup.
+- Conditional native commits share a retirement mutex gate; GPU waits run outside
+  it. Retire tombstones the role before SheetGone/output removal/State destruction.
+  Queued old Frame/Commit/Run cannot publish after tombstoning. Reopen waits for
+  both GPU acknowledgement and counted frame-worker completion, in either order.
+  A worker releases its native owning clone before notifying the event loop.
 
 Companion: copy `visibility.rs` to upstream `src/tohru_window.rs` after applying
 0003. Pure intent regressions (`rustc --edition2024 --test -Dwarnings`) cover
@@ -38,8 +46,10 @@ initially closed, hide/reopen, WM-dismiss no immediate reopen and compound rearm
 coordination block and actual Placed/NewSheet/Role declarations with CPU native/GPU
 test resources: first open without sheets/GPU, WM-dismiss/rearm, pending shutdown,
 queued configure followed by output removal/disconnect and either teardown order.
-It asserts native constructor/worker lease forwarding and placement above the GPU
-gate. Eight tests pass including Intent's three tests. These source-extraction
+It asserts native constructor/worker lease forwarding, native readiness publication
+and placement above the GPU gate. Ten tests pass, including a real delayed CPU
+worker over the production retirement gate and readiness-before-intent sequences.
+These source-extraction
 fixtures intentionally substitute driver/native types: they are not a Wayland or
 wgpu integration typecheck. Native source parse and patch apply-check pass. These do not prove typed native
 compilation, event ordering, resource retirement or presentation behavior.
