@@ -126,6 +126,12 @@ plugin as a dependency.
 
 ## Follow-up verification
 
+The packaged runtime has a separate inexpensive launch wrapper that prefixes
+`util-linux` (`setsid`) and Bash (`sh`) onto PATH. Pinned native `apps.launch`
+executes `setsid -f sh -c`; the remaining user PATH stays available for installed
+application resolution. This adds runtime tools without changing that backend or
+recompiling the Rust runtime merely to change its launch environment.
+
 Q1/Q3 persistence fixes pass the locked root tests, Clippy with warnings denied,
 actual Rust 1.85.0 tests, and a real Luau binding VM/warning test. Final committed
 root `nix build .#tohru --max-jobs 1 --cores 4` succeeded on x86_64-linux; installed
