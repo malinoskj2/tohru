@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+import shlex
 import subprocess
 import time
 
@@ -57,12 +58,27 @@ def empty_inputs(log):
     return empty
 
 
+def escape_presses(log):
+    # The helper uses a fixed evdev US keymap: Escape is keycode1. Count actual
+    # compositor-to-app presses, not helper acknowledgments or key releases.
+    return len(re.findall(r'wl_keyboard[#@]\d+\.key\(\d+, \d+, 1, 1\)', log))
+
+
 def verify(root,runtime,evidence,env,start,say,expect,wait_for):
     scene=evidence/'launcher-scene'
     shutil.copytree(root/'shell/launcher',scene)
     data=evidence/'private-catalog';data.mkdir();env['XDG_DATA_DIRS']=str(data)
     apps=Path(env['XDG_DATA_HOME'])/'applications';apps.mkdir(parents=True)
     (apps/'fixture.desktop').write_text('[Desktop Entry]\nType=Application\nName=Fixture Editor\nExec=/bin/true\nCategories=Utility;\n')
+    # Tiny test-only protocol client, not a runtime build. No display is opened
+    # by generation/compilation; all child owners below use the reviewed start.
+    build=evidence/'keyboard-build';build.mkdir()
+    def build_command(command):
+        subprocess.run(command,env=env,text=True,capture_output=True,timeout=30,check=True,close_fds=True)
+    build_command(['wayland-scanner','client-header',str(root/'tests/launcher/virtual-keyboard.xml'),str(build/'virtual-keyboard.h')])
+    build_command(['wayland-scanner','private-code',str(root/'tests/launcher/virtual-keyboard.xml'),str(build/'virtual-keyboard.c')])
+    flags=subprocess.run(['pkg-config','--cflags','--libs','wayland-client','xkbcommon'],env=env,text=True,capture_output=True,timeout=10,check=True,close_fds=True).stdout
+    build_command(['cc','-std=c11','-Wall','-Wextra','-Werror','-I'+str(build),str(root/'tests/launcher/keyboard.c'),str(build/'virtual-keyboard.c'),'-o',str(build/'keyboard'),*shlex.split(flags)])
     log_path=evidence/'launcher-lifecycle.log'
     app=start([runtime,'--scene',str(scene/'entry.plm'),'--answer-as','launcher','--no-hud','--stall','0'],'launcher-lifecycle',{'WAYLAND_DEBUG':'1'})
     wait_for(lambda:say('launcher','get screen.0.name')=='HEADLESS-1','native bootstrap output name')
@@ -77,7 +93,17 @@ def verify(root,runtime,evidence,env,start,say,expect,wait_for):
         socket=Path(env['SWAYSOCK']);assert socket.parent==Path(env['XDG_RUNTIME_DIR']) and not socket.is_symlink()
         result=json.loads(run(['swaymsg','-s',str(socket),'-r',command]).stdout)
         assert all(item.get('success') for item in result),result
-    def keyboard(*arguments):run(['wtype','-s','300',*arguments])
+    keyboard_process=None
+    keyboard_sequence=0
+    def keyboard(command):
+        nonlocal keyboard_sequence
+        assert keyboard_process is not None and keyboard_process.poll() is None
+        before=escape_presses(log())
+        keyboard_process.stdin.write((command+'\n').encode());keyboard_process.stdin.flush()
+        keyboard_sequence+=1
+        wait_for(lambda:('done '+str(keyboard_sequence)+'\n') in (evidence/'keyboard.log').read_text(),'persistent keyboard acknowledgment')
+        if command=='escape':
+            wait_for(lambda:escape_presses(log())>before,'actual Escape delivered to app')
     def opened(output):
         say('launcher','emit launcher_open');expect('launcher','launcher_visible','true')
         expect('launcher','launcher_outputs',output)
@@ -103,11 +129,14 @@ def verify(root,runtime,evidence,env,start,say,expect,wait_for):
     with Image.open(evidence/'launcher-initial-closed.png') as image:
         assert image.convert('RGB').getpixel((0,0))==(48,35,43),'bootstrap is not transparent at its pixel'
     opened('HEADLESS-1');wait_for(lambda:seen()>.99,'native reveal opening')
-    keyboard('fixture');expect('launcher','launcher_query','fixture')
+    keyboard_process=start([str(build/'keyboard'),env['XDG_RUNTIME_DIR']],'keyboard',stdin=subprocess.PIPE)
+    wait_for(lambda:'ready\n' in (evidence/'keyboard.log').read_text(),'persistent private keyboard ready')
+    wait_for(lambda:re.search(r'wl_keyboard[#@]\d+\.enter\(',log()),'actual private keyboard focus')
+    keyboard('query');expect('launcher','launcher_query','fixture')
     expect('launcher','launcher_total','1')
     run(['grim','-o','HEADLESS-1',str(evidence/'launcher-native-open.png')])
-    keyboard('-k','Escape');expect('launcher','launcher_query','');expect('launcher','launcher_visible','true')
-    keyboard('-k','Escape');closed()
+    keyboard('escape');expect('launcher','launcher_query','');expect('launcher','launcher_visible','true')
+    keyboard('escape');closed()
 
     # Interrupt close before it settles, then start a new close cycle.
     opened('HEADLESS-1');wait_for(lambda:seen()>.99,'reopen reveal')
@@ -172,4 +201,8 @@ if __name__=='__main__':
     assert '9' not in empty_inputs(sample), 'reused surface starts with default input'
     sample+='\n-> wl_compositor#1.create_region(new id wl_region#3)\n-> wl_region#3.add(0, 0, 1, 1)\n-> wl_surface#9.set_input_region(wl_region#3)\n-> wl_surface#9.commit()'
     assert '9' not in empty_inputs(sample)
+    assert escape_presses('wl_keyboard#3.key(9, 0, 1, 0)')==0
+    assert escape_presses('wl_keyboard#3.key(9, 0, 33, 1)')==0
+    assert escape_presses('wl_keyboard#3.key(9, 0, 1, 1)')==1
+    assert escape_presses('wl_keyboard@4.key(10, 12, 1, 1)')==1
     print('Native evidence parser requires committed input state and handles role/region/surface ID reuse and nil reset')
