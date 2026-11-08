@@ -7,11 +7,12 @@ from native import private_environment, assert_private_ipc, bootstrap_private_bu
 
 evidence = Path('/private/evidence')
 runtime = Path('/private/runtime')
-hostile = {key: '/outside/do-not-probe' for key in ('PLEAMAR_SOCKETS', 'WAYLAND_DISPLAY', 'SWAYSOCK', 'DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE', 'TOHRU_RUNTIME', 'TOHRU_SCENE', 'TOHRU_MANAGED_CONFIG', 'XDG_RUNTIME_DIR', 'HOME', 'WAYLAND_SOCKET', 'CUA_INJECT_SOCKET', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE')}
+hostile = {key: '/outside/do-not-probe' for key in ('PLEAMAR_SOCKETS', 'WAYLAND_DISPLAY', 'SWAYSOCK', 'DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE', 'TOHRU_RUNTIME', 'TOHRU_SCENE', 'TOHRU_MANAGED_CONFIG', 'XDG_RUNTIME_DIR', 'HOME', 'WAYLAND_SOCKET', 'CUA_INJECT_SOCKET', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE', 'DBUS_SYSTEM_BUS_ADDRESS')}
 env = private_environment(hostile, evidence, runtime)
 assert env['PLEAMAR_SOCKETS'] == '/private/runtime/ipc'
 assert env['XDG_RUNTIME_DIR'] == '/private/runtime'
 assert env['HOME'] == '/private/evidence/home'
+assert env['DBUS_SYSTEM_BUS_ADDRESS'] == 'unix:path=/private/runtime/system-bus'
 for key in ('WAYLAND_DISPLAY', 'SWAYSOCK', 'DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE', 'TOHRU_RUNTIME', 'TOHRU_SCENE', 'TOHRU_MANAGED_CONFIG', 'WAYLAND_SOCKET', 'CUA_INJECT_SOCKET', 'TOHRU_B_PRIVATE_BUS', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE'):
     assert key not in env, key
 assert hostile['PLEAMAR_SOCKETS'] == '/outside/do-not-probe'
@@ -34,6 +35,20 @@ with tempfile.TemporaryDirectory(prefix='b-isolation-', dir=root / '.tmp') as te
             pass
         else:
             raise AssertionError('outside socket directory accepted')
+    try:
+        assert_private_ipc({**env, 'DBUS_SYSTEM_BUS_ADDRESS': 'unix:path=/outside/do-not-probe'}, private)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError('outside system bus accepted')
+    (private / 'system-bus').symlink_to('/outside/do-not-probe.sock')
+    try:
+        assert_private_ipc(env, private)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError('system bus symlink accepted')
+    (private / 'system-bus').unlink()
     (ipc / 'hostile.sock').symlink_to('/outside/do-not-probe.sock')
     try:
         assert_private_ipc(env, private)
@@ -50,6 +65,7 @@ def capture(command, **options):
     spawns.append((command, options))
     assert options['close_fds']
     assert 'DBUS_SESSION_BUS_ADDRESS' not in options['env']
+    assert 'DBUS_SYSTEM_BUS_ADDRESS' not in options['env']
     assert 'TOHRU_B_PRIVATE_BUS' not in options['env']
     assert 'WAYLAND_SOCKET' not in options['env']
     assert 'CUA_INJECT_SOCKET' not in options['env']
