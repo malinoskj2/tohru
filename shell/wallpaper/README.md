@@ -51,3 +51,15 @@ CLI/UI assignment, GPU image rendering/errors, resource reclamation, output
 hotplug/scale/rotation, picker/randomization, video, and performance remain gates.
 Native arbitrary-folder listing, capture export/image clipboard and frozen-frame
 release are pending decisions, with no workaround here.
+
+`controller.randomize(assignments, outputs, shuffled_catalog, canonical)` returns
+an all-or-nothing proposed assignment map; the shared owner must commit the map
+once. It preserves j2bar's preference order: different and unused, different,
+then the first catalog item. Empty output selection rerolls currently assigned
+videos and images in the catalog, retaining other images. Duplicate requested
+outputs are processed once. The caller supplies shuffled file paths and a
+canonical identity function from its approved file boundary, so symlink aliases
+cannot defeat the previous/other-output checks. No filesystem probing, shell
+command or implicit folder substitution is added. Folder discovery, picker UI
+and root persistence/event wiring remain pending; this policy is not advertised
+as an integrated randomize command yet.
