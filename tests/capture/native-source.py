@@ -25,10 +25,18 @@ root = pathlib.Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory(prefix="capture-native-source-", dir=root / ".tmp") as temp:
     temp = pathlib.Path(temp)
     (temp / "src/platform").mkdir(parents=True)
-    for relative in ["src/text.rs", "src/scene.rs", "src/render.rs", "src/logic_luau.rs", "src/platform/capture.rs"]:
+    for relative in ["src/text.rs", "src/scene.rs", "src/render.rs", "src/logic_luau.rs", "src/platform/capture.rs", "src/platform/wayland.rs"]:
         shutil.copyfile(args.source / relative, temp / relative)
-    for patch in ["runtime/wallpaper/image-reset.patch", "runtime/capture/native.patch", "runtime/capture/image-lifecycle.patch"]:
+    for patch in ["runtime/wallpaper/image-reset.patch", "runtime/capture/native.patch", "runtime/capture/image-lifecycle.patch", "runtime/capture/output-events.patch"]:
         subprocess.run(["git", "apply", "--unsafe-paths", f"--directory={temp}", str(root / patch)], check=True)
+    wayland = (temp / "src/platform/wayland.rs").read_text()
+    handlers = wayland[wayland.index("impl OutputHandler for State"):]
+    for method in ["new_output", "update_output", "output_destroyed"]:
+        body = function(handlers, "fn " + method + "(")
+        assert body.split("{", 1)[1].lstrip().startswith("let _ = self.to_render.send(ToRender::CaptureOutputChanged);")
+    renderer = (temp / "src/render.rs").read_text()
+    assert 'scene.signals.iter().any(|&(name, outgoing)| name == "capture_output_changed" && outgoing)' in renderer
+    print("Native topology hooks cover add/update/remove before early returns; scene subscription guarded", flush=True)
     logic = (temp / "src/logic_luau.rs").read_text()
     assert 'check_service_permission(&c, &name, capture_query_mutates(&name))?' in logic
     permission = r'''

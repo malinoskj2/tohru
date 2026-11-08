@@ -1,0 +1,163 @@
+part CaptureViews {
+    surface tohru_capture_0 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_0
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_0, capture_x_0, capture_y_0, tohru_capture_0.width, tohru_capture_0.height)
+    }
+    surface tohru_capture_1 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_1
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_1, capture_x_1, capture_y_1, tohru_capture_1.width, tohru_capture_1.height)
+    }
+    surface tohru_capture_2 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_2
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_2, capture_x_2, capture_y_2, tohru_capture_2.width, tohru_capture_2.height)
+    }
+    surface tohru_capture_3 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_3
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_3, capture_x_3, capture_y_3, tohru_capture_3.width, tohru_capture_3.height)
+    }
+    surface tohru_capture_4 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_4
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_4, capture_x_4, capture_y_4, tohru_capture_4.width, tohru_capture_4.height)
+    }
+    surface tohru_capture_5 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_5
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_5, capture_x_5, capture_y_5, tohru_capture_5.width, tohru_capture_5.height)
+    }
+    surface tohru_capture_6 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_6
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_6, capture_x_6, capture_y_6, tohru_capture_6.width, tohru_capture_6.height)
+    }
+    surface tohru_capture_7 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_7
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_7, capture_x_7, capture_y_7, tohru_capture_7.width, tohru_capture_7.height)
+    }
+    surface tohru_capture_8 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_8
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_8, capture_x_8, capture_y_8, tohru_capture_8.width, tohru_capture_8.height)
+    }
+    surface tohru_capture_9 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_9
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_9, capture_x_9, capture_y_9, tohru_capture_9.width, tohru_capture_9.height)
+    }
+    surface tohru_capture_10 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_10
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_10, capture_x_10, capture_y_10, tohru_capture_10.width, tohru_capture_10.height)
+    }
+    surface tohru_capture_11 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_11
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_11, capture_x_11, capture_y_11, tohru_capture_11.width, tohru_capture_11.height)
+    }
+    surface tohru_capture_12 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_12
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_12, capture_x_12, capture_y_12, tohru_capture_12.width, tohru_capture_12.height)
+    }
+    surface tohru_capture_13 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_13
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_13, capture_x_13, capture_y_13, tohru_capture_13.width, tohru_capture_13.height)
+    }
+    surface tohru_capture_14 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_14
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_14, capture_x_14, capture_y_14, tohru_capture_14.width, tohru_capture_14.height)
+    }
+    surface tohru_capture_15 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_15
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_15, capture_x_15, capture_y_15, tohru_capture_15.width, tohru_capture_15.height)
+    }
+    surface tohru_capture_16 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_16
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_16, capture_x_16, capture_y_16, tohru_capture_16.width, tohru_capture_16.height)
+    }
+    surface tohru_capture_17 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_17
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_17, capture_x_17, capture_y_17, tohru_capture_17.width, tohru_capture_17.height)
+    }
+    surface tohru_capture_18 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_18
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_18, capture_x_18, capture_y_18, tohru_capture_18.width, tohru_capture_18.height)
+    }
+    surface tohru_capture_19 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_19
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_19, capture_x_19, capture_y_19, tohru_capture_19.width, tohru_capture_19.height)
+    }
+    surface tohru_capture_20 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_20
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_20, capture_x_20, capture_y_20, tohru_capture_20.width, tohru_capture_20.height)
+    }
+    surface tohru_capture_21 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_21
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_21, capture_x_21, capture_y_21, tohru_capture_21.width, tohru_capture_21.height)
+    }
+    surface tohru_capture_22 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_22
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_22, capture_x_22, capture_y_22, tohru_capture_22.width, tohru_capture_22.height)
+    }
+    surface tohru_capture_23 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_23
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_23, capture_x_23, capture_y_23, tohru_capture_23.width, tohru_capture_23.height)
+    }
+    surface tohru_capture_24 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_24
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_24, capture_x_24, capture_y_24, tohru_capture_24.width, tohru_capture_24.height)
+    }
+    surface tohru_capture_25 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_25
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_25, capture_x_25, capture_y_25, tohru_capture_25.width, tohru_capture_25.height)
+    }
+    surface tohru_capture_26 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_26
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_26, capture_x_26, capture_y_26, tohru_capture_26.width, tohru_capture_26.height)
+    }
+    surface tohru_capture_27 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_27
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_27, capture_x_27, capture_y_27, tohru_capture_27.width, tohru_capture_27.height)
+    }
+    surface tohru_capture_28 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_28
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_28, capture_x_28, capture_y_28, tohru_capture_28.width, tohru_capture_28.height)
+    }
+    surface tohru_capture_29 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_29
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_29, capture_x_29, capture_y_29, tohru_capture_29.width, tohru_capture_29.height)
+    }
+    surface tohru_capture_30 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_30
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_30, capture_x_30, capture_y_30, tohru_capture_30.width, tohru_capture_30.height)
+    }
+    surface tohru_capture_31 {
+        size: full, full; anchor: top_left; level: overlay; reserve: -1; screens: capture_output_31
+        keyboard: exclusive while capture_open; open: capture_open; captures: hidden
+        FrozenOutput(capture_image_31, capture_x_31, capture_y_31, tohru_capture_31.width, tohru_capture_31.height)
+    }
+    on key Escape while capture_open { emit capture_cancel }
+}

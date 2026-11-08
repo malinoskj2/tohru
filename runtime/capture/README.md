@@ -10,7 +10,7 @@ custom decoder, screenshot command wrapper or daemon is introduced. Full native 
   preserving paths during preparation. This domain uses existing thiserror/std;
   foundation dependencies and declared Rust1.85 MSRV remain unchanged.
 - Apply patches in this order: wallpaper/image-reset.patch, capture/native.patch,
-  capture/image-lifecycle.patch. Install native.rs as
+  capture/image-lifecycle.patch, then capture/output-events.patch. Install native.rs as
   `src/platform/tohru_capture/native.rs`, and clipboard_owner.rs alongside it.
   No root/common file is edited concurrently by W.
 - Add `tohru-capture-clipboard` as a bin in the **existing patched native runtime**,
