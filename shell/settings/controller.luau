@@ -1,6 +1,6 @@
 -- Navigation belongs to this window; all values belong to the existing process owner.
-return function(applied)
-    local pages = {"Bar", "Appearance", "System"}
+return function(applied, wallpaper)
+    local pages = {"Bar", "Appearance", "System", "Wallpaper"}
     local history, position, rows = {1}, 1, {}
     local snapshot = tohru_settings.snapshot()
     local function refresh(settings)
@@ -10,6 +10,7 @@ return function(applied)
         fact.settings_can_back = position > 1
         fact.settings_can_forward = position < #history
         local query = string.sub(text.settings_search or "", 1, 256):lower()
+        fact.settings_wallpaper_page = page==4 and query==""
         text.settings_heading = query ~= "" and "Search results" or pages[page]
         local categories = {}
         for id, title in ipairs(pages) do categories[id] = {id=id, title=title, selected=id==page} end
@@ -25,6 +26,9 @@ return function(applied)
              value=snapshot["appearance.corners"].value, editable=true, managed=snapshot["appearance.corners"].managed,
              temporary=snapshot["appearance.corners"].runtime_override},
             {page=2, title="Corner size", detail=tostring(snapshot["appearance.corner_size"].value) .. " logical pixels", editable=false},
+            {page=2, key="wallpaper.enabled", title="Wallpaper enabled", detail="Native static backgrounds; video integration pending",
+             value=snapshot["wallpaper.enabled"].value, editable=true, managed=snapshot["wallpaper.enabled"].managed,
+             temporary=snapshot["wallpaper.enabled"].runtime_override},
             {page=3, title="Shell", detail="Tohru · pinned native Pleamar 0.7.27", editable=false},
         }
         rows = {}
@@ -36,6 +40,11 @@ return function(applied)
         fact.settings_selected = math.clamp(fact.settings_selected or 0, 0, math.max(#rows-1, 0))
         text.settings_notice = "Nix-managed edits apply immediately in memory and survive reload; a new shell process restores declared values."
     end
+    local function present()
+        if not wallpaper then return end
+        if fact.settings_open and fact.settings_wallpaper_page then wallpaper.open()
+        else wallpaper.close() end
+    end
     local function navigate(page)
         if not pages[page] then return end
         if history[position] ~= page then
@@ -46,6 +55,7 @@ return function(applied)
         text.settings_search=""
         fact.settings_selected=0
         refresh()
+        present()
     end
     local function activate(index)
         if type(index)~="number" or index~=math.floor(index) then return end
@@ -61,11 +71,15 @@ return function(applied)
     on("settings_open_request",function()
         refresh(tohru_settings.snapshot())
         fact.settings_open=true
+        present()
     end)
-    on("settings_close",function() fact.settings_open=false end)
+    on("settings_close",function() fact.settings_open=false; if wallpaper then wallpaper.close() end end)
+    on("fact:settings_open",function() if not fact.settings_open and wallpaper then wallpaper.close() end end)
+    on("settings_wallpaper_open",function() fact.settings_open=true; navigate(4) end)
+    on("wallpaper_picker_close",function() navigate(2) end)
     on("settings_category",navigate)
-    on("settings_back",function() if position>1 then position=position-1; text.settings_search=""; refresh() end end)
-    on("settings_forward",function() if position<#history then position=position+1; text.settings_search=""; refresh() end end)
+    on("settings_back",function() if position>1 then position=position-1; text.settings_search=""; refresh(); present() end end)
+    on("settings_forward",function() if position<#history then position=position+1; text.settings_search=""; refresh(); present() end end)
     on("text:settings_search",function() fact.settings_sidebar=false; fact.settings_selected=0; refresh() end)
     on("settings_row",activate)
     on("submit:settings_search",function() activate(fact.settings_selected) end)
@@ -75,5 +89,6 @@ return function(applied)
     end)
     on("settings_activate",function() if not fact.settings_sidebar then activate(fact.settings_selected) end end)
     refresh()
+    present()
     return refresh
 end

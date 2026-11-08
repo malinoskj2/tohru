@@ -5,12 +5,13 @@ usage() {
 Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru panel close
        tohru settings open|close
+       tohru wallpaper open|randomize
        tohru audio volume up|down
        tohru audio mute toggle
        tohru audio status --json
        tohru status --json
        tohru config reload
-       tohru config set bar.mooncoil|appearance.corners true|false
+       tohru config set bar.mooncoil|appearance.corners|wallpaper.enabled true|false
        tohru config set appearance.corner_size 1..100
        tohru settings-error
        tohru help
@@ -26,6 +27,11 @@ case ${1:-help} in
     help|--help|-h)
         [[ $# -le 1 ]] || fail 'help takes no arguments'
         usage
+        ;;
+    wallpaper)
+        [[ $# == 2 ]] || fail 'Usage: tohru wallpaper open|randomize'
+        case $2 in open) event=settings_wallpaper_open ;; randomize) event=wallpaper_randomize ;; *) fail 'Usage: tohru wallpaper open|randomize' ;; esac
+        exec "$pleamar" --say tohru "emit $event"
         ;;
     settings)
         [[ $# == 2 ]] || fail 'Usage: tohru settings open|close'
@@ -84,9 +90,9 @@ case ${1:-help} in
             set)
                 [[ $# == 4 ]] || fail 'Usage: tohru config set KEY VALUE'
                 case $3 in
-                    bar.mooncoil|appearance.corners)
+                    bar.mooncoil|appearance.corners|wallpaper.enabled)
                         case $4 in true) number=1 ;; false) number=0 ;; *) fail 'Value must be true or false' ;; esac
-                        case $3 in bar.mooncoil) event=setting_mooncoil ;; appearance.corners) event=setting_corners ;; esac
+                        case $3 in bar.mooncoil) event=setting_mooncoil ;; appearance.corners) event=setting_corners ;; wallpaper.enabled) event=setting_wallpaper_enabled ;; esac
                         exec "$pleamar" --say tohru "emit $event $number"
                         ;;
                     bar.preferred_output)

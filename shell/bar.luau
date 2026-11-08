@@ -1,6 +1,7 @@
 -- Settings ownership is in Rust, outside this reloadable VM.
 local refresh_settings
 local configure_idle
+local wallpaper
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
@@ -11,6 +12,7 @@ local function publish(settings)
     text.settings_status = json.encode({schema = 5, settings = settings})
     if refresh_settings then refresh_settings(settings) end
     if configure_idle then configure_idle(settings) end
+    if wallpaper then wallpaper.publish(settings) end
 end
 local function change(operation)
     local ok, result, warning = pcall(operation)
@@ -21,10 +23,14 @@ local function change(operation)
         text.settings_error = tostring(result)
     end
 end
+wallpaper = require("settings/wallpaper")(publish)
 publish(tohru_settings.snapshot())
 on("config_reload", function() change(tohru_settings.reload) end)
 on("setting_mooncoil", function(n)
     change(function() return tohru_settings.set("bar.mooncoil", n ~= 0) end)
+end)
+on("setting_wallpaper_enabled", function(n)
+    change(function() return tohru_settings.set("wallpaper.enabled", n ~= 0) end)
 end)
 on("setting_corners", function(n)
     change(function() return tohru_settings.set("appearance.corners", n ~= 0) end)
@@ -84,8 +90,9 @@ if fact.bt_open then close_panels("bluetooth") end
 refresh_settings = require("settings/controller")(function(settings, warning)
     text.settings_error = warning or ""
     publish(settings)
-end)
+end, wallpaper)
 on("settings_open_request", function() close_panels() end)
+on("settings_wallpaper_open", function() close_panels() end)
 
 configure_idle = require("settings/idle")(require("session/idle"))
 configure_idle(tohru_settings.snapshot())

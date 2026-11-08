@@ -7,6 +7,9 @@ mod osd;
 #[path = "../idle-settings/logic.rs"]
 mod idle_settings;
 
+#[path = "../wallpaper-settings/logic.rs"]
+mod wallpaper_settings;
+
 #[path = "../../runtime/workspace_luau.rs"]
 mod actual_workspace_binding;
 
@@ -199,6 +202,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         tohru_settings={snapshot=function() return {
             ['bar.mooncoil']={value=false},['appearance.corners']={value=true},['appearance.corner_size']={value=32},
             ['bar.preferred_output']={value='legacy'},
+            ['wallpaper.enabled']={value=false}, ['wallpaper.folder']={value=''}, ['wallpaper.assignments']={value={}},
             ['idle.lock_seconds']={value=1800}, ['idle.screen_off_unlocked_seconds']={value=0},
             ['idle.screen_off_locked_seconds']={value=60}, ['idle.suspend_unlocked_seconds']={value=7200},
             ['idle.suspend_locked_seconds']={value=5400}, ['idle.fade_milliseconds']={value=2000}
@@ -206,6 +210,18 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
     "#).exec().unwrap();
     let modules: mlua::Table = lua.globals().get("modules").unwrap();
     for (name, source) in [
+        (
+            "settings/wallpaper",
+            include_str!("../../shell/settings/wallpaper.luau"),
+        ),
+        (
+            "wallpaper/controller",
+            include_str!("../../shell/wallpaper/controller.luau"),
+        ),
+        (
+            "wallpaper/picker",
+            include_str!("../../shell/wallpaper/picker.luau"),
+        ),
         (
             "network/controller",
             include_str!("../../shell/network/controller.luau"),
@@ -317,6 +333,14 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         dispatch('network_open'); dispatch('settings_open_request')
         assert(fact.settings_open and not fact.net_open and not fact.info_visible and not fact.bt_open)
         dispatch('panel_close'); assert(info_reads==3)
+        dispatch('settings_wallpaper_open')
+        assert(fact.settings_open and fact.settings_wallpaper_page and fact.wallpaper_picker_open)
+        assert(text.wallpaper_picker_error=='' and model.wallpaper_picker_files and #model.wallpaper_picker_files==0)
+        dispatch('wallpaper_picker_close')
+        assert(fact.settings_page==2 and not fact.settings_wallpaper_page and not fact.wallpaper_picker_open)
+        dispatch('settings_wallpaper_open'); dispatch('settings_close')
+        assert(not fact.settings_open and not fact.wallpaper_picker_open)
+
     "#,
     )
     .exec()

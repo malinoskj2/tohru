@@ -23,6 +23,17 @@ class Cli(unittest.TestCase):
     def invoke(self, *args, **env):
         return subprocess.run([str(ROOT / "bin/tohru"), *args], env={**self.env, **env}, text=True, capture_output=True)
 
+    def test_wallpaper_routes_and_enable_are_fixed_native_requests(self):
+        for arguments, event in [
+            (('wallpaper', 'open'), 'settings_wallpaper_open'),
+            (('wallpaper', 'randomize'), 'wallpaper_randomize'),
+            (('config', 'set', 'wallpaper.enabled', 'true'), 'setting_wallpaper_enabled 1'),
+        ]:
+            result=self.invoke(*arguments)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(json.loads(result.stdout),['--say','tohru','emit '+event])
+        self.assertEqual(self.invoke('wallpaper','randomize','DP-1').returncode,2)
+
     def test_service_panel_routes_are_fixed_native_events(self):
         for panel in ['network', 'bluetooth', 'about', 'info']:
             for action in ['open', 'toggle']:

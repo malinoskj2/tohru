@@ -1,7 +1,7 @@
 part SettingsWindow {
  let settings_keys = settings_open and not sound_open and not cal_open and not net_open and not bt_open and not info_visible and not about_visible
- box { from: 0, 0; size: 800, 560; color: #181825 }
- box { from: 0, 0; size: 220, 560; color: #11111b }
+ box { from: 0, 0; size: 800, 700; color: #181825 }
+ box { from: 0, 0; size: 220, 700; color: #11111b }
  text "Settings" { at: 18, 30; anchor: left center; size: 20; weight: 600; color: #cdd6f4 }
  box settings_back_button { from: 12, 54; size: 30, 30; corner: 8; color: #313244; cursor: pointer; active: settings_can_back }
  box settings_forward_button { from: 48, 54; size: 30, 30; corner: 8; color: #313244; cursor: pointer; active: settings_can_forward }
@@ -17,6 +17,7 @@ part SettingsWindow {
    }
   }
  }
+ group { show: not settings_wallpaper_page
  input settings_search { at: 244, 32; width: 528; size: 13; color: #cdd6f4; placeholder: "Search settings"; label: "Search settings" }
  text settings_heading { at: 244, 88; anchor: left center; size: 20; weight: 600; color: #cdd6f4 }
  column settings_list { at: 232, 120; view: 556, 340; gap: 6
@@ -33,17 +34,21 @@ part SettingsWindow {
    }
   }
  }
- text settings_notice { at: 244, 486; anchor: left top; size: 11; width: 528; lines: 2; color: #a6adc8 }
- text settings_ui_error { at: 244, 522; anchor: left top; size: 11; width: 528; lines: 2; color: #f38ba8 }
+ }
+ group { move: 244, 104; show: settings_wallpaper_page; include "../wallpaper/picker-view.plm" }
+ text wallpaper_settings_notice { at: 244, 640; anchor: left top; size: 11; width: 528; lines: 2; color: #a6adc8; show: settings_wallpaper_page }
+ text settings_notice { at: 244, 640; anchor: left top; size: 11; width: 528; lines: 2; color: #a6adc8; show: not settings_wallpaper_page }
+ text settings_ui_error { at: 244, 672; anchor: left top; size: 11; width: 528; lines: 2; color: #f38ba8 }
  on press settings_back_button { emit settings_back }
  on press settings_forward_button { emit settings_forward }
- on key Escape while settings_keys { emit settings_close }
- on key Ctrl+f while settings_keys { focus settings_search }
+ on key Escape while settings_keys and not settings_wallpaper_page { emit settings_close }
+ on key Ctrl+f while settings_keys and not settings_wallpaper_page { focus settings_search }
+ on key Ctrl+f while settings_keys and settings_wallpaper_page { focus wallpaper_picker_search }
  on key Alt+Left while settings_keys { emit settings_back }
  on key Alt+Right while settings_keys { emit settings_forward }
- on key Tab while settings_keys { settings_sidebar = not settings_sidebar; blur }
- on key Down while settings_keys { emit settings_move(1) }
- on key Up while settings_keys { emit settings_move(-1) }
- on key Return while settings_keys { emit settings_activate }
- on key space while settings_keys and not settings_sidebar { emit settings_activate }
+ on key Tab while settings_keys and not settings_wallpaper_page { settings_sidebar = not settings_sidebar; blur }
+ on key Down while settings_keys and not settings_wallpaper_page { emit settings_move(1) }
+ on key Up while settings_keys and not settings_wallpaper_page { emit settings_move(-1) }
+ on key Return while settings_keys and not settings_wallpaper_page { emit settings_activate }
+ on key space while settings_keys and not settings_wallpaper_page and not settings_sidebar { emit settings_activate }
 }
