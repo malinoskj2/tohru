@@ -7,7 +7,7 @@ import subprocess
 import time
 
 
-def verify(root, runtime, evidence, env, start, say, expect, wait_for):
+def verify(root, runtime, evidence, env, start, say, expect, wait_for, icons_only=False):
     scene_dir = evidence / 'scene'
     shutil.copytree(root / 'shell', scene_dir)
     scene = scene_dir / 'composed.plm'
@@ -27,8 +27,10 @@ def verify(root, runtime, evidence, env, start, say, expect, wait_for):
     expect('review', 'cal_open', 'false')
     apps = Path(env['XDG_DATA_HOME']) / 'applications'
     apps.mkdir(parents=True)
-    (apps / 'org.example.Review.desktop').write_text('[Desktop Entry]\nType=Application\nName=Review\nExec=true\nIcon=application-x-executable\n')
+    (apps / 'org.example.Review.desktop').write_text(f'[Desktop Entry]\nType=Application\nName=Review\nExec=true\nIcon={scene_dir / "bar/mooncoil.svg"}\n')
     titles = [('short-icon', 'Hi', 'Review'), ('long-icon', ('A very long focused window title ' * 10).strip(), 'Review'), ('empty-icon', '', 'Review'), ('short-no-icon', 'Hi', 'org.example.Unmatched'), ('long-no-icon', ('A very long focused window title ' * 10).strip(), 'org.example.Unmatched'), ('empty-no-icon', '', 'org.example.Unmatched')]
+    if icons_only:
+        titles = [case for case in titles if case[2] == 'Review']
     measurements = []
     for label, title, identity in titles:
         window_scene = evidence / f'{label}.plm'
@@ -51,10 +53,27 @@ def verify(root, runtime, evidence, env, start, say, expect, wait_for):
         else:
             assert float(measured) <= (340 if identity == 'Review' else 360), measured
         subprocess.run(['grim', '-o', 'HEADLESS-1', str(evidence / f'{label}.png')], env=env, check=True, timeout=10)
+        if identity == 'Review':
+            from PIL import Image
+            import math
+            left = (1280 - min(360, float(measured) + 20)) / 2
+            with Image.open(evidence / f'{label}.png') as captured:
+                rgb = captured.convert('RGB')
+                pixels = rgb.load()
+                white = sum(1 for y in range(8, 24) for x in range(math.floor(left), math.ceil(left + 14)) if min(pixels[x, y]) > 230)
+            assert white > 5, 'absolute source SVG icon did not render in the title icon cell'
+            measurements[-1]['white_icon_pixels'] = white
+
         window.terminate()
         window.wait(timeout=10)
         wait_for(lambda: say('review', 'get bar_has_icon') == 'false', 'window closed')
     assert 'NVIDIA GeForce RTX 5090' in (evidence / 'review.log').read_text()
+    if icons_only:
+        (evidence / 'title-measures.json').write_text(json.dumps(measurements, indent=2) + '\n')
+        (evidence / 'summary.json').write_text(json.dumps({'result': 'passed', 'checks': ['only affected short/long/empty title icon cells', 'fixture-owned absolute source SVG pixels'], 'app_gpu': 'NVIDIA GeForce RTX 5090 / Vulkan', 'compositor_gpu': 'NVIDIA GeForce RTX 5090 / GLES2', 'performance_acceptance': False, 'parity_acceptance': False}, indent=2) + '\n')
+        say('review', 'quit')
+        app.wait(timeout=10)
+        return
     # Keep the virtual pointer alive until the app binds its no-input seat.
     # A one-shot wlrctl device can disappear before wl_pointer is bound.
     pointer = start([str(root / '.tmp/pointer-build/pointer'), env['XDG_RUNTIME_DIR']], 'pointer', stdin=subprocess.PIPE)

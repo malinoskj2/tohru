@@ -117,6 +117,7 @@ def main():
     parser.add_argument('--runtime', type=Path, required=True)
     parser.add_argument('--review-only', action='store_true')
     parser.add_argument('--launcher-only', action='store_true')
+    parser.add_argument('--icons-only', action='store_true')
     parser.add_argument('--bus-child', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--bus-token', help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -175,9 +176,9 @@ def main():
             spec.loader.exec_module(module)
             module.verify(ROOT, runtime, evidence, env, start, say, expect, wait_for)
             return
-        if args.review_only:
+        if args.review_only or args.icons_only:
             from review import verify
-            verify(ROOT, runtime, evidence, env, start, say, expect, wait_for)
+            verify(ROOT, runtime, evidence, env, start, say, expect, wait_for, icons_only=args.icons_only)
             return
         launch(ROOT / 'shell/bar/entry.plm', 'bar', debug=True)
         wait_for(lambda: say('bar', 'get bar_date'), 'native clock')
