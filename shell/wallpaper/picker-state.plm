@@ -1,0 +1,27 @@
+part WallpaperPickerState {
+    fact wallpaper_picker_open = false
+    fact wallpaper_picker_keyboard = true
+    fact wallpaper_picker_selected = 0
+    fact wallpaper_picker_previous = false
+    fact wallpaper_picker_next = false
+    text wallpaper_picker_folder = ""
+    text wallpaper_picker_search = ""
+    text wallpaper_picker_output = "No output available"
+    text wallpaper_picker_current = ""
+    text wallpaper_picker_count = "0 files"
+    text wallpaper_picker_error = ""
+    text wallpaper_randomize_outputs = ""
+    model wallpaper_picker_files max 8 { row_id: number; name: text; kind: text; current: bool }
+    event wallpaper_picker_open_request ->
+    event wallpaper_picker_close ->
+    event wallpaper_picker_refresh ->
+    event wallpaper_picker_folder_submit ->
+    event wallpaper_picker_output ->
+    event wallpaper_picker_page ->
+    event wallpaper_picker_move ->
+    event wallpaper_picker_choose ->
+    event wallpaper_picker_accept ->
+    event wallpaper_picker_clear ->
+    event wallpaper_picker_randomize ->
+    event wallpaper_randomize ->
+}
