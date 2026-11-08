@@ -97,10 +97,10 @@ fn coalesced_lock_and_suspend_wait_for_actual_acknowledgment() {
     let fired = policy.step(now + Duration::from_secs(2)).unwrap();
     assert_eq!(fired, [Effect::RequestLock]);
     assert!(!fired.contains(&Effect::RequestSuspend));
-    let held = policy.session(true);
+    let held = policy.session(true, Instant::now());
     assert!(held.contains(&Effect::ClearFade));
     assert_eq!(held.last(), Some(&Effect::RequestSuspend));
-    assert!(policy.session(true).is_empty());
+    assert!(policy.session(true, Instant::now()).is_empty());
     assert!(policy.deadline().is_none());
 }
 
@@ -121,7 +121,11 @@ fn failed_or_late_lock_acknowledgment_cannot_suspend() {
             policy.step(now + LOCK_ACK_LIMIT).unwrap()
         };
         assert!(!cancelled.contains(&Effect::RequestSuspend));
-        assert!(!policy.session(true).contains(&Effect::RequestSuspend));
+        assert!(
+            !policy
+                .session(true, Instant::now())
+                .contains(&Effect::RequestSuspend)
+        );
         assert!(policy.deadline().is_none());
     }
 }
@@ -150,7 +154,11 @@ fn independent_inhibitors_cancel_pending_work_until_final_release() {
             })
             .is_empty()
     );
-    assert!(!policy.session(true).contains(&Effect::RequestSuspend));
+    assert!(
+        !policy
+            .session(true, Instant::now())
+            .contains(&Effect::RequestSuspend)
+    );
     let released = policy.inhibited(Inhibitors::default());
     assert!(
         released
@@ -220,4 +228,28 @@ fn malformed_config_is_rejected_before_any_observer_is_armed() {
             Err(Error::InvalidTimeout)
         ));
     }
+}
+
+#[test]
+fn late_held_acknowledgment_cannot_win_a_race_against_timeout_callback() {
+    let (mut policy, effects) = armed(no_fade(), false);
+    let now = Instant::now();
+    policy
+        .idled(subscription(&effects, Action::Suspend), now)
+        .unwrap();
+    // The compositor event can arrive first when the scheduler dispatches
+    // multiple ready sources; expiry belongs to consumption, not timer order.
+    let late = policy.session(true, now + LOCK_ACK_LIMIT);
+    assert!(!late.contains(&Effect::RequestSuspend));
+    assert!(late.contains(&Effect::LockTimedOut));
+    assert!(policy.step(now + LOCK_ACK_LIMIT).unwrap().is_empty());
+    let (mut policy, effects) = armed(no_fade(), false);
+    policy
+        .idled(subscription(&effects, Action::Suspend), now)
+        .unwrap();
+    assert!(
+        policy
+            .session(true, now + Duration::from_millis(4999))
+            .contains(&Effect::RequestSuspend)
+    );
 }

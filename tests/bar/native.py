@@ -82,9 +82,40 @@ def bootstrap_private_bus(child_dir, token, inherited, arguments, run=subprocess
     return True
 
 
+def finish_owned(processes, logs, evidence, events):
+    # Ownership cleanup must finish before evidence writing can fail. Each owned
+    # process/log gets its attempt even if another cleanup operation fails.
+    failures = []
+    for process in reversed(processes):
+        try:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+        except Exception as error:
+            failures.append(error)
+    for log in logs:
+        try:
+            log.close()
+        except Exception as error:
+            failures.append(error)
+    try:
+        (evidence / 'events.json').write_text(json.dumps(events, indent=2) + '\n')
+    except Exception as error:
+        failures.append(error)
+    finally:
+        print(evidence, flush=True)
+    if failures:
+        raise ExceptionGroup('Native test cleanup/evidence failures', failures)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime', type=Path, required=True)
+    parser.add_argument('--review-only', action='store_true')
     parser.add_argument('--bus-child', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--bus-token', help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -103,12 +134,12 @@ def main():
     processes, logs, events = [], [], []
     runtime = str(args.runtime.resolve())
 
-    def start(command, label, extra=None):
+    def start(command, label, extra=None, stdin=None):
         log = (evidence / f'{label}.log').open('w')
         logs.append(log)
         child_env = {**env, **(extra or {})}
         assert_private_ipc(child_env, runtime_dir)
-        process = subprocess.Popen(command, env=child_env, stdout=log, stderr=subprocess.STDOUT, close_fds=True)
+        process = subprocess.Popen(command, env=child_env, stdout=log, stderr=subprocess.STDOUT, close_fds=True, stdin=stdin)
         processes.append(process)
         return process
 
@@ -136,6 +167,10 @@ def main():
         display = wait_for(lambda: next((p for p in runtime_dir.glob('wayland-*') if not p.name.endswith('.lock')), None), 'private display')
         env.update(SWAYSOCK=str(socket), WAYLAND_DISPLAY=display.name)
         assert 'NVIDIA GeForce RTX 5090' in (evidence / 'sway.log').read_text(), 'compositor GPU unverified'
+        if args.review_only:
+            from review import verify
+            verify(ROOT, runtime, evidence, env, start, say, expect, wait_for)
+            return
         launch(ROOT / 'shell/bar/entry.plm', 'bar', debug=True)
         wait_for(lambda: say('bar', 'get bar_date'), 'native clock')
         expect('bar', 'bar_mooncoil', 'false')
@@ -213,18 +248,7 @@ def main():
         summary = {'result': 'passed', 'app_gpu': 'NVIDIA GeForce RTX 5090 / Vulkan', 'compositor_gpu': 'NVIDIA GeForce RTX 5090 / GLES2', 'sway_ext_workspace': 'ext_workspace_manager_v1' in registry, 'sway_wlr_toplevel': 'zwlr_foreign_toplevel_manager_v1' in registry, 'checks': ['native bar clock', 'Mooncoil default off', 'native empty MPRIS state', 'MPRIS properties/play/pause', 'foreign toplevel title', 'native catalog icon matching', 'calendar open/month/year/Today/close', 'native click and Escape'], 'parity_acceptance': False, 'performance_acceptance': False}
         (evidence / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
     finally:
-        (evidence / 'events.json').write_text(json.dumps(events, indent=2) + '\n')
-        for process in reversed(processes):
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
-        for log in logs:
-            log.close()
-        print(evidence, flush=True)
+        finish_owned(processes, logs, evidence, events)
 
 
 if __name__ == '__main__':

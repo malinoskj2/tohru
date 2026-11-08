@@ -359,13 +359,20 @@ impl Policy {
     }
 
     /// Feed actual compositor acknowledgment, never native IPC acceptance.
-    pub fn session(&mut self, locked: bool) -> Vec<Effect> {
+    pub fn session(&mut self, locked: bool, now: Instant) -> Vec<Effect> {
         if locked == self.locked {
             return Vec::new();
         }
-        let suspend = locked && self.awaiting_lock.is_some_and(|waiting| waiting.suspend);
+        let overdue = self
+            .awaiting_lock
+            .is_some_and(|waiting| now >= waiting.until);
+        let suspend =
+            locked && !overdue && self.awaiting_lock.is_some_and(|waiting| waiting.suspend);
         self.locked = locked;
         let mut effects = self.arm();
+        if overdue {
+            effects.push(Effect::LockTimedOut);
+        }
         if suspend {
             effects.push(Effect::RequestSuspend);
         }
