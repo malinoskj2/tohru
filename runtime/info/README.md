@@ -46,10 +46,11 @@ Checks (lightweight, no runtime build/GPU; Cargo entry verifies nested module la
     CARGO_TARGET_DIR=.tmp/b-info-target cargo test --locked --offline --test info --jobs 1
     CARGO_TARGET_DIR=.tmp/b-info-target cargo clippy --locked --offline --test info --jobs 1 -- -Dwarnings
 
-    rustfmt --check --edition 2024 runtime/info/*.rs tests/info/snapshot.rs
-    clippy-driver --edition 2024 --crate-type lib -Wclippy::pedantic -Dwarnings runtime/info/mod.rs -o .tmp/libinfo.rlib
-    clippy-driver --edition 2024 --test -Wclippy::pedantic -Dwarnings runtime/info/mod.rs -o .tmp/info-tests
-    .tmp/info-tests
+    rustfmt --check --edition 2024 runtime/info/*.rs tests/info.rs tests/info/snapshot.rs
+
+IssueKind uses the existing package thiserror derive for typed adapter diagnostics;
+no new dependency/manifest edit. Verify through Cargo, which supplies the existing
+macro dependency and real nested module context; bare rustc needs that extern.
 
 Ten actual filesystem fixtures cover partial/missing/invalid/overflow facts,
 real public record formats and leading names, capacities/escaped mounts/current
