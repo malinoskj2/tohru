@@ -233,7 +233,7 @@
 
  struct OpenPopup {
      k: usize,
-@@ -1804,6 +1848,12 @@
+@@ -1809,6 +1853,12 @@
  /// The render has let go of surface `id`: if it was the face of a monitor that
  /// went while locked, it can be destroyed now.
  pub fn sheet_released(id: u32) {
@@ -246,7 +246,7 @@
      let Some(c) = LOCKS.get() else { return };
      let mut engaged = c.engaged.lock().unwrap();
      let Some(e) = engaged.as_mut() else { return };
-@@ -1885,6 +1935,7 @@
+@@ -1890,6 +1940,7 @@
  #[derive(Clone, Copy, Default)]
  struct Said {
      zone: Option<i32>,
@@ -254,7 +254,7 @@
      anchor: Option<SurfaceAnchor>,
      level: Option<Level>,
  }
-@@ -1905,6 +1956,32 @@
+@@ -1910,6 +1961,32 @@
      RESCREENS.lock().unwrap().push((which, screen.to_owned()));
      c.connection.display().sync(&c.qh, Rescreen);
      let _ = c.connection.flush();
@@ -287,7 +287,7 @@
  }
 
  struct Rescreen;
-@@ -2101,6 +2178,16 @@
+@@ -2106,6 +2183,16 @@
  impl WindowHandler for State {
      /// Someone clicked the close button. That one closes; if it was the last one, it's over.
      fn request_close(&mut self, _: &Connection, _: &QueueHandle<Self>, v: &Window) {
@@ -304,7 +304,7 @@
          self.surface_gone(&v.wl_surface().clone());
          if self.placed.is_empty() {
              self.quit = true;
-@@ -2129,7 +2216,7 @@
+@@ -2134,7 +2221,7 @@
              let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
                  id: a.id,
                  target: gpu::Target::Surface(surface),
@@ -313,7 +313,7 @@
                  scale: a.parent.scale,
                  size: a.size,
                  mhz: a.parent.mhz,
-@@ -2219,6 +2306,7 @@
+@@ -2224,6 +2311,7 @@
          wanted,
          extra_height,
          placed: Vec::new(),
@@ -321,7 +321,7 @@
          announced: Vec::new(),
          pointer: None,
          pointer_seats: Vec::new(),
-@@ -2353,7 +2441,7 @@
+@@ -2358,7 +2446,7 @@
              let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
                  id: p.id,
                  target: gpu::Target::Surface(surface),
@@ -330,12 +330,12 @@
                  scale: p.scale,
                  size,
                  mhz,
-@@ -2438,7 +2526,7 @@
+@@ -2442,7 +2530,7 @@
              Box::new(gpu::NewSheet {
                  id: face.id,
                  target: gpu::Target::Surface(paints),
--                window: Box::new(WaylandWindow { lock_face: Some(LockFaceLease { _surface: face.surface.clone(), cycle }), wl: face.surface.wl_surface().clone(), compositor: self.compositor.clone(), cursors: self.cursors.clone(), serial: self.serial.clone(), layer: None, qh: self.qh.clone(), id: face.id, effect: Mutex::new(None), backdrop: None, shown: Default::default() }),
-+                window: Box::new(WaylandWindow { conditional_window: None, lock_face: Some(LockFaceLease { _surface: face.surface.clone(), cycle }), wl: face.surface.wl_surface().clone(), compositor: self.compositor.clone(), cursors: self.cursors.clone(), serial: self.serial.clone(), layer: None, qh: self.qh.clone(), id: face.id, effect: Mutex::new(None), backdrop: None, shown: Default::default() }),
+-                window: Box::new(WaylandWindow { lock_face: Some(LockFaceLease { _surface: face.surface.clone(), life: face.life.clone() }), wl: face.surface.wl_surface().clone(), compositor: self.compositor.clone(), cursors: self.cursors.clone(), serial: self.serial.clone(), layer: None, qh: self.qh.clone(), id: face.id, effect: Mutex::new(None), backdrop: None, shown: Default::default() }),
++                window: Box::new(WaylandWindow { conditional_window: None, lock_face: Some(LockFaceLease { _surface: face.surface.clone(), life: face.life.clone() }), wl: face.surface.wl_surface().clone(), compositor: self.compositor.clone(), cursors: self.cursors.clone(), serial: self.serial.clone(), layer: None, qh: self.qh.clone(), id: face.id, effect: Mutex::new(None), backdrop: None, shown: Default::default() }),
                  scale: 1.0,
                  size,
                  mhz: face.mhz,

@@ -2,7 +2,8 @@
 
 Authorized native Settings gap fix, separate from0002 native lock security.
 `0003-window-lifecycle.patch` is based on pinned upstream +0001 settings +current
-0002 including L90234c6/1c1a5a2 security ownership fixes. It is not yet in shared prepare/Nix patch lists and is
+0002 including L90234c6/1c1a5a2 ownership and5cd249b per-face liveness fixes.
+It is not yet in shared prepare/Nix patch lists and is
 not compiled, GPU-tested or accepted. No new package/dependency/helper or owner.
 
 Proposed implementation:
