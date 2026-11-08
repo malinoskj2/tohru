@@ -19,7 +19,12 @@ events.launcher_open();assert(fact.launcher_visible and text.launcher_outputs=="
 events.launcher_close();assert(not fact.launcher_visible and fact.launcher_closing and text.launcher_outputs=="DP-2")
 -- Actual entry recreation preserves the closing ownership flag and role route.
 events,watches={},{};run();assert(fact.launcher_closing and text.launcher_outputs=="DP-2")
-events.launcher_unmap();assert(not fact.launcher_closing and text.launcher_outputs=="")
-watches.window({monitor="DP-1"});events.launcher_open();events.launcher_close();events.launcher_open();events.launcher_unmap()
+events.launcher_unmap(fact.launcher_close_token);assert(not fact.launcher_closing and text.launcher_outputs=="")
+watches.window({monitor="DP-1"});events.launcher_open();events.launcher_close();events.launcher_open();events.launcher_unmap(fact.launcher_close_token)
 assert(fact.launcher_visible and not fact.launcher_closing and text.launcher_outputs=="DP-1")
 print("Actual launcher entry resolves all modules and retains native close/reopen ownership")
+events.launcher_close();local first_token=fact.launcher_close_token
+events.launcher_open();events.launcher_close();local second_token=fact.launcher_close_token
+events.launcher_unmap(first_token);assert(fact.launcher_closing and text.launcher_outputs~="")
+events.launcher_unmap(second_token);assert(not fact.launcher_closing and text.launcher_outputs=="")
+print("Actual entry rejects delayed prior-close completion after a newer close")

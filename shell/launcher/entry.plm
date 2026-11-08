@@ -4,6 +4,7 @@ scene TohruLauncher {
     permissions { services: "apps", "apps.launch", "files", "files.write", "window" }
     fact launcher_visible = false
     fact launcher_closing = false
+    fact launcher_close_token = 0
     fact launcher_output_count = 0
     fact launcher_outputs_known = false
     text launcher_outputs = ""
@@ -165,8 +166,7 @@ scene TohruLauncher {
         // Separate timer condition and firing guard: keep one native appointment
         // through final spring snap, then remove the role on the next check.
         every 16.666667ms while launcher_closing while launcher_seen == 0 and vel(launcher_seen) == 0 {
-            launcher_closing = false
-            emit launcher_unmap
+            emit launcher_unmap(launcher_close_token)
         }
     }
     on change screens.count { launcher_output_count = screens.count; launcher_outputs_known = true; emit launcher_outputs_changed }

@@ -63,7 +63,9 @@ per output (native each max8) and one fullscreen named launcher_layer, whose
 namespace is EXACT tohru-launcher-backdrop. It is mapped to native focused output
 on open, otherwise first native name, and preserves output while open unless it
 disappears. Native output names/count events reconcile hotplug; stale removed
-tail names are excluded. No custom compositor observer, IPC or backend. The
+tail names are excluded. Literal interior spaces/Unicode are preserved; only
+commas and Rust Unicode White_Space edges (which native selectors alter) reject
+a name. No custom compositor observer, IPC or backend. The
 bootstrap retains default pleamar namespace and never engages recession.
 
 Closing keeps the real role through native reveal motion. Existing native rules
@@ -71,7 +73,9 @@ evaluate before spring step and final idle snap, so a closing-only conditional
 Every appointment checks EXACT zero position/velocity on the next native round;
 this uses separate timer condition and firing guard. Native rescreen clears the
 output route, actually drops the layer and disables the appointment. Reopen
-cancels closing, stale unmap signals cannot hide it, closing state survives VM
+cancels closing, native unmap payload carries exact24-bit close-cycle token,
+and only the matching current close clears the route. Lua owns clearing closing
+so a delayed native false-fact cannot overwrite a newer cycle. Closing survives VM
 reload. This is not a fixed animation timeout or recurring rest poll. Actual
 private role/Wayland/input/hotplug validation remains required after shared build.
 
