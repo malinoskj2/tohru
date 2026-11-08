@@ -55,7 +55,13 @@ acquiring it, the one owned fixed stale temporary may be reclaimed (private
 regular/≤2MiB check); no active conforming writer can be using it. New temporary
 uses create-exclusive0600; scoped Drop unlinks only that owned name. Complete data
 is synced then linked to final fixed name without replacement. Parent/leaf/data
-sync outcomes determine durable; a post-publication directory-sync failure returns
+sync outcomes determine durable only when the cache base was already present
+before preparation. If this call recursively creates the base path, durable is
+conservatively false because the base entry and any newly created ancestor
+entries were not synced. Missing-before-create remains false even if another
+process creates the path concurrently; metadata errors other than NotFound fail.
+This observation is recorded before create_dir_all and combined with the actual
+cache result without changing its path/cached fields; a post-publication directory-sync failure returns
 a real path with durable=false. Directory pathname identity is rechecked against
 held inode before returning. Same-UID external changes after the check remain
 ordinary mutable-filesystem behavior; actual decoder reads are independently
@@ -128,3 +134,10 @@ Remaining gates: actual native type/link/permission tests, generated PNG sample
 bytes vs retained source, POSIX lock/race/replacement/recovery/sync failures,
 private UI/fit pixels and timer/root atomicity. No live state/desktop/service or
 old j2bar data was touched.
+
+Source-review correction: the prior5205be7 durability statement omitted newly
+created cache-base ancestors. The implementation now reports false on that path;
+source guards verify observation precedes creation and gates the result. New Rust
+regressions for the pure result matrix and nested missing-base observation are
+written/rustfmt formatted but remain uncompiled/unrun. No cache or PNG operation
+was executed for this correction.

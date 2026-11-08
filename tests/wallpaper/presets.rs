@@ -94,3 +94,35 @@ fn bounded_encoder_writer_refuses_overflow() {
     assert!(output.write_all(&vec![0; MAX_PNG + 1]).is_err());
     assert!(output.0.is_empty());
 }
+
+#[test]
+fn newly_created_base_never_reports_complete_durability_from_leaf_syncs() {
+    // Pure result accounting: no filesystem or PNG is needed for this regression.
+    for cached in [false, true] {
+        for (synced, preexisting, expected) in [
+            (true, false, false),
+            (true, true, true),
+            (false, true, false),
+            (false, false, false),
+        ] {
+            let result = Generated {
+                path: PathBuf::from("/unexecuted/preset.png"),
+                durable: synced,
+                cached,
+            }
+            .with_existing_base(preexisting);
+            assert_eq!(result.durable, expected);
+            assert_eq!(result.cached, cached);
+            assert_eq!(result.path, PathBuf::from("/unexecuted/preset.png"));
+        }
+    }
+}
+#[test]
+fn base_observation_is_taken_before_recursive_creation() {
+    let fixture = Fixture::new();
+    let missing = fixture.0.join("new-ancestor").join("new-cache-base");
+    let (path, preexisting) = prepare_parent(missing.clone()).unwrap();
+    assert_eq!(path, missing);
+    assert!(!preexisting);
+    assert!(prepare_parent(path).unwrap().1);
+}

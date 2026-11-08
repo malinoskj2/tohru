@@ -13,8 +13,12 @@ adapter=(root/files[2]).read_text()
 compact=re.sub(r'\s+','',native)
 adapter=re.sub(r'\s+','',adapter)
 for guard in ['MAX_PNG:usize=2*1024*1024','O_NOFOLLOW','O_NONBLOCK','libc::flock','LOCK_EX|libc::LOCK_NB',
-              'O_CREAT|libc::O_EXCL','libc::linkat','parent.sync_all()','data_durable&&parent_durable']:
+              'O_CREAT|libc::O_EXCL','libc::linkat','parent.sync_all()','data_durable&&parent_durable','self.durable&=preexisting',
+              'generate_in(&base,preset,palette)?.with_existing_base(preexisting)']:
     assert guard in compact,guard
+assert native.index('let preexisting = match fs::metadata(&path)') < native.index('fs::DirBuilder::new()')
+assert 'Err(error) if error.kind() == io::ErrorKind::NotFound => false' in native
+assert 'Ok((fs::canonicalize(path)?, preexisting))' in native
 assert 'O_TRUNC' not in native and 'rename(' not in native
 assert 'preset.parse::<tohru_shell::wallpaper::preset::Preset>()' in adapter
 assert 'palette.parse::<tohru_shell::wallpaper::preset::Palette>()' in adapter

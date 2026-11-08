@@ -32,6 +32,14 @@ pub(super) struct Generated {
     pub(super) durable: bool,
     pub(super) cached: bool,
 }
+impl Generated {
+    fn with_existing_base(mut self, preexisting: bool) -> Self {
+        // Syncing the base persists its cache-leaf entry, not the base entry in
+        // its own parent or any ancestors recursively created by this call.
+        self.durable &= preexisting;
+        self
+    }
+}
 struct Bounded(Vec<u8>);
 impl Write for Bounded {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
@@ -101,19 +109,27 @@ impl Drop for Pending<'_> {
         let _ = unsafe { libc::unlinkat(self.0.as_raw_fd(), PENDING.as_ptr(), 0) };
     }
 }
-fn parent() -> Result<PathBuf, Error> {
+fn parent() -> Result<(PathBuf, bool), Error> {
     let path = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
         .ok_or(Error::Cache)?;
+    prepare_parent(path)
+}
+fn prepare_parent(path: PathBuf) -> Result<(PathBuf, bool), Error> {
     if !path.is_absolute() || path.components().any(|p| matches!(p, Component::ParentDir)) {
         return Err(Error::Cache);
     }
+    let preexisting = match fs::metadata(&path) {
+        Ok(metadata) => metadata.is_dir(),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+        Err(error) => return Err(error.into()),
+    };
     fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
         .create(&path)?;
-    Ok(fs::canonicalize(path)?)
+    Ok((fs::canonicalize(path)?, preexisting))
 }
 fn directory(base: &Path) -> Result<(File, PathBuf, bool), Error> {
     let parent = OpenOptions::new()
@@ -176,7 +192,8 @@ fn existing(dir: &File, name: &CStr, expected: &[u8]) -> Result<Option<bool>, Er
     }
 }
 pub(super) fn generate(preset: Preset, palette: Palette) -> Result<Generated, Error> {
-    generate_in(&parent()?, preset, palette)
+    let (base, preexisting) = parent()?;
+    Ok(generate_in(&base, preset, palette)?.with_existing_base(preexisting))
 }
 fn generate_in(base: &Path, preset: Preset, palette: Palette) -> Result<Generated, Error> {
     let (dir, root, parent_durable) = directory(base)?;
