@@ -8,6 +8,7 @@ return function()
         local output_present = fact["sound_outputs.count"] > 0
         local muted = nil
         if observed then muted = fact["audio.muted"] end
+        fact.audio_failed = last_error ~= ""
         text.audio_error = last_error
         text.audio_status = json.encode({
             schema = 1, observation = observed and "last_report" or "awaiting_report",
@@ -49,22 +50,38 @@ return function()
         call("audio.step", math.clamp(notches, -1, 1) * 0.05)
     end)
     on("audio_mute", function() flush(); call("audio.mute") end)
-    on("sound_toggle", function()
+    local function cleanup()
         flush()
-        fact.sound_open = not fact.sound_open
+        if fact.sound_dragging then fact.sound_dragging = false end
+    end
+    local function close()
+        cleanup()
+        if fact.sound_open then fact.sound_open = false end
+        publish()
+    end
+    on("sound_toggle", function()
+        if fact.sound_open then close(); return end
+        cleanup()
+        fact.sound_open = true
         fact.sound_focus = 1
         publish()
     end)
-    on("sound_open_request", function() fact.sound_open = true; fact.sound_focus = 1; publish() end)
-    local function close()
-        flush()
-        fact.sound_dragging = false
-        fact.sound_open = false
+    on("sound_open_request", function()
+        cleanup()
+        fact.sound_open = true
+        fact.sound_focus = 1
         publish()
-    end
+    end)
     on("panel_close", close)
     on("panel_close_sound", close)
-    on("fact:sound_open", publish)
+    on("fact:sound_open", function()
+        -- popup_done has already changed the fact: do not write it recursively.
+        if not fact.sound_open then cleanup() end
+        publish()
+    end)
+    -- Replacing the VM cancels its native timers and drops unissued drag work.
+    -- Never let a preserved presentation fact override the native observation.
+    if fact.sound_dragging then fact.sound_dragging = false end
     on("audio_report", publish)
     publish()
 end

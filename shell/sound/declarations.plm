@@ -2,6 +2,7 @@ part SoundState {
  permissions { services: "audio", "audio.step", "audio.volume", "audio.mute" }
  model sound_outputs max 32 { id: number; name: text; default: bool }
  service audio as audio { volume: number = -1; muted: bool; outputs: sound_outputs }
+ fact audio_failed = false
  fact sound_open = false
  fact sound_focus = 1
  fact sound_dragging = false

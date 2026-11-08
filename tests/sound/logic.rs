@@ -85,3 +85,58 @@ fn failures_are_reported_and_later_native_success_clears_them() {
     .exec()
     .unwrap();
 }
+
+#[test]
+fn native_dismissal_toggle_and_reload_clean_drag_state_idempotently() {
+    let lua = controller();
+    lua.load(
+        r#"
+        fact['audio.volume']=0.2; fact['sound_outputs.count']=1
+        fact.sound_open=true; fact.sound_dragging=true; fact.sound_requested=0.8
+        handlers.audio_set(0.8)
+        fact.sound_open=false
+        handlers['fact:sound_open'](); handlers['fact:sound_open']()
+        assert(#calls==1 and calls[1].value==0.8 and timers[1]==nil)
+        assert(not fact.sound_dragging)
+        handlers.sound_open_request()
+        assert(not fact.sound_dragging and fact['audio.volume']==0.2)
+        fact.sound_dragging=true; handlers.audio_set(0.7); handlers.sound_toggle()
+        assert(not fact.sound_open and not fact.sound_dragging and calls[2].value==0.7)
+        fact.sound_open=true; fact.sound_dragging=true; fact.sound_requested=0.9
+        handlers.audio_set(0.9)
+        -- Native VM replacement owns cancellation of old VM timer callbacks.
+        timers={}
+    "#,
+    )
+    .exec()
+    .unwrap();
+    lua.load(include_str!("../../shell/sound/controller.luau"))
+        .eval::<mlua::Function>()
+        .unwrap()
+        .call::<()>(())
+        .unwrap();
+    lua.load(
+        r#"
+        assert(not fact.sound_dragging and #calls==2 and timers[1]==nil)
+        handlers.panel_close()
+        assert(#calls==2 and not fact.sound_open)
+        denied=true; handlers.audio_mute()
+        assert(fact.audio_failed and text.audio_error~='')
+        denied=false; handlers.audio_mute()
+        assert(not fact.audio_failed and text.audio_error=='')
+    "#,
+    )
+    .exec()
+    .unwrap();
+}
+
+#[test]
+fn command_error_has_a_visible_panel_boundary() {
+    let view = include_str!("../../shell/sound/panel.plm");
+    let root = include_str!("../../shell/bar.plm");
+    assert!(view.contains("text audio_error"));
+    assert!(view.contains("Could not change volume"));
+    assert!(view.contains("show: audio_failed"));
+    assert!(view.contains("116 + audio_failed * 62"));
+    assert!(root.contains("116 + audio_failed * 62"));
+}
