@@ -94,15 +94,21 @@ return function(assign)
             identities[path] = key
             return key
         end
-        for output, path in pairs(assignments) do validate(output, path); next[output] = path end
+        local count = 0
+        for output, path in pairs(assignments) do
+            validate(output, path)
+            count = count + 1
+            if count > 32 then error("Wallpaper assignment capacity is 32 outputs; nothing was changed") end
+            next[output] = path
+        end
         for _, path in ipairs(files) do
             validate("catalog", path)
-            catalog[path] = true
-            identity(path)
+            catalog[identity(path)] = true
         end
+        if #files == 0 then return next end
         if #outputs == 0 then
             for output, path in pairs(assignments) do
-                if validate(output, path) == "video" or catalog[path] then selected[#selected + 1] = output end
+                if validate(output, path) == "video" or catalog[identity(path)] then selected[#selected + 1] = output end
             end
             table.sort(selected)
         else
@@ -131,7 +137,7 @@ return function(assign)
             used[identity(chosen)] = true
             next[output] = chosen
         end
-        local count = 0
+        count = 0
         for _ in pairs(next) do count = count + 1 end
         if count > 32 then error("Wallpaper assignment capacity is 32 outputs; nothing was changed") end
         return next

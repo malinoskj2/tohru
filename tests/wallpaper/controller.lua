@@ -76,3 +76,10 @@ local previous = text.wallpaper_output_0
 assert(not pcall(controller.publish, true, {[utf8.char(160) .. "DP-1"] = "/pictures/a.png"}))
 assert(text.wallpaper_output_0 == previous)
 print("Wallpaper Unicode selector boundary fixtures passed")
+-- Q-W3: no-op branches enforce the same assignment bound as publication.
+assert(not pcall(controller.randomize, oversized, {}, {}, canonical))
+assert(not pcall(controller.randomize, oversized, {}, {"/new/a.png"}, canonical))
+-- Q-W4: implicit selection and duplicate avoidance both use canonical identity.
+next = controller.randomize({["DP-1"] = "/pictures/alias.png", ["DP-2"] = "/outside/still.png"}, {}, files, canonical)
+assert(next["DP-1"] == files[2] and next["DP-2"] == "/outside/still.png")
+print("Wallpaper randomization no-op bounds and implicit alias fixtures passed")
