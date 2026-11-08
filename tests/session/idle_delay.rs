@@ -51,3 +51,15 @@ fn failed_reacquire_cancels_old_sleep_without_inventing_a_descriptor() {
     assert!(!delay.protected());
     assert_eq!(closed.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn owner_close_releases_its_descriptor_once_without_waiting_for_ack() {
+    let closed = Arc::new(AtomicUsize::new(0));
+    let mut delay = Delay::new(Fd(closed.clone()));
+    delay.prepare();
+    delay.close();
+    delay.close();
+    delay.acknowledge();
+    assert_eq!(closed.load(Ordering::SeqCst), 1);
+    assert!(!delay.protected());
+}

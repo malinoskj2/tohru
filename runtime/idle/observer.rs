@@ -2,7 +2,7 @@
 //! No polling at rest: commands use a coalescing calloop ping, fades alone tick.
 use anyhow::{Context, Result};
 use smithay_client_toolkit::{
-    delegate_output, delegate_registry, delegate_seat,
+    delegate_registry,
     output::{OutputHandler, OutputState},
     reexports::{
         calloop::{
@@ -37,15 +37,17 @@ use wayland_protocols_wlr::output_power_management::v1::client::{
     zwlr_output_power_v1::{self, ZwlrOutputPowerV1},
 };
 
+use tohru_shell::idle::configuration::Configuration;
 use tohru_shell::idle::input::{Cancellation, Input, Observation};
 
 pub(super) struct Observer {
     commands: SyncSender<Config>,
+    accepted: Mutex<Configuration>,
     latest: Arc<Mutex<Input>>,
     ping: Ping,
     cancellation: Cancellation,
     stop: Arc<AtomicBool>,
-    thread: Option<JoinHandle<()>>,
+    thread: Mutex<Option<JoinHandle<()>>>,
 }
 
 /// Effects leave the protocol thread through bounded/nonblocking native channels.
@@ -93,21 +95,38 @@ impl Observer {
             .context("start idle observer")?;
         Ok(Self {
             commands,
+            accepted: Mutex::new(Configuration::new(config)),
             latest,
             ping,
             cancellation,
             stop,
-            thread: Some(thread),
+            thread: Mutex::new(Some(thread)),
         })
     }
 
     pub(super) fn configure(&self, config: Config) -> Result<()> {
-        // Validate before enqueue; process policy remains the sole generation owner.
         Policy::new(config, false).context("validate idle configuration")?;
-        self.commands
-            .try_send(config)
-            .context("idle configuration queue unavailable")?;
-        self.observe(|state| state.resume = state.resume.wrapping_add(1))?;
+        let alive = self
+            .thread
+            .lock()
+            .map_err(|_| anyhow::anyhow!("idle observer thread owner poisoned"))?
+            .as_ref()
+            .is_some_and(|thread| !thread.is_finished());
+        anyhow::ensure!(
+            !self.stop.load(Ordering::Acquire) && alive,
+            "idle observer is no longer running"
+        );
+        let mut accepted = self
+            .accepted
+            .lock()
+            .map_err(|_| anyhow::anyhow!("idle configuration cache poisoned"))?;
+        accepted.update(config, |config| -> Result<()> {
+            self.commands
+                .try_send(config)
+                .context("idle configuration queue unavailable")?;
+            self.observe(|state| state.resume = state.resume.wrapping_add(1))?;
+            Ok(())
+        })?;
         Ok(())
     }
 
@@ -121,16 +140,44 @@ impl Observer {
         self.ping.ping();
         Ok(())
     }
+    pub(super) fn request_stop(&self) {
+        tohru_shell::idle::teardown::request_stop(&self.stop, &self.cancellation, || {
+            self.ping.ping()
+        });
+    }
+
+    pub(super) fn stop(&self) -> Result<()> {
+        self.request_stop();
+        let mut failures = Vec::new();
+        let thread = tohru_shell::idle::teardown::take_owned(
+            &self.thread,
+            tohru_shell::idle::teardown::Stage::Observer,
+            &mut failures,
+        );
+        if let Some(thread) = thread {
+            if thread.join().is_err() {
+                failures.push(tohru_shell::idle::teardown::Failure {
+                    stage: tohru_shell::idle::teardown::Stage::Observer,
+                    detail: "observer thread panicked".into(),
+                });
+            }
+        }
+        anyhow::ensure!(
+            failures.is_empty(),
+            "{}",
+            failures
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+        Ok(())
+    }
 }
 
 impl Drop for Observer {
     fn drop(&mut self) {
-        self.cancellation.invalidate();
-        self.stop.store(true, Ordering::Release);
-        self.ping.ping();
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
+        let _ = self.stop();
     }
 }
 
@@ -509,8 +556,8 @@ impl ProvidesRegistryState for State {
     }
     registry_handlers!(OutputState, SeatState);
 }
-delegate_output!(State);
-delegate_seat!(State);
+// SCTK 0.21 dispatches SeatData/OutputData through its shared Dispatch2 adapter.
+smithay_client_toolkit::delegate_dispatch2!(State);
 delegate_registry!(State);
 
 impl Drop for State {
@@ -523,5 +570,31 @@ impl Drop for State {
             power.proxy.destroy();
         }
         let _ = self.connection.flush();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use smithay_client_toolkit::{globals::GlobalData, output::OutputData, seat::SeatData};
+    use wayland_protocols::xdg::xdg_output::zv1::client::{
+        zxdg_output_manager_v1::ZxdgOutputManagerV1, zxdg_output_v1::ZxdgOutputV1,
+    };
+
+    #[test]
+    fn pinned_sctk_registry_seat_output_dispatch_bounds() {
+        fn delegated<I: Proxy, Data>()
+        where
+            State: Dispatch<I, Data>,
+        {
+        }
+        delegated::<wl_seat::WlSeat, SeatData>();
+        delegated::<wl_output::WlOutput, OutputData>();
+        delegated::<ZxdgOutputV1, OutputData>();
+        delegated::<ZxdgOutputManagerV1, GlobalData>();
+        delegated::<
+            wayland_client::protocol::wl_registry::WlRegistry,
+            wayland_client::globals::GlobalListContents,
+        >();
     }
 }

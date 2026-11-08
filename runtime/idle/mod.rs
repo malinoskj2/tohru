@@ -2,10 +2,12 @@
 //! process-owned machine; native Pleamar scenes own fades and authentication.
 //! This module never connects to a display/bus or executes system actions.
 
+pub mod configuration;
 pub mod cookies;
 pub mod delay;
 pub mod input;
 pub mod logind_state;
+pub mod teardown;
 
 use std::time::{Duration, Instant};
 
@@ -196,6 +198,9 @@ impl Policy {
     /// Invalid timeout/fade leaves current policy and subscriptions unchanged.
     pub fn configure(&mut self, config: Config) -> Result<Vec<Effect>, Error> {
         validate_config(config)?;
+        if config == self.config {
+            return Ok(Vec::new());
+        }
         self.config = config;
         Ok(self.resumed())
     }

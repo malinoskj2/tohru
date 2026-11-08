@@ -101,3 +101,15 @@ PATH. Fixture code preflights setsid and pins XDG_DATA_DIRS to its own directory
 S owns final startup/CLI/root/setting integration; this is not complete launcher
 visual/physical/performance parity; native catalog/caret/files/effects limits are
 accepted and no longer block implementation.
+
+Native focus ownership follows direct ordered Lua `focus`/`blur` callbacks.
+The retained `launcher_focus_armed` fact resets on each closed-to-open cycle/hide and arms only
+when a visible cycle actually gains keyboard focus. Blur always clears ownership
+and dismisses only an armed visible cycle. This prevents a removed layer's late
+leave from closing a replacement before it ever gained focus; a genuine blur
+after focus still dismisses. Repeated open while visible retains the same role's
+ownership because it does not promise a new native enter. Visible VM reload
+retains ownership. The scene has
+no unguarded asynchronous `on blur -> launcher_close` forwarding rule: native
+render batches focus triggers by presence and its emitted signal can arrive
+after a new CLI open. No timer, focus backend or runtime patch is involved.

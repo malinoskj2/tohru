@@ -142,13 +142,26 @@ impl Service {
     }
 }
 
-impl Drop for Service {
-    fn drop(&mut self) {
+impl Service {
+    pub(super) fn stop(&mut self) -> Result<()> {
+        let mut failures = Vec::new();
         if let Some(connection) = self.connection.take() {
-            let _ = connection.close();
+            if let Err(error) = connection.close() {
+                failures.push(format!("close ScreenSaver bus: {error}"));
+            }
         }
         if let Some(thread) = self.departures.take() {
-            let _ = thread.join();
+            if thread.join().is_err() {
+                failures.push("ScreenSaver client watcher panicked".into());
+            }
         }
+        anyhow::ensure!(failures.is_empty(), "{}", failures.join("; "));
+        Ok(())
+    }
+}
+
+impl Drop for Service {
+    fn drop(&mut self) {
+        let _ = self.stop();
     }
 }

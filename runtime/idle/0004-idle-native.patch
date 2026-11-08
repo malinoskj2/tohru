@@ -7,34 +7,40 @@
 +}
 +
 +pub(crate) fn acknowledge_idle_sleep() -> bool {
-+    #[cfg(target_os = "linux")]
++    #[cfg(all(target_os = "linux", feature = "luau"))]
 +    return wayland::acknowledge_idle_sleep();
-+    #[cfg(not(target_os = "linux"))]
++    #[cfg(not(all(target_os = "linux", feature = "luau")))]
 +    false
  }
  
  pub(crate) fn native_lock_held() -> bool {
 --- a/src/platform/wayland.rs
 +++ b/src/platform/wayland.rs
-@@ -1660,6 +1660,14 @@
+@@ -1660,6 +1660,19 @@
      LOCKS.get().is_some_and(|c| c.engaged.lock().is_ok_and(|engaged| engaged.as_ref().is_some_and(|e| e.cycle.active())))
  }
  
 +pub(crate) fn acknowledge_idle_sleep() -> bool {
-+    let Some(c) = LOCKS.get() else { return false; };
-+    let Ok(engaged) = c.engaged.lock() else { return false; };
-+    let Some(_) = engaged.as_ref().filter(|e| e.cycle.held() && e.lock.is_locked()) else { return false; };
-+    crate::tohru_idle::native_held();
-+    true
++    #[cfg(feature = "luau")]
++    {
++        let Some(c) = LOCKS.get() else { return false; };
++        let Ok(engaged) = c.engaged.lock() else { return false; };
++        let Some(_) = engaged.as_ref().filter(|e| e.cycle.held() && e.lock.is_locked()) else { return false; };
++        crate::tohru_idle::native_held();
++        true
++    }
++    #[cfg(not(feature = "luau"))]
++    false
 +}
 +
  pub(crate) fn native_lock_held() -> bool {
      LOCKS.get().is_some_and(|c| c.engaged.lock().is_ok_and(|engaged| engaged.as_ref().is_some_and(|e| e.cycle.held() && e.lock.is_locked())))
  }
-@@ -2413,6 +2421,7 @@
+@@ -2413,6 +2426,8 @@
              let Ok(engaged) = c.engaged.lock() else { return };
              let Some(e) = engaged.as_ref().filter(|e| e.cycle.active() && e.lock.is_locked()) else { return };
              e.cycle.confirm();
++            #[cfg(feature = "luau")]
 +            crate::tohru_idle::native_held();
          } else { return; }
          println!("lock   · the session is locked");

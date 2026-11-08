@@ -25,9 +25,11 @@ root = pathlib.Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory(prefix="capture-native-source-", dir=root / ".tmp") as temp:
     temp = pathlib.Path(temp)
     (temp / "src/platform").mkdir(parents=True)
-    for relative in ["src/text.rs", "src/scene.rs", "src/render.rs", "src/logic_luau.rs", "src/platform/capture.rs", "src/platform/wayland.rs"]:
+    (temp / "src/language").mkdir()
+    (temp / "tests").mkdir()
+    for relative in ["src/text.rs", "src/scene.rs", "src/render.rs", "src/logic_luau.rs", "src/platform/capture.rs", "src/platform/wayland.rs", "src/gpu.rs", "src/shape.wgsl", "src/language/vocabulary.rs", "src/platform/mod.rs"]:
         shutil.copyfile(args.source / relative, temp / relative)
-    for patch in ["runtime/wallpaper/image-reset.patch", "runtime/capture/native.patch", "runtime/capture/image-lifecycle.patch", "runtime/capture/output-events.patch", "runtime/capture/layout-link.patch"]:
+    for patch in ["runtime/wallpaper/catalog.patch", "runtime/wallpaper/image-reset.patch", "runtime/wallpaper/fit.patch", "runtime/capture/native.patch", "runtime/capture/layout-link.patch", "runtime/capture/image-lifecycle.patch", "runtime/wallpaper/raster-limits.patch", "runtime/wallpaper/presets.patch", "runtime/capture/output-events.patch"]:
         subprocess.run(["git", "apply", "--unsafe-paths", f"--directory={temp}", str(root / patch)], check=True)
     wayland = (temp / "src/platform/wayland.rs").read_text()
     handlers = wayland[wayland.index("impl OutputHandler for State"):]
@@ -44,7 +46,7 @@ with tempfile.TemporaryDirectory(prefix="capture-native-source-", dir=root / ".t
         assert "self.require_copy()?;" in body and body.index("self.require_copy()?;") < body.index("self.output(")
     print("Readonly topology connects without capture protocol; pixel/freeze require copy before protocol use", flush=True)
     logic = (temp / "src/logic_luau.rs").read_text()
-    assert 'check_service_permission(&c, &name, capture_query_mutates(&name))?' in logic
+    assert 'check_service_permission(&c, &name, query_mutates(&name))?' in logic
     permission = r'''
 use std::sync::Mutex;
 mod mlua {pub type Result<T> = std::result::Result<T,String>;}
@@ -64,11 +66,11 @@ fn denied(_: &Mutex<Shared>,_:&str,_:&str)->String{"denied".into()}
  }
 }
 '''
-    permission += function(logic, "fn capture_query_mutates(") + "\n" + function(logic, "fn check_service_permission(")
+    permission += function(logic, "fn capture_query_mutates(") + "\n" + function(logic, "fn query_mutates(") + "\n" + function(logic, "fn check_service_permission(")
     permission += r'''
 fn can(declared:&[&str],name:&str)->bool{
  let c=Mutex::new(Shared{permissions:Permissions{services:declared.iter().map(|s|s.to_string()).collect()}});
- check_service_permission(&c,name,capture_query_mutates(name)).is_ok()
+ check_service_permission(&c,name,query_mutates(name)).is_ok()
 }
 #[test]fn readonly_capture_grant_does_not_gain_save_copy_or_release(){
  assert!(can(&["capture"],"capture.outputs"));assert!(can(&["capture"],"capture.freeze"));
@@ -77,6 +79,7 @@ fn can(declared:&[&str],name:&str)->bool{
  assert!(can(&["capture.*"],"capture.region"));assert!(can(&["capture.*"],"capture.outputs"));
 }
 #[test]fn catalog_query_uses_native_base_read_permission(){
+ assert!(!can(&["wallpaper"],"wallpaper.preset"));assert!(can(&["wallpaper.preset"],"wallpaper.preset"));assert!(can(&["wallpaper.*"],"wallpaper.preset"));
  assert!(!can(&["wallpaper.catalog"],"wallpaper.catalog"));assert!(can(&["wallpaper"],"wallpaper.catalog"));
 }
 '''
@@ -90,7 +93,7 @@ fn can(declared:&[&str],name:&str)->bool{
 use std::collections::{HashMap,HashSet};
 use std::sync::{Arc,Mutex,mpsc::{channel,Sender}};
 mod scene {#[derive(Clone)]pub struct TextId(pub u16);}
-#[derive(Clone,Copy,Debug)]struct AtlasSlot{x:u32,y:u32,width:u32,height:u32,page:u32}
+#[derive(Clone,Copy,Debug)]struct AtlasSlot{x:u32,y:u32,width:u32,height:u32,page:u32,source_size:(u32,u32)}
 #[derive(Clone)]enum ImageSource{Live(scene::TextId),File}
 type LiveKey=(String,(u32,u32));
 enum WorkingKey{Live(LiveKey)}
@@ -134,26 +137,30 @@ impl Texts{
  platform::FRAMES.lock().unwrap().get_or_insert_with(HashMap::new).insert(token.into(),Arc::new(frame));
  assert_eq!(live_name(token),(token,""));assert_eq!(live_name("/same.png?2"),("/same.png","2"));
  let(tx,_rx)=channel();let mut t=Texts::new(tx);t.sources=vec![(ImageSource::Live(scene::TextId(0)),(0,0))];
- let old=AtlasSlot{x:0,y:0,width:2,height:1,page:9};
+ let old=AtlasSlot{x:0,y:0,width:2,height:1,page:9,source_size:(2,1)};
  t.live.insert(("capture:NEW-SNAPSHOT?7".into(),(0,0)),Some(old));
  t.last_live.insert(0,(("capture:NEW-SNAPSHOT?7".into(),(0,0)),old));
  assert!(t.image(0,&[token.into()]).is_none());assert!(t.last_live.is_empty());
  let mut workshop=Typesetter{last_picture:10,pending_pictures:vec![],shelves:Shelves{most:8192}};
  let slot=workshop.capture_picture(token,None).unwrap();assert_eq!((slot.width,slot.height),(2,1));
+ assert_eq!(slot.source_size,(2,1));
  assert_eq!(workshop.pending_pictures[0].2,vec![255,0,0,255,0,255,0,255]);
+ let mut reduced=Typesetter{last_picture:20,pending_pictures:vec![],shelves:Shelves{most:1}};
+ let slot=reduced.capture_picture(token,None).unwrap();
+ assert_eq!((slot.width,slot.height),(1,1));assert_eq!(slot.source_size,(2,1));
  platform::FRAMES.lock().unwrap().as_mut().unwrap().remove(token);
  assert!(workshop.capture_picture(token,None).is_none());
 }
 #[test]fn released_capture_late_delivery_cannot_resurrect_pixels(){
  let(tx,_)=channel();let mut t=Texts::new(tx);
- let name="capture:ALREADY-RELEASED?77";let slot=AtlasSlot{x:0,y:0,width:2,height:1,page:22};
+ let name="capture:ALREADY-RELEASED?77";let slot=AtlasSlot{x:0,y:0,width:2,height:1,page:22,source_size:(2,1)};
  t.receive(Parcel{delivery:Delivery::Live{name:name.into(),size:(0,0),slot:Some(slot),generation:1},
  pending_upload:vec![],pending_fit:vec![],pending_pictures:vec![(22,(2,1),vec![255;8])],exhausted:false,height:2048,most:8192});
  assert!(t.live.is_empty()&&t.pending_pictures.is_empty()&&t.pictures.is_empty());
 }
 #[test]fn late_rebuild_keeps_regular_images_but_discards_released_capture(){
  let(tx,_)=channel();let mut t=Texts::new(tx);
- let capture=AtlasSlot{x:0,y:0,width:2,height:1,page:22};let regular=AtlasSlot{page:23,..capture};
+ let capture=AtlasSlot{x:0,y:0,width:2,height:1,page:22,source_size:(2,1)};let regular=AtlasSlot{page:23,..capture};
  let mut live=HashMap::new();live.insert(("capture:REBUILD-RELEASED?78".into(),(0,0)),(Some(capture),String::new()));
  live.insert(("/still.png".into(),(0,0)),(Some(regular),String::new()));
  let snapshot=Snapshot{layouts:HashMap::new(),images:vec![],animations:vec![],live};

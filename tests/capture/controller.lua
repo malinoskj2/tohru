@@ -25,6 +25,7 @@ local function harness(configure)
             assert(not fact.capture_open, "overlay must stay closed until every frame exists")
             assert(text.capture_output_0 == "" and text.capture_output_1 == "", "routes must remain empty during freeze")
             state.freezes=state.freezes+1
+            if state.during_freeze then state.during_freeze(state) end
             if state.freeze_failure == state.freezes then error("freeze failed") end
             return "capture:" .. args[1] .. "?" .. state.freezes
         end
@@ -43,8 +44,8 @@ local function harness(configure)
         error("unexpected native query: " .. name)
     end}
     if configure then configure(state) end
-    state.controller=factory(function() return state.settings end, function(message, failure)
-        state.notices[#state.notices+1]={message=message, failure=failure}
+    state.controller=factory(function() return state.settings end, function(message, failure, result)
+        state.notices[#state.notices+1]={message=message, failure=failure, result=result}
         if state.notify_failure then error("notification service unavailable") end
     end)
     return state
@@ -142,5 +143,41 @@ check("lost output metadata cancels and reload releases preserved tokens", funct
     state.layouts={}
     state.handlers.capture_output_changed()
     assert(not fact.capture_open and #state.released == 3 and text.capture_error:find("unavailable"))
+end)
+check("layout changing during freeze releases all frames before any overlay opens", function()
+    local state=harness(function(s)
+        s.during_freeze=function(current)
+            if current.freezes == 1 then
+                current.layouts={output("LEFT", -90, 100), output("RIGHT", 10, 200)}
+            end
+        end
+    end)
+    assert(not state.controller.open() and state.freezes == 2 and #state.released == 2)
+    assert(not fact.capture_open and text.capture_output_0 == "" and text.capture_error:find("changed while freezing"))
+end)
+check("notification callback receives exact native success/partial/failure data", function()
+    local cases={
+        {saved=true,copied=false,durable=true,path="/pictures/saved.png",save_error="",clipboard_error=""},
+        {saved=false,copied=true,durable=false,path="",save_error="",clipboard_error=""},
+        {saved=true,copied=true,durable=true,path="/pictures/both.png",save_error="",clipboard_error=""},
+        {saved=true,copied=true,durable=false,path="/pictures/uncertain.png",save_error="directory sync failed",clipboard_error=""},
+        {saved=false,copied=true,durable=false,path="",save_error="disk full",clipboard_error=""},
+        {saved=true,copied=false,durable=true,path="/pictures/partial.png",save_error="",clipboard_error="clipboard unavailable"},
+        {saved=false,copied=false,durable=false,path="",save_error="disk full",clipboard_error="clipboard unavailable"},
+    }
+    for _, result in ipairs(cases) do
+        local state=harness(function(s) s.result=result end)
+        assert(state.controller.open()); drag(state)
+        local received=state.notices[1].result
+        -- Same actual native table; classification need not parse the English message.
+        assert(received == result and received.saved == result.saved and received.copied == result.copied)
+        assert(received.durable == result.durable and received.save_error == result.save_error and received.clipboard_error == result.clipboard_error)
+    end
+    local state=harness(function(s) s.export_failure=true end)
+    assert(state.controller.open()); drag(state)
+    assert(state.notices[1].result == nil)
+    state=harness(function(s) s.result={unexpected=true} end)
+    assert(state.controller.open()); drag(state)
+    assert(state.notices[1].result == nil)
 end)
 print("capture production controller: " .. count .. " cases passed")

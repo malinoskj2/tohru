@@ -87,11 +87,24 @@ return function(make_usage, search, geometry, output)
         model.launcher_tiles = tiles
     end
     local function show()
+        -- Repeated open keeps the same focused native role: no fresh enter is
+        -- promised. A closed-to-open cycle must establish ownership anew.
+        if not fact.launcher_visible then fact.launcher_focus_armed = false end
         tab, selected, scroll, query = 0, -1, 0, ""
         text.launcher_query = ""
         close_menu(); rebuild(); if output then output.open() end; fact.launcher_visible = true
     end
-    local function hide() fact.launcher_visible = false; close_menu(); if output then output.close() end end
+    local function hide() fact.launcher_focus_armed = false; fact.launcher_visible = false; close_menu(); if output then output.close() end end
+    -- Native focus events preserve arrival order. A removed layer can report
+    -- its leave after the next open; it must not dismiss an as-yet unfocused
+    -- replacement. Reset on closed-to-open/hide; preserve repeated visible
+    -- open and VM reload ownership because neither promises a fresh enter.
+    on("focus", function() if fact.launcher_visible then fact.launcher_focus_armed = true end end)
+    on("blur", function()
+        local owned = fact.launcher_focus_armed
+        fact.launcher_focus_armed = false
+        if owned and fact.launcher_visible then hide() end
+    end)
     on("launcher_open", show)
     on("launcher_close", hide)
     on("launcher_toggle", function() if fact.launcher_visible then hide() else show() end end)

@@ -1620,6 +1620,7 @@ dependencies = [
  "resvg",
  "serde_json",
  "smithay-client-toolkit",
+ "thiserror 2.0.20",
  "tohru-shell",
  "typed-arena",
  "wayland-client",

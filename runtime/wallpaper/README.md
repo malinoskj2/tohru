@@ -2,7 +2,9 @@
 
 `mod.rs` belongs to the existing tohru-shell library; `probe.rs` is its thin
 `tohru-wallpaper-probe` binary. `native.rs` installs as the pinned runtime's
-`src/tohru_wallpaper.rs`; `catalog.patch` adds only the public query dispatch.
+`src/tohru_wallpaper/mod.rs` with `presets.rs`/`raster.rs` beside it;
+`catalog.patch` adds the read query dispatch. The separately granted fixed preset
+mutation is documented in PRESETS.md.
 This is a wallpaper-only operation, not an arbitrary filesystem/command service.
 
 S shared hooks (W does not modify shared files):
@@ -13,7 +15,8 @@ S shared hooks (W does not modify shared files):
    and `serde_json=1.0.151` dependencies. No new package/crate. Root existing
    thiserror2.0.20 supplies typed catalog errors.
 3. During native preparation, copy the root module/tests/probe with their paths,
-   install `native.rs` as `src/tohru_wallpaper.rs`, add `mod tohru_wallpaper;` and
+   install `native.rs` as `src/tohru_wallpaper/mod.rs` with the two sibling modules
+   (replace the earlier single-file installation), add `mod tohru_wallpaper;` and
    apply `catalog.patch`. Native already has libc/serde_json; no decoder or
    playback dependencies are needed for this catalog.
 4. Build/install probe **next to the actual Pleamar executable**, including Nix
@@ -84,3 +87,47 @@ fixture beside it, and exercises actual query→probe catalog/alias/missing-file
 results. These checks use local metadata; no display, decoder or native role is
 started. Rust1.85 is declared by this fixture, but the installed toolchain is
 newer, so an actual MSRV toolchain check remains distinct.
+
+## Bounded native raster worker (source checkpoint)
+
+Apply `raster-limits.patch` **after capture/image-lifecycle.patch**, with the
+previous order image-reset → fit → capture native/layout-link/image-lifecycle.
+Install raster.rs as native `src/tohru_wallpaper/raster.rs`; text.rs declares that
+private module directly. Native needs direct thiserror2.0.20 (already requested
+for video); foundation dependencies/MSRV stay unchanged. Native cfg(test) needs
+`tests/wallpaper/raster.rs` at its corresponding tests path.
+
+The actual opened descriptor is checked regular and ≤64MiB; Linux O_NONBLOCK
+avoids FIFO-open blocking if a path changes. Ordinary symlink aliases are followed
+as before, then fstat validates the opened inode. A take(64MiB+1) read rejects
+concurrent growth and captures immutable bytes. Header and decode both use that
+same byte slice with the existing image0.25.10 reader: ≤32Mi source pixels,
+≤16384 per side, decoder allocation limit256MiB. Worker pre-sizing reads are also
+bounded and are not trusted as decode authorization. Static/live cache metadata
+comes from decoded bytes, so a changed path cannot retain the previous file's
+source dimensions. SVG uses the same bounded input read; no new SVG decoder is
+added, and retained wallpaper formats stay PNG/JPEG/WebP (video GIF stays libmpv).
+
+Native named-file animations use the same bounded input/header and library
+limits; retained source frames are bounded to4096 frames /256MiB before existing
+output decimation. Over-budget animations follow the native failure/static
+fallback path. The byte input, decoder allocation and retained-frame bounds are
+separate; conversion/resize buffers, decoder internals and aggregate RSS/VRAM are
+not claimed to fit one256MiB process cap. Filesystem/codec calls may still block;
+no kernel I/O or decoder execution deadline is claimed.
+
+Source-only19-patch application plus source/legacy/metadata guards pass via
+`tests/capture/patch-stack.py`. New `tests/wallpaper/raster.rs` cases cover actual
+read growth, geometry/allocation policy and malformed decode, but no Rust/native
+compile or image decode has run. Source tests do not close actual special-file,
+replacement/growth, codec allocation, animated-budget and pixel/runtime gates.
+
+## Fixed built-in presets
+
+See PRESETS.md for the new explicit wallpaper.preset operation, closed domain,
+fixed cache bounds/atomicity, source-only evidence, required namespace/test copy
+changes, production permissions and root callback metadata. Add preset.rs to the
+foundation module copies and its unit test to foundation tests/wallpaper. Native
+adapter/cache tests are pending; no PNG/media/cache generation has run. Updated
+native-adapter check_cpu.py now needs native Rust1.88/image PNG and is not a claim
+that those dependencies enter foundation Rust1.85.

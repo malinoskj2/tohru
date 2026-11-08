@@ -3,7 +3,7 @@
 Authorized native Settings gap fix, separate from0002 native lock security.
 `0003-window-lifecycle.patch` is based on pinned upstream +0001 settings +current
 0002 including L32600b8 publication ordering, per-face liveness and owning leases.
-The composed patch follows workspace/catalog/image patches in shared prepare/Nix;
+The composed patch follows workspace/catalog/image/namespace patches in shared prepare/Nix;
 its guard-overlap source delta is awaiting review. It is not yet natively compiled,
 GPU-tested or accepted. No new package/dependency/helper or owner.
 

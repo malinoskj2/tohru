@@ -10,7 +10,7 @@
  mod skill;
 --- a/src/scene.rs
 +++ b/src/scene.rs
-@@ -2444,6 +2444,8 @@
+@@ -2446,6 +2446,8 @@
      /// plugged in.
      Sheet(Box<crate::gpu::NewSheet>),
      SheetGone(u32),
@@ -305,7 +305,7 @@
 +                self.placed.push(Placed { conditional_window, id, which, role, output: output.clone(), viewport, _fractional_scale: fractional_scale, scale: 1.0, size: (0, 0), pending: Some((surface, name.clone(), mhz)), backdrop });
                  continue;
              }
-             let layer = self.layers.create_layer_surface(qh, wl, level, Some("pleamar"), Some(output));
+             let layer = self.layers.create_layer_surface(qh, wl, level, Some(p.layer_namespace.as_deref().unwrap_or("pleamar")), Some(output));
 @@ -1373,7 +1443,7 @@
              layer.commit();
              let surface = self.wgpu_surface_for(layer.wl_surface());

@@ -1,7 +1,21 @@
 part SoundState {
- permissions { services: "audio", "audio.step", "audio.volume", "audio.mute" }
+ permissions { services: "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.app_volume", "audio.app_mute" }
  model sound_outputs max 32 { id: number; name: text; default: bool }
- service audio as audio { volume: number = -1; muted: bool; outputs: sound_outputs }
+ model sound_inputs max 32 { id: number; name: text; default: bool }
+ model sound_apps max 64 { id: number; name: text; title: text; volume: number; muted: bool; playing: bool }
+ // Exactly one whole-report native audio watch populates these fields/models.
+ fact audio.volume = -1
+ fact audio.muted = false
+ fact audio.input = -1
+ fact audio.input_muted = false
+ fact sound_details = false
+ fact sound_tab = 0
+ fact sound_list_page = 0
+ fact sound_row_focus = -1
+ fact sound_row_id = -1
+ fact sound_input_ready = false
+ fact sound_input_dragging = false
+ fact sound_input_requested = 0
  fact audio_failed = false
  fact sound_open = false
  fact sound_focus = 1
@@ -17,7 +31,24 @@ part SoundState {
  event audio_set ->
  event audio_flush ->
  event audio_mute ->
+ event sound_details_toggle ->
+ event sound_tab ->
+ event sound_list_page ->
+ event sound_tab_next ->
+ event sound_row_move ->
+ event sound_details_step ->
+ event sound_details_activate ->
+ event audio_output_select ->
+ event audio_input_set ->
+ event audio_input_up ->
+ event audio_input_down ->
+ event audio_input_mute ->
+ event audio_app_up ->
+ event audio_app_down ->
+ event audio_app_mute ->
  event audio_report ->
  image sound_speaker = file "speaker.svg", 16, 16
+ image sound_mic = file "mic.svg", 16, 16
+ image sound_mic_off = file "mic-off.svg", 16, 16
  image sound_muted = file "muted.svg", 16, 16
 }

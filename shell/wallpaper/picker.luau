@@ -1,6 +1,12 @@
 -- One settings owner persists proposals; this module owns transient picker state only.
-return function(wallpaper, read, commit, save_folder, connected_outputs)
+return function(wallpaper, read, commit, save_folder, connected_outputs, preset_result)
     local PAGE = 8
+    local presets = {"spectrum","dusk","tide","ember","moss","solid"}
+    local labels = {"Spectrum","Dusk","Tide","Ember","Moss","Solid"}
+    local palettes = {mocha=true,macchiato=true,rose_pine=true,nord=true,gruvbox=true,tokyo_night=true,dracula=true,everforest=true}
+    local function preset_index(name)
+        for i,preset in ipairs(presets) do if name==preset then return i end end
+    end
     local files, filtered, outputs, page, selection, output_index = {}, {}, {}, 0, 0, 1
     local loaded_folder
     local function fail(message) text.wallpaper_picker_error = message or "" end
@@ -14,7 +20,10 @@ return function(wallpaper, read, commit, save_folder, connected_outputs)
             if count > 32 then error("Wallpaper assignment capacity is32 outputs") end
             assignments[output] = path
         end
-        return {assignments=assignments,folder=value.folder,count=count}
+        if value.preset~=nil and not preset_index(value.preset) then error("Invalid accepted wallpaper preset") end
+        local palette=value.palette or "mocha"
+        if not palettes[palette] then error("Invalid accepted wallpaper palette") end
+        return {assignments=assignments,folder=value.folder,count=count,preset=value.preset,palette=palette}
     end
     local function target()
         local output = outputs[output_index]
@@ -45,6 +54,9 @@ return function(wallpaper, read, commit, save_folder, connected_outputs)
                 kind=wallpaper.validate("catalog",path), current=output and value.assignments[output.name] == path or false}
         end
         model.wallpaper_picker_files = visible
+        local choices={}
+        for i,name in ipairs(presets) do choices[i]={row_id=i-1,name=labels[i],selected=value.preset==name} end
+        model.wallpaper_picker_presets=choices
     end
     local function refresh_outputs(value)
         local previous = outputs[output_index] and outputs[output_index].name
@@ -81,6 +93,7 @@ return function(wallpaper, read, commit, save_folder, connected_outputs)
         return value
     end
     local function attempt(action)
+        text.wallpaper_picker_warning=""
         local ok, err = pcall(action)
         fail(ok and "" or tostring(err))
         return ok
@@ -142,6 +155,48 @@ return function(wallpaper, read, commit, save_folder, connected_outputs)
             rows()
         end)
     end
+    local function publish_preset(value, output, name)
+        wallpaper.validate(output,"/validation.png")
+        if not preset_index(name) then error("Choose a built-in wallpaper preset") end
+        if not value.assignments[output] and value.count>=32 then error("Wallpaper assignment capacity is32 outputs; nothing was changed") end
+        local result=sys.ask("wallpaper.preset",name,value.palette)
+        if type(result)~="table" or type(result.path)~="string" or type(result.durable)~="boolean" or type(result.cached)~="boolean"
+            or wallpaper.validate(output,result.path)~="image" or result.path:sub(-4)~=".png" then error("Invalid native fixed-preset result") end
+        value.assignments[output]=result.path
+        commit(value.assignments,name) -- Ordinary whole-map settings acceptance; preset metadata is atomic too.
+        if not result.durable then text.wallpaper_picker_warning="Preset ready; disk durability could not be confirmed" end
+        if preset_result then pcall(preset_result,result) end
+    end
+    local function apply_preset(index)
+        return attempt(function()
+            if type(index)~="number" or index~=math.floor(index) or index<0 or index>=6 then error("Invalid wallpaper preset selection") end
+            publish_preset(settings(),target(),presets[index+1]);rows()
+        end)
+    end
+    local function preset(output,name)
+        return attempt(function() publish_preset(settings(),output,name);rows() end)
+    end
+    local function rotate(output)
+        return attempt(function()
+            wallpaper.validate(output,"/validation.png") -- Root supplies its actual owned output; never guess.
+            local value=settings()
+            if not value.assignments[output] and value.count>=32 then error("Wallpaper assignment capacity is32 outputs; nothing was changed") end
+            if value.folder=="" then
+                local index=preset_index(value.preset or "spectrum")
+                publish_preset(value,output,presets[index%6+1])
+            else
+                local current=catalog(value.folder)
+                if #current==0 then error("No pictures or videos in the configured wallpaper folder") end
+                for i=#current,2,-1 do local j=math.random(i);current[i],current[j]=current[j],current[i] end
+                local chosen=current[1]
+                for _,path in ipairs(current) do if path~=value.assignments[output] then chosen=path;break end end
+                value.assignments[output]=chosen
+                commit(value.assignments)
+            end
+            rows()
+        end)
+    end
+    on("wallpaper_picker_preset",apply_preset)
     on("wallpaper_picker_open_request",open)
     on("wallpaper_picker_close",function() fact.wallpaper_picker_open=false end)
     on("wallpaper_picker_refresh",function() attempt(function() loaded_folder=nil; refresh() end) end)
@@ -149,7 +204,18 @@ return function(wallpaper, read, commit, save_folder, connected_outputs)
         attempt(function()
             local folder=text.wallpaper_picker_folder
             local next_files=catalog(folder)
-            save_folder(folder)
+            local value=settings()
+            local proposal
+            if folder~=value.folder and folder~="" then
+                if #next_files==0 then error("Choose a folder containing supported pictures or videos") end
+                local output=target()
+                if not value.assignments[output] and value.count>=32 then error("Wallpaper assignment capacity is32 outputs; nothing was changed") end
+                for i=#next_files,2,-1 do local j=math.random(i);next_files[i],next_files[j]=next_files[j],next_files[i] end
+                local chosen=next_files[1]
+                for _,path in ipairs(next_files) do if path~=value.assignments[output] then chosen=path;break end end
+                value.assignments[output]=chosen;proposal=value.assignments
+            end
+            save_folder(folder,proposal) -- Folder and initial rotation share one accepted configuration.
             files,loaded_folder,page,selection=next_files,folder,0,0
             rows()
         end)
@@ -192,5 +258,5 @@ return function(wallpaper, read, commit, save_folder, connected_outputs)
         end)
     end)
     on("text:wallpaper_picker_search",function() page,selection=0,0; attempt(rows) end)
-    return {open=open, refresh=function() return attempt(refresh) end, choose=choose, randomize=randomize}
+    return {open=open, refresh=function() return attempt(refresh) end, choose=choose, randomize=randomize, apply_preset=apply_preset, preset=preset, rotate=rotate}
 end

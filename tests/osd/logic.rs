@@ -74,6 +74,17 @@ fn observed_changes_hold_cancel_and_reload_without_polling_or_commands() {
         osd.observe(); assert(count()==1)
         for id, callback in pairs(timers) do callback(); timers[id]=nil end
         assert(not fact.osd_open and count()==0)
+        fact.sound_input_ready=true;fact['audio.input']=0;fact['audio.input_muted']=false
+        fact['sound_inputs.count']=1;fact['sound_inputs.0.id']=0;fact['sound_inputs.0.default']=true
+        text['sound_inputs.0.name']='Private microphone'
+        osd.observe();assert(not fact.osd_open, 'first microphone report establishes baseline')
+        fact['audio.input']=0.05;osd.observe()
+        assert(fact.osd_open and fact.osd_input and not fact.osd_muted and text.osd_label=='5')
+        assert(text.osd_device=='Private microphone')
+        fact['audio.input_muted']=true;osd.observe();assert(fact.osd_muted and text.osd_label=='Mute')
+        fact['audio.volume']=0.8;osd.observe();assert(not fact.osd_input)
+        fact['sound_inputs.0.id']=9;osd.observe();assert(fact.osd_input, 'native device switch is observed')
+        fact.sound_input_ready=false;osd.observe();assert(not fact.osd_open)
     "#,
     )
     .exec()

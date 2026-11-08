@@ -1,0 +1,37 @@
+part RootServiceControls {
+    image root_wifi = file "service-assets/wifi.svg", 16, 16
+    image root_wifi_off = file "service-assets/wifi-off.svg", 16, 16
+    image root_bluetooth = file "service-assets/bluetooth.svg", 16, 16
+    // Source title is centred within an actually available rectangle. Extra
+    // controls yield first, then media uses only space beyond the title.
+    let root_left = 112 + if(bar_mooncoil, 29, 0) + if(ws_available, ws_width, 0) + 16
+    let root_core_right = screen.width - 338
+    let root_service_count = clamp(floor((root_core_right - root_left - 16) / 32), 0, 4)
+    let root_right = root_core_right - root_service_count * 32
+    let root_title_limit = min(360, max(0, 2 * min(screen.width / 2 - root_left, root_right - screen.width / 2) - 16))
+    let root_title_width = min(root_title_limit, bar_title_measure.width + if(bar_has_icon and root_title_limit >= 21, 20, 0))
+    let root_media_edge = root_right - 12
+    let root_media_room = max(0, root_media_edge - max(root_left, screen.width / 2 + root_title_width / 2 + 12))
+    follow bar_title_cap = root_title_limit
+    follow bar_media_right_inset = screen.width - root_media_edge
+    follow bar_media_cap = if(root_media_room >= 40, min(180, root_media_room), 0)
+    follow net_button_x = screen.width - 356
+    follow bt_button_x = screen.width - 388
+
+    zone box root_network { from: screen.width - 370, 2; size: 28, 27; active: root_service_count >= 1; cursor: pointer; label: "Network" }
+    image root_wifi { at: screen.width - 364, 7.5; size: 16, 16; tint: #cdd6f4; show: root_service_count >= 1 and net.wifi }
+    image root_wifi_off { at: screen.width - 364, 7.5; size: 16, 16; tint: #a6adc8; show: root_service_count >= 1 and not net.wifi }
+    on press root_network { emit network_toggle }
+
+    zone box root_bluetooth_hit { from: screen.width - 402, 2; size: 28, 27; active: root_service_count >= 2; cursor: pointer; label: "Bluetooth" }
+    image root_bluetooth { at: screen.width - 396, 7.5; size: 16, 16; tint: if(bt.powered, #cdd6f4, #a6adc8); show: root_service_count >= 2 }
+    on press root_bluetooth_hit { emit bluetooth_toggle }
+
+    zone box root_information { from: screen.width - 434, 2; size: 28, 27; active: root_service_count >= 3; cursor: pointer; label: "System information" }
+    text "ⓘ" { at: screen.width - 420, 15.5; anchor: center; size: 16; color: #cdd6f4; show: root_service_count >= 3 }
+    on press root_information { emit info_toggle }
+
+    zone box root_about { from: screen.width - 466, 2; size: 28, 27; active: root_service_count >= 4; cursor: pointer; label: "About Tohru" }
+    image bar_mark { at: screen.width - 460, 8; size: 15, 15; tint: #cdd6f4; show: root_service_count >= 4 }
+    on press root_about { emit about_toggle }
+}

@@ -11,14 +11,21 @@ After coordinator GPU allocation, on private compositor and private buses only:
 
 ```sh
 pleamar --scene shell/session/menu.plm --answer-as tohru-session --no-hud
-pleamar --scene shell/lock/lock.plm --answer-as tohru-lock --no-hud
+TOHRU_LOCKER=1 TOHRU_SHELL=0 pleamar --scene shell/lock/lock.plm --answer-as tohru-lock --no-hud
 pleamar --scene shell/polkit/polkit.plm --answer-as tohru-polkit --no-hud
 ```
 
 Run each command in its own dedicated process. Polkit must use a private system
 bus too: its service connects to the system authority. Never launch those commands
 against the user's display or buses. See OWNERSHIP.md for required lifetimes.
-There is no production launcher/CLI/Nix integration in this slice.
+The shared package now supplies `tohru-locker-run` for this dedicated launch
+path, setting TOHRU_LOCKER=1 and clearing inherited TOHRU_SHELL. It requires the
+new role-install binding recipe (frozen47 predates that selector), still pending
+native typing/private acceptance. The selector installs only existing idle guard
+bindings, independently of ordinary settings/TOML; it is config selection, never
+native lock/auth authority. No service/autostart or safety acceptance is implied.
+The ordinary bar/session CLI sends fixed menu requests to an already running
+`tohru-session`; it never spawns/imports that role.
 
 | Native name | Request | Observable status |
 | --- | --- | --- |

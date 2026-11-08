@@ -1,6 +1,10 @@
 part WallpaperState {
     fact wallpaper_enabled = false
+    fact wallpaper_fit = 0
     text wallpaper_error = ""
+    text wallpaper_video_status = "{}"
+    text wallpaper_video_error = ""
+    event wallpaper_video_changed ->
     text wallpaper_request_output = ""
     text wallpaper_request_path = ""
     event wallpaper_assign ->

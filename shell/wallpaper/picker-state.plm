@@ -9,9 +9,12 @@ part WallpaperPickerState {
     text wallpaper_picker_output = "No output available"
     text wallpaper_picker_current = ""
     text wallpaper_picker_count = "0 files"
+    text wallpaper_picker_warning = ""
     text wallpaper_picker_error = ""
     text wallpaper_randomize_outputs = ""
     model wallpaper_picker_files max 8 { row_id: number; name: text; kind: text; current: bool }
+    model wallpaper_picker_presets max 6 { row_id: number; name: text; selected: bool }
+    event wallpaper_picker_preset ->
     event wallpaper_picker_open_request ->
     event wallpaper_picker_close ->
     event wallpaper_picker_refresh ->

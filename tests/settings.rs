@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use tohru_shell::settings::{Key, Origin, Owner, Value};
+use tohru_shell::settings::{Key, Origin, Owner, Value, WallpaperFit};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -37,6 +37,70 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         fs::remove_dir_all(&self.0).unwrap();
     }
+}
+
+#[test]
+fn idle_preferences_use_native_protocol_bounds_and_retained_layer_semantics() {
+    let files = Fixture::new();
+    fs::write(
+        files.managed(),
+        "[idle]\nlock_seconds=1800\nfade_milliseconds=2000\n",
+    )
+    .unwrap();
+    let mut owner = files.owner();
+    for (key, default, maximum) in [
+        (Key::IdleLockSeconds, 1800, 4_294_967),
+        (Key::IdleScreenOffUnlockedSeconds, 0, 4_294_967),
+        (Key::IdleScreenOffLockedSeconds, 60, 4_294_967),
+        (Key::IdleSuspendUnlockedSeconds, 7200, 4_294_967),
+        (Key::IdleSuspendLockedSeconds, 5400, 4_294_967),
+        (Key::IdleFadeMilliseconds, 2000, 120_000),
+    ] {
+        assert_eq!(owner.get(key).value, Value::Integer(default));
+        for invalid in [
+            Value::Integer(-1),
+            Value::Integer(maximum + 1),
+            Value::Bool(false),
+        ] {
+            let before = owner.get(key);
+            assert!(owner.set(key, invalid).is_err());
+            assert_eq!(owner.get(key), before);
+        }
+        owner.set(key, Value::Integer(maximum)).unwrap();
+    }
+    owner.reload().unwrap();
+    assert_eq!(
+        owner.get(Key::IdleFadeMilliseconds).value,
+        Value::Integer(120_000)
+    );
+    assert!(owner.get(Key::IdleLockSeconds).runtime_override);
+    let restarted = files.owner();
+    assert_eq!(
+        restarted.get(Key::IdleLockSeconds).value,
+        Value::Integer(1800)
+    );
+    assert_eq!(
+        restarted.get(Key::IdleFadeMilliseconds).value,
+        Value::Integer(2000)
+    );
+    assert_eq!(
+        restarted.get(Key::IdleSuspendLockedSeconds).value,
+        Value::Integer(4_294_967)
+    );
+    fs::write(
+        files.user(),
+        "[idle]\nlock_seconds=0\nfade_milliseconds=120001\n",
+    )
+    .unwrap();
+    assert!(owner.reload().is_err());
+    assert_eq!(
+        owner.get(Key::IdleLockSeconds).value,
+        Value::Integer(4_294_967)
+    );
+    fs::write(files.user(), "[idle]\nfade_milliseconds=2000\n").unwrap();
+    // Zero is the explicit disable value, independent for every state/action.
+    owner.set(Key::IdleLockSeconds, Value::Integer(0)).unwrap();
+    assert_eq!(owner.get(Key::IdleLockSeconds).value, Value::Integer(0));
 }
 
 #[test]
@@ -447,4 +511,272 @@ fn serialized_size_limit_rejects_growth_without_changing_disk_or_memory() {
     assert_eq!(fs::metadata(files.user()).unwrap().len(), 1024 * 1024);
     let restarted = Owner::load(files.user(), None).unwrap();
     assert_eq!(restarted.get(Key::Mooncoil).value, Value::Bool(true));
+}
+
+#[test]
+fn wallpaper_fit_validates_atomically_and_retains_layer_lifetimes() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    fs::write(files.user(), "# retain me\n[wallpaper]\nfuture='kept'\n").unwrap();
+    let mut owner = files.owner();
+    assert_eq!(
+        owner.get(Key::WallpaperFit).value,
+        Value::WallpaperFit(WallpaperFit::Fill)
+    );
+    for mode in [
+        WallpaperFit::Fill,
+        WallpaperFit::Fit,
+        WallpaperFit::Centre,
+        WallpaperFit::Tile,
+    ] {
+        assert_eq!(WallpaperFit::parse(mode.as_str()).unwrap(), mode);
+        owner
+            .set(Key::WallpaperFit, Value::WallpaperFit(mode))
+            .unwrap();
+        assert_eq!(
+            files.owner().get(Key::WallpaperFit).value,
+            Value::WallpaperFit(mode)
+        );
+    }
+    let before = owner.get(Key::WallpaperFit);
+    let disk = fs::read(files.user()).unwrap();
+    for invalid in [
+        Value::Text("fill".into()), // Raw text cannot enter the typed domain.
+        Value::Text("cover".into()),
+        Value::Text("contain".into()),
+        Value::Text("center".into()),
+        Value::Text("Fill".into()),
+        Value::Text("tile ".into()),
+        Value::Text(String::new()),
+        Value::Bool(true),
+        Value::Integer(1),
+    ] {
+        assert!(owner.set(Key::WallpaperFit, invalid).is_err());
+        assert_eq!(owner.get(Key::WallpaperFit), before);
+        assert_eq!(fs::read(files.user()).unwrap(), disk);
+    }
+    assert!(
+        owner
+            .set(
+                Key::WallpaperFolder,
+                Value::WallpaperFit(WallpaperFit::Fill)
+            )
+            .is_err()
+    );
+    let persisted = fs::read_to_string(files.user()).unwrap();
+    assert!(persisted.contains("# retain me") && persisted.contains("future='kept'"));
+    for invalid in ["cover", "contain", "center", "Fill", "tile ", "", "bad"] {
+        assert!(WallpaperFit::parse(invalid).is_err());
+        fs::write(
+            files.user(),
+            format!("[wallpaper]\nfit='{invalid}'\nenabled=true\n"),
+        )
+        .unwrap();
+        let rejected_disk = fs::read(files.user()).unwrap();
+        assert!(owner.reload().is_err());
+        assert_eq!(owner.get(Key::WallpaperFit), before);
+        assert_eq!(owner.get(Key::WallpaperEnabled).value, Value::Bool(false));
+        assert_eq!(fs::read(files.user()).unwrap(), rejected_disk);
+    }
+    fs::write(files.user(), persisted).unwrap();
+    fs::write(files.managed(), "[wallpaper]\nfit='fit'\n").unwrap();
+    owner.reload().unwrap();
+    assert!(owner.get(Key::WallpaperFit).managed);
+    let disk = fs::read(files.user()).unwrap();
+    owner
+        .set(Key::WallpaperFit, Value::WallpaperFit(WallpaperFit::Centre))
+        .unwrap();
+    owner.reload().unwrap();
+    assert_eq!(
+        owner.get(Key::WallpaperFit).value,
+        Value::WallpaperFit(WallpaperFit::Centre)
+    );
+    assert!(owner.get(Key::WallpaperFit).runtime_override);
+    assert_eq!(fs::read(files.user()).unwrap(), disk);
+    assert_eq!(
+        files.owner().get(Key::WallpaperFit).value,
+        Value::WallpaperFit(WallpaperFit::Fit)
+    );
+}
+
+#[test]
+fn preset_palette_and_change_are_typed_canonical_and_restartable() {
+    use tohru_shell::settings::WallpaperChange;
+    use tohru_shell::wallpaper::preset::{Palette, Preset};
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    let mut owner = files.owner();
+    assert_eq!(
+        owner.get(Key::WallpaperPreset).value,
+        Value::WallpaperPreset(None)
+    );
+    assert_eq!(
+        owner.get(Key::Palette).value,
+        Value::Palette(Palette::Mocha)
+    );
+    assert_eq!(
+        owner.get(Key::WallpaperChange).value,
+        Value::WallpaperChange(WallpaperChange::Never)
+    );
+    for preset in Preset::ALL {
+        let parsed = Key::WallpaperPreset.parse_text(preset.name()).unwrap();
+        assert_eq!(parsed, Value::WallpaperPreset(Some(preset)));
+        owner.set(Key::WallpaperPreset, parsed.clone()).unwrap();
+        assert_eq!(files.owner().get(Key::WallpaperPreset).value, parsed);
+    }
+    for palette in Palette::ALL {
+        let parsed = Key::Palette.parse_text(palette.name()).unwrap();
+        assert_eq!(parsed, Value::Palette(palette));
+        owner.set(Key::Palette, parsed.clone()).unwrap();
+        assert_eq!(files.owner().get(Key::Palette).value, parsed);
+    }
+    for name in ["never", "hourly", "daily", "login"] {
+        let parsed = Key::WallpaperChange.parse_text(name).unwrap();
+        owner.set(Key::WallpaperChange, parsed.clone()).unwrap();
+        assert_eq!(files.owner().get(Key::WallpaperChange).value, parsed);
+    }
+    for (key, bad) in [
+        (Key::WallpaperPreset, "Solid"),
+        (Key::WallpaperPreset, ""),
+        (Key::Palette, "rose-pine"),
+        (Key::Palette, "Mocha"),
+        (Key::WallpaperChange, "weekly"),
+    ] {
+        assert!(key.parse_text(bad).is_err());
+    }
+    let disk = fs::read(files.user()).unwrap();
+    assert!(
+        owner
+            .set(Key::WallpaperPreset, Value::Text("solid".into()))
+            .is_err()
+    );
+    assert_eq!(fs::read(files.user()).unwrap(), disk);
+    owner
+        .set(Key::WallpaperPreset, Value::WallpaperPreset(None))
+        .unwrap();
+    assert_eq!(
+        files.owner().get(Key::WallpaperPreset).value,
+        Value::WallpaperPreset(None)
+    );
+    assert!(
+        !fs::read_to_string(files.user())
+            .unwrap()
+            .contains("preset =")
+    );
+}
+
+#[test]
+fn related_managed_wallpaper_proposals_never_half_persist() {
+    use std::collections::BTreeMap;
+    use tohru_shell::wallpaper::preset::{Palette, Preset};
+    for managed in [
+        "[appearance]\npalette='mocha'\n",
+        "[wallpaper.assignments]\nA='/declared.png'\n",
+    ] {
+        let files = Fixture::new();
+        fs::write(files.managed(), managed).unwrap();
+        fs::write(
+            files.user(),
+            "# retained\n[wallpaper]\npreset='spectrum'\n[wallpaper.assignments]\nA='/old.png'\n",
+        )
+        .unwrap();
+        let mut owner = files.owner();
+        let disk = fs::read(files.user()).unwrap();
+        let before = owner.get(Key::WallpaperAssignments);
+        let proposal = BTreeMap::from([
+            (
+                Key::WallpaperAssignments,
+                Value::Assignments(BTreeMap::from([("A".into(), "/solid-nord.png".into())])),
+            ),
+            (
+                Key::WallpaperPreset,
+                Value::WallpaperPreset(Some(Preset::Solid)),
+            ),
+            (Key::Palette, Value::Palette(Palette::Nord)),
+        ]);
+        let mut invalid = proposal.clone();
+        invalid.insert(Key::WallpaperFolder, Value::Text("x".repeat(4097)));
+        assert!(owner.set_many(invalid).is_err());
+        assert_eq!(owner.get(Key::WallpaperAssignments), before);
+        assert_eq!(owner.get(Key::WallpaperPreset).origin, Origin::User);
+        assert!(matches!(
+            owner.set_many(proposal.clone()).unwrap(),
+            tohru_shell::settings::SetOutcome::RuntimeOverride
+        ));
+        owner.reload().unwrap();
+        for (key, value) in proposal {
+            assert_eq!(owner.get(key).value, value);
+            assert!(owner.get(key).runtime_override);
+        }
+        assert_eq!(fs::read(files.user()).unwrap(), disk);
+        let restarted = files.owner();
+        assert_eq!(restarted.get(Key::WallpaperAssignments), before);
+        assert_eq!(
+            restarted.get(Key::WallpaperPreset).value,
+            Value::WallpaperPreset(Some(Preset::Spectrum))
+        );
+        assert_eq!(
+            restarted.get(Key::Palette).value,
+            Value::Palette(Palette::Mocha)
+        );
+        // An unrelated ordinary one-key setting retains its normal persistence.
+        owner.set(Key::Mooncoil, Value::Bool(true)).unwrap();
+        assert_eq!(files.owner().get(Key::Mooncoil).value, Value::Bool(true));
+        assert_eq!(
+            files.owner().get(Key::WallpaperPreset).value,
+            Value::WallpaperPreset(Some(Preset::Spectrum))
+        );
+    }
+}
+
+#[test]
+fn writable_wallpaper_batch_commits_together_and_rejects_partial_growth() {
+    use std::collections::BTreeMap;
+    use tohru_shell::wallpaper::preset::{Palette, Preset};
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    fs::write(files.user(), "# keep\n[wallpaper]\nfuture='kept'\n").unwrap();
+    let mut owner = files.owner();
+    let proposal = BTreeMap::from([
+        (
+            Key::WallpaperAssignments,
+            Value::Assignments(BTreeMap::from([
+                ("A".into(), "/new.png".into()),
+                ("OFFLINE".into(), "/offline.png".into()),
+            ])),
+        ),
+        (
+            Key::WallpaperPreset,
+            Value::WallpaperPreset(Some(Preset::Solid)),
+        ),
+        (Key::Palette, Value::Palette(Palette::Nord)),
+        (Key::WallpaperFolder, Value::Text("/folder".into())),
+    ]);
+    owner.set_many(proposal.clone()).unwrap();
+    let restarted = files.owner();
+    for (key, value) in &proposal {
+        assert_eq!(&restarted.get(*key).value, value);
+    }
+    let disk = fs::read_to_string(files.user()).unwrap();
+    assert!(disk.contains("# keep") && disk.contains("future='kept'"));
+    assert!(owner.set_many(BTreeMap::new()).is_err());
+    let original = format!("#{}\n", "x".repeat(1024 * 1024 - 2));
+    fs::write(files.user(), &original).unwrap();
+    let mut rejected = proposal.clone();
+    rejected.insert(Key::Palette, Value::Palette(Palette::Mocha));
+    rejected.insert(Key::WallpaperFolder, Value::Text("/rejected".into()));
+    assert!(matches!(
+        owner.set_many(rejected),
+        Err(tohru_shell::settings::Error::TooLarge(_))
+    ));
+    assert_eq!(fs::read_to_string(files.user()).unwrap(), original);
+    for (key, value) in &proposal {
+        assert_eq!(&owner.get(*key).value, value);
+    }
+    assert_eq!(fs::read_dir(&files.0).unwrap().count(), 2);
+    fs::write(files.user(), "[wallpaper]\npreset='invalid'\n").unwrap();
+    assert!(owner.reload().is_err());
+    for (key, value) in proposal {
+        assert_eq!(owner.get(key).value, value);
+    }
 }

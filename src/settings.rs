@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 use toml_edit::{DocumentMut, Item, Table, value};
 
+use crate::wallpaper::preset::{Palette, Preset};
+
 const MAX_CONFIG_BYTES: u64 = 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -18,14 +20,24 @@ pub enum Key {
     WallpaperEnabled,
     WallpaperAssignments,
     WallpaperFolder,
+    WallpaperFit,
+    WallpaperPreset,
+    WallpaperChange,
+    Palette,
     CaptureSave,
     CaptureCopy,
     CaptureDirectory,
     CaptureFilenamePattern,
+    IdleLockSeconds,
+    IdleScreenOffUnlockedSeconds,
+    IdleScreenOffLockedSeconds,
+    IdleSuspendUnlockedSeconds,
+    IdleSuspendLockedSeconds,
+    IdleFadeMilliseconds,
 }
 
 impl Key {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 21] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::Corners,
@@ -33,10 +45,20 @@ impl Key {
         Self::WallpaperEnabled,
         Self::WallpaperAssignments,
         Self::WallpaperFolder,
+        Self::WallpaperFit,
+        Self::WallpaperPreset,
+        Self::WallpaperChange,
+        Self::Palette,
         Self::CaptureSave,
         Self::CaptureCopy,
         Self::CaptureDirectory,
         Self::CaptureFilenamePattern,
+        Self::IdleLockSeconds,
+        Self::IdleScreenOffUnlockedSeconds,
+        Self::IdleScreenOffLockedSeconds,
+        Self::IdleSuspendUnlockedSeconds,
+        Self::IdleSuspendLockedSeconds,
+        Self::IdleFadeMilliseconds,
     ];
 
     #[must_use]
@@ -49,10 +71,20 @@ impl Key {
             Self::WallpaperEnabled => "wallpaper.enabled",
             Self::WallpaperAssignments => "wallpaper.assignments",
             Self::WallpaperFolder => "wallpaper.folder",
+            Self::WallpaperFit => "wallpaper.fit",
+            Self::WallpaperPreset => "wallpaper.preset",
+            Self::WallpaperChange => "wallpaper.change",
+            Self::Palette => "appearance.palette",
             Self::CaptureSave => "capture.save",
             Self::CaptureCopy => "capture.copy",
             Self::CaptureDirectory => "capture.directory",
             Self::CaptureFilenamePattern => "capture.filename_pattern",
+            Self::IdleLockSeconds => "idle.lock_seconds",
+            Self::IdleScreenOffUnlockedSeconds => "idle.screen_off_unlocked_seconds",
+            Self::IdleScreenOffLockedSeconds => "idle.screen_off_locked_seconds",
+            Self::IdleSuspendUnlockedSeconds => "idle.suspend_unlocked_seconds",
+            Self::IdleSuspendLockedSeconds => "idle.suspend_locked_seconds",
+            Self::IdleFadeMilliseconds => "idle.fade_milliseconds",
         }
     }
 
@@ -67,6 +99,26 @@ impl Key {
             .ok_or_else(|| Error::UnknownKey(name.to_owned()))
     }
 
+    /// Convert canonical string input at a TOML/Lua boundary.
+    ///
+    /// # Errors
+    /// Rejects unknown closed-domain names; `Owner` validates other text bounds.
+    pub fn parse_text(self, text: &str) -> Result<Value, Error> {
+        match self {
+            Self::WallpaperFit => WallpaperFit::parse(text).map(Value::WallpaperFit),
+            Self::WallpaperPreset => text
+                .parse::<Preset>()
+                .map(|preset| Value::WallpaperPreset(Some(preset)))
+                .map_err(|_| Error::InvalidValue(self.name())),
+            Self::WallpaperChange => WallpaperChange::parse(text).map(Value::WallpaperChange),
+            Self::Palette => text
+                .parse::<Palette>()
+                .map(Value::Palette)
+                .map_err(|_| Error::InvalidValue(self.name())),
+            _ => Ok(Value::Text(text.to_owned())),
+        }
+    }
+
     const fn location(self) -> (&'static str, &'static str) {
         match self {
             Self::PreferredOutput => ("bar", "preferred_output"),
@@ -76,10 +128,34 @@ impl Key {
             Self::WallpaperEnabled => ("wallpaper", "enabled"),
             Self::WallpaperAssignments => ("wallpaper", "assignments"),
             Self::WallpaperFolder => ("wallpaper", "folder"),
+            Self::WallpaperFit => ("wallpaper", "fit"),
+            Self::WallpaperPreset => ("wallpaper", "preset"),
+            Self::WallpaperChange => ("wallpaper", "change"),
+            Self::Palette => ("appearance", "palette"),
             Self::CaptureSave => ("capture", "save"),
             Self::CaptureCopy => ("capture", "copy"),
             Self::CaptureDirectory => ("capture", "directory"),
             Self::CaptureFilenamePattern => ("capture", "filename_pattern"),
+            Self::IdleLockSeconds => ("idle", "lock_seconds"),
+            Self::IdleScreenOffUnlockedSeconds => ("idle", "screen_off_unlocked_seconds"),
+            Self::IdleScreenOffLockedSeconds => ("idle", "screen_off_locked_seconds"),
+            Self::IdleSuspendUnlockedSeconds => ("idle", "suspend_unlocked_seconds"),
+            Self::IdleSuspendLockedSeconds => ("idle", "suspend_locked_seconds"),
+            Self::IdleFadeMilliseconds => ("idle", "fade_milliseconds"),
+        }
+    }
+
+    #[must_use]
+    pub const fn integer_bounds(self) -> Option<(i64, i64)> {
+        match self {
+            Self::CornerSize => Some((1, 100)),
+            Self::IdleFadeMilliseconds => Some((0, 120_000)),
+            Self::IdleLockSeconds
+            | Self::IdleScreenOffUnlockedSeconds
+            | Self::IdleScreenOffLockedSeconds
+            | Self::IdleSuspendUnlockedSeconds
+            | Self::IdleSuspendLockedSeconds => Some((0, 4_294_967)),
+            _ => None,
         }
     }
 
@@ -93,6 +169,16 @@ impl Key {
             Self::Corners | Self::CaptureSave | Self::CaptureCopy => Value::Bool(true),
             Self::CornerSize => Value::Integer(32),
             Self::WallpaperAssignments => Value::Assignments(BTreeMap::new()),
+            Self::WallpaperFit => Value::WallpaperFit(WallpaperFit::Fill),
+            Self::WallpaperPreset => Value::WallpaperPreset(None),
+            Self::WallpaperChange => Value::WallpaperChange(WallpaperChange::Never),
+            Self::Palette => Value::Palette(Palette::Mocha),
+            Self::IdleLockSeconds => Value::Integer(1800),
+            Self::IdleScreenOffUnlockedSeconds => Value::Integer(0),
+            Self::IdleScreenOffLockedSeconds => Value::Integer(60),
+            Self::IdleSuspendUnlockedSeconds => Value::Integer(7200),
+            Self::IdleSuspendLockedSeconds => Value::Integer(5400),
+            Self::IdleFadeMilliseconds => Value::Integer(2000),
         }
     }
 
@@ -110,13 +196,16 @@ impl Key {
                 | Self::CaptureSave
                 | Self::CaptureCopy,
                 Value::Bool(_),
-            )
-            | (Self::CornerSize, Value::Integer(1..=100)) => Ok(()),
+            ) => Ok(()),
             (Self::WallpaperFolder, Value::Text(text))
                 if text.len() <= 4096 && !text.contains('\0') =>
             {
                 Ok(())
             }
+            (Self::WallpaperFit, Value::WallpaperFit(_))
+            | (Self::WallpaperPreset, Value::WallpaperPreset(_))
+            | (Self::WallpaperChange, Value::WallpaperChange(_))
+            | (Self::Palette, Value::Palette(_)) => Ok(()),
             (Self::CaptureDirectory, Value::Text(text)) if valid_capture_directory(text) => Ok(()),
             (Self::CaptureFilenamePattern, Value::Text(text))
                 if text.len() <= 1024 && !text.contains(['/', '\\', '\0']) =>
@@ -131,7 +220,82 @@ impl Key {
             {
                 Ok(())
             }
+            (_, Value::Integer(value))
+                if self
+                    .integer_bounds()
+                    .is_some_and(|(min, max)| (min..=max).contains(value)) =>
+            {
+                Ok(())
+            }
             _ => Err(Error::InvalidValue(self.name())),
+        }
+    }
+}
+
+/// Static wallpaper image placement, parsed at configuration boundaries.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WallpaperFit {
+    Fill,
+    Fit,
+    Centre,
+    Tile,
+}
+
+impl WallpaperFit {
+    /// Parse the exact public TOML/Lua representation.
+    ///
+    /// # Errors
+    /// Rejects aliases, noncanonical case and unknown modes.
+    pub fn parse(value: &str) -> Result<Self, Error> {
+        match value {
+            "fill" => Ok(Self::Fill),
+            "fit" => Ok(Self::Fit),
+            "centre" => Ok(Self::Centre),
+            "tile" => Ok(Self::Tile),
+            _ => Err(Error::InvalidValue(Key::WallpaperFit.name())),
+        }
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Fill => "fill",
+            Self::Fit => "fit",
+            Self::Centre => "centre",
+            Self::Tile => "tile",
+        }
+    }
+}
+
+/// Native timer policy; never implies an observation or wall-clock scheduler.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WallpaperChange {
+    Never,
+    Hourly,
+    Daily,
+    Login,
+}
+
+impl WallpaperChange {
+    /// # Errors
+    /// Rejects noncanonical timer policy names.
+    pub fn parse(text: &str) -> Result<Self, Error> {
+        match text {
+            "never" => Ok(Self::Never),
+            "hourly" => Ok(Self::Hourly),
+            "daily" => Ok(Self::Daily),
+            "login" => Ok(Self::Login),
+            _ => Err(Error::InvalidValue(Key::WallpaperChange.name())),
+        }
+    }
+
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Never => "never",
+            Self::Hourly => "hourly",
+            Self::Daily => "daily",
+            Self::Login => "login",
         }
     }
 }
@@ -140,6 +304,10 @@ impl Key {
 pub enum Value {
     Bool(bool),
     Text(String),
+    WallpaperFit(WallpaperFit),
+    WallpaperPreset(Option<Preset>),
+    WallpaperChange(WallpaperChange),
+    Palette(Palette),
     Integer(i64),
     Assignments(BTreeMap<String, String>),
 }
@@ -204,6 +372,8 @@ pub struct Setting {
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[error("settings transaction must contain at least one change")]
+    EmptyTransaction,
     #[error("unknown setting {0}")]
     UnknownKey(String),
     #[error("invalid type or value for {0}")]
@@ -312,7 +482,7 @@ impl Layer {
                 }
                 Value::Assignments(assignments)
             } else if let Some(text) = item.as_str() {
-                Value::Text(text.to_owned())
+                key.parse_text(text)?
             } else if let Some(boolean) = item.as_bool() {
                 Value::Bool(boolean)
             } else if let Some(integer) = item.as_integer() {
@@ -436,42 +606,82 @@ impl Owner {
         candidate: Value,
         sync_directory: impl FnOnce(&Path) -> std::io::Result<()>,
     ) -> Result<SetOutcome, Error> {
-        key.validate(&candidate)?;
-        if self.managed.contains_key(&key) || self.overrides.contains_key(&key) {
-            self.overrides.insert(key, candidate);
+        self.set_many_with_sync(BTreeMap::from([(key, candidate)]), sync_directory)
+    }
+
+    /// Accept related settings in one disk commit and one cached-state transition.
+    ///
+    /// # Errors
+    /// Pre-commit failure leaves every managed override and writable value intact.
+    /// Any managed participant makes the entire related proposal process-local.
+    pub fn set_many(&mut self, candidates: BTreeMap<Key, Value>) -> Result<SetOutcome, Error> {
+        self.set_many_with_sync(candidates, |directory| File::open(directory)?.sync_all())
+    }
+
+    fn set_many_with_sync(
+        &mut self,
+        candidates: BTreeMap<Key, Value>,
+        sync_directory: impl FnOnce(&Path) -> std::io::Result<()>,
+    ) -> Result<SetOutcome, Error> {
+        if candidates.is_empty() {
+            return Err(Error::EmptyTransaction);
+        }
+        for (key, candidate) in &candidates {
+            key.validate(candidate)?;
+        }
+        // A derived operation must not leave only half of its state after restart.
+        if candidates
+            .keys()
+            .any(|key| self.managed.contains_key(key) || self.overrides.contains_key(key))
+        {
+            self.overrides.extend(candidates);
             return Ok(SetOutcome::RuntimeOverride);
         }
-        // Read anew so external edits and unknown keys are not overwritten.
+        // Preserve unknown keys and reject concurrent invalid edits before overrides change.
         let mut next = Layer::read(&self.user_path, true)?;
-        let (section, field) = key.location();
-        if !next.document.contains_key(section) {
-            next.document[section] = Item::Table(Table::new());
-        }
-        let table = next
-            .document
-            .get_mut(section)
-            .and_then(Item::as_table_like_mut)
-            .ok_or(Error::InvalidValue(key.name()))?;
-        let item = match &candidate {
-            Value::Bool(boolean) => value(*boolean),
-            Value::Text(text) => value(text),
-            Value::Integer(integer) => value(*integer),
-            Value::Assignments(assignments) => {
-                let mut entries = Table::new();
-                for (output, path) in assignments {
-                    entries.insert(output, value(path));
-                }
-                Item::Table(entries)
+        for (key, candidate) in candidates {
+            let layer = &mut next;
+            let (section, field) = key.location();
+            if !layer.document.contains_key(section) {
+                layer.document[section] = Item::Table(Table::new());
             }
-        };
-        table.insert(field, item);
+            let table = layer
+                .document
+                .get_mut(section)
+                .and_then(Item::as_table_like_mut)
+                .ok_or(Error::InvalidValue(key.name()))?;
+            let item = match &candidate {
+                Value::Bool(boolean) => value(*boolean),
+                Value::Text(text) => value(text),
+                Value::WallpaperFit(fit) => value(fit.as_str()),
+                Value::WallpaperPreset(preset) => {
+                    preset.map_or(Item::None, |preset| value(preset.name()))
+                }
+                Value::WallpaperChange(change) => value(change.name()),
+                Value::Palette(palette) => value(palette.name()),
+                Value::Integer(integer) => value(*integer),
+                Value::Assignments(assignments) => {
+                    let mut entries = Table::new();
+                    for (output, path) in assignments {
+                        entries.insert(output, value(path));
+                    }
+                    Item::Table(entries)
+                }
+            };
+            if item.is_none() {
+                table.remove(field);
+                layer.values.remove(&key);
+            } else {
+                table.insert(field, item);
+                layer.values.insert(key, candidate);
+            }
+        }
         let serialized = next.document.to_string();
         if serialized.len() as u64 > MAX_CONFIG_BYTES {
             return Err(Error::TooLarge(self.user_path.clone()));
         }
         let outcome = persist(&self.user_path, serialized.as_bytes(), sync_directory)?;
         // Returning from persist means rename committed, even if durability is unknown.
-        next.values.insert(key, candidate);
         self.user = next;
         Ok(outcome)
     }
@@ -528,6 +738,41 @@ fn persist(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wallpaper_batch_postcommit_sync_failure_retains_entire_committed_state() {
+        let directory =
+            std::env::temp_dir().join(format!("tohru-wallpaper-batch-sync-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("config.toml");
+        let mut owner = Owner::load(path.clone(), None).unwrap();
+        let proposal = BTreeMap::from([
+            (
+                Key::WallpaperAssignments,
+                Value::Assignments(BTreeMap::from([("A".into(), "/image.png".into())])),
+            ),
+            (
+                Key::WallpaperPreset,
+                Value::WallpaperPreset(Some(Preset::Solid)),
+            ),
+            (Key::Palette, Value::Palette(Palette::Nord)),
+        ]);
+        let outcome = owner
+            .set_many_with_sync(proposal.clone(), |_| {
+                Err(std::io::Error::other("injected fsync failure"))
+            })
+            .unwrap();
+        assert!(matches!(
+            outcome,
+            SetOutcome::CommittedDurabilityUnconfirmed(_)
+        ));
+        let restarted = Owner::load(path, None).unwrap();
+        for (key, value) in proposal {
+            assert_eq!(owner.get(key).value, value);
+            assert_eq!(owner.get(key), restarted.get(key));
+        }
+        fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn postcommit_sync_failure_updates_memory_and_reports_uncertain_durability() {

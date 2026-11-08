@@ -2,30 +2,76 @@
 set -euo pipefail
 usage() {
     cat <<'HELP'
-Usage: tohru panel toggle|open sound|calendar
+Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru panel close
        tohru settings open|close
+       tohru session open|close|toggle
+       tohru routing-error
+       tohru wallpaper open|randomize|rotate
+       tohru screenshot region|cancel|status --json
        tohru audio volume up|down
        tohru audio mute toggle
+       tohru audio input volume up|down | input mute toggle
+       tohru audio output select ID
+       tohru audio app ID volume up|down | app ID mute toggle
        tohru audio status --json
        tohru status --json
        tohru config reload
-       tohru config set bar.mooncoil|appearance.corners true|false
+       tohru config set wallpaper.fit fill|fit|centre|tile
+       tohru config set wallpaper.change never|hourly|daily|login
+       tohru config set appearance.palette mocha|macchiato|rose_pine|nord|gruvbox|tokyo_night|dracula|everforest
+       tohru config set bar.mooncoil|appearance.corners|wallpaper.enabled|capture.save|capture.copy true|false
        tohru config set appearance.corner_size 1..100
+       tohru config set idle.KEY INTEGER (seconds 0..4294967; fade_milliseconds 0..120000)
        tohru settings-error
        tohru help
 
 Commands report native request acceptance, not completion.
 Audio status reports the last native observation and command errors.
+Idle keys: lock_seconds, screen_off_unlocked_seconds, screen_off_locked_seconds,
+           suspend_unlocked_seconds, suspend_locked_seconds, fade_milliseconds.
+Zero idle seconds disables that action; fade uses milliseconds.
+Input device selection is unavailable: native input/output IDs collide; input devices are read-only.
 Inspect status and settings-error for settings results or failure.
 HELP
 }
 fail() { printf '%s\n' "$1" >&2; exit 2; }
 pleamar=${TOHRU_RUNTIME:-pleamar}
+audio_id() {
+    [[ $1 =~ ^(0|[1-9][0-9]{0,9})$ ]] && (( 10#$1 <= 4294967295 )) || fail 'Audio ID must be a canonical unsigned 32-bit integer'
+}
 case ${1:-help} in
     help|--help|-h)
         [[ $# -le 1 ]] || fail 'help takes no arguments'
         usage
+        ;;
+    screenshot)
+        case ${2:-} in
+            region|cancel)
+                [[ $# == 2 ]] || fail 'Usage: tohru screenshot region|cancel'
+                case $2 in region) event=capture_open_request ;; cancel) event=capture_cancel ;; esac
+                exec "$pleamar" --say tohru "emit $event"
+                ;;
+            status)
+                [[ $# == 3 && $3 == --json ]] || fail 'Usage: tohru screenshot status --json'
+                exec "$pleamar" --say tohru 'get capture_status'
+                ;;
+            *) fail 'Usage: tohru screenshot region|cancel|status --json' ;;
+        esac
+        ;;
+    wallpaper)
+        [[ $# == 2 ]] || fail 'Usage: tohru wallpaper open|randomize|rotate'
+        case $2 in open) event=settings_wallpaper_open ;; randomize) event=wallpaper_randomize ;; rotate) event=wallpaper_rotate ;; *) fail 'Usage: tohru wallpaper open|randomize|rotate' ;; esac
+        exec "$pleamar" --say tohru "emit $event"
+        ;;
+    session)
+        [[ $# == 2 ]] || fail 'Usage: tohru session open|close|toggle'
+        case $2 in open|close|toggle) ;; *) fail 'Usage: tohru session open|close|toggle' ;; esac
+        exec "$pleamar" --say tohru-session "emit menu_$2"
+        ;;
+    routing-error)
+        [[ $# == 1 ]] || fail 'routing-error takes no arguments'
+        exec "$pleamar" --say tohru 'get routing_error'
         ;;
     settings)
         [[ $# == 2 ]] || fail 'Usage: tohru settings open|close'
@@ -35,10 +81,14 @@ case ${1:-help} in
     panel)
         case ${2:-} in
             open|toggle)
-                [[ $# == 3 && ( $3 == sound || $3 == calendar ) ]] || fail 'Usage: tohru panel open|toggle sound|calendar'
+                [[ $# == 3 && ( $3 == sound || $3 == calendar || $3 == network || $3 == bluetooth || $3 == about || $3 == info ) ]] || fail 'Usage: tohru panel open|toggle sound|calendar|network|bluetooth|about|info'
                 case "$3:$2" in
                     sound:open) event=sound_open_request ;; sound:toggle) event=sound_toggle ;;
                     calendar:open) event=calendar_open ;; calendar:toggle) event=calendar_toggle ;;
+                    network:open) event=network_open ;; network:toggle) event=network_toggle ;;
+                    bluetooth:open) event=bluetooth_open ;; bluetooth:toggle) event=bluetooth_toggle ;;
+                    about:open) event=about_open ;; about:toggle) event=about_toggle ;;
+                    info:open) event=info_open ;; info:toggle) event=info_toggle ;;
                 esac
                 exec "$pleamar" --say tohru "emit $event"
                 ;;
@@ -46,11 +96,32 @@ case ${1:-help} in
                 [[ $# == 2 ]] || fail 'Usage: tohru panel close'
                 exec "$pleamar" --say tohru 'emit panel_close'
                 ;;
-            *) fail 'Usage: tohru panel open|toggle sound|calendar | close' ;;
+            *) fail 'Usage: tohru panel open|toggle sound|calendar|network|bluetooth|about|info | close' ;;
         esac
         ;;
     audio)
         case ${2:-} in
+            input)
+                [[ $# == 4 ]] || fail 'Usage: tohru audio input volume up|down | input mute toggle'
+                case "$3:$4" in
+                    volume:up) event=audio_input_up ;; volume:down) event=audio_input_down ;;
+                    mute:toggle) event=audio_input_mute ;;
+                    select:*) fail 'Input device selection is unavailable: native input/output IDs collide' ;;
+                    *) fail 'Usage: tohru audio input volume up|down | input mute toggle' ;;
+                esac
+                exec "$pleamar" --say tohru "emit $event"
+                ;;
+            output)
+                [[ $# == 4 && $3 == select ]] || fail 'Usage: tohru audio output select ID'
+                audio_id "$4"
+                exec "$pleamar" --say tohru "emit audio_output_select $4"
+                ;;
+            app)
+                [[ $# == 5 ]] || fail 'Usage: tohru audio app ID volume up|down | app ID mute toggle'
+                audio_id "$3"
+                case "$4:$5" in volume:up) event=audio_app_up ;; volume:down) event=audio_app_down ;; mute:toggle) event=audio_app_mute ;; *) fail 'Usage: tohru audio app ID volume up|down | app ID mute toggle' ;; esac
+                exec "$pleamar" --say tohru "emit $event $3"
+                ;;
             volume)
                 [[ $# == 3 ]] || fail 'Usage: tohru audio volume up|down'
                 case $3 in up) step=1 ;; down) step=-1 ;; *) fail 'Usage: tohru audio volume up|down' ;; esac
@@ -80,10 +151,22 @@ case ${1:-help} in
             set)
                 [[ $# == 4 ]] || fail 'Usage: tohru config set KEY VALUE'
                 case $3 in
-                    bar.mooncoil|appearance.corners)
+                    bar.mooncoil|appearance.corners|wallpaper.enabled|capture.save|capture.copy)
                         case $4 in true) number=1 ;; false) number=0 ;; *) fail 'Value must be true or false' ;; esac
-                        case $3 in bar.mooncoil) event=setting_mooncoil ;; appearance.corners) event=setting_corners ;; esac
+                        case $3 in bar.mooncoil) event=setting_mooncoil ;; appearance.corners) event=setting_corners ;; wallpaper.enabled) event=setting_wallpaper_enabled ;; capture.save) event=setting_capture_save ;; capture.copy) event=setting_capture_copy ;; esac
                         exec "$pleamar" --say tohru "emit $event $number"
+                        ;;
+                    wallpaper.change)
+                        case $4 in never) number=0 ;; hourly) number=1 ;; daily) number=2 ;; login) number=3 ;; *) fail 'Wallpaper change must be never, hourly, daily or login' ;; esac
+                        exec "$pleamar" --say tohru "emit setting_wallpaper_change $number"
+                        ;;
+                    appearance.palette)
+                        case $4 in mocha) number=0 ;; macchiato) number=1 ;; rose_pine) number=2 ;; nord) number=3 ;; gruvbox) number=4 ;; tokyo_night) number=5 ;; dracula) number=6 ;; everforest) number=7 ;; *) fail 'Choose a canonical retained palette name' ;; esac
+                        exec "$pleamar" --say tohru "emit setting_palette $number"
+                        ;;
+                    wallpaper.fit)
+                        case $4 in fill) number=0 ;; fit) number=1 ;; centre) number=2 ;; tile) number=3 ;; *) fail 'Wallpaper fit must be fill, fit, centre or tile' ;; esac
+                        exec "$pleamar" --say tohru "emit setting_wallpaper_fit $number"
                         ;;
                     bar.preferred_output)
                         fail 'bar.preferred_output is deprecated and ignored: bars use every output'
@@ -91,6 +174,14 @@ case ${1:-help} in
                     appearance.corner_size)
                         [[ $4 =~ ^([1-9]|[1-9][0-9]|100)$ ]] || fail 'Corner size must be an integer from 1 to 100'
                         exec "$pleamar" --say tohru "emit setting_corner_size $4"
+                        ;;
+                    idle.lock_seconds|idle.screen_off_unlocked_seconds|idle.screen_off_locked_seconds|idle.suspend_unlocked_seconds|idle.suspend_locked_seconds|idle.fade_milliseconds)
+                        [[ $4 =~ ^(0|[1-9][0-9]{0,6})$ ]] || fail 'Idle setting must be a canonical nonnegative integer'
+                        maximum=4294967
+                        [[ $3 != idle.fade_milliseconds ]] || maximum=120000
+                        (( 10#$4 <= maximum )) || fail 'Idle setting exceeds its native protocol bound'
+                        event=setting_${3//./_}
+                        exec "$pleamar" --say tohru "emit $event $4"
                         ;;
                     *) fail 'Unknown setting key' ;;
                 esac

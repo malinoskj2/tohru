@@ -48,6 +48,13 @@ Exact native lifecycle/input/driver evidence is recorded by candidate in S.md;
 source/compiler checks do not imply physical-display or visual/performance parity.
 No authentication/notification singleton is started by the root bar.
 
+The next candidate applies the reviewed optional `layer_namespace` property with
+the current launcher source. Native default remains `pleamar`; the named launcher
+alone selects `tohru-launcher-backdrop`, with immutable edits requiring restart.
+After that candidate's coordinated build, run `tests/launcher/namespace.py` with
+its actual binary and check the full launcher entry. The frozen window artifacts
+have no namespace extension and must not be used to claim those parser checks.
+
 Nix: import `default.nix { pkgs = <explicit pinned nixpkgs>; }`; optional reusable
 Home Manager module `nix/home-manager.nix` supplies the package and managed TOML
 path, with no service/autostart activation. It never writes into /home/jesse/nix.
