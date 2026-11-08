@@ -15,8 +15,8 @@ Shared-owner wiring after review:
   It only adds the native held transaction and callback, not auth behavior.
 - Existing library fileset includes delay.rs/input.rs/logind_state.rs and their
   tests/session/idle_delay.rs/idle_input.rs/idle_logind.rs.
-- Ordinary root imports `shell/session/idle.plm`; its logic requires private
-  `idle.luau` and calls returned `configure([idle] typed table)` on startup and
+- Ordinary root includes `session/idle.part.plm` inside its scene; its logic requires private
+  `session/idle.luau` via require("session/idle") and calls returned `configure([idle] typed table)` on startup and
   successful config reload. Keys/defaults match coordinator's chosen schema.
   Native global `tohru_idle` APIs: start(config), held(bool), resume(),
   caffeine(bool), stop(); locker alone calls start_guard()/stop_guard().

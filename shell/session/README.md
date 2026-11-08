@@ -85,7 +85,8 @@ credentials and a separate authorized allocation. Optional notifications workloa
 uses private buses and an owned null audio sink. There is never a host-PAM fallback.
 See L progress log for exact frozen artifact/hashes and evidence paths.
 
-The ordinary-root private idle entry is `shell/session/idle.plm` + `idle.luau`.
+The ordinary-root private idle include is `shell/session/idle.part.plm` plus
+`require("session/idle")`; `idle.plm` is its standalone parser/fixture entry.
 Native copy/install hooks and API are in `runtime/idle/README.md`; the new adapters
 are source checkpoints awaiting native compilation/protocol validation. Dedicated
 locker `state_request` emits `idle_lock_state`0/1 to fixed root `tohru` using actual
