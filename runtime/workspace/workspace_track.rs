@@ -97,7 +97,9 @@ pub(crate) struct Track {
     active: Option<usize>,
     /// Per vertex: the swell thickening the ribbon, and its vertical offset. The design keeps them
     /// in `Float32Array`s.
+    #[cfg(test)]
     d: Vec<f32>,
+    #[cfg(test)]
     o: Vec<f32>,
     x: f64,
     vx: f64,
@@ -123,7 +125,9 @@ impl Default for Track {
             most: MAX_SLOTS,
             ramp: false,
             active: None,
+            #[cfg(test)]
             d: vec![0.0; vertices(slots)],
+            #[cfg(test)]
             o: vec![0.0; vertices(slots)],
             x,
             vx: 0.0,
@@ -154,6 +158,7 @@ impl Default for Track {
     }
 }
 
+#[cfg(test)]
 fn vertices(slots: usize) -> usize {
     slots * SLOT as usize + 1
 }
@@ -181,7 +186,9 @@ impl Track {
             slots,
             most: slots,
             ramp: true,
+            #[cfg(test)]
             d: vec![0.0; vertices(slots)],
+            #[cfg(test)]
             o: vec![0.0; vertices(slots)],
             ..Self::default()
         }
@@ -216,8 +223,11 @@ impl Track {
         };
         if slots != self.slots {
             self.slots = slots;
-            self.d = vec![0.0; vertices(slots)];
-            self.o = vec![0.0; vertices(slots)];
+            #[cfg(test)]
+            {
+                self.d = vec![0.0; vertices(slots)];
+                self.o = vec![0.0; vertices(slots)];
+            }
         }
         let active = active.filter(|a| (1..=slots).contains(a));
         if active == self.active {
@@ -274,17 +284,18 @@ impl Track {
                 .saturating_duration_since(last)
                 .as_secs_f64()
                 .min(MAX_FRAME);
-        let mut energy = 1.0;
         while owed >= STEP {
-            energy = self.step(STEP);
+            let energy = self.step(STEP);
             owed -= STEP;
+            if energy < SETTLE_ENERGY && (self.x - self.target()).abs() < SETTLE_DISTANCE {
+                // Canonical rest is the first qualifying simulation tick, never
+                // the end of whichever publication batch happened to contain it.
+                self.settle();
+                self.clock = None;
+                return;
+            }
         }
-        if energy < SETTLE_ENERGY && (self.x - self.target()).abs() < SETTLE_DISTANCE {
-            self.settle();
-            self.clock = None;
-        } else {
-            self.clock = Some((now, owed));
-        }
+        self.clock = Some((now, owed));
     }
 
     fn settle(&mut self) {
@@ -292,8 +303,11 @@ impl Track {
         self.vx = 0.0;
         self.hh = REST_HALF_HEIGHT;
         self.round = 0.0;
-        self.d.fill(0.0);
-        self.o.fill(0.0);
+        #[cfg(test)]
+        {
+            self.d.fill(0.0);
+            self.o.fill(0.0);
+        }
         self.wave.amp = 0.0;
         self.wave.av = 0.0;
         self.wave.wash = 0.0;
@@ -313,6 +327,7 @@ impl Track {
         self.rv += (260.0 * (tr - self.round) - 2.0 * 260f64.sqrt() * 0.55 * self.rv) * dt;
         self.round += self.rv * dt;
 
+        #[cfg(test)]
         let width = self.width();
         let w = &mut self.wave;
         w.t += dt;
@@ -332,22 +347,25 @@ impl Track {
         w.wash += lost * 1.3 * (0.4 + skew) - w.wash * 4.2 * dt;
         w.wash_c += (w.c + dir * 4.0 - w.wash_c) * 6.0 * dt;
         w.wash_w += (18.0 + 10.0 * w.gain) * dt;
-        let (front, back) = (9.0 - 6.0 * skew, 12.0 + 12.0 * skew);
-        for (i, (d, o)) in self.d.iter_mut().zip(&mut self.o).enumerate() {
-            let i = i as f64;
-            let env = (std::f64::consts::PI * i / width).sin().sqrt();
-            let u = (i - w.c) * dir;
-            let shape = if u > 0.0 {
-                (-sq(u / front)).exp()
-            } else {
-                (-sq(u / back)).exp() - 0.22 * (-sq((u + back * 1.3) / back)).exp()
-            };
-            let chop = 0.12 * (i * 0.23 + w.t * 7.0 + w.phase).sin() * w.amp;
-            *o = (env * (-w.amp * shape + chop)) as f32;
-            *d = (env
-                * (w.amp * 0.3 * shape.max(0.0)
-                    + w.wash * (-sq((i - w.wash_c) / w.wash_w.max(3.0))).exp()))
-                as f32;
+        #[cfg(test)]
+        {
+            let (front, back) = (9.0 - 6.0 * skew, 12.0 + 12.0 * skew);
+            for (i, (d, o)) in self.d.iter_mut().zip(&mut self.o).enumerate() {
+                let i = i as f64;
+                let env = (std::f64::consts::PI * i / width).sin().sqrt();
+                let u = (i - w.c) * dir;
+                let shape = if u > 0.0 {
+                    (-sq(u / front)).exp()
+                } else {
+                    (-sq(u / back)).exp() - 0.22 * (-sq((u + back * 1.3) / back)).exp()
+                };
+                let chop = 0.12 * (i * 0.23 + w.t * 7.0 + w.phase).sin() * w.amp;
+                *o = (env * (-w.amp * shape + chop)) as f32;
+                *d = (env
+                    * (w.amp * 0.3 * shape.max(0.0)
+                        + w.wash * (-sq((i - w.wash_c) / w.wash_w.max(3.0))).exp()))
+                    as f32;
+            }
         }
         sq(self.vx) * 1e-3
             + sq(self.hv) * 1e-2
