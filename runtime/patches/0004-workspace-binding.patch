@@ -1,0 +1,15 @@
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -10,3 +10,5 @@
+ 
++#[cfg(feature = "luau")]
++mod tohru_workspace;
+ #[cfg(feature = "luau")]
+ mod tohru_settings;
+--- a/src/logic_luau.rs
++++ b/src/logic_luau.rs
+@@ -1404,3 +1404,4 @@
+         if self.prefix.is_none() && std::env::var("TOHRU_SHELL").as_deref() == Ok("1") {
+             crate::tohru_settings::install(&lua)?;
++            crate::tohru_workspace::install(&lua)?;
+         }
