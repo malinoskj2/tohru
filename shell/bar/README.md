@@ -19,7 +19,8 @@ Source mapping: j2bar `bar.rs` / `bar/providers.rs` (100px inset, 14px app icon,
 Pinned services: window title/class + apps id/StartupWMClass/icon; native MPRIS
 selection, no commands or controls; clock numeric fields on minute changes.
 The native apps service itself checks catalog signatures every two seconds;
-this feature adds no polling/timers/frame handlers.
+the service content adds no polling/frame handlers. Exact rails publish with
+accepted cancellable native60Hz timers only while moving, cancel at rest/error.
 
 Checks: `lua tests/bar/controllers.lua`; `pleamar --check shell/bar/entry.plm`;
 exclusive private GPU integration `python3 tests/bar/native.py --runtime PATH`
@@ -27,8 +28,8 @@ after sourcing `runtime/dev-env.sh` and supplying driver libraries as documented
 in runtime/README.md. The runner owns and stops its compositor/apps/private bus.
 
 This is usable native service content, not glass/font/layout/physical-output or
-performance acceptance. Exact workspace simulation/frame lifetime and final
-sound/network/battery assembly remain separate. Native desktop discovery/launch
-limitations are pending user decision; this feature does not implement a custom
+performance acceptance. Exact workspace and final root service assembly use shared S binding/patch hooks.
+Native desktop discovery/launch/Identity
+limitations are accepted; this feature does not implement a custom
 catalog. The mark's original asset is retained, its exact glass/glow still awaits
 visual integration. The clock button's event requires root routing.
