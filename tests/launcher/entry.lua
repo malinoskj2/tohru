@@ -28,3 +28,19 @@ events.launcher_open();events.launcher_close();local second_token=fact.launcher_
 events.launcher_unmap(first_token);assert(fact.launcher_closing and text.launcher_outputs~="")
 events.launcher_unmap(second_token);assert(not fact.launcher_closing and text.launcher_outputs=="")
 print("Actual entry rejects delayed prior-close completion after a newer close")
+-- Native removed-role leave can arrive after settled close/reopen. Until the
+-- replacement actually gains the keyboard, that event belongs to no open role.
+events.launcher_open();events.focus();assert(fact.launcher_focus_armed)
+events.launcher_close();events.launcher_unmap(fact.launcher_close_token)
+events.launcher_open();events.blur()
+assert(fact.launcher_visible and not fact.launcher_focus_armed)
+events.blur();events.focus()
+assert(fact.launcher_visible and fact.launcher_focus_armed)
+-- A focused visible VM reload preserves ownership: real subsequent blur closes.
+events,watches={},{};run();assert(fact.launcher_focus_armed)
+events.blur();assert(not fact.launcher_visible and fact.launcher_closing)
+local token=fact.launcher_close_token;events.blur();assert(fact.launcher_close_token==token)
+-- Focus gained while closed cannot arm a later open.
+events.focus();events.launcher_open();events.blur();assert(fact.launcher_visible)
+events.focus();events.blur();assert(not fact.launcher_visible)
+print("Actual entry ignores old-role blur before new focus, retains real blur dismissal and reload ownership")
