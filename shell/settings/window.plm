@@ -1,0 +1,48 @@
+part SettingsWindow {
+ box { from: 0, 0; size: 800, 560; color: #181825 }
+ box { from: 0, 0; size: 220, 560; color: #11111b }
+ text "Settings" { at: 18, 30; anchor: left center; size: 20; weight: 600; color: #cdd6f4 }
+ box settings_back_button { from: 12, 54; size: 30, 30; corner: 8; color: #313244; cursor: pointer; active: settings_can_back }
+ box settings_forward_button { from: 48, 54; size: 30, 30; corner: 8; color: #313244; cursor: pointer; active: settings_can_forward }
+ text "‹" { at: 27, 68; anchor: center; size: 22; color: #cdd6f4; opacity: if(settings_can_back, 100%, 30%) }
+ text "›" { at: 63, 68; anchor: center; size: 22; color: #cdd6f4; opacity: if(settings_can_forward, 100%, 30%) }
+ column settings_navigation { at: 6, 100; gap: 6
+  for category in settings_categories {
+   group {
+    size: 208, 30
+   box hit { from: 0, 0; size: 208, 30; corner: 8; color: #b4befe; opacity: if(category.selected, 18%, 0%); cursor: pointer }
+   text category.title { at: 12, 15; anchor: left center; size: 13; color: #cdd6f4 }
+   on press hit { emit settings_category(category.id) }
+   }
+  }
+ }
+ input settings_search { at: 244, 32; width: 528; size: 13; color: #cdd6f4; placeholder: "Search settings"; label: "Search settings" }
+ text settings_heading { at: 244, 88; anchor: left center; size: 20; weight: 600; color: #cdd6f4 }
+ column settings_list { at: 232, 120; view: 556, 340; gap: 6
+  for setting in settings_rows {
+   group {
+    size: 556, 58
+    box hit { from: 0, 0; size: 556, 58; corner: 10; color: #313244; cursor: pointer; active: setting.editable }
+    box { from: 0, 0; size: 556, 58; corner: 10; stroke: if(setting.index == settings_selected and not settings_sidebar, 1, 0); color: #b4befe }
+    text setting.title { at: 12, 17; anchor: left center; size: 13; color: #cdd6f4 }
+    text setting.detail { at: 12, 39; anchor: left center; size: 11; width: 488; lines: 1; color: #a6adc8 }
+    box { from: 508, 13; size: 32, 18; corner: 9; color: if(setting.value, #b4befe, #45475a); show: setting.editable }
+    ellipse { at: 517 + setting.value * 14, 22; radius: 6; color: #181825; show: setting.editable }
+    on press hit { emit settings_row(setting.index) }
+   }
+  }
+ }
+ text settings_notice { at: 244, 486; anchor: left top; size: 11; width: 528; lines: 2; color: #a6adc8 }
+ text settings_ui_error { at: 244, 522; anchor: left top; size: 11; width: 528; lines: 2; color: #f38ba8 }
+ on press settings_back_button { emit settings_back }
+ on press settings_forward_button { emit settings_forward }
+ on key Escape while settings_open and not sound_open and not cal_open { emit settings_close }
+ on key Ctrl+f while settings_open and not sound_open and not cal_open { focus settings_search }
+ on key Alt+Left while settings_open and not sound_open and not cal_open { emit settings_back }
+ on key Alt+Right while settings_open and not sound_open and not cal_open { emit settings_forward }
+ on key Tab while settings_open and not sound_open and not cal_open { settings_sidebar = not settings_sidebar; blur }
+ on key Down while settings_open and not sound_open and not cal_open { emit settings_move(1) }
+ on key Up while settings_open and not sound_open and not cal_open { emit settings_move(-1) }
+ on key Return while settings_open and not sound_open and not cal_open { emit settings_activate }
+ on key space while settings_open and not settings_sidebar and not sound_open and not cal_open { emit settings_activate }
+}

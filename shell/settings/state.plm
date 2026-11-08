@@ -1,0 +1,22 @@
+part SettingsState {
+ fact settings_open = false
+ fact settings_page = 1
+ fact settings_selected = 0
+ fact settings_sidebar = true
+ fact settings_can_back = false
+ fact settings_can_forward = false
+ text settings_search = ""
+ text settings_heading = "Bar"
+ text settings_notice = ""
+ text settings_ui_error = ""
+ model settings_categories max 3 { id: number; title: text; selected: bool }
+ model settings_rows max 15 { title: text; detail: text; value: bool; editable: bool; managed: bool; temporary: bool }
+ event settings_open_request ->
+ event settings_close ->
+ event settings_category ->
+ event settings_back ->
+ event settings_forward ->
+ event settings_move ->
+ event settings_activate ->
+ event settings_row ->
+}

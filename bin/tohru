@@ -4,6 +4,7 @@ usage() {
     cat <<'HELP'
 Usage: tohru panel toggle|open sound|calendar
        tohru panel close
+       tohru settings open|close
        tohru audio volume up|down
        tohru audio mute toggle
        tohru audio status --json
@@ -15,7 +16,7 @@ Usage: tohru panel toggle|open sound|calendar
 
 Commands report native request acceptance, not completion.
 Audio status reports the last native observation and command errors.
-Inspect status and settings-error for the resulting settings or failure.
+Inspect status and settings-error for settings results or failure.
 HELP
 }
 fail() { printf '%s\n' "$1" >&2; exit 2; }
@@ -24,6 +25,11 @@ case ${1:-help} in
     help|--help|-h)
         [[ $# -le 1 ]] || fail 'help takes no arguments'
         usage
+        ;;
+    settings)
+        [[ $# == 2 ]] || fail 'Usage: tohru settings open|close'
+        case $2 in open) event=settings_open_request ;; close) event=settings_close ;; *) fail 'Usage: tohru settings open|close' ;; esac
+        exec "$pleamar" --say tohru "emit $event"
         ;;
     panel)
         case ${2:-} in
@@ -61,12 +67,7 @@ case ${1:-help} in
         esac
         ;;
     status)
-        [[ $# == 2 && $2 == --json ]] || fail 'Usage: tohru panel toggle|open sound|calendar
-       tohru panel close
-       tohru audio volume up|down
-       tohru audio mute toggle
-       tohru audio status --json
-       tohru status --json'
+        [[ $# == 2 && $2 == --json ]] || fail 'Usage: tohru status --json'
         exec "$pleamar" --say tohru 'get settings_status'
         ;;
     config)
