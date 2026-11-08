@@ -15,14 +15,18 @@ pub enum Key {
     Mooncoil,
     Corners,
     CornerSize,
+    WallpaperEnabled,
+    WallpaperAssignments,
 }
 
 impl Key {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 6] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::Corners,
         Self::CornerSize,
+        Self::WallpaperEnabled,
+        Self::WallpaperAssignments,
     ];
 
     #[must_use]
@@ -32,6 +36,8 @@ impl Key {
             Self::Mooncoil => "bar.mooncoil",
             Self::Corners => "appearance.corners",
             Self::CornerSize => "appearance.corner_size",
+            Self::WallpaperEnabled => "wallpaper.enabled",
+            Self::WallpaperAssignments => "wallpaper.assignments",
         }
     }
 
@@ -52,15 +58,18 @@ impl Key {
             Self::Mooncoil => ("bar", "mooncoil"),
             Self::Corners => ("appearance", "corners"),
             Self::CornerSize => ("appearance", "corner_size"),
+            Self::WallpaperEnabled => ("wallpaper", "enabled"),
+            Self::WallpaperAssignments => ("wallpaper", "assignments"),
         }
     }
 
     fn default_value(self) -> Value {
         match self {
             Self::PreferredOutput => Value::Text(String::new()),
-            Self::Mooncoil => Value::Bool(false),
+            Self::Mooncoil | Self::WallpaperEnabled => Value::Bool(false),
             Self::Corners => Value::Bool(true),
             Self::CornerSize => Value::Integer(32),
+            Self::WallpaperAssignments => Value::Assignments(BTreeMap::new()),
         }
     }
 
@@ -71,8 +80,16 @@ impl Key {
             {
                 Ok(())
             }
-            (Self::Mooncoil | Self::Corners, Value::Bool(_))
+            (Self::Mooncoil | Self::Corners | Self::WallpaperEnabled, Value::Bool(_))
             | (Self::CornerSize, Value::Integer(1..=100)) => Ok(()),
+            (Self::WallpaperAssignments, Value::Assignments(assignments))
+                if assignments.len() <= 32
+                    && assignments
+                        .iter()
+                        .all(|(output, path)| valid_output(output) && valid_wallpaper(path)) =>
+            {
+                Ok(())
+            }
             _ => Err(Error::InvalidValue(self.name())),
         }
     }
@@ -83,6 +100,30 @@ pub enum Value {
     Bool(bool),
     Text(String),
     Integer(i64),
+    Assignments(BTreeMap<String, String>),
+}
+
+fn valid_output(output: &str) -> bool {
+    !output.is_empty()
+        && output.len() <= 255
+        && output.trim() == output
+        && !output.contains(',')
+        && !output.chars().any(char::is_control)
+}
+
+fn valid_wallpaper(path: &str) -> bool {
+    path.len() <= 4096
+        && Path::new(path).is_absolute()
+        && !path.contains('\0')
+        && Path::new(path)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| {
+                matches!(
+                    ext.to_ascii_lowercase().as_str(),
+                    "png" | "jpg" | "jpeg" | "webp" | "mp4" | "webm" | "mkv" | "mov" | "gif"
+                )
+            })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -198,7 +239,20 @@ impl Layer {
             let Some(item) = table.get(field) else {
                 continue;
             };
-            let candidate = if let Some(text) = item.as_str() {
+            let candidate = if key == Key::WallpaperAssignments {
+                let entries = item
+                    .as_table_like()
+                    .ok_or(Error::InvalidValue(key.name()))?;
+                if entries.len() > 32 {
+                    return Err(Error::InvalidValue(key.name()));
+                }
+                let mut assignments = BTreeMap::new();
+                for (output, path) in entries.iter() {
+                    let path = path.as_str().ok_or(Error::InvalidValue(key.name()))?;
+                    assignments.insert(output.to_owned(), path.to_owned());
+                }
+                Value::Assignments(assignments)
+            } else if let Some(text) = item.as_str() {
                 Value::Text(text.to_owned())
             } else if let Some(boolean) = item.as_bool() {
                 Value::Bool(boolean)
@@ -224,6 +278,29 @@ pub struct Owner {
 }
 
 impl Owner {
+    /// Atomically edit one output assignment through the effective managed/user layer.
+    ///
+    /// # Errors
+    /// Rejects invalid selectors, unsupported paths, map overflow and persistence errors.
+    pub fn assign_wallpaper(
+        &mut self,
+        output: &str,
+        path: Option<&str>,
+    ) -> Result<SetOutcome, Error> {
+        if !valid_output(output) {
+            return Err(Error::InvalidValue(Key::WallpaperAssignments.name()));
+        }
+        let Value::Assignments(mut assignments) = self.get(Key::WallpaperAssignments).value else {
+            return Err(Error::InvalidValue(Key::WallpaperAssignments.name()));
+        };
+        if let Some(path) = path {
+            assignments.insert(output.to_owned(), path.to_owned());
+        } else {
+            assignments.remove(output);
+        }
+        self.set(Key::WallpaperAssignments, Value::Assignments(assignments))
+    }
+
     /// Load user and optional managed layers without importing old shell state.
     ///
     /// # Errors
@@ -316,14 +393,19 @@ impl Owner {
             .get_mut(section)
             .and_then(Item::as_table_like_mut)
             .ok_or(Error::InvalidValue(key.name()))?;
-        table.insert(
-            field,
-            match &candidate {
-                Value::Bool(boolean) => value(*boolean),
-                Value::Text(text) => value(text),
-                Value::Integer(integer) => value(*integer),
-            },
-        );
+        let item = match &candidate {
+            Value::Bool(boolean) => value(*boolean),
+            Value::Text(text) => value(text),
+            Value::Integer(integer) => value(*integer),
+            Value::Assignments(assignments) => {
+                let mut entries = Table::new();
+                for (output, path) in assignments {
+                    entries.insert(output, value(path));
+                }
+                Item::Table(entries)
+            }
+        };
+        table.insert(field, item);
         let serialized = next.document.to_string();
         if serialized.len() as u64 > MAX_CONFIG_BYTES {
             return Err(Error::TooLarge(self.user_path.clone()));

@@ -7,7 +7,7 @@ local function publish(settings)
     fact.corner_size = settings["appearance.corner_size"].value
     settings["bar.preferred_output"].deprecated = true
     settings["bar.preferred_output"].effective = false
-    text.settings_status = json.encode({schema = 2, settings = settings})
+    text.settings_status = json.encode({schema = 3, settings = settings})
     if refresh_settings then refresh_settings(settings) end
 end
 local function change(operation)
