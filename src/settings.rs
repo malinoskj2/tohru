@@ -17,16 +17,26 @@ pub enum Key {
     CornerSize,
     WallpaperEnabled,
     WallpaperAssignments,
+    WallpaperFolder,
+    CaptureSave,
+    CaptureCopy,
+    CaptureDirectory,
+    CaptureFilenamePattern,
 }
 
 impl Key {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 11] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::Corners,
         Self::CornerSize,
         Self::WallpaperEnabled,
         Self::WallpaperAssignments,
+        Self::WallpaperFolder,
+        Self::CaptureSave,
+        Self::CaptureCopy,
+        Self::CaptureDirectory,
+        Self::CaptureFilenamePattern,
     ];
 
     #[must_use]
@@ -38,6 +48,11 @@ impl Key {
             Self::CornerSize => "appearance.corner_size",
             Self::WallpaperEnabled => "wallpaper.enabled",
             Self::WallpaperAssignments => "wallpaper.assignments",
+            Self::WallpaperFolder => "wallpaper.folder",
+            Self::CaptureSave => "capture.save",
+            Self::CaptureCopy => "capture.copy",
+            Self::CaptureDirectory => "capture.directory",
+            Self::CaptureFilenamePattern => "capture.filename_pattern",
         }
     }
 
@@ -60,14 +75,22 @@ impl Key {
             Self::CornerSize => ("appearance", "corner_size"),
             Self::WallpaperEnabled => ("wallpaper", "enabled"),
             Self::WallpaperAssignments => ("wallpaper", "assignments"),
+            Self::WallpaperFolder => ("wallpaper", "folder"),
+            Self::CaptureSave => ("capture", "save"),
+            Self::CaptureCopy => ("capture", "copy"),
+            Self::CaptureDirectory => ("capture", "directory"),
+            Self::CaptureFilenamePattern => ("capture", "filename_pattern"),
         }
     }
 
     fn default_value(self) -> Value {
         match self {
-            Self::PreferredOutput => Value::Text(String::new()),
+            Self::PreferredOutput
+            | Self::WallpaperFolder
+            | Self::CaptureDirectory
+            | Self::CaptureFilenamePattern => Value::Text(String::new()),
             Self::Mooncoil | Self::WallpaperEnabled => Value::Bool(false),
-            Self::Corners => Value::Bool(true),
+            Self::Corners | Self::CaptureSave | Self::CaptureCopy => Value::Bool(true),
             Self::CornerSize => Value::Integer(32),
             Self::WallpaperAssignments => Value::Assignments(BTreeMap::new()),
         }
@@ -80,8 +103,26 @@ impl Key {
             {
                 Ok(())
             }
-            (Self::Mooncoil | Self::Corners | Self::WallpaperEnabled, Value::Bool(_))
+            (
+                Self::Mooncoil
+                | Self::Corners
+                | Self::WallpaperEnabled
+                | Self::CaptureSave
+                | Self::CaptureCopy,
+                Value::Bool(_),
+            )
             | (Self::CornerSize, Value::Integer(1..=100)) => Ok(()),
+            (Self::WallpaperFolder, Value::Text(text))
+                if text.len() <= 4096 && !text.contains('\0') =>
+            {
+                Ok(())
+            }
+            (Self::CaptureDirectory, Value::Text(text)) if valid_capture_directory(text) => Ok(()),
+            (Self::CaptureFilenamePattern, Value::Text(text))
+                if text.len() <= 1024 && !text.contains(['/', '\\', '\0']) =>
+            {
+                Ok(())
+            }
             (Self::WallpaperAssignments, Value::Assignments(assignments))
                 if assignments.len() <= 32
                     && assignments
@@ -101,6 +142,24 @@ pub enum Value {
     Text(String),
     Integer(i64),
     Assignments(BTreeMap<String, String>),
+}
+
+// Keep HOME expansion and native chrono formatting at the operation boundary.
+// This lexical validation never reads the filesystem or the process HOME.
+fn valid_capture_directory(directory: &str) -> bool {
+    if directory.len() > 4096 || directory.contains('\0') {
+        return false;
+    }
+    let tail = directory
+        .strip_prefix("~/")
+        .or_else(|| directory.strip_prefix("$HOME/"));
+    (directory.is_empty()
+        || directory == "~"
+        || tail.is_some()
+        || Path::new(directory).is_absolute())
+        && !Path::new(tail.unwrap_or(directory))
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
 }
 
 fn valid_output(output: &str) -> bool {

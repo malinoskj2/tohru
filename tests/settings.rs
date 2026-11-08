@@ -40,6 +40,127 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn media_preferences_validate_atomically_and_survive_restart() {
+    let files = Fixture::new();
+    fs::write(
+        files.user(),
+        "# preserved\n[capture]\nfuture = 'retained'\n",
+    )
+    .unwrap();
+    let mut owner = Owner::load(files.user(), None).unwrap();
+    let edits = [
+        (Key::WallpaperFolder, Value::Text("/offline/壁 紙".into())),
+        (Key::CaptureSave, Value::Bool(false)),
+        (Key::CaptureCopy, Value::Bool(false)),
+        (
+            Key::CaptureDirectory,
+            Value::Text("$HOME/Pictures/region".into()),
+        ),
+        (
+            Key::CaptureFilenamePattern,
+            Value::Text("region_%Y%m%d".into()),
+        ),
+    ];
+    for (key, candidate) in &edits {
+        owner.set(*key, candidate.clone()).unwrap();
+    }
+    let accepted = fs::read(files.user()).unwrap();
+    for (key, invalid) in [
+        (Key::WallpaperFolder, Value::Text("a".repeat(4097))),
+        (Key::WallpaperFolder, Value::Text("/bad\0folder".into())),
+        (Key::CaptureSave, Value::Text("true".into())),
+        (Key::CaptureCopy, Value::Integer(1)),
+        (Key::CaptureDirectory, Value::Text("relative".into())),
+        (Key::CaptureDirectory, Value::Text("~/../escape".into())),
+        (Key::CaptureDirectory, Value::Text("$HOME/../escape".into())),
+        (
+            Key::CaptureDirectory,
+            Value::Text("/absolute/../escape".into()),
+        ),
+        (Key::CaptureDirectory, Value::Text("/bad\0folder".into())),
+        (
+            Key::CaptureDirectory,
+            Value::Text(format!("/{}", "a".repeat(4096))),
+        ),
+        (Key::CaptureFilenamePattern, Value::Text("a".repeat(1025))),
+        (Key::CaptureFilenamePattern, Value::Text("../escape".into())),
+        (Key::CaptureFilenamePattern, Value::Text("bad\\name".into())),
+        (Key::CaptureFilenamePattern, Value::Text("bad\0name".into())),
+    ] {
+        let before = owner.get(key);
+        assert!(owner.set(key, invalid).is_err());
+        assert_eq!(owner.get(key), before);
+        assert_eq!(fs::read(files.user()).unwrap(), accepted);
+    }
+    let restarted = Owner::load(files.user(), None).unwrap();
+    for (key, value) in &edits {
+        assert_eq!(&restarted.get(*key).value, value);
+    }
+    let written = String::from_utf8(accepted.clone()).unwrap();
+    assert!(written.contains("# preserved") && written.contains("future = 'retained'"));
+    fs::write(
+        files.user(),
+        "[capture]\nsave = true\ndirectory = '../invalid'\n",
+    )
+    .unwrap();
+    assert!(owner.reload().is_err());
+    for (key, value) in &edits {
+        assert_eq!(&owner.get(*key).value, value);
+    }
+    fs::write(files.user(), accepted).unwrap();
+    fs::write(
+        files.managed(),
+        "[wallpaper]\nfolder='/declared'\n[capture]\ncopy=true\n",
+    )
+    .unwrap();
+    let mut managed = files.owner();
+    managed
+        .set(Key::WallpaperFolder, Value::Text("/temporary".into()))
+        .unwrap();
+    managed.set(Key::CaptureCopy, Value::Bool(false)).unwrap();
+    managed.reload().unwrap();
+    assert!(managed.get(Key::WallpaperFolder).runtime_override);
+    assert_eq!(managed.get(Key::CaptureCopy).value, Value::Bool(false));
+    let restarted = files.owner();
+    assert_eq!(
+        restarted.get(Key::WallpaperFolder).value,
+        Value::Text("/declared".into())
+    );
+    assert_eq!(restarted.get(Key::CaptureCopy).value, Value::Bool(true));
+}
+
+#[test]
+fn media_preference_defaults_and_lexical_boundaries() {
+    let files = Fixture::new();
+    let mut owner = Owner::load(files.user(), None).unwrap();
+    for key in [Key::CaptureSave, Key::CaptureCopy] {
+        assert_eq!(owner.get(key).value, Value::Bool(true));
+    }
+    for key in [
+        Key::WallpaperFolder,
+        Key::CaptureDirectory,
+        Key::CaptureFilenamePattern,
+    ] {
+        assert_eq!(owner.get(key).value, Value::Text(String::new()));
+    }
+    for directory in ["", "~", "~/Pictures", "$HOME/Pictures", "/offline/path"] {
+        owner
+            .set(Key::CaptureDirectory, Value::Text(directory.into()))
+            .unwrap();
+    }
+    owner
+        .set(Key::WallpaperFolder, Value::Text("a".repeat(4096)))
+        .unwrap();
+    owner
+        .set(Key::CaptureFilenamePattern, Value::Text("a".repeat(1024)))
+        .unwrap();
+    // Native chrono validation remains the operation's responsibility.
+    owner
+        .set(Key::CaptureFilenamePattern, Value::Text("%Q".into()))
+        .unwrap();
+}
+
+#[test]
 fn corner_size_bounds_atomic_reload_and_restart() {
     let files = Fixture::new();
     fs::write(
