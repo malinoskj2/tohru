@@ -72,6 +72,16 @@ def cleanup(processes, files, run, evidence, events):
     except Exception as error: errors.append('runtime cleanup: '+str(error))
     return errors
 
+def validate_pam_tools(mode, wtype, bwrap, modules):
+    if not mode: return
+    if not bwrap or not modules:
+        raise ValueError('controlled PAM requires explicit --bwrap and --pam-modules; no host fallback')
+    for name, path in [('wtype',wtype),('bwrap',bwrap)]:
+        if not path or not path.is_file() or not os.access(path,os.X_OK):
+            raise ValueError('controlled PAM requires explicit executable --'+name+' before startup')
+    if not modules.is_dir():
+        raise ValueError('controlled PAM requires existing private fixture module directory')
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--runtime', type=Path, required=True)
@@ -80,8 +90,8 @@ def main():
     p.add_argument('--bwrap', type=Path)
     p.add_argument('--pam-modules', type=Path)
     a = p.parse_args()
-    if a.pam_mode and (not a.bwrap or not a.pam_modules):
-        p.error('controlled PAM requires explicit --bwrap and --pam-modules; no host fallback')
+    try: validate_pam_tools(a.pam_mode,a.wtype,a.bwrap,a.pam_modules)
+    except ValueError as error: p.error(str(error))
     evidence = ROOT / '.tmp' / ('native-session-' + str(time.time_ns()))
     evidence.mkdir()
     run = ROOT / '.tmp' / ('l' + str(os.getpid()))
@@ -99,7 +109,7 @@ def main():
            'WLR_BACKENDS':'headless', 'WLR_HEADLESS_OUTPUTS':'1', 'WLR_RENDERER':'gles2',
            'WLR_LIBINPUT_NO_DEVICES':'1', 'WLR_RENDER_DRM_DEVICE':'/dev/dri/renderD128',
            'VK_DRIVER_FILES':'/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json',
-           'WGPU_BACKEND':'vulkan', 'PLEAMAR_BACKEND':'vulkan'}
+           'WGPU_BACKEND':'vulkan', 'PLEAMAR_BACKEND':'vulkan', 'WAYLAND_DEBUG':'client'}
     for key in ['WAYLAND_DISPLAY','SWAYSOCK','DISPLAY','HYPRLAND_INSTANCE_SIGNATURE','TOHRU_SHELL']:
         env.pop(key, None)
     # Last-resort denial: no systemctl/loginctl implementation can act on host.
@@ -174,6 +184,21 @@ def main():
         subprocess.run(['swaymsg','output','HEADLESS-1','disable'],env=env,check=True,capture_output=True,timeout=6)
         value('tohru-lock','lock.held','1')
         checks.append('native lock output arrival and first-output removal')
+        # Changed-size configure must ACK/update viewport before any lock commit.
+        for width,height in [(1600,900),(1024,768),(1920,1080),(1280,800)]:
+            subprocess.run(['swaymsg','output','HEADLESS-2','mode',f'{width}x{height}@60Hz'],
+                           env=env,check=True,capture_output=True,timeout=6)
+            def resized():
+                outputs=json.loads(subprocess.run(['swaymsg','-t','get_outputs','-r'],
+                    env=env,check=True,capture_output=True,text=True,timeout=6).stdout)
+                return any(output['name']=='HEADLESS-2' and
+                    output['current_mode']['width']==width and
+                    output['current_mode']['height']==height for output in outputs)
+            wait(resized,'private output resize')
+            value('tohru-lock','lock.held','1')
+            time.sleep(.15)
+            assert lock.poll() is None and 'Protocol error' not in (evidence/'tohru-lock.log').read_text()
+        checks.append('four actual surviving-lock output resizes retain held faces; raw ACK/viewport/commit trace recorded')
         # These are synthetic sentinels, never real credentials and never submitted.
         marker='synthetic-lock-secret-7c9d'
         cli('tohru-lock','text password '+marker)
@@ -220,10 +245,16 @@ def main():
                 wait(lambda:'lock   · authenticated release' in (evidence/'tohru-lock.log').read_text(),'controlled PAM native release')
                 wait(lambda:(evidence/'tohru-lock.log').read_text().count('lock   · the session is locked')>=2,'fresh lock cycle after queued request')
                 value('tohru-lock','lock.held','1')
+                released=(evidence/'tohru-lock.log').read_text().count('lock   · authenticated release')
+                assert released==1
+                cli('tohru-lock','fact engaged false');value('tohru-lock','lock.held','1')
+                cli('tohru-lock','fact acknowledged true');value('tohru-lock','lock.held','1')
+                assert (evidence/'tohru-lock.log').read_text().count('lock   · authenticated release')==released
+                checks.append('new cycle cannot reuse consumed PAM authority through public state writes')
                 checks.append('controlled PAM success with queued new lock and hotplug produces authenticated release and fresh held cycle')
             else:
                 wait(lambda:'Password not accepted' in (cli('tohru-lock','get status',False) or ''),'controlled PAM denial')
-                value('tohru-lock','lock.held','1')
+                value('tohru-lock','lock.held','1');value('tohru-lock','checking','0')
                 assert 'lock   · authenticated release' not in (evidence/'tohru-lock.log').read_text()
                 checks.append('controlled native '+a.pam_mode+' retains held lock without release')
         polkit=launch('polkit/polkit.plm','tohru-polkit')

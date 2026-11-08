@@ -1,0 +1,21 @@
+part InformationState {
+    include "power-state.plm"
+    fact info_visible = false
+    fact info_page = 0
+    fact info_offset = 0
+    fact info_total = 0
+    fact info_cache_valid = false
+    fact info_cached_page = -1
+    text info_error = ""
+    text info_generation = "Unknown"
+    text info_current_user = "Unknown"
+    model info_rows max 8 { label: text; value: text }
+    model info_cache max 256 { label: text; value: text }
+    service clock as info_clock { date: text; time: text; year: number; month: number; day: number; hour: number; minute: number }
+    event info_open ->
+    event info_close ->
+    event info_toggle ->
+    event info_page ->
+    event info_refresh ->
+    event info_scroll ->
+}

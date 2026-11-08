@@ -1,5 +1,6 @@
 part BluetoothState {
     fact bt_open = false
+    fact bt_scan_owned = false
     fact bt_has_target = false
     fact bt_page = 0
     fact bt_selected = -1

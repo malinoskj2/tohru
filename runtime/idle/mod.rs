@@ -2,6 +2,9 @@
 //! process-owned machine; native Pleamar scenes own fades and authentication.
 //! This module never connects to a display/bus or executes system actions.
 
+pub mod cookies;
+pub mod delay;
+
 use std::time::{Duration, Instant};
 
 const LOCK_ACK_LIMIT: Duration = Duration::from_secs(5);
@@ -27,8 +30,8 @@ impl Action {
     }
 }
 
-/// A missing unlocked timeout disables an action; a missing locked timeout
-/// inherits its unlocked timeout. Durations are bounded to the standard
+/// A missing timeout disables that action in the corresponding lock state.
+/// Lock itself runs only while unlocked. Durations are bounded to the standard
 /// ext-idle-notify unsigned 32-bit millisecond range at construction.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Timeouts {
@@ -149,23 +152,28 @@ pub struct Policy {
     awaiting_lock: Option<AwaitingLock>,
 }
 
+fn validate_config(config: Config) -> Result<(), Error> {
+    for timeouts in [config.lock, config.screen_off, config.suspend] {
+        for duration in [timeouts.unlocked, timeouts.locked].into_iter().flatten() {
+            if duration.is_zero()
+                || duration > Duration::from_millis(u64::from(u32::MAX))
+                || duration.subsec_nanos() % 1_000_000 != 0
+            {
+                return Err(Error::InvalidTimeout);
+            }
+        }
+    }
+    if config.fade > MAX_FADE || config.fade.subsec_nanos() % 1_000_000 != 0 {
+        return Err(Error::InvalidFade);
+    }
+    Ok(())
+}
+
 impl Policy {
     /// # Errors
     /// Rejects invalid protocol timeout or fade durations.
     pub fn new(config: Config, locked: bool) -> Result<Self, Error> {
-        for timeouts in [config.lock, config.screen_off, config.suspend] {
-            for duration in [timeouts.unlocked, timeouts.locked].into_iter().flatten() {
-                if duration.is_zero()
-                    || duration > Duration::from_millis(u64::from(u32::MAX))
-                    || duration.subsec_nanos() % 1_000_000 != 0
-                {
-                    return Err(Error::InvalidTimeout);
-                }
-            }
-        }
-        if config.fade > MAX_FADE || config.fade.subsec_nanos() % 1_000_000 != 0 {
-            return Err(Error::InvalidFade);
-        }
+        validate_config(config)?;
         Ok(Self {
             config,
             generation: 0,
@@ -179,14 +187,57 @@ impl Policy {
         })
     }
 
+    /// Apply validated settings without replacing the process owner or reusing
+    /// subscription generations. Old work is cancelled and screens restored.
+    ///
+    /// # Errors
+    /// Invalid timeout/fade leaves current policy and subscriptions unchanged.
+    pub fn configure(&mut self, config: Config) -> Result<Vec<Effect>, Error> {
+        validate_config(config)?;
+        self.config = config;
+        Ok(self.resumed())
+    }
+
+    /// Whether a visible native fade needs compositor-paced scalar updates.
+    #[must_use]
+    pub fn fading(&self) -> bool {
+        self.veiled && self.fading.is_some()
+    }
+
+    /// Retained cubic fade opacity; None means no overlay. No timer is needed
+    /// at rest or while holding black for a native lock handoff.
+    #[must_use]
+    pub fn opacity(&self, now: Instant) -> Option<f32> {
+        if !self.veiled {
+            return None;
+        }
+        let Some(fade) = &self.fading else {
+            return Some(1.0);
+        };
+        let elapsed = self
+            .config
+            .fade
+            .saturating_sub(fade.until.saturating_duration_since(now));
+        let progress = (elapsed.as_secs_f32() / self.config.fade.as_secs_f32()).min(1.0);
+        Some(if progress < 0.5 {
+            4.0 * progress * progress * progress
+        } else {
+            let remainder = 2.0 * progress - 2.0;
+            0.5 * remainder * remainder * remainder + 1.0
+        })
+    }
+
     fn timeout(&self, action: Action) -> Option<Duration> {
+        if self.locked && action == Action::Lock {
+            return None;
+        }
         let timeouts = match action {
             Action::Lock => self.config.lock,
             Action::ScreenOff => self.config.screen_off,
             Action::Suspend => self.config.suspend,
         };
         if self.locked {
-            timeouts.locked.or(timeouts.unlocked)
+            timeouts.locked
         } else {
             timeouts.unlocked
         }
