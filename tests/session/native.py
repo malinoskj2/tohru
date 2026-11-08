@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import time
+import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -42,6 +43,34 @@ def check_ipc_directory(env, run):
     for endpoint in ipc.rglob('*'):
         assert not endpoint.is_symlink() and endpoint.resolve().is_relative_to(ipc)
         assert endpoint.stat().st_uid == os.getuid()
+
+def cleanup(processes, files, run, evidence, events):
+    errors = []
+    try:
+        (evidence/'events.json').write_text(json.dumps(events,indent=2)+'\n')
+    except Exception as error:
+        errors.append('evidence: '+str(error))
+    for proc in reversed(processes):
+        try:
+            if proc.poll() is not None: continue
+            try:
+                proc.terminate()
+            except Exception as error:
+                errors.append('terminate: '+str(error))
+                proc.kill()
+            try:
+                proc.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=3)
+        except Exception as error:
+            errors.append('process cleanup: '+str(error))
+    for file in files:
+        try: file.close()
+        except Exception as error: errors.append('log close: '+str(error))
+    try: shutil.rmtree(run)
+    except Exception as error: errors.append('runtime cleanup: '+str(error))
+    return errors
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
@@ -146,14 +175,12 @@ def main():
             'hardware':'NVIDIA RTX 5090 app Vulkan/compositor GLES2','auth_power_tested':False,
             'security_acceptance':False,'visual_acceptance':False},indent=2)+'\n')
     finally:
-        (evidence/'events.json').write_text(json.dumps(events,indent=2)+'\n')
-        for proc in reversed(processes):
-            if proc.poll() is None:
-                proc.terminate()
-                try:proc.wait(timeout=8)
-                except subprocess.TimeoutExpired:proc.kill();proc.wait(timeout=3)
-        for f in files:f.close()
-        shutil.rmtree(run)
+        original_failure = sys.exc_info()[0] is not None
+        errors = cleanup(processes, files, run, evidence, events)
         print(evidence,flush=True)
+        if errors:
+            message='; '.join(errors)
+            if original_failure: print('cleanup diagnostics: '+message,file=sys.stderr)
+            else: raise RuntimeError(message)
 
 if __name__=='__main__':main()
