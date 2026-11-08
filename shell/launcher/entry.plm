@@ -49,6 +49,8 @@ scene TohruLauncher {
     follow tile_scroll = launcher_scroll
     on launcher_open { focus launcher_query; emit launcher_layout(cols); emit launcher_viewport(view_height) }
     on launcher_toggle { focus launcher_query; emit launcher_layout(cols); emit launcher_viewport(view_height) }
+    on change launcher_menu while launcher_menu { blur }
+    on change launcher_menu while not launcher_menu { focus launcher_query }
     on change cols { emit launcher_layout(cols) }
     on change view_height { emit launcher_viewport(view_height) }
     body {

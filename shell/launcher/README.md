@@ -12,7 +12,9 @@ categories/precedence, pin order and separate pinned/application sections,
 keyboard tile/category navigation, virtualized catalogs beyond1024 records,
 right-click Open/desktop-actions/Pin/Unpin menu with scroll and keyboard input,
 native launch error display,64 pins/2000 counts/six recent launches, and native
-atomic private scene-local persistence. Action menus are virtualized rather than
+atomic private scene-local persistence. Native files.read reads/parses the entire
+file before Lua can apply retained-state caps; bounded ingress is a reported
+native gap pending user decision, not a proven byte/read-work limit. Action menus are virtualized rather than
 dropping commands beyond the native model capacity. Data starts fresh; no j2bar
 state is read. Counts are recorded when native launch accepts the request; a
 new application window appearing is not promised by that acceptance.

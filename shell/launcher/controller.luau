@@ -14,9 +14,12 @@ return function(make_usage, search, geometry)
         {"office", "wordprocessor", "spreadsheet", "calendar"},
     }
     local function category(app)
-        local names = ";" .. (app.categories or ""):lower()
+        local names = {}
+        for name in ((app.categories or "") .. ";"):gmatch("([^;]+);") do
+            names[name:match("^%s*(.-)%s*$"):lower()] = true
+        end
         for index, group in ipairs(groups) do
-            for _, name in ipairs(group) do if names:find(";" .. name .. ";", 1, true) then return index end end
+            for _, name in ipairs(group) do if names[name] then return index end end
         end
         return 6
     end
@@ -114,7 +117,12 @@ return function(make_usage, search, geometry)
     on("launcher_viewport", function(value) viewport = math.max(72, math.min(value, 452)); rebuild() end)
     on("launcher_scroll", function(value) scroll = scroll - value * 72; close_menu(); rebuild() end)
     on("launcher_select", function(value)
-        if value == math.floor(value) and value >= 0 and value < #shown then selected = value; fact.launcher_selected = selected end
+        if value == math.floor(value) and value >= 0 and value < #shown then
+            selected = value
+            fact.launcher_selected = selected
+            local x, y = geometry.position(columns, fact.launcher_pins, selected)
+            fact.launcher_selected_x, fact.launcher_selected_y = x * 72, y
+        end
     end)
     local function move(value, vertical)
         if #shown == 0 then return end
