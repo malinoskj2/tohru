@@ -1,0 +1,36 @@
+part InformationContent {
+    text "System Information" { at: 20, 27; size: 17; weight: 600; color: #cdd6f4 }
+    zone box info_close_hit { from: 558, 10; size: 30, 30; cursor: pointer; label: "Close information" }
+    text "×" { at: 573, 25; anchor: center; size: 22; color: #cdd6f4 }
+    on press info_close_hit { emit info_close }
+    repeat i in 0..7 {
+        box info_tab.$i { from: 12 + i * 82, 50; size: 80, 30; corner: 7; color: #89dceb; opacity: if(info_page == i, 12%, 0%); cursor: pointer }
+        text pick(i,"System","Displays","Date/Time","Users","Storage","Generations","Power") { at: 52 + i * 82, 65; anchor: center; size: 11; color: #cdd6f4 }
+        on press info_tab.$i { emit info_page(i) }
+    }
+    text "Active generation: {info_generation}" { at: 20, 90; size: 11; color: #a6adc8; show: info_page == 5 }
+    text "Current account: {info_current_user}" { at: 20, 90; size: 11; color: #a6adc8; show: info_page == 3 }
+    for row in info_rows {
+        text row.label { at: 20, 112 + row.index * 40; width: 154; size: 12; color: #a6adc8 }
+        text row.value { at: 184, 112 + row.index * 40; width: 392; lines: 2; size: 12; color: #cdd6f4 }
+    }
+    text "{info_clock.date}" { at: 184, 164; width: 390; size: 17; color: #cdd6f4; show: info_page == 2 }
+    text "{info_clock.time}" { at: 184, 198; width: 390; size: 24; color: #cdd6f4; show: info_page == 2 }
+    text "No battery reported" { at: 20, 112; size: 14; color: #a6adc8; show: info_page == 6 and not power_present }
+    text "Battery" { at: 20, 112; size: 14; color: #a6adc8; show: info_page == 6 and power_present }
+    text "{round(power_percent * 100)}%" { at: 184, 112; size: 22; color: #cdd6f4; show: info_page == 6 and power_present and power_known }
+    text "Unknown" { at: 184, 112; size: 14; color: #a6adc8; show: info_page == 6 and power_present and not power_known }
+    text "Charging" { at: 184, 152; size: 14; color: #a6e3a1; show: info_page == 6 and power_present and power_charging }
+    text "Not charging" { at: 184, 152; size: 14; color: #cdd6f4; show: info_page == 6 and power_present and not power_charging }
+    text power_error { at: 20, 200; width: 556; size: 11; color: #f38ba8; show: info_page == 6 }
+    zone box info_scroll_up { from: 20, 438; size: 100, 28; active: info_offset > 0; cursor: pointer }
+    zone box info_scroll_down { from: 140, 438; size: 100, 28; active: info_offset + 8 < info_total; cursor: pointer }
+    text "Previous" { at: 24, 453; size: 12; color: #a6adc8; show: info_offset > 0 }
+    text "Next" { at: 144, 453; size: 12; color: #a6adc8; show: info_offset + 8 < info_total }
+    on press info_scroll_up { emit info_scroll(-8) }
+    on press info_scroll_down { emit info_scroll(8) }
+    zone box info_refresh_hit { from: 470, 438; size: 110, 28; cursor: pointer; label: "Refresh information" }
+    text "Refresh" { at: 525, 453; anchor: center; size: 12; color: #cdd6f4 }
+    on press info_refresh_hit { emit info_refresh }
+    text info_error { at: 20, 487; width: 556; lines: 2; size: 11; color: #a6adc8 }
+}

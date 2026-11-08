@@ -1,0 +1,9 @@
+part PowerState {
+    fact power_present = false
+    fact power_known = false
+    fact power_percent = 0
+    fact power_charging = false
+    fact power_warning_level = 0
+    text power_error = ""
+    event power_warning_retry ->
+}

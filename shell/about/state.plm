@@ -1,0 +1,14 @@
+part AboutState {
+    fact about_visible = false
+    text about_name = "Unknown"
+    text about_version = "Unknown"
+    text about_error = ""
+    image about_mark = file "../bar/mooncoil.svg", 42, 42
+    model about_specs max 6 { label: text; value: text }
+    event about_open ->
+    event about_close ->
+    event about_toggle ->
+    event about_refresh ->
+    event about_more ->
+    event about_repository ->
+}

@@ -1,0 +1,33 @@
+part AboutPopup {
+    popup about {
+        at: (screen.width - 360) / 2, 60
+        size: 360, 430
+        open: about_visible
+        body { color: #181825; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 25%
+            box { from: 0, 0; size: 360, 430; corner: 22 }
+        }
+        zone box about_close_hit { from: 320, 8; size: 30, 30; cursor: pointer; label: "Close About" }
+        text "×" { at: 335, 23; anchor: center; size: 22; color: #cdd6f4 }
+        on press about_close_hit { emit about_close }
+        group {
+            glow: 4, 45%, #89b4fa
+            image about_mark { at: 159, 29; size: 42, 42; opacity: 30% }
+        }
+        text about_name { at: 180, 94; anchor: center; width: 300; size: 18; weight: 600; color: #cdd6f4 }
+        text about_version { at: 180, 119; anchor: center; width: 300; size: 13; color: #a6adc8 }
+        for spec in about_specs {
+            text spec.label { at: 24, 155 + spec.index * 25; width: 105; size: 12; color: #a6adc8 }
+            text spec.value { at: 135, 155 + spec.index * 25; width: 201; size: 12; color: #cdd6f4 }
+        }
+        box about_more_hit { from: 90, 310; size: 180, 28; corner: 8; color: #cdd6f4; opacity: 8%; cursor: pointer }
+        text "More Info…" { at: 180, 324; anchor: center; size: 13; color: #cdd6f4 }
+        on press about_more_hit { emit about_more }
+        zone box about_repository_hit { from: 60, 350; size: 240, 22; cursor: pointer; label: "Open source repository" }
+        on press about_repository_hit { emit about_repository }
+        text "github.com/malinoskj2/nix" { at: 180, 363; anchor: center; size: 12; color: #89b4fa; selectable: true }
+        text "System configuration" { at: 180, 383; anchor: center; size: 11; color: #a6adc8 }
+        text about_error { at: 24, 408; width: 312; size: 10; color: #a6adc8 }
+    }
+    on key Escape { about_visible = false }
+    on blur { about_visible = false }
+}

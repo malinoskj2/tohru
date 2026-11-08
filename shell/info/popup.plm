@@ -1,0 +1,17 @@
+part InformationPopup {
+    popup information {
+        at: (screen.width - 600) / 2, 48
+        size: 600, 520
+        open: info_visible
+        body { color: #181825; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 25%
+            box { from: 0, 0; size: 600, 520; corner: 22 }
+        }
+        include "content.plm"
+    }
+    on key Escape { info_visible = false }
+    on key Down while info_visible { emit info_scroll(1) }
+    on key Up while info_visible { emit info_scroll(-1) }
+    on key Next while info_visible { emit info_scroll(8) }
+    on key Prior while info_visible { emit info_scroll(-8) }
+    on blur { info_visible = false }
+}
