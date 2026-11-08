@@ -74,11 +74,15 @@ pub struct Issue {
     pub kind: IssueKind,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum IssueKind {
+    #[error("reading public system information failed ({0:?})")]
     Io(std::io::ErrorKind),
+    #[error("public information exceeded its byte or entry limit")]
     TooLarge,
+    #[error("public information has an invalid format or identity")]
     Invalid,
+    #[error("the information snapshot budget was exhausted")]
     Budget,
 }
 
