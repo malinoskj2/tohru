@@ -43,7 +43,12 @@ Settings search Return/provenance/WM-close/reopen, visible-calendar VM reload an
 retained timer rest, writable/managed settings reload and process restart.
 Ctrl+F evidence types the query through the virtual keyboard and checks the live
 input text before Return; no IPC search setter can bypass a failed focus action.
-Intentional window/root quit must return exit status zero; crashes remain failures.
+The evidence-only Settings clone adds a second real native input. Focus starts on
+that canary (it persists across virtual keyboard device changes), so native
+first-field autofocus cannot make a broken Ctrl+F pass. The canary must remain
+unchanged and is hidden before screenshots. Production Settings files stay intact.
+Intentional window/root quit must return exit status zero; its status is recorded
+in CLI evidence before clearing process ownership. Crashes/timeouts remain failures.
 
 This is driver/lifecycle/input evidence, not performance, exact pixel parity or
 physical-session acceptance. Both application and compositor hardware adapters

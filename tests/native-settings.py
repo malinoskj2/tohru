@@ -121,16 +121,33 @@ def windows_for_app(tree, app_id):
 def focused_search_submit(native, keyboard, query, timeout=10):
     """Typing must reach the focused input; IPC cannot seed a passing query."""
     assert native("get settings_search") == "", "search fixture must start empty"
+    # Native keyboard gain auto-focuses the first field. Park a real second field
+    # first, so that broken Ctrl+F cannot pass through that default behavior.
+    native("focus runner_focus_canary")
+    canary = native("get runner_focus_canary")
     keyboard("-M", "ctrl", "-k", "f", "-m", "ctrl")
     keyboard(query)
     wait_for(lambda: native("get settings_search") == query, "Ctrl+F focused native search received typing", timeout)
     wait_for(lambda: native("get settings_rows.count") == "1", "typed native Settings search result", timeout)
+    assert native("get runner_focus_canary") == canary, "query reached the focus canary instead of search"
     keyboard("-k", "Return")
 
 
-def clean_exit(process, label):
+def clean_exit(process, label, evidence=None):
     status = process.wait(timeout=10)
+    if evidence is not None:
+        evidence.append({"process_exit": label, "status": status})
     assert status == 0, f"{label} exited {status}; inspect retained app log"
+
+
+def install_focus_probe(scene):
+    """Instrument only the evidence clone, never the production Settings source."""
+    view = scene / "settings/window.plm"
+    source = view.read_text()
+    assert source.rstrip().endswith("}")
+    end = source.rindex("}")
+    probe = (ROOT / "tests/window/focus-probe.plm").read_text()
+    view.write_text(source[:end] + probe + source[end:])
 
 
 def main():
@@ -155,6 +172,8 @@ def main():
     managed.write_text("[bar]\nmooncoil = false\n")
     scene = evidence / "scene"
     shutil.copytree(ROOT / "shell", scene)
+    if args.wtype:
+        install_focus_probe(scene)
     sway_config = evidence / "sway.conf"
     sway_config.write_text("output HEADLESS-1 mode 1280x720@60Hz\noutput HEADLESS-1 scale 1\noutput HEADLESS-1 bg #30232b solid_color\nseat seat0 hide_cursor 100\n")
     env = {**os.environ,
@@ -272,7 +291,7 @@ def main():
                 wait_for(lambda: len(views("dev.tohru.WindowLifecycle")) == 1, "reopen one conditional role")
             subprocess.run(["grim", "-o", "HEADLESS-1", str(evidence / "window-lifecycle.png")], env=env, check=True, timeout=10)
             window("quit")
-            clean_exit(app, "window-only intentional quit")
+            clean_exit(app, "window-only intentional quit", events)
             app_log.close()
             app = None
 
@@ -356,7 +375,9 @@ def main():
             cli("settings", "open")
             wait_for(lambda: native("get settings_open") == "true" and native("get sound_open") == "false", "same-process Settings open")
             if args.wtype:
+                wait_for(lambda: len(views("dev.tohru.Settings")) == 1 and views("dev.tohru.Settings")[0]["focused"], "real Settings window has keyboard focus")
                 focused_search_submit(native, keyboard, "mooncoil")
+                native("fact runner_focus_probe_enabled false")
             else:
                 native("text settings_search mooncoil")
                 wait_for(lambda: native("get settings_rows.count") == "1", "native Settings search")
@@ -420,7 +441,7 @@ def main():
         screenshot = evidence / "foundation-bar.png"
         subprocess.run(["grim", "-o", "HEADLESS-1", str(screenshot)], env=env, check=True, timeout=10)
         subprocess.run([str(args.runtime.resolve()), "--say", "tohru", "quit"], env=env, check=True, timeout=10)
-        clean_exit(app, "first root intentional quit")
+        clean_exit(app, "first root intentional quit", events)
         app_log.close()
         app = None
         launch("restart")
