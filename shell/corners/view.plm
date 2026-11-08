@@ -1,0 +1,24 @@
+part CornerViews {
+    // Fixed small native surfaces bound the buffer cost while size remains editable.
+    // reserve:-1 ignores other surfaces' exclusive zones, matching j2bar.
+    surface corner_top_left {
+        size: 100, 100; anchor: top_left; level: top; reserve: -1
+        screens: all; keyboard: none; open: corners
+        shader screen_corner { at: 0, 0; size: corner_size, corner_size; values: 1, 1 }
+    }
+    surface corner_top_right {
+        size: 100, 100; anchor: top_right; level: top; reserve: -1
+        screens: all; keyboard: none; open: corners
+        shader screen_corner { at: 100 - corner_size, 0; size: corner_size, corner_size; values: 0, 1 }
+    }
+    surface corner_bottom_right {
+        size: 100, 100; anchor: bottom_right; level: top; reserve: -1
+        screens: all; keyboard: none; open: corners
+        shader screen_corner { at: 100 - corner_size, 100 - corner_size; size: corner_size, corner_size; values: 0, 0 }
+    }
+    surface corner_bottom_left {
+        size: 100, 100; anchor: bottom_left; level: top; reserve: -1
+        screens: all; keyboard: none; open: corners
+        shader screen_corner { at: 0, 100 - corner_size; size: corner_size, corner_size; values: 1, 0 }
+    }
+}

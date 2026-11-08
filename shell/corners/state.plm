@@ -1,0 +1,5 @@
+part CornerState {
+    fact corners = true
+    fact corner_size = 32
+    shader screen_corner = file "corner.wgsl"
+}
