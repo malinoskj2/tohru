@@ -45,6 +45,9 @@ impl Role {
 
 static INDICATORS: OnceLock<Mutex<Indicators>> = OnceLock::new();
 
+#[cfg(test)]
+pub(crate) static TEST_LOCK: Mutex<()> = Mutex::new(());
+
 fn publish(lua: &Lua, sample: Sample) -> mlua::Result<Table> {
     let result = lua.create_table()?;
     result.set("shape", lua.create_sequence_from(sample.shape)?)?;
@@ -81,6 +84,26 @@ pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
             publish(lua, role.select(&mut indicators).advance(Instant::now()))
         })?,
     )?;
+    api.set(
+        "reset",
+        lua.create_function(move |lua, role: String| {
+            let role = Role::parse(&role)?;
+            let mut indicators = indicators
+                .lock()
+                .map_err(|_| mlua::Error::runtime("indicator mutex poisoned"))?;
+            let indicator = match role {
+                Role::Workspace => {
+                    indicators.workspace = Indicator::default();
+                    &indicators.workspace
+                }
+                Role::Calendar => {
+                    indicators.calendar = Indicator::calendar();
+                    &indicators.calendar
+                }
+            };
+            publish(lua, indicator.sample())
+        })?,
+    )?;
     lua.globals().set("tohru_workspace", api)
 }
 
@@ -90,8 +113,12 @@ mod tests {
 
     #[test]
     fn roles_and_momentum_survive_vm_replacement_without_a_timer_owner() {
+        let _guard = TEST_LOCK.lock().unwrap();
         let lua = Lua::new();
         install(&lua).unwrap();
+        lua.load("tohru_workspace.reset('workspace'); tohru_workspace.reset('calendar')")
+            .exec()
+            .unwrap();
         lua.load("local c=tohru_workspace.observe('calendar', nil, 12); assert(#c.shape==16 and #c.color==4 and c.width==192 and not c.moving); local w=tohru_workspace.observe('workspace',5,1); assert(w.width==80 and not w.moving); assert(tohru_workspace.observe('workspace',5,2).moving); assert(not pcall(tohru_workspace.tick,'unknown')); assert(not pcall(tohru_workspace.observe,'workspace',5,-1))").exec().unwrap();
         let before = INDICATORS.get().unwrap().lock().unwrap().workspace.sample();
         drop(lua);
@@ -100,5 +127,6 @@ mod tests {
         let retained = INDICATORS.get().unwrap().lock().unwrap().workspace.sample();
         assert_eq!(before, retained);
         replacement.load("local c=tohru_workspace.tick('calendar'); assert(c.width==192 and not c.moving); local w=tohru_workspace.tick('workspace'); assert(w.moving and w.width==80 and #w.shape==16)").exec().unwrap();
+        replacement.load("tohru_workspace.observe('calendar',12,1); assert(tohru_workspace.observe('calendar',12,12).moving); local c=tohru_workspace.reset('calendar'); assert(c.width==192 and not c.moving and c.color[4]==0); assert(not tohru_workspace.observe('calendar',12,11).moving); assert(tohru_workspace.tick('workspace').moving); assert(not pcall(tohru_workspace.reset,'unknown'))").exec().unwrap();
     }
 }

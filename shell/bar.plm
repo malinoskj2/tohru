@@ -1,7 +1,8 @@
 scene Tohru {
  surface { size: full, 42; anchor: top; margin: 0; reserve: 31; screens: all; keyboard: exclusive while sound_open or cal_open }
- permissions { services: "window", "apps", "media", "clock" }
+ permissions { services: "window", "apps", "media", "clock", "workspaces" }
  include "bar/state.plm"
+ include "bar/rail-state.plm"
  include "calendar/state.plm"
  include "settings/state.plm"
  include "sound/declarations.plm"
@@ -18,6 +19,7 @@ scene Tohru {
  event setting_output ->
  box { from: 100, 0; size: screen.width - 200, 31; corner: 10; color: #160e14; opacity: 70% }
  include "bar/contents.plm"
+ include "bar/workspace.plm"
  include "sound/view.plm"
  popup sound_panel {
   at: clamp(sound_button_x - 150, 8, screen.width - 308), 37
