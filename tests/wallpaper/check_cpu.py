@@ -15,9 +15,10 @@ evidence.mkdir(parents=True, exist_ok=True)
 pub mod platform {pub use crate::SysValue;}
 #[path=WALLPAPER] pub mod wallpaper;
 #[path=NATIVE] mod native;
+#[path=VIDEO] pub mod video;
 #[expect(clippy::missing_errors_doc,reason="ephemeral actual adapter entry")]
 pub fn query(name:&str,args:&[SysValue])->Result<SysValue,String>{native::query(name,args)}
-'''.replace("WALLPAPER", json.dumps(str(root / "runtime/wallpaper/mod.rs"))).replace("NATIVE", json.dumps(str(root / "runtime/wallpaper/native.rs"))))
+'''.replace("WALLPAPER", json.dumps(str(root / "runtime/wallpaper/mod.rs"))).replace("NATIVE", json.dumps(str(root / "runtime/wallpaper/native.rs"))).replace("VIDEO", json.dumps(str(root / "runtime/video/mod.rs"))))
 (work / "src/query.rs").write_text('''use tohru_shell::{SysValue,query};
 fn main(){
  let args:Vec<String>=std::env::args().skip(1).collect();
