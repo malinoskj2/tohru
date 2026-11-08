@@ -151,6 +151,8 @@ def main():
         launch('first')
         cli('settings', 'open')
         base.wait_for(lambda: len(views()) == 1 and views()[0]['focused'], 'focused Settings')
+        time.sleep(.5)
+        command(['grim', '-o', 'HEADLESS-1', str(evidence / 'settings-initial.png')])
         window_click(100, 223)
         base.wait_for(lambda: native('get settings_page') == '4' and native('get wallpaper_picker_open') == 'true', 'UI Wallpaper category')
         window_click(744, 614)

@@ -46,8 +46,8 @@ scene Tohru {
  surface settings {
   kind: window; title: "Tohru Settings"; app_id: "dev.tohru.Settings"
   size: 800, 800; open: settings_open; keyboard: exclusive
+  include "settings/window.plm"
  }
- include "settings/window.plm"
  include "corners/view.plm"
  include "wallpaper/view.plm"
  include "capture/presentation.plm"
