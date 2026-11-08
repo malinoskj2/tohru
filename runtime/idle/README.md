@@ -13,7 +13,8 @@ Shared-owner wiring after review:
   beside native settings install, inside immutable root-only TOHRU_SHELL gate.
 - Apply `runtime/idle/0004-idle-native.patch` after reviewed0002 and window0003.
   It only adds the native held transaction and callback, not auth behavior.
-- Existing library fileset includes delay.rs plus tests/session/idle_delay.rs.
+- Existing library fileset includes delay.rs/input.rs/logind_state.rs and their
+  tests/session/idle_delay.rs/idle_input.rs/idle_logind.rs.
 - Ordinary root imports `shell/session/idle.plm`; its logic requires private
   `idle.luau` and calls returned `configure([idle] typed table)` on startup and
   successful config reload. Keys/defaults match coordinator's chosen schema.
@@ -27,7 +28,8 @@ Shared-owner wiring after review:
 One process Owner persists across VM replacement; config validates before enqueue
 and reconfigures existing Policy without generation reset. Config queue8,
 action queue4, cookie limits32/client256total, signal queues16/32. Calloop ping
-coalesces observations without dropped inhibitor transitions. No timer at rest;
+coalesces latest observations with monotonic cancellation/rearm edges; pulse
+transitions cancel queued tasks immediately and survive until one policy drain. No timer at rest;
 16ms scalar publication only while visible fade runs, existing native renderer
 paints full-output overlay. Input cancels fade/rearms generation. Native callbacks
 use proxy+generation currentness, replaced waits are destroyed, output hotplug
@@ -41,7 +43,10 @@ ScreenSaver owns both standard paths without replacing/queueing behind another
 owner; bus authenticates unique-client cookie ownership and disconnect cleanup.
 No application/reason strings retained. Logind idle-block observer conservatively
 inhibits when state is unknown; caffeine owns independent close-on-exec idle-block
-FD. Separate locker delay subscribes before acquiring sleep-delay FD, marks sleep
+FD. Authenticated DBus name-owner subscription precedes initial state
+publication; missing/replaced logind stays unknown/inhibited until a fresh query
+to its exact unique owner succeeds. Old-owner or superseded queries cannot
+overwrite current state. Separate locker delay subscribes before acquiring sleep-delay FD, marks sleep
 intent then asks actual held transaction. Native held callback and immediate
 check both use engaged→guard lock order. Only those callbacks close pending delay
 FD while confirmed cycle remains held; no GPU/Wayland dispatch/wait/call under
@@ -51,6 +56,6 @@ joins on explicit stop; no unlock/power action on teardown. Ordinary shell stop
 closes own services, restores requested screen power and joins observer/actions;
 it does not own or stop locker guard.
 
-Native adapters are parse-checked only at this checkpoint. Core18CPU tests,
+Native adapters are parse-checked only at this checkpoint. Core23CPU tests,
 Clippy and actual Lua/private scene parser checks cover their respective scopes;
 no native observer/logind/fade/screen-power/PAM/security acceptance inferred.

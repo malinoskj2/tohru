@@ -15,6 +15,7 @@ struct Shared {
     cookies: Mutex<Cookies>,
     observer: Weak<Observer>,
 }
+
 impl Shared {
     fn change<T>(&self, change: impl FnOnce(&mut Cookies) -> fdo::Result<T>) -> fdo::Result<T> {
         let mut cookies = self
@@ -31,15 +32,18 @@ impl Shared {
         result
     }
 }
+
 struct ScreenSaver {
     shared: Arc<Shared>,
 }
+
 fn sender(header: &Header<'_>) -> fdo::Result<String> {
     header
         .sender()
         .map(|name| name.as_str().to_owned())
         .ok_or_else(|| fdo::Error::AccessDenied("missing bus-authenticated sender".into()))
 }
+
 #[zbus::interface(name = "org.freedesktop.ScreenSaver")]
 impl ScreenSaver {
     fn inhibit(
@@ -69,6 +73,7 @@ pub(super) struct Service {
     connection: Option<Connection>,
     departures: Option<JoinHandle<()>>,
 }
+
 impl Service {
     pub(super) fn start(observer: &Arc<Observer>) -> Result<Self> {
         let shared = Arc::new(Shared {
@@ -136,6 +141,7 @@ impl Service {
         })
     }
 }
+
 impl Drop for Service {
     fn drop(&mut self) {
         if let Some(connection) = self.connection.take() {
