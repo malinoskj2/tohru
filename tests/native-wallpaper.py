@@ -128,7 +128,11 @@ def main():
         app = subprocess.Popen([str(ROOT / 'bin/tohru-run')], env=env, stdout=log('app-' + label + '.log'), stderr=subprocess.STDOUT, close_fds=True)
         def ready():
             assert app.poll() is None, 'root exited before IPC; inspect app log'
-            return command([str(args.runtime.resolve()), '--say', 'tohru', 'get settings_status'], False).startswith('{')
+            raw = command([str(args.runtime.resolve()), '--say', 'tohru', 'get settings_status'], False)
+            try:
+                return 'wallpaper.change' in json.loads(raw).get('settings', {})
+            except (ValueError, AttributeError):
+                return False
         base.wait_for(ready, 'private root IPC', 20)
     def asset(settings, solid=None):
         path = Path(settings['wallpaper.assignments']['value']['HEADLESS-1'])
