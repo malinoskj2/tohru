@@ -45,3 +45,16 @@ The runner checks NVIDIA RTX5090 Vulkan/GLES2 app/compositor logs. Finally it
 stops/waits/kills all owned apps/input fixture/Sway and the parent-owned private
 bus. Media/logs are in tree-root .tmp with absolute printed host path. It is
 intermediate correctness evidence, not visual/performance/physical acceptance.
+
+Only affected icon evidence after the already-passed review workload:
+
+```sh
+python3 tests/bar/native.py --icons-only --runtime /absolute/path/to/pleamar
+```
+
+This selects only short/long/explicit-empty presentation title cases with icons,
+uses the owned absolute source Mooncoil SVG for the native catalog, and checks
+white pixels in the measured native icon cell. It does not start the pointer or
+repeat no-icon captures, popup grabbing or reload/thread checks. Requires a new
+coordinator slot; none is held by preparing this workload. Pillow reads the native
+PNG for the presence assertion; no reference/visual parity is inferred.

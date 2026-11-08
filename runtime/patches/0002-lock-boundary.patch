@@ -200,10 +200,10 @@
                  for job in rx {
                      match job {
                          Show::Frame { buffer, px, pieces, sent } => {
-+                            if lock_face.as_ref().is_some_and(|face| !face.cycle.publishable()) { continue; }
++                            if lock_face.as_ref().is_some_and(|face| !face.life.current()) { continue; }
                              // The compositor reads it as it is: not before the card has finished it.
                              sent.wait(&device, std::time::Duration::from_secs(1));
-+                            if lock_face.as_ref().is_some_and(|face| !face.cycle.publishable()) { continue; }
++                            if lock_face.as_ref().is_some_and(|face| !face.life.current()) { continue; }
                              wl.attach(Some(&buffer), 0, 0);
                              match pieces {
                                  None => wl.damage_buffer(0, 0, px.0 as i32, px.1 as i32),
@@ -214,10 +214,10 @@
 -                        Show::Commit => wl.commit(),
 -                        Show::Run(f) => f(),
 +                        Show::Commit => {
-+                            if lock_face.as_ref().is_none_or(|face| face.cycle.publishable()) { wl.commit(); }
++                            if lock_face.as_ref().is_none_or(|face| face.life.current()) { wl.commit(); }
 +                        }
 +                        Show::Run(f) => {
-+                            if lock_face.as_ref().is_none_or(|face| face.cycle.publishable()) { f(); }
++                            if lock_face.as_ref().is_none_or(|face| face.life.current()) { f(); }
 +                        }
                          Show::Settled(done) => {
                              if let Some(c) = &connection {
@@ -231,7 +231,7 @@
 +    // Keep the owning SCTK wrapper, not just a raw wl_surface proxy, until
 +    // queued/installed GPU targets AND the native frame worker have dropped.
 +    _surface: Arc<smithay_client_toolkit::session_lock::SessionLockSurface>,
-+    cycle: crate::tohru_lock::Cycle,
++    life: crate::tohru_lock::authority::Face,
 +}
 +
  struct WaylandWindow {
@@ -252,7 +252,7 @@
  
  impl PlatformWindow for WaylandWindow {
 +    fn is_current(&self) -> bool {
-+        self.lock_face.as_ref().is_none_or(|face| face.cycle.publishable())
++        self.lock_face.as_ref().is_none_or(|face| face.life.current())
 +    }
 +
      fn update_input_region(&self, boxes: &[[i32; 4]]) {
@@ -283,7 +283,15 @@
      which: usize,
      /// The box the scene declares (`size:`), which gets centred on each monitor,
      /// and where its piece of the plane lands.
-@@ -1529,33 +1553,36 @@
+@@ -1514,6 +1538,7 @@
+ 
+ /// The lock surface of ONE monitor.
+ struct LockFace {
++    life: crate::tohru_lock::authority::Face,
+     id: u32,
+     // In order: first what paints is released, then the surface.
+     pending: Option<wgpu::Surface<'static>>,
+@@ -1529,33 +1554,36 @@
      cover: Option<Option<(WlShmPool, WlBuffer, std::os::fd::OwnedFd, (u32, u32))>>,
      /// The monitor it covers: when that one goes, so does the face.
      output: wl_output::WlOutput,
@@ -332,12 +340,20 @@
          }
      };
      // One face per monitor, and all at once: until they're all there, the
-@@ -1576,8 +1603,84 @@
-         .map(|((output, name, mhz), shows)| lock_face(c, &lock, output, name, *mhz, shows || everywhere, origin))
+@@ -1570,24 +1598,102 @@
+     // On none of them (a monitor unplugged), on all: a lock with nowhere to type
+     // the password would be no way back.
+     let everywhere = !shown.contains(&true);
++    let cycle = crate::tohru_lock::Cycle::requested(which);
+     let faces = monitors
+         .iter()
+         .zip(shown)
+-        .map(|((output, name, mhz), shows)| lock_face(c, &lock, output, name, *mhz, shows || everywhere, origin))
++        .map(|((output, name, mhz), shows)| lock_face(c, &lock, &cycle, output, name, *mhz, shows || everywhere, origin))
          .collect();
      drop(monitors);
 -    *engaged = Some(Engaged { which, bounds, origin, screens, lock, faces, retiring: Vec::new() });
-+    *engaged = Some(Engaged { cycle: crate::tohru_lock::Cycle::requested(which), which, bounds, origin, screens, lock, faces, retiring: Vec::new() });
++    *engaged = Some(Engaged { cycle, which, bounds, origin, screens, lock, faces, retiring: Vec::new() });
      let _ = c.connection.flush();
 +    true
 +}
@@ -418,16 +434,30 @@
  }
  
  /// The lock face of one monitor: the scene, if `shows`, or else a plain black
-@@ -1585,7 +1688,7 @@
- fn lock_face(c: &Locks, lock: &smithay_client_toolkit::session_lock::SessionLock, output: &wl_output::WlOutput, name: &str, mhz: i32, shows: bool, origin: (f32, f32)) -> LockFace {
+ /// cover, far from anything of the scene so that the mouse over it touches nothing.
+-fn lock_face(c: &Locks, lock: &smithay_client_toolkit::session_lock::SessionLock, output: &wl_output::WlOutput, name: &str, mhz: i32, shows: bool, origin: (f32, f32)) -> LockFace {
++fn lock_face(c: &Locks, lock: &smithay_client_toolkit::session_lock::SessionLock, cycle: &crate::tohru_lock::Cycle, output: &wl_output::WlOutput, name: &str, mhz: i32, shows: bool, origin: (f32, f32)) -> LockFace {
      let wl = c.compositor.create_surface(&c.qh);
      let id = next_surface_id();
 -    let surface = lock.create_lock_surface(wl, output, &c.qh);
 +    let surface = Arc::new(lock.create_lock_surface(wl, output, &c.qh));
++    let life = crate::tohru_lock::authority::Face::new(cycle.clone());
      if !shows && c.shm.is_some() {
-         return LockFace { id, pending: None, viewport: None, _fractional_scale: None, name: name.to_string(), mhz, view_origin: (-1e7, -1e7), cover: Some(None), output: output.clone(), surface };
+-        return LockFace { id, pending: None, viewport: None, _fractional_scale: None, name: name.to_string(), mhz, view_origin: (-1e7, -1e7), cover: Some(None), output: output.clone(), surface };
++        return LockFace { life, id, pending: None, viewport: None, _fractional_scale: None, name: name.to_string(), mhz, view_origin: (-1e7, -1e7), cover: Some(None), output: output.clone(), surface };
      }
-@@ -1627,6 +1730,7 @@
+     let viewport = c.viewporter.as_ref().map(|v| v.get_viewport(surface.wl_surface(), &c.qh, Silent));
+     let fractional_scale = c.fractional_scales.as_ref().map(|m| m.get_fractional_scale(surface.wl_surface(), &c.qh, ScaleFor(id)));
+@@ -1599,7 +1705,7 @@
+             })
+             .ok()
+     };
+-    LockFace { id, pending: paints, viewport, _fractional_scale: fractional_scale, name: name.to_string(), mhz, view_origin: origin, cover: None, output: output.clone(), surface }
++    LockFace { life, id, pending: paints, viewport, _fractional_scale: fractional_scale, name: name.to_string(), mhz, view_origin: origin, cover: None, output: output.clone(), surface }
+ }
+ 
+ /// Which monitors show the scene, by the lock's `screens:`.
+@@ -1627,11 +1733,12 @@
      let Some(c) = LOCKS.get() else { return };
      let mut engaged = c.engaged.lock().unwrap();
      let Some(e) = engaged.as_mut() else { return };
@@ -435,7 +465,13 @@
      if e.faces.iter().any(|f| &f.output == output) {
          return;
      }
-@@ -1655,7 +1759,7 @@
+     let shows = lock_shows(&e.screens, name, number);
+-    let face = lock_face(c, &e.lock, output, name, mhz, shows, e.origin);
++    let face = lock_face(c, &e.lock, &e.cycle, output, name, mhz, shows, e.origin);
+     let covered = face.cover.is_some();
+     e.faces.push(face);
+     let _ = c.connection.flush();
+@@ -1655,13 +1762,14 @@
  /// A cover paints nothing, so it can be destroyed here, and it is destroyed
  /// before the new face is made, since a monitor can only have one.
  fn promote_first_cover(c: &Locks, e: &mut Engaged) {
@@ -444,7 +480,15 @@
          return;
      }
      let cover = e.faces.remove(0);
-@@ -1679,15 +1783,20 @@
++    cover.life.retire();
+     let (output, name, mhz) = (cover.output.clone(), cover.name.clone(), cover.mhz);
+     drop(cover);
+-    let face = lock_face(c, &e.lock, &output, &name, mhz, true, e.origin);
++    let face = lock_face(c, &e.lock, &e.cycle, &output, &name, mhz, true, e.origin);
+     e.faces.insert(0, face);
+     let _ = c.connection.flush();
+     println!("lock   · {name} shows the lock: the monitors it was meant for are not here");
+@@ -1679,15 +1787,21 @@
      let mut engaged = c.engaged.lock().unwrap();
      let Some(e) = engaged.as_mut() else { return Vec::new() };
      let mut gone = Vec::new();
@@ -452,6 +496,7 @@
      let (going, staying): (Vec<LockFace>, Vec<LockFace>) = std::mem::take(&mut e.faces).into_iter().partition(|f| &f.output == output);
      e.faces = staying;
      for f in going {
++        f.life.retire();
          if f.cover.is_none() && f.pending.is_none() {
              gone.push(f.id);
              e.retiring.push(f);
@@ -465,7 +510,7 @@
      let _ = c.connection.flush();
      gone
  }
-@@ -2020,7 +2129,7 @@
+@@ -2020,7 +2134,7 @@
              let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
                  id: a.id,
                  target: gpu::Target::Surface(surface),
@@ -474,7 +519,7 @@
                  scale: a.parent.scale,
                  size: a.size,
                  mhz: a.parent.mhz,
-@@ -2145,6 +2254,7 @@
+@@ -2145,6 +2259,7 @@
          Err(_) => eprintln!("warning: the compositor has no xdg-shell; there will be no popup surfaces"),
      }
      let _ = LOCKS.set(Locks {
@@ -482,7 +527,7 @@
          qh: qh.clone(),
          compositor: state.compositor.clone(),
          manager: smithay_client_toolkit::session_lock::SessionLockState::new(&globals, &qh),
-@@ -2243,7 +2353,7 @@
+@@ -2243,7 +2358,7 @@
              let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
                  id: p.id,
                  target: gpu::Target::Surface(surface),
@@ -491,7 +536,7 @@
                  scale: p.scale,
                  size,
                  mhz,
-@@ -2266,11 +2376,22 @@
+@@ -2266,11 +2381,22 @@
  impl smithay_client_toolkit::session_lock::SessionLockHandler for State {
      /// The compositor confirms it: now, and not before, the session is locked.
      fn locked(&mut self, _: &Connection, _: &QueueHandle<Self>, _: smithay_client_toolkit::session_lock::SessionLock) {
@@ -514,16 +559,15 @@
          eprintln!("lock   · the compositor did not grant the lock, or ended it: is another locker running?");
          let _ = self.to_render.send(ToRender::LockScreen(false));
      }
-@@ -2285,6 +2406,8 @@
+@@ -2285,6 +2411,7 @@
          let Some(c) = LOCKS.get() else { return };
          let mut engaged = c.engaged.lock().unwrap();
          let Some(e) = engaged.as_mut() else { return };
 +        if !e.cycle.publishable() { return; }
-+        let cycle = e.cycle.clone();
          let (which, bounds, origin) = (e.which, e.bounds, e.origin);
          let Some(face) = e.faces.iter_mut().find(|k| k.surface.wl_surface() == surface.wl_surface()) else { return };
          let size = conf.new_size;
-@@ -2311,17 +2434,22 @@
+@@ -2311,17 +2438,22 @@
          // Its box, centred on THIS monitor: what's left over around it is also
          // seen, so the background is painted large and each monitor shows its own part.
          face.view_origin = (origin.0 - (size.0 as f32 - bounds.0 as f32) / 2.0, origin.1 - (size.1 as f32 - bounds.1 as f32) / 2.0);
@@ -534,7 +578,7 @@
                  id: face.id,
                  target: gpu::Target::Surface(paints),
 -                window: Box::new(WaylandWindow { wl: face.surface.wl_surface().clone(), compositor: self.compositor.clone(), cursors: self.cursors.clone(), serial: self.serial.clone(), layer: None, qh: self.qh.clone(), id: face.id, effect: Mutex::new(None), backdrop: None, shown: Default::default() }),
-+                window: Box::new(WaylandWindow { lock_face: Some(LockFaceLease { _surface: face.surface.clone(), cycle }), wl: face.surface.wl_surface().clone(), compositor: self.compositor.clone(), cursors: self.cursors.clone(), serial: self.serial.clone(), layer: None, qh: self.qh.clone(), id: face.id, effect: Mutex::new(None), backdrop: None, shown: Default::default() }),
++                window: Box::new(WaylandWindow { lock_face: Some(LockFaceLease { _surface: face.surface.clone(), life: face.life.clone() }), wl: face.surface.wl_surface().clone(), compositor: self.compositor.clone(), cursors: self.cursors.clone(), serial: self.serial.clone(), layer: None, qh: self.qh.clone(), id: face.id, effect: Mutex::new(None), backdrop: None, shown: Default::default() }),
                  scale: 1.0,
                  size,
                  mhz: face.mhz,

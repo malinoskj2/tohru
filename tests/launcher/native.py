@@ -104,6 +104,14 @@ def verify(root, runtime, evidence, env, start, say, expect, wait_for):
     expect('launcher', 'launcher_pins', '1')
     time.sleep(0.15)
     subprocess.run(['grim', '-o', 'HEADLESS-1', str(evidence / 'launcher-grid.png')], env=env, check=True, timeout=10)
+    from PIL import Image
+    with Image.open(evidence / 'launcher-grid.png') as captured:
+        rgb = captured.convert('RGB')
+        pixels = rgb.load()
+        cyan = sum(1 for y in range(rgb.height) for x in range(rgb.width)
+                   if all(abs(actual - expected) < 5 for actual, expected in zip(pixels[x, y], (137, 220, 235))))
+    assert cyan > 100, 'fixture SVG icon pixels missing (underline alone is insufficient)'
+    (evidence / 'icon-pixels.json').write_text(json.dumps({'source': 'fixture-owned absolute SVG', 'cyan_pixels': cyan, 'parity_acceptance': False}) + '\n')
     say('launcher', 'quit')
     first.wait(timeout=10)
     second = launch('launcher-restart')
