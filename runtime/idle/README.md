@@ -13,8 +13,8 @@ Shared-owner wiring after review:
   beside native settings install, inside immutable root-only TOHRU_SHELL gate.
 - Apply `runtime/idle/0004-idle-native.patch` after reviewed0002 and window0003.
   It only adds the native held transaction and callback, not auth behavior.
-- Existing library fileset includes delay.rs/input.rs/logind_state.rs and their
-  tests/session/idle_delay.rs/idle_input.rs/idle_logind.rs.
+- Existing library fileset includes configuration.rs/cookies.rs/delay.rs/input.rs/
+  logind_state.rs/teardown.rs plus mod.rs and all matching tests listed below.
 - Ordinary root includes `session/idle.part.plm` inside its scene; its logic requires private
   `session/idle.luau` via require("session/idle") and calls returned `configure([idle] typed table)` on startup and
   successful config reload. Keys/defaults match coordinator's chosen schema.
@@ -26,7 +26,9 @@ Shared-owner wiring after review:
   held changes/state_request. Native dedicated role remains separately launched.
 
 One process Owner persists across VM replacement; config validates before enqueue
-and reconfigures existing Policy without generation reset. Config queue8,
+and reconfigures existing Policy without replacing its generation owner. Identical
+config is a no-op across VM reload (no resume epoch, timer reset or rearm); changed
+config is cached only after successful submission, and failed submissions retry. Config queue8,
 action queue4, cookie limits32/client256total, signal queues16/32. Calloop ping
 coalesces latest observations with monotonic cancellation/rearm edges; pulse
 transitions cancel queued tasks immediately and survive until one policy drain. No timer at rest;
@@ -56,7 +58,7 @@ joins on explicit stop; no unlock/power action on teardown. Ordinary shell stop
 closes own services, restores requested screen power and joins observer/actions;
 it does not own or stop locker guard.
 
-Native adapters are parse-checked only at this checkpoint. Core23CPU tests,
+Native adapters are parse-checked only at this checkpoint. Core30CPU tests,
 Clippy and actual Lua/private scene parser checks cover their respective scopes;
 no native observer/logind/fade/screen-power/PAM/security acceptance inferred.
 
@@ -79,12 +81,15 @@ layout exists; these commands do not install or activate anything:
 ```sh
 mkdir -p "$destination/foundation/runtime/idle" \
     "$destination/foundation/tests/session" "$destination/src/tohru_idle"
-cp "$root/runtime/idle/mod.rs" "$root/runtime/idle/cookies.rs" \
+cp "$root/runtime/idle/mod.rs" "$root/runtime/idle/configuration.rs" \
+    "$root/runtime/idle/cookies.rs" \
     "$root/runtime/idle/delay.rs" "$root/runtime/idle/input.rs" \
-    "$root/runtime/idle/logind_state.rs" "$destination/foundation/runtime/idle/"
+    "$root/runtime/idle/logind_state.rs" "$root/runtime/idle/teardown.rs" \
+    "$destination/foundation/runtime/idle/"
 cp "$root/tests/session/idle.rs" "$root/tests/session/idle_cookies.rs" \
     "$root/tests/session/idle_delay.rs" "$root/tests/session/idle_input.rs" \
-    "$root/tests/session/idle_logind.rs" "$destination/foundation/tests/session/"
+    "$root/tests/session/idle_logind.rs" "$root/tests/session/idle_configuration.rs" \
+    "$root/tests/session/idle_teardown.rs" "$destination/foundation/tests/session/"
 cp "$root/runtime/idle/native.rs" "$destination/src/tohru_idle.rs"
 cp "$root/runtime/idle/observer.rs" "$root/runtime/idle/screensaver.rs" \
     "$root/runtime/idle/logind.rs" "$root/runtime/idle/sleep_guard.rs" \
@@ -92,7 +97,7 @@ cp "$root/runtime/idle/observer.rs" "$root/runtime/idle/screensaver.rs" \
 ```
 
 The foundation library's existing `pub mod idle` must still resolve to the copied
-mod.rs, which exports cookies/delay/input/**logind_state**. Its test path must
+mod.rs, which exports configuration/cookies/delay/input/**logind_state**/teardown. Its test path must
 resolve idle_logind.rs from the copied tests/session directory. Native module
 registration/install and the full-path `runtime/idle/0004-idle-native.patch`
 remain separate shared wiring, as above; copying files alone does not compile or
@@ -100,3 +105,36 @@ connect those hooks. Include `session/idle.part.plm` **inside** the ordinary roo
 scene; do not import the standalone idle.plm. The standalone idle.plm and
 idle_probe.plm both include the same owned part, and root logic requires
 `session/idle` and calls its configure function. Native adapters remain uncompiled.
+
+
+## Orderly shutdown and feature boundary
+
+S must call `crate::tohru_idle::shutdown()` on orderly native teardown, under the
+same Luau feature cfg as the module declaration, before returning/exiting the
+process and while its native output connection can restore requested power.
+This Rust hook is terminal and idempotent, independently of Lua VM lifetime.
+It stops only process-local registered resources; a bar without a guard cannot
+stop a separate locker process. New ordinary/guard starts are rejected once
+shutdown begins, and concurrent repeated shutdown calls serialize.
+
+Shutdown cancels action/observer work first, then closes/joins logind and
+ScreenSaver, joins the observer, joins actions and closes/joins the local guard
+if owned. Resource slots are taken before cleanup and mutex poison is recovered;
+each close/join failure is recorded while later cleanup is still attempted.
+Lua stop closes only the ordinary owner; stop_guard closes only the guard, using
+the same cleanup paths. Drop remains a partial-construction fallback. Native lock
+surfaces/release permits/PAM/session commands are never used by teardown; output
+power restoration on observer stop retains its existing behavior. No pending
+lock/suspend request is newly dispatched by cleanup, though an already delivered
+native request cannot be revoked. Opaque kernel/driver/bus calls can still delay
+joining; this is orderly cleanup, not a hard shutdown deadline.
+
+The idle held helper returns false without Luau, and the native held callback is
+feature-guarded. `python3 tests/session/idle_cfg.py --security-source /absolute/source`
+requires pinned native source with reviewed security0002 but before idle0004;
+it applies the real patch and compiles/runs the actual helper/wrapper/callback
+snippets with and without Luau against explicit std-only authority stubs.
+It is not full native compilation, a display/bus test or authentication evidence.
+The actual teardown/configuration helpers are exercised by existing-package CPU
+tests for every ordered cleanup stage, failure continuation, poison recovery,
+idempotence, no post-cancel action dispatch and reload configuration stability.

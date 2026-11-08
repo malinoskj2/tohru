@@ -218,14 +218,35 @@ impl Watch {
     }
 }
 
-impl Drop for Watch {
-    fn drop(&mut self) {
+impl Watch {
+    pub(super) fn stop(&mut self) -> Result<()> {
+        let mut failures = Vec::new();
+        match self.caffeine.lock() {
+            Ok(mut held) => {
+                held.take();
+            }
+            Err(poisoned) => {
+                poisoned.into_inner().take();
+                failures.push("caffeine owner mutex poisoned; recovered descriptor".into());
+            }
+        }
         if let Some(connection) = self.connection.take() {
-            let _ = connection.close();
+            if let Err(error) = connection.close() {
+                failures.push(format!("close logind bus: {error}"));
+            }
         }
         for thread in self.threads.drain(..) {
-            let _ = thread.join();
+            if thread.join().is_err() {
+                failures.push("logind watcher panicked".into());
+            }
         }
-        // OwnedFd closes when Watch is dropped; no child inherits it.
+        anyhow::ensure!(failures.is_empty(), "{}", failures.join("; "));
+        Ok(())
+    }
+}
+
+impl Drop for Watch {
+    fn drop(&mut self) {
+        let _ = self.stop();
     }
 }

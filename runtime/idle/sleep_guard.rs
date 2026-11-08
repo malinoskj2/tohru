@@ -2,7 +2,11 @@
 use crate::scene::{Event, ToRender};
 use anyhow::{Context, Result};
 use std::os::fd::OwnedFd;
-use std::sync::{Arc, Mutex, OnceLock, Weak, mpsc::Sender};
+use std::sync::{
+    Arc, Mutex, OnceLock, Weak,
+    atomic::{AtomicBool, Ordering},
+    mpsc::Sender,
+};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use tohru_shell::idle::delay::Delay;
@@ -17,6 +21,7 @@ pub(super) struct Guard {
     connection: Option<Connection>,
     thread: Option<JoinHandle<()>>,
     _delay: Arc<Mutex<Delay<OwnedFd>>>,
+    stopped: Arc<AtomicBool>,
 }
 
 fn acquire(connection: &Connection) -> Result<OwnedFd> {
@@ -76,12 +81,19 @@ impl Guard {
             .lock()
             .map_err(|_| anyhow::anyhow!("sleep guard owner mutex poisoned"))? =
             Arc::downgrade(&delay);
+        let stopped = Arc::new(AtomicBool::new(false));
+        let thread_stopped = stopped.clone();
         let thread_delay = delay.clone();
         let thread_connection = connection.clone();
         let thread = thread::Builder::new()
             .name("tohru-lock-sleep".into())
             .spawn(move || {
                 for message in changes {
+                    if thread_stopped.load(Ordering::Acquire)
+                        || super::SHUTTING_DOWN.load(Ordering::Acquire)
+                    {
+                        break;
+                    }
                     let Ok(message) = message else {
                         break;
                     };
@@ -130,18 +142,55 @@ impl Guard {
             connection: Some(connection),
             thread: Some(thread),
             _delay: delay,
+            stopped,
         })
+    }
+}
+
+impl Guard {
+    pub(super) fn stop(&mut self) -> Result<()> {
+        self.stopped.store(true, Ordering::Release);
+        let mut failures = Vec::new();
+        if let Some(connection) = self.connection.take() {
+            if let Err(error) = connection.close() {
+                failures.push(format!("close locker delay bus: {error}"));
+            }
+        }
+        if let Some(thread) = self.thread.take() {
+            if thread.join().is_err() {
+                failures.push("locker delay watcher panicked".into());
+            }
+        }
+        // Only clear this guard's callback registration, never a newer owner.
+        if let Some(active) = ACTIVE.get() {
+            let mut current = match active.lock() {
+                Ok(current) => current,
+                Err(poisoned) => {
+                    failures.push("active delay mutex poisoned; recovered registration".into());
+                    poisoned.into_inner()
+                }
+            };
+            if current
+                .upgrade()
+                .is_some_and(|delay| Arc::ptr_eq(&delay, &self._delay))
+            {
+                *current = Weak::new();
+            }
+        }
+        match self._delay.lock() {
+            Ok(mut delay) => delay.close(),
+            Err(poisoned) => {
+                poisoned.into_inner().close();
+                failures.push("delay FD mutex poisoned; recovered descriptor".into());
+            }
+        }
+        anyhow::ensure!(failures.is_empty(), "{}", failures.join("; "));
+        Ok(())
     }
 }
 
 impl Drop for Guard {
     fn drop(&mut self) {
-        if let Some(connection) = self.connection.take() {
-            let _ = connection.close();
-        }
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
-        // No explicit unlock or convenience power action on teardown.
+        let _ = self.stop();
     }
 }
