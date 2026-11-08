@@ -1,7 +1,7 @@
 part SettingsWindow {
  let settings_keys = settings_open and not sound_open and not cal_open and not net_open and not bt_open and not info_visible and not about_visible and not capture_open
- box { from: 0, 0; size: 800, 700; color: #181825 }
- box { from: 0, 0; size: 220, 700; color: #11111b }
+ box { from: 0, 0; size: 800, 800; color: #181825 }
+ box { from: 0, 0; size: 220, 800; color: #11111b }
  text "Settings" { at: 18, 30; anchor: left center; size: 20; weight: 600; color: #cdd6f4 }
  box settings_back_button { from: 12, 54; size: 30, 30; corner: 8; color: #313244; cursor: pointer; active: settings_can_back }
  box settings_forward_button { from: 48, 54; size: 30, 30; corner: 8; color: #313244; cursor: pointer; active: settings_can_forward }
@@ -38,9 +38,10 @@ part SettingsWindow {
  group { move: 244, 104; show: settings_wallpaper_page; include "../wallpaper/picker-view.plm" }
  include "corner-size.plm"
  include "capture.plm"
- text wallpaper_settings_notice { at: 244, 640; anchor: left top; size: 11; width: 528; lines: 2; color: #a6adc8; show: settings_wallpaper_page }
- text settings_notice { at: 244, 640; anchor: left top; size: 11; width: 528; lines: 2; color: #a6adc8; show: not settings_wallpaper_page }
- text settings_ui_error { at: 244, 672; anchor: left top; size: 11; width: 528; lines: 2; color: #f38ba8 }
+ text wallpaper_rotation_error { at: 244, 700; anchor: left top; size: 11; width: 528; lines: 2; color: #f38ba8; show: settings_wallpaper_page }
+ text wallpaper_settings_notice { at: 244, 728; anchor: left top; size: 11; width: 528; lines: 2; color: #a6adc8; show: settings_wallpaper_page }
+ text settings_notice { at: 244, 728; anchor: left top; size: 11; width: 528; lines: 2; color: #a6adc8; show: not settings_wallpaper_page }
+ text settings_ui_error { at: 244, 770; anchor: left top; size: 11; width: 528; lines: 2; color: #f38ba8 }
  on press settings_back_button { emit settings_back }
  on press settings_forward_button { emit settings_forward }
  on key Escape while settings_keys and not settings_wallpaper_page { emit settings_close }

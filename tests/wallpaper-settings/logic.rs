@@ -8,7 +8,7 @@ fn picker_commits_once_through_owner_and_preserves_failure_and_provenance() {
         fact,text,model,handlers,modules={},{wallpaper_request_output=''}, {}, {}, {}
         function on(name, fn) handlers[name]=fn end
         function require(name) return modules[name] end
-        local settings={['wallpaper.fit']={value='fill'}, ['wallpaper.enabled']={value=false},
+        local settings={['wallpaper.preset']={}, ['wallpaper.change']={value='never'}, ['appearance.palette']={value='mocha'}, ['wallpaper.fit']={value='fill'}, ['wallpaper.enabled']={value=false},
             ['wallpaper.folder']={value='/chosen',managed=true},
             ['wallpaper.assignments']={value={OFFLINE='/chosen/old.png'},managed=true}}
         accepted=0
@@ -18,6 +18,12 @@ fn picker_commits_once_through_owner_and_preserves_failure_and_provenance() {
                 settings[key].value=value;settings[key].runtime_override=true;accepted=accepted+1
                 return settings,'fixture durability warning'
             end}
+        tohru_settings.wallpaper_update=function(proposal)
+            if refused then error('fixture write failure') end
+            local names={assignments='wallpaper.assignments',preset='wallpaper.preset',folder='wallpaper.folder',palette='appearance.palette'}
+            for field,value in pairs(proposal)do settings[names[field]].value=value;settings[names[field]].runtime_override=true end
+            accepted=accepted+1;return settings,'fixture durability warning'
+        end
         sys={ask=function(name,folder)
             if name=='capture.outputs' then return {{name='A',routable=true}} end
             assert(name=='wallpaper.catalog' and folder=='/chosen')
@@ -29,6 +35,14 @@ fn picker_commits_once_through_owner_and_preserves_failure_and_provenance() {
     .unwrap();
     let modules: mlua::Table = lua.globals().get("modules").unwrap();
     for (name, source) in [
+        (
+            "settings/wallpaper-actions",
+            include_str!("../../shell/settings/wallpaper-actions.luau"),
+        ),
+        (
+            "wallpaper/rotation",
+            include_str!("../../shell/wallpaper/rotation.luau"),
+        ),
         (
             "wallpaper/controller",
             include_str!("../../shell/wallpaper/controller.luau"),

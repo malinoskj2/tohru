@@ -183,7 +183,7 @@ pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
                 .map_err(|_| mlua::Error::runtime("settings owner mutex poisoned"))?;
             let outcome = owner.set_many(candidates).map_err(report)?;
             if matches!(outcome, SetOutcome::RuntimeOverride) {
-                return Ok((snapshot(lua, &owner)?, Some("This related wallpaper change is temporary because a participating setting is Nix managed; none of it was saved.".to_owned())));
+                return Ok((snapshot(lua, &owner)?, Some("This related wallpaper change is temporary because a participating setting is Nix managed or already temporary; none of it was saved.".to_owned())));
             }
             applied(lua, &owner, outcome)
         })?,

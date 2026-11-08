@@ -11,7 +11,7 @@ local function publish(settings)
     fact.corner_size = settings["appearance.corner_size"].value
     settings["bar.preferred_output"].deprecated = true
     settings["bar.preferred_output"].effective = false
-    text.settings_status = json.encode({schema = 6, settings = settings})
+    text.settings_status = json.encode({schema = 7, settings = settings})
     if refresh_settings then refresh_settings(settings) end
     if configure_idle then configure_idle(settings) end
     if wallpaper then wallpaper.publish(settings) end
@@ -41,6 +41,22 @@ on("setting_wallpaper_fit", function(index)
     local mode = modes[index]
     if not mode then text.settings_error = "Wallpaper fit must be fill, fit, centre or tile"; return end
     change(function() return tohru_settings.set("wallpaper.fit", mode) end)
+end)
+on("setting_wallpaper_change",function(index)
+    local policies={[0]="never","hourly","daily","login"}
+    local policy=policies[index]
+    if not policy then text.settings_error="Invalid wallpaper change policy";return end
+    local ok,err=pcall(wallpaper.change_policy,policy)
+    if not ok then text.settings_error=tostring(err);text.settings_ui_error=tostring(err)end
+end)
+on("setting_palette",function(index)
+    local palettes={[0]="mocha","macchiato","rose_pine","nord","gruvbox","tokyo_night","dracula","everforest"}
+    local palette=palettes[index]
+    if not palette then text.settings_error="Invalid retained palette";return end
+    -- Preparation uses the proposed palette; the callback accepts its assignment
+    -- map and palette together. Never set the palette first then repair images.
+    local ok,err=pcall(wallpaper.palette,palette)
+    if not ok then text.settings_error=tostring(err);text.settings_ui_error=tostring(err)end
 end)
 on("setting_corners", function(n)
     change(function() return tohru_settings.set("appearance.corners", n ~= 0) end)

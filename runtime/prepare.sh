@@ -47,7 +47,7 @@ cp "$root/runtime/capture/mod.rs" "$root/runtime/capture/files.rs" "$root/runtim
 mkdir -p "$destination/foundation/runtime/info" "$destination/foundation/tests/info"
 cp "$root"/runtime/info/*.rs "$destination/foundation/runtime/info/"
 cp "$root/tests/info/snapshot.rs" "$destination/foundation/tests/info/"
-cp "$root/tests/info.rs" "$destination/foundation/tests/"
+cp "$root/tests/info.rs" "$root/tests/settings.rs" "$destination/foundation/tests/"
 cp "$root/tests/wallpaper/catalog.rs" "$root/tests/wallpaper/preset.rs" "$destination/foundation/tests/wallpaper/"
 cp "$root"/tests/capture/*.rs "$destination/foundation/tests/capture/"
 cp "$root/tests/session/idle.rs" "$destination/foundation/tests/session/"

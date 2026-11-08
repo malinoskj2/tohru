@@ -23,6 +23,22 @@ class Cli(unittest.TestCase):
     def invoke(self, *args, **env):
         return subprocess.run([str(ROOT / "bin/tohru"), *args], env={**self.env, **env}, text=True, capture_output=True)
 
+    def test_rotation_and_palette_routes_are_closed_before_ipc(self):
+        result=self.invoke('wallpaper','rotate')
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(json.loads(result.stdout),['--say','tohru','emit wallpaper_rotate'])
+        for key,modes,event in [
+            ('wallpaper.change',['never','hourly','daily','login'],'setting_wallpaper_change'),
+            ('appearance.palette',['mocha','macchiato','rose_pine','nord','gruvbox','tokyo_night','dracula','everforest'],'setting_palette')]:
+            for index,mode in enumerate(modes):
+                result=self.invoke('config','set',key,mode)
+                self.assertEqual(result.returncode,0,result.stderr)
+                self.assertEqual(json.loads(result.stdout),['--say','tohru','emit '+event+' '+str(index)])
+            for invalid in ['Mocha','rose-pine','hourly ','0','../other','daily;quit','']:
+                result=self.invoke('config','set',key,invalid)
+                self.assertEqual(result.returncode,2)
+                self.assertEqual(result.stdout,'')
+
     def test_wallpaper_fit_canonical_enum_is_mapped_before_native_ipc(self):
         for index, mode in enumerate(['fill', 'fit', 'centre', 'tile']):
             result = self.invoke('config', 'set', 'wallpaper.fit', mode)

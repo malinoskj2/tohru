@@ -10,7 +10,7 @@ let
       ../runtime/wallpaper/mod.rs ../runtime/wallpaper/probe.rs ../runtime/wallpaper/native.rs
       ../runtime/wallpaper/preset.rs ../runtime/wallpaper/presets.rs ../runtime/wallpaper/raster.rs ../runtime/wallpaper/J2BAR-LICENSE
       ../runtime/window/visibility.rs
-      ../runtime/info_luau.rs ../runtime/info/mod.rs ../runtime/info/read.rs ../runtime/info/storage.rs ../runtime/info/system.rs ../tests/info/snapshot.rs ../tests/info.rs
+      ../runtime/info_luau.rs ../runtime/info/mod.rs ../runtime/info/read.rs ../runtime/info/storage.rs ../runtime/info/system.rs ../tests/info/snapshot.rs ../tests/info.rs ../tests/settings.rs
       ../runtime/capture/mod.rs ../runtime/capture/files.rs ../runtime/capture/geometry.rs
       ../runtime/capture/native.rs ../runtime/capture/clipboard.rs ../runtime/capture/clipboard_owner.rs
       ../tests/wallpaper/catalog.rs ../tests/wallpaper/preset.rs ../tests/wallpaper/presets.rs ../tests/wallpaper/raster.rs ../tests/capture
@@ -59,7 +59,7 @@ let
       cp -r ${foundationSource}/runtime/info foundation/runtime/
       mkdir -p foundation/tests/info
       cp ${foundationSource}/tests/info/snapshot.rs foundation/tests/info/
-      cp ${foundationSource}/tests/info.rs foundation/tests/
+      cp ${foundationSource}/tests/info.rs ${foundationSource}/tests/settings.rs foundation/tests/
       mkdir -p foundation/runtime/wallpaper foundation/tests/wallpaper foundation/tests/capture
       cp ${foundationSource}/runtime/wallpaper/mod.rs ${foundationSource}/runtime/wallpaper/probe.rs ${foundationSource}/runtime/wallpaper/preset.rs ${foundationSource}/runtime/wallpaper/J2BAR-LICENSE foundation/runtime/wallpaper/
       cp ${foundationSource}/tests/wallpaper/catalog.rs ${foundationSource}/tests/wallpaper/preset.rs foundation/tests/wallpaper/
@@ -119,7 +119,7 @@ let
     postFixup = ''
       wrapProgram $out/bin/pleamar --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ vulkan-loader libglvnd ]}
     '';
-    meta = { license = lib.licenses.bsd3; platforms = lib.platforms.linux; };
+    meta = { license = [ lib.licenses.bsd3 lib.licenses.mit ]; platforms = lib.platforms.linux; };
   };
   runtime = callPackage ./runtime-wrapper.nix { runtime = runtimeUnwrapped; };
 in stdenvNoCC.mkDerivation {

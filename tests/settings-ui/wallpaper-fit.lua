@@ -9,6 +9,9 @@ end
 config['appearance.corner_size']={value=32}
 config['wallpaper.fit']={value='fill',managed=true}
 config['wallpaper.folder']={value=''}
+config['wallpaper.preset']={}
+config['appearance.palette']={value='mocha'}
+config['wallpaper.change']={value='never'}
 config['wallpaper.assignments']={value={OFFLINE='/image.png'}}
 config['bar.preferred_output']={value=''}
 local changed=0
@@ -52,6 +55,8 @@ local modules={
         projected=fit;return {}
     end}end,
     ['wallpaper/picker']=function()return {open=function()end}end,
+    ['settings/wallpaper-actions']=assert(loadfile('shell/settings/wallpaper-actions.luau'))(),
+    ['wallpaper/rotation']=assert(loadfile('shell/wallpaper/rotation.luau'))(),
 }
 function require(name)assert(modules[name],name);return modules[name]end
 local bridge=assert(loadfile('shell/settings/wallpaper.luau'))()(function()end)
@@ -75,7 +80,7 @@ modules['settings/wallpaper']=function()return bridge end
 modules['settings/corner-size']=assert(loadfile('shell/settings/corner-size.luau'))()
 tohru_workspace={};tohru_info={snapshot=noop}
 assert(loadfile('shell/bar.luau'))()
-assert(status.schema==6)
+assert(status.schema==7)
 local before=changed
 for index,mode in ipairs({'fill','fit','centre','tile'})do
     handlers.setting_wallpaper_fit(index-1)
@@ -89,4 +94,15 @@ end
 assert(text.settings_corner_size_edit=='32')
 text.settings_corner_size_edit='64';handlers['submit:settings_corner_size_edit']()
 assert(config['appearance.corner_size'].value==64 and text.settings_corner_size_edit=='64')
-print('PASS wallpaper fit and corner size actual Settings, bridge and root routes')
+local last_policy,last_palette
+bridge.change_policy=function(value)last_policy=value end
+bridge.palette=function(value)last_palette=value end
+for index,value in ipairs({'never','hourly','daily','login'})do
+    handlers.setting_wallpaper_change(index-1);assert(last_policy==value)
+end
+for index,value in ipairs({'mocha','macchiato','rose_pine','nord','gruvbox','tokyo_night','dracula','everforest'})do
+    handlers.setting_palette(index-1);assert(last_palette==value)
+end
+handlers.setting_wallpaper_change(4);assert(last_policy=='login' and text.settings_error:find('Invalid'))
+handlers.setting_palette(8);assert(last_palette=='everforest' and text.settings_error:find('Invalid'))
+print('PASS wallpaper fit/corner size and root canonical palette/change action routes')

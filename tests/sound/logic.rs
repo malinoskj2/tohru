@@ -269,7 +269,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         tohru_settings={snapshot=function() return {
             ['bar.mooncoil']={value=false},['appearance.corners']={value=true},['appearance.corner_size']={value=32},
             ['bar.preferred_output']={value='legacy'},
-            ['capture.save']={value=true}, ['capture.copy']={value=true}, ['capture.directory']={value=''}, ['capture.filename_pattern']={value=''}, ['wallpaper.fit']={value='fill'}, ['wallpaper.enabled']={value=false}, ['wallpaper.folder']={value=''}, ['wallpaper.assignments']={value={}},
+            ['capture.save']={value=true}, ['capture.copy']={value=true}, ['capture.directory']={value=''}, ['capture.filename_pattern']={value=''}, ['wallpaper.preset']={}, ['wallpaper.change']={value='never'}, ['appearance.palette']={value='mocha'}, ['wallpaper.fit']={value='fill'}, ['wallpaper.enabled']={value=false}, ['wallpaper.folder']={value=''}, ['wallpaper.assignments']={value={}},
             ['idle.lock_seconds']={value=1800}, ['idle.screen_off_unlocked_seconds']={value=0},
             ['idle.screen_off_locked_seconds']={value=60}, ['idle.suspend_unlocked_seconds']={value=7200},
             ['idle.suspend_locked_seconds']={value=5400}, ['idle.fade_milliseconds']={value=2000}
@@ -296,6 +296,14 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         (
             "capture/controller",
             include_str!("../../shell/capture/controller.luau"),
+        ),
+        (
+            "settings/wallpaper-actions",
+            include_str!("../../shell/settings/wallpaper-actions.luau"),
+        ),
+        (
+            "wallpaper/rotation",
+            include_str!("../../shell/wallpaper/rotation.luau"),
         ),
         (
             "settings/wallpaper",

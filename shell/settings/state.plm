@@ -7,6 +7,12 @@ part SettingsState {
  text capture_pattern_edit = ""
  text capture_preferences_notice = ""
  text wallpaper_settings_notice = ""
+ text wallpaper_rotation_error = ""
+ text wallpaper_preset_status = "{}"
+ fact wallpaper_rotation_initialized = false
+ event wallpaper_rotate ->
+ event setting_wallpaper_change ->
+ event setting_palette ->
  fact settings_selected = 0
  fact settings_sidebar = true
  fact settings_can_back = false
