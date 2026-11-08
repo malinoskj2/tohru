@@ -39,3 +39,15 @@ fn resume_replaces_guard_and_stale_ack_cannot_release_new_delay() {
     delay.acknowledge();
     assert_eq!(closed.load(Ordering::SeqCst), 2);
 }
+
+#[test]
+fn failed_reacquire_cancels_old_sleep_without_inventing_a_descriptor() {
+    let closed = Arc::new(AtomicUsize::new(0));
+    let mut delay = Delay::new(Fd(closed.clone()));
+    delay.prepare();
+    delay.acknowledge();
+    delay.resume_failed();
+    delay.acknowledge();
+    assert!(!delay.protected());
+    assert_eq!(closed.load(Ordering::SeqCst), 1);
+}

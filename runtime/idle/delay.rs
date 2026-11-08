@@ -33,6 +33,12 @@ impl<T> Delay<T> {
         self.inhibitor = Some(inhibitor);
     }
 
+    /// Resume occurred but logind refused a fresh descriptor. Keep any still
+    /// owned delay, cancel the old sleep intent and report unavailable upstream.
+    pub fn resume_failed(&mut self) {
+        self.sleeping = false;
+    }
+
     #[must_use]
     pub const fn protected(&self) -> bool {
         self.inhibitor.is_some()
