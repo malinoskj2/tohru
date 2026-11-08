@@ -1,0 +1,11 @@
+part VolumeOsdState {
+    fact osd_open = false
+    fact osd_hover = false
+    fact osd_known = false
+    fact osd_last_volume = 0
+    fact osd_last_muted = false
+    fact osd_level = 0
+    text osd_label = ""
+    event osd_enter ->
+    event osd_leave ->
+}
