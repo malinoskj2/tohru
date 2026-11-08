@@ -3,10 +3,13 @@
 import argparse
 import json
 import os
+import secrets
+import tempfile
 from pathlib import Path
 import subprocess
 import sys
 import time
+sys.dont_write_bytecode = True
 from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,32 +25,79 @@ def wait_for(operation, label, timeout=12):
     raise AssertionError(f"Timed out: {label}")
 
 
+def private_environment(inherited, evidence, runtime_dir):
+    env = {**inherited, 'HOME': str(evidence / 'home'), 'XDG_RUNTIME_DIR': str(runtime_dir),
+           **{f'XDG_{key}_HOME': str(evidence / key.lower()) for key in ('CONFIG', 'CACHE', 'DATA', 'STATE')},
+           'WLR_BACKENDS': 'headless', 'WLR_HEADLESS_OUTPUTS': '1', 'WLR_LIBINPUT_NO_DEVICES': '1',
+           'WLR_RENDERER': 'gles2', 'WLR_RENDER_DRM_DEVICE': '/dev/dri/renderD128',
+           'VK_DRIVER_FILES': '/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json',
+           'WGPU_BACKEND': 'vulkan', 'PLEAMAR_BACKEND': 'vulkan', 'PLEAMAR_GENERIC': '1'}
+    env['PLEAMAR_SOCKETS'] = str(runtime_dir / 'ipc')
+    for key in ('WAYLAND_DISPLAY', 'SWAYSOCK', 'DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE', 'TOHRU_RUNTIME', 'TOHRU_SCENE', 'TOHRU_MANAGED_CONFIG', 'WAYLAND_SOCKET', 'CUA_INJECT_SOCKET', 'TOHRU_B_PRIVATE_BUS', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE'):
+        env.pop(key, None)
+    return env
+
+
+def assert_private_ipc(env, runtime_dir):
+    expected = runtime_dir.absolute() / 'ipc'
+    assert Path(env['PLEAMAR_SOCKETS']).absolute() == expected, 'IPC route escaped private directory'
+    assert expected.resolve() == expected, 'Private IPC directory resolves outside its owner'
+    if expected.exists():
+        for endpoint in expected.iterdir():
+            assert endpoint.resolve().parent == expected and not endpoint.is_symlink(), 'Outside IPC endpoint rejected'
+
+
+def bootstrap_private_bus(child_dir, token, inherited, arguments, run=subprocess.run):
+    # Only a fresh explicit child invocation can skip bootstrap; inherited markers
+    # have no authority. The parent owns the bus and private provenance directory.
+    if child_dir is not None:
+        directory = Path(child_dir)
+        assert directory.is_absolute() and directory.parent == ROOT / '.tmp'
+        assert directory.name.startswith('b-bus-') and not directory.is_symlink()
+        with (directory / 'token').open() as source:
+            expected_token = source.read(65)
+        assert token and secrets.compare_digest(expected_token, token), 'Private bus provenance rejected'
+        address = inherited.get('DBUS_SESSION_BUS_ADDRESS', '')
+        parts = [field.split('=', 1) for field in address.split(',')]
+        assert all(len(field) == 2 for field in parts), 'Malformed private bus rejected'
+        fields = dict(parts)
+        assert len(fields) == len(parts), 'Duplicate session bus selectors rejected'
+        assert fields.get('unix:path') == str(directory / 'bus'), 'Outside session bus rejected'
+        assert set(fields) <= {'unix:path', 'guid'} and ';' not in address, 'Alternate session bus rejected'
+        return False
+    assert token is None, 'Private bus token without child provenance'
+    ROOT.joinpath('.tmp').mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='b-bus-', dir=ROOT / '.tmp') as temporary:
+        directory = Path(temporary)
+        private_token = secrets.token_hex(32)
+        (directory / 'token').write_text(private_token)
+        (directory / 'token').chmod(0o600)
+        config = directory / 'bus.conf'
+        config.write_text('<busconfig><type>session</type><listen>unix:path=' + escape(str(directory / 'bus')) + '</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
+        clean = dict(inherited)
+        for key in ('TOHRU_B_PRIVATE_BUS', 'DBUS_SESSION_BUS_ADDRESS', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE', 'WAYLAND_SOCKET', 'CUA_INJECT_SOCKET'):
+            clean.pop(key, None)
+        run(['dbus-run-session', '--config-file', str(config), '--', sys.executable, __file__, *arguments,
+             '--bus-child', str(directory), '--bus-token', private_token], env=clean, check=True, close_fds=True)
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime', type=Path, required=True)
+    parser.add_argument('--bus-child', type=Path, help=argparse.SUPPRESS)
+    parser.add_argument('--bus-token', help=argparse.SUPPRESS)
     args = parser.parse_args()
-    if os.environ.get('TOHRU_B_PRIVATE_BUS') != '1':
-        ROOT.joinpath('.tmp').mkdir(exist_ok=True)
-        config = ROOT / '.tmp' / f'b-bus-{os.getpid()}.conf'
-        config.write_text('<busconfig><type>session</type><listen>unix:tmpdir=' + escape(str(ROOT / '.tmp')) + '</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
-        try:
-            subprocess.run(['dbus-run-session', '--config-file', str(config), '--', sys.executable, __file__, *sys.argv[1:]], env={**os.environ, 'TOHRU_B_PRIVATE_BUS': '1'}, check=True)
-        finally:
-            config.unlink()
+    if bootstrap_private_bus(args.bus_child, args.bus_token, os.environ, sys.argv[1:]):
         return
     evidence = ROOT / '.tmp' / f'b-native-{time.time_ns()}'
     evidence.mkdir()
     runtime_dir = ROOT / '.tmp' / f'b{os.getpid()}'
     runtime_dir.mkdir(mode=0o700)
     (evidence / 'home').mkdir()
-    env = {**os.environ, 'HOME': str(evidence / 'home'), 'XDG_RUNTIME_DIR': str(runtime_dir),
-           **{f'XDG_{key}_HOME': str(evidence / key.lower()) for key in ('CONFIG', 'CACHE', 'DATA', 'STATE')},
-           'WLR_BACKENDS': 'headless', 'WLR_HEADLESS_OUTPUTS': '1', 'WLR_LIBINPUT_NO_DEVICES': '1',
-           'WLR_RENDERER': 'gles2', 'WLR_RENDER_DRM_DEVICE': '/dev/dri/renderD128',
-           'VK_DRIVER_FILES': '/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json',
-           'WGPU_BACKEND': 'vulkan', 'PLEAMAR_BACKEND': 'vulkan', 'PLEAMAR_GENERIC': '1'}
-    for key in ('WAYLAND_DISPLAY', 'SWAYSOCK', 'DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE'):
-        env.pop(key, None)
+    env = private_environment(os.environ, evidence, runtime_dir)
+    env['TOHRU_B_PRIVATE_BUS'] = '1'  # Set only after explicit child/address validation.
+    Path(env['PLEAMAR_SOCKETS']).mkdir(mode=0o700)
     sway_config = evidence / 'sway.conf'
     sway_config.write_text('output HEADLESS-1 mode 1280x720@60Hz\noutput HEADLESS-1 scale 1\noutput HEADLESS-1 bg #30232b solid_color\nseat seat0 hide_cursor 100\n')
     processes, logs, events = [], [], []
@@ -56,12 +106,15 @@ def main():
     def start(command, label, extra=None):
         log = (evidence / f'{label}.log').open('w')
         logs.append(log)
-        process = subprocess.Popen(command, env={**env, **(extra or {})}, stdout=log, stderr=subprocess.STDOUT)
+        child_env = {**env, **(extra or {})}
+        assert_private_ipc(child_env, runtime_dir)
+        process = subprocess.Popen(command, env=child_env, stdout=log, stderr=subprocess.STDOUT, close_fds=True)
         processes.append(process)
         return process
 
     def say(scene, command):
-        result = subprocess.run([runtime, '--say', scene, command], env=env, text=True, capture_output=True, timeout=10)
+        assert_private_ipc(env, runtime_dir)
+        result = subprocess.run([runtime, '--say', scene, command], env=env, text=True, capture_output=True, timeout=10, close_fds=True)
         events.append({'scene': scene, 'command': command, 'exit': result.returncode, 'out': result.stdout, 'err': result.stderr})
         return result.stdout.strip() if result.returncode == 0 else None
 
