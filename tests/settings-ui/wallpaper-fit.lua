@@ -13,8 +13,12 @@ config['wallpaper.assignments']={value={OFFLINE='/image.png'}}
 config['bar.preferred_output']={value=''}
 local changed=0
 local function set(key,value)
-    assert(key=='wallpaper.fit' and type(value)=='string')
-    assert(value=='fill' or value=='fit' or value=='centre' or value=='tile')
+    if key=='appearance.corner_size' then
+        assert(type(value)=='number' and value>=1 and value<=100)
+    else
+        assert(key=='wallpaper.fit' and type(value)=='string')
+        assert(value=='fill' or value=='fit' or value=='centre' or value=='tile')
+    end
     if refused then error('fixture write refusal')end
     config[key].value=value; config[key].runtime_override=true;changed=changed+1
     return config,'durability warning'
@@ -68,6 +72,7 @@ setmetatable(modules,{__index=function(_,name)
     return function()return panel end
 end})
 modules['settings/wallpaper']=function()return bridge end
+modules['settings/corner-size']=assert(loadfile('shell/settings/corner-size.luau'))()
 tohru_workspace={};tohru_info={snapshot=noop}
 assert(loadfile('shell/bar.luau'))()
 assert(status.schema==6)
@@ -81,4 +86,7 @@ for _,invalid in ipairs({-1,4,.5,'fit',math.huge})do
     handlers.setting_wallpaper_fit(invalid)
     assert(changed==before+4 and text.settings_error:find('Wallpaper fit must be'))
 end
-print('PASS wallpaper fit actual Settings, bridge and root routes')
+assert(text.settings_corner_size_edit=='32')
+text.settings_corner_size_edit='64';handlers['submit:settings_corner_size_edit']()
+assert(config['appearance.corner_size'].value==64 and text.settings_corner_size_edit=='64')
+print('PASS wallpaper fit and corner size actual Settings, bridge and root routes')

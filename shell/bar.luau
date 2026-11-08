@@ -3,6 +3,7 @@ local refresh_settings
 local configure_idle
 local wallpaper
 local capture
+local corner_preferences
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
@@ -15,6 +16,7 @@ local function publish(settings)
     if configure_idle then configure_idle(settings) end
     if wallpaper then wallpaper.publish(settings) end
     if capture then capture.publish(settings) end
+    if corner_preferences then corner_preferences.publish(settings) end
 end
 local function change(operation)
     local ok, result, warning = pcall(operation)
@@ -114,6 +116,9 @@ refresh_settings = require("settings/controller")(function(settings, warning)
 end, wallpaper)
 on("settings_open_request", function() close_panels(); if fact.capture_open then fact.settings_open=false end end)
 on("settings_wallpaper_open", function() close_panels(); if fact.capture_open then fact.settings_open=false; wallpaper.close() end end)
+
+corner_preferences = require("settings/corner-size")(publish)
+corner_preferences.publish(tohru_settings.snapshot())
 
 configure_idle = require("settings/idle")(require("session/idle"))
 configure_idle(tohru_settings.snapshot())

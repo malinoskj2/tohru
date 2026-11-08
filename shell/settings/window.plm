@@ -36,6 +36,7 @@ part SettingsWindow {
  }
  }
  group { move: 244, 104; show: settings_wallpaper_page; include "../wallpaper/picker-view.plm" }
+ include "corner-size.plm"
  include "capture.plm"
  text wallpaper_settings_notice { at: 244, 640; anchor: left top; size: 11; width: 528; lines: 2; color: #a6adc8; show: settings_wallpaper_page }
  text settings_notice { at: 244, 640; anchor: left top; size: 11; width: 528; lines: 2; color: #a6adc8; show: not settings_wallpaper_page }

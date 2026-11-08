@@ -11,6 +11,8 @@ part SettingsState {
  fact settings_sidebar = true
  fact settings_can_back = false
  fact settings_can_forward = false
+ text settings_corner_size_edit = ""
+ text settings_corner_size_notice = ""
  text settings_search = ""
  text settings_heading = "Bar"
  text settings_notice = ""
