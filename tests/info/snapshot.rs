@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
+
 struct Fixture(PathBuf);
 
 impl Fixture {
@@ -18,11 +19,13 @@ impl Fixture {
         fs::create_dir(&path).unwrap();
         Self(path)
     }
+
     fn file(&self, path: &str, text: &str) {
         let path = self.0.join(path);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, text).unwrap();
     }
+
     #[cfg(unix)]
     fn link(&self, path: &str, target: &str) {
         let path = self.0.join(path);
@@ -122,6 +125,7 @@ fn mounts_capacities_and_generations_are_read_only_metadata() {
         "nix/var/nix/profiles/system-42-link",
         "/nix/store/fixture-system42",
     );
+    fixture.file("nix/store/fixture-system2/configuration-revision", "old\n");
     fixture.link(
         "nix/var/nix/profiles/system-2-link",
         "/nix/store/fixture-system2",
@@ -271,5 +275,68 @@ fn generation_alias_ambiguity_and_symlink_cycles_are_unknown() {
             .issues
             .iter()
             .any(|issue| issue.kind == IssueKind::Budget)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn partial_generation_scans_never_prove_unique_current_alias() {
+    let fixture = Fixture::new();
+    fixture.file("nix/store/active/configuration-revision", "rev\n");
+    fixture.link("run/current-system", "../nix/store/active");
+    for number in 0..151 {
+        let target = if number == 0 || number == 150 {
+            "active".to_owned()
+        } else {
+            format!("other{number}")
+        };
+        fixture.file(
+            &format!("nix/store/{target}/configuration-revision"),
+            "rev\n",
+        );
+        fixture.link(
+            &format!("nix/var/nix/profiles/system-{number:03}-link"),
+            &format!("/nix/store/{target}"),
+        );
+    }
+    let snapshot = collect(&fixture.0);
+    assert_eq!(snapshot.system.current_generation, None);
+    assert!(
+        snapshot
+            .generations
+            .iter()
+            .all(|generation| !generation.current)
+    );
+    for number in 151..258 {
+        fixture.link(
+            &format!("nix/var/nix/profiles/system-{number:03}-link"),
+            "/nix/store/active",
+        );
+    }
+    let snapshot = collect(&fixture.0);
+    assert_eq!(snapshot.system.current_generation, None);
+    assert!(
+        snapshot
+            .generations
+            .iter()
+            .all(|generation| !generation.current)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn unresolved_eligible_generation_invalidates_apparent_unique_match() {
+    let fixture = Fixture::new();
+    fixture.file("nix/store/active/configuration-revision", "rev\n");
+    fixture.link("run/current-system", "../nix/store/active");
+    fixture.link("nix/var/nix/profiles/system-1-link", "/nix/store/active");
+    fixture.link("nix/var/nix/profiles/system-2-link", "/nix/store/missing");
+    let snapshot = collect(&fixture.0);
+    assert_eq!(snapshot.system.current_generation, None);
+    assert!(
+        snapshot
+            .generations
+            .iter()
+            .all(|generation| !generation.current)
     );
 }
