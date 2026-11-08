@@ -4,6 +4,11 @@ scene TohruNotifications {
     permissions { services: "notifications", "sound" }
     // Protocol bookkeeping only; no unread/history state or visible counter.
     fact last_id = 0
+    fact power_level = 0
+    event power_warning_clear ->
+    event power_warning_low ->
+    event power_warning_critical ->
+    event power_warning_empty ->
     model banners max 4 { title: text; body: text }
     column stack { at: 12, 8; gap: 8
         for notice in banners { Banner(notice) }

@@ -28,3 +28,10 @@ Checks: `pleamar --check shell/notifications/notifications.plm` and
 logic with native boundaries controlled. Real private Notify/replace/close/name
 ownership/reload checks and captured presentation remain required; placeholder
 tone parameters are checked, not claimed audible on physical hardware.
+
+Power warning native events are `power_warning_clear`, `power_warning_low`,
+`power_warning_critical`, `power_warning_empty`, each with one finite normalized
+charge0..1. Fixed title/percentage text shares the same placeholder tone; repeated
+severity is suppressed across logic reload, clear removes only the power banner.
+No battery-triggered session/power action. B owns transition/hysteresis decisions;
+S owns the exact native say permission/route, with no arbitrary text event.

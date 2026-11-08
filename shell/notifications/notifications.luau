@@ -2,6 +2,7 @@
 local previous = {}
 local shown = {}
 local sequence = 0
+local POWER_ID = -1
 local tone = { wave = "sine", freq = 880, ms = 80, volume = 0.07, release = 60 }
 local function bounded(value, count)
     local boundary = utf8.offset(value, count + 1)
@@ -52,6 +53,24 @@ sys.watch("notifications", function(notices)
         fact.last_id = math.max(fact.last_id, notice.id)
     end
     previous = current
-    for index = #shown, 1, -1 do if current[shown[index].id] == nil then remove(shown[index].id) end end
+    for index = #shown, 1, -1 do if shown[index].id ~= POWER_ID and current[shown[index].id] == nil then remove(shown[index].id) end end
     publish()
 end)
+
+local function power_warning(level, title, charge)
+    if type(charge) ~= "number" or charge ~= charge or charge < 0 or charge > 1 then return end
+    if level == 0 then
+        remove(POWER_ID)
+        fact.power_level = 0
+        publish()
+        return
+    end
+    if fact.power_level == level then return end
+    fact.power_level = level
+    incoming({ id = POWER_ID }, title, tostring(math.floor(charge * 100 + 0.5)) .. "% battery remaining")
+    publish()
+end
+on("power_warning_clear", function(charge) power_warning(0, "", charge) end)
+on("power_warning_low", function(charge) power_warning(1, "Battery low", charge) end)
+on("power_warning_critical", function(charge) power_warning(2, "Battery critical", charge) end)
+on("power_warning_empty", function(charge) power_warning(3, "Battery nearly empty", charge) end)
