@@ -32,6 +32,9 @@ def private_ipc_environment(inherited, run):
                 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE', 'TOHRU_SHELL']:
         result.pop(key, None)
     result['PLEAMAR_SOCKETS'] = str(ipc)
+    result['PULSE_SERVER'] = 'unix:' + str(run/'pulse-native')
+    result['PULSE_RUNTIME_PATH'] = str(run)
+    result['PULSE_COOKIE'] = str(run/'pulse-cookie')
     result['DBUS_SESSION_BUS_ADDRESS'] = 'unix:path=' + str(run / 'bus')
     result['DBUS_SYSTEM_BUS_ADDRESS'] = result['DBUS_SESSION_BUS_ADDRESS']
     return result
@@ -86,12 +89,21 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--runtime', type=Path, required=True)
     p.add_argument('--wtype', type=Path)
+    p.add_argument('--notifications',action='store_true')
+    p.add_argument('--pulseaudio',type=Path)
+    p.add_argument('--gdbus',type=Path)
+    p.add_argument('--pactl',type=Path)
     p.add_argument('--pam-mode', choices=['permit','deny','account-deny'])
     p.add_argument('--bwrap', type=Path)
     p.add_argument('--pam-modules', type=Path)
     a = p.parse_args()
     try: validate_pam_tools(a.pam_mode,a.wtype,a.bwrap,a.pam_modules)
     except ValueError as error: p.error(str(error))
+    if a.notifications:
+        for name in ('pulseaudio','gdbus','pactl'):
+            tool=getattr(a,name)
+            if not tool or not tool.is_file() or not os.access(tool,os.X_OK):
+                p.error('notification validation requires explicit executable --'+name)
     evidence = ROOT / '.tmp' / ('native-session-' + str(time.time_ns()))
     evidence.mkdir()
     run = ROOT / '.tmp' / ('l' + str(os.getpid()))
@@ -142,7 +154,7 @@ def main():
             arguments,digest=command(arguments,a.bwrap,a.pam_modules,evidence,run,a.pam_mode)
             (evidence/'pam-fixture.sha256').write_text(digest+'\n')
         proc=start(arguments,name+'.log')
-        wait(lambda: cli(name,'get '+('open' if name=='tohru-session' else 'auth.ready' if name=='tohru-polkit' else 'engaged'),False) is not None,name+' ready')
+        wait(lambda: cli(name,'get '+('open' if name=='tohru-session' else 'auth.ready' if name=='tohru-polkit' else 'last_id' if name=='tohru-notifications' else 'engaged'),False) is not None,name+' ready')
         wait(lambda:'NVIDIA GeForce RTX 5090' in (evidence/(name+'.log')).read_text(),name+' hardware')
         return proc
     try:
@@ -156,6 +168,49 @@ def main():
         env['SWAYSOCK']=str(wait(lambda:next(run.glob('sway-ipc.*.sock'),None),'private sway socket'))
         env['WAYLAND_DISPLAY']=wait(lambda:next((p.name for p in run.glob('wayland-*') if not p.name.endswith('.lock')),None),'private display')
         assert 'NVIDIA GeForce RTX 5090' in (evidence/'sway.log').read_text()
+        if a.notifications:
+            import re
+            pulse=start([str(a.pulseaudio),'-n','--daemonize=no','--exit-idle-time=-1',
+                '--log-target=stderr','--load=module-native-protocol-unix socket='+str(run/'pulse-native')+' auth-anonymous=1',
+                '--load=module-null-sink sink_name=private'], 'pulse.log')
+            wait(lambda:(run/'pulse-native').exists() and pulse.poll() is None,'owned private audio socket')
+            notification=launch('notifications/notifications.plm','tohru-notifications')
+            def bus(method,*args):
+                result=subprocess.run([str(a.gdbus),'call','--session','--dest','org.freedesktop.Notifications',
+                    '--object-path','/org/freedesktop/Notifications','--method',method,*args],
+                    env=env,check=True,capture_output=True,text=True,timeout=6)
+                return result.stdout
+            def owner():
+                return subprocess.run([str(a.gdbus),'call','--session','--dest','org.freedesktop.DBus',
+                    '--object-path','/org/freedesktop/DBus','--method','org.freedesktop.DBus.GetNameOwner',
+                    'org.freedesktop.Notifications'],env=env,capture_output=True,text=True,timeout=6).stdout
+            def notify(replace,title,body,timeout=0):
+                out=bus('org.freedesktop.Notifications.Notify','private-fixture',str(replace),'',title,body,'[]','{}',str(timeout))
+                return int(re.search(r'uint32 (\d+)',out).group(1))
+            wait(lambda:owner().startswith('('),'dedicated private notification bus owner')
+            identity=owner()
+            first=notify(0,'Synthetic title','Synthetic body')
+            value('tohru-notifications','last_id',str(first))
+            wait(lambda:'Synthetic title' in cli('tohru-notifications','describe json'),'actual native banner')
+            wait(lambda:bool(subprocess.run([str(a.pactl),'list','short','sink-inputs'],env=env,
+                check=True,capture_output=True,text=True,timeout=6).stdout.strip()),'native placeholder tone on private null sink')
+            assert notify(first,'Replacement title','Changed body')==first
+            wait(lambda:'Replacement title' in cli('tohru-notifications','describe json'),'native notification replacement')
+            cli('tohru-notifications','emit power_warning_low 0.2');value('tohru-notifications','power_level','1')
+            cli('tohru-notifications','emit power_warning_clear 0.5');value('tohru-notifications','power_level','0')
+            assert 'Replacement title' in cli('tohru-notifications','describe json')
+            previous=(evidence/'tohru-notifications.log').read_text().count('notifications.luau running')
+            logic=scenes/'notifications/notifications.luau';logic.write_text(logic.read_text()+'\n-- private owner reload\n')
+            wait(lambda:(evidence/'tohru-notifications.log').read_text().count('notifications.luau running')>previous,'actual notification VM reload')
+            assert owner()==identity
+            value('tohru-notifications','last_id',str(first))
+            bus('org.freedesktop.Notifications.CloseNotification',str(first))
+            wait(lambda:'Replacement title' not in cli('tohru-notifications','describe json'),'native notification close')
+            expired=notify(0,'Expiring fixture','Transient body',150)
+            value('tohru-notifications','last_id',str(expired))
+            wait(lambda:'Expiring fixture' not in cli('tohru-notifications','describe json'),'native expiry')
+            notification.terminate();notification.wait(timeout=8)
+            checks.append('native private Notify/replacement/close/expiry/power events/VM singleton reload and tone routed to owned null sink')
         menu=launch('session/menu.plm','tohru-session')
         cli('tohru-session','emit menu_open');value('tohru-session','open','1')
         cli('tohru-session','emit choose 3');value('tohru-session','confirming','3')

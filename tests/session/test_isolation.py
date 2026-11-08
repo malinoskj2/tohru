@@ -24,9 +24,13 @@ class Isolation(unittest.TestCase):
                          'XDG_SESSION_ID':'live', 'DBUS_STARTER_ADDRESS':'live',
                          'TOHRU_PRIVATE_SESSION_TEST':'1', 'DBUS_SESSION_BUS_ADDRESS':'unix:path=/live/bus',
                          'DBUS_SYSTEM_BUS_ADDRESS':'unix:path=/live/system',
-                         'PATH':'/test/bin'}
+                         'PULSE_SERVER':'unix:/live/audio','PULSE_RUNTIME_PATH':'/live/audio-runtime',
+                         'PULSE_COOKIE':'/live/secret-cookie', 'PATH':'/test/bin'}
             env = native.private_ipc_environment(inherited, run)
             self.assertEqual(env['PLEAMAR_SOCKETS'],str(run/'ipc'))
+            self.assertEqual(env['PULSE_SERVER'],'unix:'+str(run/'pulse-native'))
+            self.assertEqual(env['PULSE_COOKIE'],str(run/'pulse-cookie'))
+            self.assertEqual(env['PULSE_RUNTIME_PATH'],str(run))
             self.assertEqual(env['DBUS_SESSION_BUS_ADDRESS'],'unix:path='+str(run/'bus'))
             self.assertEqual(env['DBUS_SYSTEM_BUS_ADDRESS'],env['DBUS_SESSION_BUS_ADDRESS'])
             self.assertNotIn('WAYLAND_SOCKET',env)
