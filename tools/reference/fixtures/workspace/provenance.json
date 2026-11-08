@@ -1,0 +1,61 @@
+{
+  "source_commit": "89fee46efc9ade2313e67c8ebb3ff016149e6f51",
+  "pleamar_upstream": "dc902feb0ee9058b7db7c2bc2c9d59d9f655fd86",
+  "j2bar_reference": "3a8daa5e077f4085b5262041ea4832373b8754ca",
+  "files": [
+    {
+      "file": "workspace_track.rs",
+      "original_path": "prototypes/pleamar/vendor/pleamar/src/workspace_track.rs",
+      "sha256": "59e74d17e6677d19a2b97e440d5d9480fb265a22bc3b61c2f5ded610738eb969",
+      "bytes": 24980
+    },
+    {
+      "file": "workspace_motion.rs",
+      "original_path": "prototypes/pleamar/vendor/pleamar/src/workspace_motion.rs",
+      "sha256": "af67cc9712ffe3334da4aafc33e9f0d5d68ca8c81c61d72d5440cbaabbbd2421",
+      "bytes": 982
+    },
+    {
+      "file": "workspace_ipc.rs",
+      "original_path": "prototypes/pleamar/vendor/pleamar/src/workspace_ipc.rs",
+      "sha256": "3b3c0066cf778100922f75d5abc1fdfdcce137af00afa836f317af7fb7eb7015",
+      "bytes": 1967
+    },
+    {
+      "file": "ribbon.wgsl",
+      "original_path": "prototypes/pleamar/ribbon.wgsl",
+      "sha256": "36280f653cf18115628d6e07257bf5617915be5261870111f9c93d53873253f1",
+      "bytes": 3789
+    },
+    {
+      "file": "workspace.plm",
+      "original_path": "prototypes/pleamar/workspace.plm",
+      "sha256": "7c02f740e67670a35833e3d30b0d559504062f3f27a5fa0c3bb5cb714120930c",
+      "bytes": 1319
+    },
+    {
+      "file": "workspace.luau",
+      "original_path": "prototypes/pleamar/workspace.luau",
+      "sha256": "cba3185865a14a24ab31cad6d4e07d4196435c0c30deb62d0a12786ae996fa55",
+      "bytes": 1205
+    },
+    {
+      "file": "J2BAR-LICENSE",
+      "original_path": "prototypes/pleamar/J2BAR-LICENSE",
+      "sha256": "3d6d4f03b1bfe2d251202416dad893b2d3dd1c2d620980182b1d4d0b452c8741",
+      "bytes": 1072
+    },
+    {
+      "file": "PLEAMAR-LICENSE",
+      "original_path": "prototypes/pleamar/vendor/pleamar/LICENSE",
+      "sha256": "ce27026d54ea34d25a4b9be7abfffb87f6615a8e4c5ddfa7a767eb8209653b17",
+      "bytes": 1512
+    },
+    {
+      "file": "framework.patch",
+      "original_path": "prototypes/pleamar/patches/framework.patch",
+      "sha256": "81e52d1f1621d93a90a58e8764a0dcac0fbc4b864cb1070a8a3538bd0b72a2ff",
+      "bytes": 6063
+    }
+  ]
+}

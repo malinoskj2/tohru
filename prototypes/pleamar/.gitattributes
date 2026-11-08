@@ -1,4 +1,0 @@
-# Unified diff context lines intentionally retain their leading space.
-patches/*.patch -whitespace
-# Preserve the pinned upstream files' existing blank EOF lines.
-vendor/pleamar/** whitespace=-blank-at-eof

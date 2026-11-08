@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Matched CPU/memory trials using the existing prototype sampler; no GPU timings."""
+"""Matched CPU/memory trials using the standalone /proc sampler; no GPU timings."""
 import argparse
 import importlib.util
 import json
@@ -12,7 +12,7 @@ import subprocess
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
-spec = importlib.util.spec_from_file_location('prototype_benchmark', ROOT / 'prototypes/benchmark_gpu.py')
+spec = importlib.util.spec_from_file_location('reference_proc_sample', Path(__file__).resolve().with_name('proc_sample.py'))
 sampler = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sampler)
 

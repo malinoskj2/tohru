@@ -1,9 +1,59 @@
 {
-  "source": "prototypes/pleamar/vendor/pleamar/src/workspace_track.rs EVENTS and prototypes/pleamar/README.md",
+  "source": "tools/reference/fixtures/workspace/workspace_track.rs EVENTS; source commit 89fee46efc9ade2313e67c8ebb3ff016149e6f51",
   "seed": "0x0123456789abcdef",
   "simulation_hz": 240,
   "end_ms": 12000,
-  "events_ms": [[0,1],[1000,2],[2200,3],[3400,4],[4600,5],[5800,1],[7000,5],[7120,2],[7240,4],[9000,1]],
-  "continuous": {"interval_ms": 300,"targets": [1,5,2,4,3]},
+  "events_ms": [
+    [
+      0,
+      1
+    ],
+    [
+      1000,
+      2
+    ],
+    [
+      2200,
+      3
+    ],
+    [
+      3400,
+      4
+    ],
+    [
+      4600,
+      5
+    ],
+    [
+      5800,
+      1
+    ],
+    [
+      7000,
+      5
+    ],
+    [
+      7120,
+      2
+    ],
+    [
+      7240,
+      4
+    ],
+    [
+      9000,
+      1
+    ]
+  ],
+  "continuous": {
+    "interval_ms": 300,
+    "targets": [
+      1,
+      5,
+      2,
+      4,
+      3
+    ]
+  },
   "limits": "Seed applies to deterministic prototype simulation only; compositor replay dispatch/completion is not input-to-present latency or deterministic native RNG evidence."
 }
