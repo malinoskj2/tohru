@@ -13,7 +13,7 @@ pub const SIDE_PADDING: f32 = workspace_track::PAD;
 pub const SHADER_HEIGHT: f32 = workspace_track::HEIGHT;
 pub const CENTER_Y: f32 = workspace_track::CENTER;
 
-/// Whether native frame delivery is needed after publishing this sample.
+/// Whether native timer publication is needed after publishing this sample.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Activity {
     Resting,
@@ -53,7 +53,7 @@ impl Indicator {
     }
 
     /// Advance at the design's fixed 240Hz step, capped at 50ms after a late frame.
-    /// The native host must unsubscribe/pause frame delivery when this rests.
+    /// The native host cancels its publication timer when this rests.
     pub fn advance(&mut self, now: Instant) -> Sample {
         self.track.advance(now);
         self.sample()
