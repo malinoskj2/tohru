@@ -13,7 +13,8 @@ an already open view/selection. No shell process/date polling is used.
 
 `state.plm` / `popup.plm` are root-consumable parts if a shared surface is later
 chosen. Standalone lifecycle is the current integration contract: root routes
-its clock button to named `tohru-calendar`; S owns startup/CLI/output placement.
+its clock button to named `tohru-calendar`; S owns startup/CLI/output placement. The private scene now uses native
+`screens: all` under the accepted every-output bar policy.
 A click-open popup has a real press serial. CLI-open after idle does not acquire
 an outside-click grab in the pinned runtime; the native gap is awaiting decision.
 No catcher surface or replacement dismissal is implemented here.

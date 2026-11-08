@@ -1,5 +1,5 @@
 scene TohruBarContents {
-    surface { size: full, 31; anchor: top; reserve: 31; keyboard: none }
+    surface { size: full, 31; anchor: top; screens: all; reserve: 31; keyboard: none }
     permissions { services: "window", "apps", "media", "clock" }
     include "state.plm"
     box { from: 100, 0; size: screen.width - 200, 31; corner: 10; color: #160e14; opacity: 70% }
