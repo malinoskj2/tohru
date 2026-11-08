@@ -1,0 +1,83 @@
+--- a/src/gpu.rs
++++ b/src/gpu.rs
+@@ -7,7 +7,7 @@
+ use std::ops::Range;
+ 
+ const PER_SHAPE: usize = 20;
+-const PER_ELEMENT: usize = 64;
++const PER_ELEMENT: usize = 72;
+ /// How many groups with opacity or effects can be blending in the same frame.
+ /// They share a few layers: each one is painted into one right before it is
+ /// blended (see `paint`), so this is not memory, only a sanity limit.
+@@ -2845,7 +2845,7 @@
+                         self.glass_regions.push((b, Behind::Read));
+                         self.glass_marks.push(self.element_count() as u32);
+                     }
+-                    let mut v = [0f32; 8];
++                    let mut v = [0f32; 16];
+                     for (slot, e) in v.iter_mut().zip(values) {
+                         *slot = e.eval(c);
+                     }
+@@ -2867,7 +2867,8 @@
+                             e[12..15].copy_from_slice(k);
+                             e[15] = 1.0;
+                         }
+-                        e[16..24].copy_from_slice(&v);
++                        e[16..24].copy_from_slice(&v[..8]);
++                        e[64..72].copy_from_slice(&v[8..16]);
+                         e[24..28].copy_from_slice(&[t, px, py, over]);
+                         e[36..40].copy_from_slice(&d);
+                         e[40] = corner;
+--- a/src/shaders.rs
++++ b/src/shaders.rs
+@@ -31,6 +31,8 @@
+     hovered: f32,
+     a: vec4<f32>,
+     b: vec4<f32>,
++    c: vec4<f32>,
++    d: vec4<f32>,
+     color: vec4<f32>,
+     color2: vec4<f32>,
+     origin: vec2<f32>,
+@@ -281,6 +283,8 @@
+     s.scale = u.header.w;
+     s.a = el.line;
+     s.b = el.light;
++    s.c = el.extra0;
++    s.d = el.extra1;
+     s.color = el.color0;
+     s.color2 = el.color1;
+     s.layer = -1;
+--- a/src/shape.wgsl
++++ b/src/shape.wgsl
+@@ -44,6 +44,8 @@
+     glass2: vec4<f32>,    // glass: towards its light (x, y), whether it has one, dome
+     glass3: vec4<f32>,    // glass: dispersion, ripple, -, -
+     glass4: vec4<f32>,    // glass: tint, saturation, mirror, highlight
++    extra0: vec4<f32>,    // direct scene shader scalars 9-12
++    extra1: vec4<f32>,    // direct scene shader scalars 13-16
+ };
+ 
+ const ELLIPSE: u32 = 0u;
+--- a/src/language/compiler.rs
++++ b/src/language/compiler.rs
+@@ -4451,7 +4451,7 @@
+             Some(c) => alpha * self.expr(c)?.clamp(0.0, 1.0),
+             None => alpha,
+         };
+-        // Up to eight numbers and two colours: what the scene tells it.
++        // Up to sixteen numbers and two colours: what the scene tells it.
+         let mut values = Vec::new();
+         if let Some(c) = p.get_mut("values") {
+             loop {
+@@ -4460,8 +4460,8 @@
+                     break;
+                 }
+             }
+-            if values.len() > 8 {
+-                return c.error("a shader takes up to eight numbers: `s.a` and `s.b`, four each");
++            if values.len() > 16 {
++                return c.error("a direct shader takes up to sixteen numbers: `s.a` through `s.d`, four each");
+             }
+         }
+         let mut colors = Vec::new();
