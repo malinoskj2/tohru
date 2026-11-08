@@ -39,6 +39,9 @@ Proposed implementation:
   Queued old Frame/Commit/Run cannot publish after tombstoning. Reopen waits for
   both GPU acknowledgement and counted frame-worker completion, in either order.
   A worker releases its native owning clone before notifying the event loop.
+- Conditional output removal routes through that same retirement method before
+  the output callback attempts placement elsewhere. A surviving or reconnected
+  output cannot create the replacement while an old counted worker still drains.
 - NL3 composition preserves existing lock_publication on native Frame/Commit/Run,
   direct commits and fallback WGPU present. The conditional gate surrounds it;
   the concrete constructors set conditional leases only on ordinary conditional
@@ -60,6 +63,15 @@ These source-extraction
 fixtures intentionally substitute driver/native types: they are not a Wayland or
 wgpu integration typecheck. Native source parse and patch apply-check pass. These do not prove typed native
 compilation, event ordering, resource retirement or presentation behavior.
+
+`python3 tests/window-output-route.py PREPARED_SOURCE` additionally compiles the
+actual output_destroyed/remove_from/retire_window/refresh_windows routes, actual
+WindowReleased/WindowRefresh callbacks, ConditionalWorker Drop, State Drop and
+placement eligibility gate. Foreign resources and output enumeration are CPU
+fixtures. Seven tests pass, including real delayed workers, both GPU-ack/worker
+orders and all-output removal/reconnect/State exit. Its two route tests fail on
+frozen53f8ea2, demonstrating the pre-correction bypass. The frozen artifact stays
+unchanged; actual native hotplug validation requires the corrected later artifact.
 
 Next: independent source/lifetime review, one coordinated incremental jobs1 build
 only after other build/GPU owners release, then private Sway native lifecycle:
