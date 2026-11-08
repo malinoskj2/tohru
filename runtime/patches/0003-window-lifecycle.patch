@@ -350,15 +350,20 @@
      fn rescreen(&mut self, qh: &QueueHandle<State>) {
          let asked = std::mem::take(&mut *RESCREENS.lock().unwrap());
          if asked.is_empty() {
-@@ -1457,6 +1555,7 @@
+@@ -1456,6 +1554,12 @@
+         for id in lock_face_for_gone_monitor(output) {
              let _ = self.to_render.send(ToRender::SheetGone(id));
          }
++        // Output removal can immediately place on another output. Use the same
++        // GPU+worker barrier as explicit hide before allowing a replacement.
++        let conditional: Vec<usize> = self.placed.iter()
++            .filter(|placed| &placed.output == output && placed.conditional_window.is_some())
++            .map(|placed| placed.which).collect();
++        for which in conditional { self.retire_window(which); }
          for p in self.placed.iter().filter(|p| &p.output == output) {
-+            if let Some(window) = &p.conditional_window { window.life.retire(); }
              let _ = self.to_render.send(ToRender::SheetGone(p.id));
              forget_parent(p.role.wl());
-             if let Some(c) = MOVABLE_LAYERS.get() {
-@@ -1499,6 +1598,8 @@
+@@ -1499,6 +1603,8 @@
      name: String,
      mhz: i32,
  }
@@ -367,7 +372,7 @@
 
  struct OpenPopup {
      k: usize,
-@@ -1836,6 +1937,12 @@
+@@ -1836,6 +1942,12 @@
  /// The render has let go of surface `id`: if it was the face of a monitor that
  /// went while locked, it can be destroyed now.
  pub fn sheet_released(id: u32) {
@@ -380,7 +385,7 @@
      let Some(c) = LOCKS.get() else { return };
      let mut engaged = c.engaged.lock().unwrap();
      let Some(e) = engaged.as_mut() else { return };
-@@ -1917,6 +2024,7 @@
+@@ -1917,6 +2029,7 @@
  #[derive(Clone, Copy, Default)]
  struct Said {
      zone: Option<i32>,
@@ -388,7 +393,7 @@
      anchor: Option<SurfaceAnchor>,
      level: Option<Level>,
  }
-@@ -1937,6 +2045,35 @@
+@@ -1937,6 +2050,35 @@
      RESCREENS.lock().unwrap().push((which, screen.to_owned()));
      c.connection.display().sync(&c.qh, Rescreen);
      let _ = c.connection.flush();
@@ -424,7 +429,7 @@
  }
 
  struct Rescreen;
-@@ -2133,6 +2270,16 @@
+@@ -2133,6 +2275,16 @@
  impl WindowHandler for State {
      /// Someone clicked the close button. That one closes; if it was the last one, it's over.
      fn request_close(&mut self, _: &Connection, _: &QueueHandle<Self>, v: &Window) {
@@ -441,7 +446,7 @@
          self.surface_gone(&v.wl_surface().clone());
          if self.placed.is_empty() {
              self.quit = true;
-@@ -2161,7 +2308,7 @@
+@@ -2161,7 +2313,7 @@
              let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
                  id: a.id,
                  target: gpu::Target::Surface(surface),
@@ -450,7 +455,7 @@
                  scale: a.parent.scale,
                  size: a.size,
                  mhz: a.parent.mhz,
-@@ -2252,6 +2399,7 @@
+@@ -2252,6 +2404,7 @@
          wanted,
          extra_height,
          placed: Vec::new(),
@@ -458,7 +463,7 @@
          announced: Vec::new(),
          pointer: None,
          pointer_seats: Vec::new(),
-@@ -2268,6 +2416,7 @@
+@@ -2268,6 +2421,7 @@
      match XdgShell::bind(&globals, &qh) {
          Ok(xdg) => {
              let _ = MOVABLE_LAYERS.set(MovableLayers { connection: connection.clone(), qh: qh.clone(), placed: Mutex::default(), said: Mutex::default() });
@@ -466,7 +471,7 @@
              let _ = POPUPS.set(Popups {
                  qh: qh.clone(),
                  compositor: state.compositor.clone(),
-@@ -2386,7 +2535,7 @@
+@@ -2386,7 +2540,7 @@
              let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
                  id: p.id,
                  target: gpu::Target::Surface(surface),
@@ -475,7 +480,7 @@
                  scale: p.scale,
                  size,
                  mhz,
-@@ -2471,7 +2620,7 @@
+@@ -2471,7 +2625,7 @@
              Box::new(gpu::NewSheet {
                  id: face.id,
                  target: gpu::Target::Surface(paints),
