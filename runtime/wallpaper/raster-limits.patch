@@ -1,0 +1,177 @@
+--- a/src/text.rs
++++ b/src/text.rs
+@@ -6,6 +6,9 @@
+ //! three pieces (`cosmic-text`, `image`, `resvg`) are pure Rust and exist on
+ //! Linux, Windows and macOS; the only thing that depends on the system is finding an
+ //! icon by its name, and the platform answers that.
++
++#[path = "tohru_wallpaper/raster.rs"]
++mod raster;
+ 
+ use crate::scene::{ToRender, TextAlign, Style, ImageSource};
+ use std::collections::HashSet;
+@@ -448,11 +451,11 @@
+ 
+     fn own_px(&self, path: &std::path::Path) -> Option<(u32, u32)> {
+         if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("svg")) {
+-            let tree = resvg::usvg::Tree::from_data(&std::fs::read(path).ok()?, &resvg::usvg::Options::default()).ok()?;
++            let tree = resvg::usvg::Tree::from_data(&raster::read(path).ok()?, &resvg::usvg::Options::default()).ok()?;
+             let s = tree.size();
+             return Some(((s.width() * self.scale).round().max(1.0) as u32, (s.height() * self.scale).round().max(1.0) as u32));
+         }
+-        image::image_dimensions(path).ok().filter(|&(w, h)| w > 0 && h > 0)
++        raster::dimensions(path).ok()
+     }
+ 
+     /// A picture of its own keeps the file's pixels: its box, the shape it
+@@ -462,7 +465,7 @@
+     /// bigger than the card allows. An SVG has no pixels: painted at `want`.
+     fn picture_px(&self, path: &std::path::Path, want: (u32, u32)) -> (u32, u32) {
+         let svg = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("svg"));
+-        let px = match image::image_dimensions(path) {
++        let px = match raster::dimensions(path) {
+             Ok((w, h)) if !svg => {
+                 let k = (w as f32 / want.0 as f32).min(h as f32 / want.1 as f32).min(1.0);
+                 (((want.0 as f32) * k).round().max(1.0) as u32, ((want.1 as f32) * k).round().max(1.0) as u32)
+@@ -488,12 +491,12 @@
+                         return None;
+                     }
+                 };
+-                let (big_px, big, source_size) = self.image_px(path.as_deref(), *size, u64::MAX);
++                let (big_px, big, _) = self.image_px(path.as_deref(), *size, u64::MAX);
+                 let px = fit_side(big_px);
+                 // A file that moves —a GIF, an animated PNG or WebP—: each frame to
+                 // the atlas, with the moment it ends.
+                 let sharp = matches!(source, ImageSource::Pixels(_));
+-                if let Some(frames) = path.as_ref().and_then(|r| animation_frames(r, px, sharp)) {
++                if let Some((frames, source_size)) = path.as_ref().and_then(|r| animation_frames(r, px, sharp)) {
+                     let mut slots = Vec::new();
+                     let mut ends = Vec::new();
+                     let mut t = 0.0;
+@@ -516,17 +519,17 @@
+                 };
+                 // One that does not fit is not reported here: the atlas is rebuilt,
+                 // taller if it may be, and only what still does not fit is said.
+-                let Some(rgba) = path.as_ref().and_then(|r| rasterize_image(r, px, sharp)) else {
++                let Some((rgba, decoded_size)) = path.as_ref().and_then(|r| rasterize_image(r, px, sharp)) else {
+                     eprintln!("image  · cannot load {source:?}");
+                     return None;
+                 };
+                 if big {
+                     let mut slot = self.picture(px, rgba, None);
+-                    slot.source_size = source_size;
++                    slot.source_size = decoded_size;
+                     return Some(slot);
+                 }
+                 let mut slot = self.reserve(px.0, px.1)?;
+-                slot.source_size = source_size;
++                slot.source_size = decoded_size;
+                 self.upload(slot, rgba);
+                 Some(slot)
+             })
+@@ -555,19 +558,19 @@
+             return self.load_frame(name, size, self.live_px(size), into);
+         }
+         let path = if std::path::Path::new(name).is_absolute() { Some(std::path::PathBuf::from(name)) } else { crate::platform::icon(name) }?;
+-        let (px, big, source_size) = self.image_px(Some(&path), size, LIVE_BUDGET);
++        let (px, big, _) = self.image_px(Some(&path), size, LIVE_BUDGET);
+         let px = if big { self.picture_px(&path, px) } else { px };
+-        let rgba = rasterize_image(&path, px, false)?;
++        let (rgba, decoded_size) = rasterize_image(&path, px, false)?;
+         if big {
+             let mut slot = self.picture(px, rgba, into);
+-            slot.source_size = source_size;
++            slot.source_size = decoded_size;
+             return Some(slot);
+         }
+         let mut slot = match into {
+             Some(s) if s.page == 0 && (s.width, s.height) == px => s,
+             _ => self.reserve(px.0, px.1)?,
+         };
+-        slot.source_size = source_size;
++        slot.source_size = decoded_size;
+         self.upload(slot, rgba);
+         Some(slot)
+     }
+@@ -1151,32 +1154,39 @@
+ /// A GIF, an animated PNG or an animated WebP, frame by frame, fitted like
+ /// `rasterize_image` and premultiplied, each with how long it lasts. `None`
+ /// for anything else, or for one with a single frame.
+-fn animation_frames(path: &std::path::Path, px: (u32, u32), sharp: bool) -> Option<Vec<(Vec<u8>, f32)>> {
+-    use image::AnimationDecoder;
++fn animation_frames(path: &std::path::Path, px: (u32, u32), sharp: bool) -> Option<(Vec<(Vec<u8>, f32)>, (u32, u32))> {
++    use image::{AnimationDecoder, ImageDecoder};
+     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+-    let data = std::fs::read(path).ok()?;
++    let data = raster::read(path).ok()?;
++    raster::dimensions_bytes(&data).ok()?;
+     let reader = std::io::Cursor::new(&data);
+     let frames: Vec<image::Frame> = match ext.as_str() {
+-        "gif" => image::codecs::gif::GifDecoder::new(reader).ok()?.into_frames().collect_frames().ok()?,
++        "gif" => {
++            let mut d = image::codecs::gif::GifDecoder::new(reader).ok()?;
++            d.set_limits(raster::limits()).ok()?;
++            raster::frames(d.into_frames()).ok()?
++        },
+         "webp" => {
+-            let d = image::codecs::webp::WebPDecoder::new(reader).ok()?;
++            let mut d = image::codecs::webp::WebPDecoder::new(reader).ok()?;
++            d.set_limits(raster::limits()).ok()?;
+             if !d.has_animation() {
+                 return None;
+             }
+-            d.into_frames().collect_frames().ok()?
++            raster::frames(d.into_frames()).ok()?
+         }
+         "png" | "apng" => {
+-            let d = image::codecs::png::PngDecoder::new(reader).ok()?;
++            let d = image::codecs::png::PngDecoder::with_limits(reader, raster::limits()).ok()?;
+             if !d.is_apng().ok()? {
+                 return None;
+             }
+-            d.apng().ok()?.into_frames().collect_frames().ok()?
++            raster::frames(d.apng().ok()?.into_frames()).ok()?
+         }
+         _ => return None,
+     };
+     if frames.len() < 2 {
+         return None;
+     }
++    let source_size = frames.first()?.buffer().dimensions();
+     let per_frame = px.0 as u64 * px.1 as u64;
+     let step = ((per_frame * frames.len() as u64).div_ceil(ANIMATION_BUDGET)).max(1) as usize;
+     if step > 1 {
+@@ -1193,7 +1203,7 @@
+         }).sum();
+         out.push((fit(chunk[0].buffer().clone(), px, sharp), delay));
+     }
+-    Some(out)
++    Some((out, source_size))
+ }
+ 
+ /// An RGBA image fitted into `px` without distorting, centred, premultiplied.
+@@ -1308,8 +1318,8 @@
+     (((w as f32 * k).round() as u32).clamp(1, edge), ((h as f32 * k).round() as u32).clamp(1, edge))
+ }
+ 
+-fn rasterize_image(path: &std::path::Path, px: (u32, u32), sharp: bool) -> Option<Vec<u8>> {
+-    let data = std::fs::read(path).ok()?;
++fn rasterize_image(path: &std::path::Path, px: (u32, u32), sharp: bool) -> Option<(Vec<u8>, (u32, u32))> {
++    let data = raster::read(path).ok()?;
+     let is_svg = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("svg"));
+     if is_svg {
+         let tree = resvg::usvg::Tree::from_data(&data, &resvg::usvg::Options::default()).ok()?;
+@@ -1318,9 +1328,10 @@
+         let k = (px.0 as f32 / t.width()).min(px.1 as f32 / t.height());
+         let (dx, dy) = ((px.0 as f32 - t.width() * k) * 0.5, (px.1 as f32 - t.height() * k) * 0.5);
+         resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(k, k).post_translate(dx, dy), &mut canvas.as_mut());
+-        return Some(canvas.take()); // tiny-skia already premultiplies
+-    }
+-    Some(fit(image::load_from_memory(&data).ok()?.to_rgba8(), px, sharp))
++        return Some((canvas.take(), px)); // tiny-skia already premultiplies; SVG has no raster source pixels
++    }
++    let (decoded, source_size) = raster::decode(&data).ok()?;
++    Some((fit(decoded, px, sharp), source_size))
+ }
+ 
+ #[cfg(test)]

@@ -84,3 +84,37 @@ fixture beside it, and exercises actual query→probe catalog/alias/missing-file
 results. These checks use local metadata; no display, decoder or native role is
 started. Rust1.85 is declared by this fixture, but the installed toolchain is
 newer, so an actual MSRV toolchain check remains distinct.
+
+## Bounded native raster worker (source checkpoint)
+
+Apply `raster-limits.patch` **after capture/image-lifecycle.patch**, with the
+previous order image-reset → fit → capture native/layout-link/image-lifecycle.
+Install raster.rs as native `src/tohru_wallpaper/raster.rs`; text.rs declares that
+private module directly. Native needs direct thiserror2.0.20 (already requested
+for video); foundation dependencies/MSRV stay unchanged. Native cfg(test) needs
+`tests/wallpaper/raster.rs` at its corresponding tests path.
+
+The actual opened descriptor is checked regular and ≤64MiB; Linux O_NONBLOCK
+avoids FIFO-open blocking if a path changes. Ordinary symlink aliases are followed
+as before, then fstat validates the opened inode. A take(64MiB+1) read rejects
+concurrent growth and captures immutable bytes. Header and decode both use that
+same byte slice with the existing image0.25.10 reader: ≤32Mi source pixels,
+≤16384 per side, decoder allocation limit256MiB. Worker pre-sizing reads are also
+bounded and are not trusted as decode authorization. Static/live cache metadata
+comes from decoded bytes, so a changed path cannot retain the previous file's
+source dimensions. SVG uses the same bounded input read; no new SVG decoder is
+added, and retained wallpaper formats stay PNG/JPEG/WebP (video GIF stays libmpv).
+
+Native named-file animations use the same bounded input/header and library
+limits; retained source frames are bounded to4096 frames /256MiB before existing
+output decimation. Over-budget animations follow the native failure/static
+fallback path. The byte input, decoder allocation and retained-frame bounds are
+separate; conversion/resize buffers, decoder internals and aggregate RSS/VRAM are
+not claimed to fit one256MiB process cap. Filesystem/codec calls may still block;
+no kernel I/O or decoder execution deadline is claimed.
+
+Source-only19-patch application plus source/legacy/metadata guards pass via
+`tests/capture/patch-stack.py`. New `tests/wallpaper/raster.rs` cases cover actual
+read growth, geometry/allocation policy and malformed decode, but no Rust/native
+compile or image decode has run. Source tests do not close actual special-file,
+replacement/growth, codec allocation, animated-budget and pixel/runtime gates.
