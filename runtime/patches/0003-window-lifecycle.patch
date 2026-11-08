@@ -28,7 +28,7 @@
      // How many frames a second at most right now: `rate:`, or its lower one
      // while its `while` holds. 0 is the monitor's.
      let mut rate_now: u32 = 0;
-@@ -1135,6 +1136,20 @@
+@@ -1138,6 +1139,20 @@
                      }
                      assign_pace(g, &mut sheets, size, op.no_vsync);
                      region = vec![[i32::MIN; 4]];
@@ -49,10 +49,10 @@
                  }
                  ToRender::SheetGone(id) => {
                      sheets.retain(|l| l.id != id);
-@@ -4807,6 +4822,18 @@
+@@ -4398,9 +4413,28 @@
+                 screens_set[k] = Some(wants);
              }
          }
- 
 +        // Conditional ordinary windows map only when requested. Layers and native
 +        // lock faces keep their own independent ownership/lifecycle.
 +        window_intents.resize_with(scene.surfaces.len(), Default::default);
@@ -65,9 +65,21 @@
 +            }
 +        }
 +
-         // Which ones are open now. If that changes, the pace is handed out again: a
-         // closed surface that set it would wait with vsync for a frame that the
-         // compositor is not going to give it —what is not seen is not given any—, and with it
+         let Some(g) = &mut gpu else {
+-            // Nowhere yet: time runs all the same, but unhurried.
+-            std::thread::sleep(Duration::from_millis(8));
++            // A closed window-only scene has no GPU yet. Reuse the normal
++            // message/appointment rest path, so a fact or IPC request wakes it.
++            // Time-dependent scenes retain their existing unhurried advance.
++            if alive {
++                std::thread::sleep(Duration::from_millis(8));
++            } else {
++                resting = true;
++                next_appointment = appointments.iter().min().copied();
++            }
+             continue;
+         };
+         // `lens = image ... while`: the picture while it holds, a capture of what is behind when it does not.
 --- a/src/platform/mod.rs
 +++ b/src/platform/mod.rs
 @@ -382,6 +382,14 @@
@@ -83,32 +95,103 @@
 +    #[cfg(not(target_os = "linux"))]
 +    let _ = (which, open);
  }
- 
+
  /// Sticks surface `which` to another edge, while running. On Wayland it's a
 --- a/src/platform/wayland.rs
 +++ b/src/platform/wayland.rs
-@@ -1154,6 +1154,7 @@
+@@ -131,6 +131,8 @@
+     to_show: Option<Sender<Show>>,
+     /// The same queue, for the window's own commits (see `WaylandWindow::shown`).
+     shared: Arc<Mutex<Option<Sender<Show>>>>,
++    // Last: native role outlives all frame resources and its queued worker.
++    conditional_window: Option<Window>,
+ }
+
+ struct OwnFrame {
+@@ -285,7 +287,10 @@
+             let (wl, device) = (self.wl.clone(), device.clone());
+             let connection = DMABUFS.get().map(|d| d.connection.clone());
+             let lock_face = self.lock_face.clone();
++            let conditional_window = self.conditional_window.clone();
+             let _ = std::thread::Builder::new().name("frames shown".into()).spawn(move || {
++                // Capture the owning wrapper for the entire worker, not a raw proxy.
++                let _conditional_window = conditional_window;
+                 for job in rx {
+                     match job {
+                         Show::Frame { buffer, px, pieces, sent } => {
+@@ -875,6 +880,7 @@
+ }
+
+ struct WaylandWindow {
++    conditional_window: Option<Window>,
+     lock_face: Option<LockFaceLease>,
+     wl: wl_surface::WlSurface,
+     compositor: CompositorState,
+@@ -963,7 +969,7 @@
+     }
+
+     fn own_frames(&self) -> Option<Box<dyn gpu::Frames>> {
+-        (DMABUFS.get().is_some() && !ARGB_LAYOUTS.lock().unwrap().is_empty()).then(|| Box::new(OwnFrames { lock_face: self.lock_face.clone(), wl: self.wl.clone(), px: (0, 0), frames: Vec::new(), latest: None, failed: false, to_show: None, shared: self.shown.clone() }) as Box<dyn gpu::Frames>)
++        (DMABUFS.get().is_some() && !ARGB_LAYOUTS.lock().unwrap().is_empty()).then(|| Box::new(OwnFrames { conditional_window: self.conditional_window.clone(), lock_face: self.lock_face.clone(), wl: self.wl.clone(), px: (0, 0), frames: Vec::new(), latest: None, failed: false, to_show: None, shared: self.shown.clone() }) as Box<dyn gpu::Frames>)
+     }
+
+     fn desktop_place(&self) -> Option<(String, (i32, i32))> {
+@@ -1161,6 +1167,8 @@
+     /// A layer: which edges it's stuck to and with what margins, to know
+     /// where it lands on its monitor; and what's needed to see what's behind.
+     backdrop: Option<Arc<BackdropTarget>>,
++    // Last field: pending GPU target drops before the final native owning wrapper.
++    conditional_window: Option<Window>,
+ }
+
+ struct State {
+@@ -1176,6 +1184,7 @@
      wanted: Vec<Surface>,
      extra_height: u32,
      placed: Vec<Placed>,
-+    retired_windows: RetiredWindows,
++    retired_windows: Vec<Placed>,
      /// The monitors the compositor has finished telling about (`new_output`): only these are placed on again when
      /// another comes or goes. One still being told about has no size yet, and a surface as big as the monitor that
      /// keeps a reserve, placed on it then, stuck to its four edges, where layer-shell ignores the reserve: Calima's
-@@ -1262,6 +1263,12 @@
+@@ -1284,6 +1293,12 @@
              if self.wanted[which].lock_screen {
                  continue;
              }
 +            if self.wanted[which].window.is_some() {
 +                let desired = said_of(which).window_open.unwrap_or(self.wanted[which].open.is_none());
-+                if !desired || self.retired_windows.0.iter().any(|placed| placed.which == which) {
++                if !desired || self.retired_windows.iter().any(|placed| placed.which == which) {
 +                    continue;
 +                }
 +            }
              let already = self.placed.iter().filter(|p| &p.output == output && p.which == which).count();
              let wants = Self::copies_wanted_on(&self.wanted[which], &name, number);
              for k in already..wants {
-@@ -1364,6 +1371,35 @@
+@@ -1305,13 +1320,14 @@
+                 window.set_min_size(Some((p.width, height)));
+                 let id = next_surface_id();
+                 window.commit();
++                let conditional_window = p.open.is_some().then(|| window.clone());
+                 let role = Role::Window(window);
+                 let viewport = self.viewporter.as_ref().map(|v| v.get_viewport(role.wl(), qh, Silent));
+                 let fractional_scale = self.fractional_scales.as_ref().map(|m| m.get_fractional_scale(role.wl(), qh, ScaleFor(id)));
+                 let surface = self.wgpu_surface_for(role.wl());
+                 let output_name = self.outputs.info(output).and_then(|i| i.name).unwrap_or_default();
+                 let backdrop = Some(BackdropTarget::new(id, Some((output.clone(), output_name)), BackdropKind::Window));
+-                self.placed.push(Placed { id, which, role, output: output.clone(), viewport, _fractional_scale: fractional_scale, scale: 1.0, size: (0, 0), pending: Some((surface, name.clone(), mhz)), backdrop });
++                self.placed.push(Placed { conditional_window, id, which, role, output: output.clone(), viewport, _fractional_scale: fractional_scale, scale: 1.0, size: (0, 0), pending: Some((surface, name.clone(), mhz)), backdrop });
+                 continue;
+             }
+             let layer = self.layers.create_layer_surface(qh, wl, level, Some("pleamar"), Some(output));
+@@ -1346,7 +1362,7 @@
+             layer.commit();
+             let surface = self.wgpu_surface_for(layer.wl_surface());
+             let backdrop = Some(backdrop);
+-            self.placed.push(Placed { id, which, role: Role::Layer(layer), output: output.clone(), viewport, _fractional_scale: fractional_scale, scale: 1.0, size: (0, 0), pending: Some((surface, name.clone(), mhz)), backdrop });
++            self.placed.push(Placed { conditional_window: None, id, which, role: Role::Layer(layer), output: output.clone(), viewport, _fractional_scale: fractional_scale, scale: 1.0, size: (0, 0), pending: Some((surface, name.clone(), mhz)), backdrop });
+             LAYERS_PLACED.fetch_add(1, Ordering::Relaxed);
+             }
+         }
+@@ -1386,6 +1402,32 @@
      /// What the render asked to move (`rescreen`): each surface's layers off
      /// the monitors it no longer names, and onto the one it does. The render
      /// keeps its sheet's state, as for a monitor that comes back.
@@ -117,16 +200,13 @@
 +            .into_iter().partition(|placed| placed.which == which && matches!(placed.role, Role::Window(_)));
 +        self.placed = remaining;
 +        for mut placed in windows {
-+            // A configure can have queued a NewSheet not yet handed to render.
-+            // Drop that unpublished GPU owner before destroying the native role.
-+            let unpublished = placed.pending.is_some() || self.announced.iter().any(|sheet| sheet.id == placed.id);
-+            self.announced.retain(|sheet| sheet.id != placed.id);
-+            drop(placed.pending.take());
-+            if unpublished {
++            // pending means configure has not handed this target to render. Its
++            // owning guard is last in Placed, so target destruction precedes it.
++            if placed.pending.take().is_some() {
 +                continue;
 +            }
 +            let id = placed.id;
-+            self.retired_windows.0.push(placed);
++            self.retired_windows.push(placed);
 +            RETIRING_WINDOWS.lock().unwrap().insert(id);
 +            let _ = self.to_render.send(ToRender::SheetGone(id));
 +        }
@@ -144,30 +224,16 @@
      fn rescreen(&mut self, qh: &QueueHandle<State>) {
          let asked = std::mem::take(&mut *RESCREENS.lock().unwrap());
          if asked.is_empty() {
-@@ -1450,6 +1486,22 @@
+@@ -1472,6 +1514,8 @@
      name: String,
      mhz: i32,
  }
 +
-+// A role may outlive its swapchain retirement request. On process teardown,
-+// unacknowledged handles are intentionally retained rather than destroyed under
-+// a renderer that may still reference them; OS process exit releases them.
-+#[derive(Default)]
-+struct RetiredWindows(Vec<Placed>);
-+
-+impl Drop for RetiredWindows {
-+    fn drop(&mut self) {
-+        for window in self.0.drain(..) {
-+            std::mem::forget(window);
-+        }
-+    }
-+}
-+
 +static RETIRING_WINDOWS: std::sync::LazyLock<Mutex<std::collections::HashSet<u32>>> = std::sync::LazyLock::new(Mutex::default);
- 
+
  struct OpenPopup {
      k: usize,
-@@ -1766,6 +1818,12 @@
+@@ -1804,6 +1848,12 @@
  /// The render has let go of surface `id`: if it was the face of a monitor that
  /// went while locked, it can be destroyed now.
  pub fn sheet_released(id: u32) {
@@ -180,7 +246,7 @@
      let Some(c) = LOCKS.get() else { return };
      let mut engaged = c.engaged.lock().unwrap();
      let Some(e) = engaged.as_mut() else { return };
-@@ -1847,6 +1905,7 @@
+@@ -1885,6 +1935,7 @@
  #[derive(Clone, Copy, Default)]
  struct Said {
      zone: Option<i32>,
@@ -188,7 +254,7 @@
      anchor: Option<SurfaceAnchor>,
      level: Option<Level>,
  }
-@@ -1867,6 +1926,32 @@
+@@ -1905,6 +1956,32 @@
      RESCREENS.lock().unwrap().push((which, screen.to_owned()));
      c.connection.display().sync(&c.qh, Rescreen);
      let _ = c.connection.flush();
@@ -214,14 +280,14 @@
 +impl Dispatch2<wayland_client::protocol::wl_callback::WlCallback, State> for WindowReleased {
 +    fn event(&self, state: &mut State, _: &wayland_client::protocol::wl_callback::WlCallback, event: wayland_client::protocol::wl_callback::Event, _: &Connection, qh: &QueueHandle<State>) {
 +        if let wayland_client::protocol::wl_callback::Event::Done { .. } = event {
-+            state.retired_windows.0.retain(|placed| placed.id != self.0);
++            state.retired_windows.retain(|placed| placed.id != self.0);
 +            state.refresh_windows(qh);
 +        }
 +    }
  }
- 
+
  struct Rescreen;
-@@ -2063,6 +2148,16 @@
+@@ -2101,6 +2178,16 @@
  impl WindowHandler for State {
      /// Someone clicked the close button. That one closes; if it was the last one, it's over.
      fn request_close(&mut self, _: &Connection, _: &QueueHandle<Self>, v: &Window) {
@@ -238,11 +304,38 @@
          self.surface_gone(&v.wl_surface().clone());
          if self.placed.is_empty() {
              self.quit = true;
-@@ -2181,6 +2276,7 @@
+@@ -2129,7 +2216,7 @@
+             let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
+                 id: a.id,
+                 target: gpu::Target::Surface(surface),
+-                window: Box::new(WaylandWindow { lock_face: None, wl: a.popup.wl_surface().clone(), compositor: self.compositor.clone(), cursors: e.cursors.clone(), serial: e.serial.clone(), layer: None, qh: e.qh.clone(), id: a.id, effect: Mutex::new(None), backdrop: a.backdrop.clone(), shown: Default::default() }),
++                window: Box::new(WaylandWindow { conditional_window: None, lock_face: None, wl: a.popup.wl_surface().clone(), compositor: self.compositor.clone(), cursors: e.cursors.clone(), serial: e.serial.clone(), layer: None, qh: e.qh.clone(), id: a.id, effect: Mutex::new(None), backdrop: a.backdrop.clone(), shown: Default::default() }),
+                 scale: a.parent.scale,
+                 size: a.size,
+                 mhz: a.parent.mhz,
+@@ -2219,6 +2306,7 @@
          wanted,
          extra_height,
          placed: Vec::new(),
-+        retired_windows: RetiredWindows::default(),
++        retired_windows: Vec::new(),
          announced: Vec::new(),
          pointer: None,
          pointer_seats: Vec::new(),
+@@ -2353,7 +2441,7 @@
+             let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
+                 id: p.id,
+                 target: gpu::Target::Surface(surface),
+-                window: Box::new(WaylandWindow { lock_face: None, wl: p.role.wl().clone(), compositor: self.compositor.clone(), cursors: self.cursors.clone(), serial: self.serial.clone(), layer: p.role.layer().cloned(), qh: self.qh.clone(), id: p.id, effect: Mutex::new(None), backdrop: p.backdrop.clone(), shown: Default::default() }),
++                window: Box::new(WaylandWindow { conditional_window: p.conditional_window.clone(), lock_face: None, wl: p.role.wl().clone(), compositor: self.compositor.clone(), cursors: self.cursors.clone(), serial: self.serial.clone(), layer: p.role.layer().cloned(), qh: self.qh.clone(), id: p.id, effect: Mutex::new(None), backdrop: p.backdrop.clone(), shown: Default::default() }),
+                 scale: p.scale,
+                 size,
+                 mhz,
+@@ -2438,7 +2526,7 @@
+             Box::new(gpu::NewSheet {
+                 id: face.id,
+                 target: gpu::Target::Surface(paints),
+-                window: Box::new(WaylandWindow { lock_face: Some(LockFaceLease { _surface: face.surface.clone(), cycle }), wl: face.surface.wl_surface().clone(), compositor: self.compositor.clone(), cursors: self.cursors.clone(), serial: self.serial.clone(), layer: None, qh: self.qh.clone(), id: face.id, effect: Mutex::new(None), backdrop: None, shown: Default::default() }),
++                window: Box::new(WaylandWindow { conditional_window: None, lock_face: Some(LockFaceLease { _surface: face.surface.clone(), cycle }), wl: face.surface.wl_surface().clone(), compositor: self.compositor.clone(), cursors: self.cursors.clone(), serial: self.serial.clone(), layer: None, qh: self.qh.clone(), id: face.id, effect: Mutex::new(None), backdrop: None, shown: Default::default() }),
+                 scale: 1.0,
+                 size,
+                 mhz: face.mhz,
