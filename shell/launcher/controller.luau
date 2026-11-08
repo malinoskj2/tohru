@@ -1,4 +1,4 @@
-return function(make_usage, search, geometry)
+return function(make_usage, search, geometry, output)
     local ok, saved = pcall(sys.ask, "files.read", "launcher.json", "json")
     if not ok then text.launcher_error = tostring(saved) end
     local usage = make_usage(ok and saved or nil)
@@ -89,9 +89,9 @@ return function(make_usage, search, geometry)
     local function show()
         tab, selected, scroll, query = 0, -1, 0, ""
         text.launcher_query = ""
-        close_menu(); rebuild(); fact.launcher_visible = true
+        close_menu(); rebuild(); if output then output.open() end; fact.launcher_visible = true
     end
-    local function hide() fact.launcher_visible = false; close_menu() end
+    local function hide() fact.launcher_visible = false; close_menu(); if output then output.close() end end
     on("launcher_open", show)
     on("launcher_close", hide)
     on("launcher_toggle", function() if fact.launcher_visible then hide() else show() end end)
