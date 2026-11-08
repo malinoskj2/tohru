@@ -1,4 +1,4 @@
--- DEVELOPMENT ONLY: native IPC can mutate lock facts; production is blocked.
+-- Requires the reviewed native lock boundary patch; production validation pending.
 -- Dedicated locker. Native compositor acknowledgments belong to a lock cycle.
 local sleep_pending = false
 local readiness = nil
@@ -10,8 +10,12 @@ local function cancel_sleep()
     sleep_pending = false
     if readiness then cancel(readiness); readiness = nil end
 end
+local function native_held()
+    local ok, held = pcall(function() return sys.ask("lock.held") end)
+    return ok and held == true
+end
 local function suspend_when_held()
-    if not sleep_pending or not ready or releasing or not fact.engaged or fact.sleep_submitted then return end
+    if not sleep_pending or not ready or releasing or fact.sleep_submitted or not native_held() then return end
     cancel_sleep()
     -- Retained across logic reload; reset only by successful authentication or
     -- an explicit system-resume observation from the eventual idle boundary.
@@ -69,12 +73,12 @@ on("fact:acknowledged", function(held)
     suspend_when_held()
 end)
 on("submit:password", function(password)
-    if not fact.engaged or not ready or releasing or fact.checking then text.password = ""; return end
+    if not native_held() or not ready or releasing or fact.checking then text.password = ""; return end
     cancel_sleep()
     fact.checking = true
     text.password = ""
     text.status = "Checking…"
-    local ok, accepted = pcall(function() return sys.ask("auth.check", password) end)
+    local ok, accepted = pcall(function() return sys.ask("auth.unlock", password) end)
     fact.checking = false
     if ok and accepted == true then
         -- Invalidate readiness BEFORE requesting release. A sleep request

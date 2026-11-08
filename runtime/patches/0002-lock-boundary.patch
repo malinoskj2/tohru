@@ -1,0 +1,464 @@
+--- a/src/agent.rs
++++ b/src/agent.rs
+@@ -894,7 +894,18 @@
+         Ok((c, timeout))
+     }
+ 
++    pub fn reads_secret(&self, scene: &Scene) -> bool {
++        let mut secret = false;
++        self.names(&mut |operand| {
++            if let Operand::Text(k) = operand {
++                secret |= scene.texts.get(*k).is_none_or(|(name, _)| crate::tohru_lock::secret(name));
++            }
++        });
++        secret
++    }
++
+     pub fn holds(&self, scene: &Scene, c: Ctx, texts: &[String]) -> bool {
++        if self.reads_secret(scene) { return false; }
+         match self {
+             Cond::Or(a, b) => a.holds(scene, c, texts) || b.holds(scene, c, texts),
+             Cond::And(a, b) => a.holds(scene, c, texts) && b.holds(scene, c, texts),
+@@ -948,6 +959,7 @@
+ 
+     /// What the names it reads are worth now: what is said when it did not come.
+     pub fn now(&self, scene: &Scene, c: Ctx, texts: &[String]) -> String {
++        if self.reads_secret(scene) { return "secret input cannot be read".into(); }
+         let mut seen: Vec<String> = Vec::new();
+         self.names(&mut |o| {
+             let s = match o {
+@@ -1124,6 +1136,7 @@
+             return Ok(Operand::Fact(k));
+         }
+         if let Some(k) = s.texts.iter().position(|f| f.0 == t) {
++            if crate::tohru_lock::secret(&t) { return Err("secret input cannot be read".into()); }
+             return Ok(Operand::Text(k));
+         }
+         if let Some(k) = s.props.iter().position(|f| f.0 == t) {
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -10,6 +10,7 @@
+ 
+ #[cfg(feature = "luau")]
+ mod tohru_settings;
++mod tohru_lock;
+ pub mod scene;
+ mod scenes;
+ mod skill;
+--- a/src/logic_luau.rs
++++ b/src/logic_luau.rs
+@@ -1314,6 +1314,9 @@
+         })?)?;
+         // The same, but it answers: `sys.ask("tray.menu", key)` returns the menu.
+         let (c, mine) = (self.c.clone(), who.clone());
++        // Immutable Rust ownership, never a file name, fact or IPC argument.
++        let root_locker = self.prefix.is_none();
++        let unlock_render = self.tx.clone();
+         sys.set("ask", lua.create_function(move |lua, (name, args): (String, mlua::Variadic<Value>)| {
+             if !name.starts_with("terminal.") {
+                 check_service_permission(&c, &name, false)?;
+@@ -1327,7 +1330,15 @@
+             // wasn't it", and the lock screen stayed "checking"
+             // forever. It is the same thing `busy` already did.
+             let t0 = Instant::now();
+-            let answer = crate::platform::query(&mine, &name, &args);
++            let answer = if name == "auth.unlock" {
++                match args.as_slice() {
++                    [SysValue::Text(password)] => crate::tohru_lock::authenticate_unlock(root_locker, password, &unlock_render)
++                        .map(SysValue::Bool).map_err(|e| format!("{e:#}")),
++                    _ => Err("auth.unlock takes one password".into()),
++                }
++            } else {
++                crate::platform::query(&mine, &name, &args)
++            };
+             if let Some(l) = &mut c.lock().unwrap().deadline {
+                 *l += t0.elapsed();
+             }
+@@ -1766,6 +1777,7 @@
+ #[cfg(test)]
+ mod tests {
+     use super::{command_allowed, say_allowed};
++    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/session/native_binding.rs"));
+ 
+     #[test]
+     fn a_command_declared_with_its_script_runs_only_that() {
+--- a/src/platform/mod.rs
++++ b/src/platform/mod.rs
+@@ -285,6 +285,7 @@
+         return crate::terminal::copied(term, std::time::Duration::from_secs_f64(secs.max(0.0))).map(|t| t.map_or(SysValue::Null, SysValue::Text));
+     }
+     match (name, args) {
++        ("lock.held", []) => return Ok(SysValue::Bool(native_lock_held())),
+         // The environment: what the session told this program at startup.
+         ("env", [SysValue::Text(which)]) => {
+             return Ok(std::env::var_os(which).map_or(SysValue::Null, |v| SysValue::Text(v.to_string_lossy().into_owned())));
+@@ -332,11 +333,46 @@
+ /// On Wayland it's `ext-session-lock`: the compositor guarantees it, not the drawing.
+ /// On Windows it will be `LockWorkStation`, which brings its own screen; on macOS, the
+ /// screen saver with password.
+-pub fn lock_screen(which: usize, what: Option<((u32, u32), (f32, f32), crate::scene::Screens)>) {
+-    #[cfg(target_os = "linux")]
+-    wayland::lock_screen(which, what);
++pub fn lock_screen(which: usize, what: Option<((u32, u32), (f32, f32), crate::scene::Screens)>) -> bool {
++    #[cfg(target_os = "linux")]
++    return wayland::lock_screen(which, what);
+     #[cfg(not(target_os = "linux"))]
+-    let _ = (which, what);
++    { let _ = (which, what); false }
++}
++
++pub(crate) fn lock_snapshot() -> Option<crate::tohru_lock::authority::Snapshot> {
++    #[cfg(target_os = "linux")]
++    return wayland::lock_snapshot();
++    #[cfg(not(target_os = "linux"))]
++    None
++}
++
++pub(crate) fn lock_password(password: &str) -> Result<bool, String> {
++    #[cfg(target_os = "linux")]
++    return auth::verify(password);
++    #[cfg(not(target_os = "linux"))]
++    { let _ = password; Err("native lock authentication is unavailable".into()) }
++}
++
++pub(crate) fn native_lock_held() -> bool {
++    #[cfg(target_os = "linux")]
++    return wayland::native_lock_held();
++    #[cfg(not(target_os = "linux"))]
++    false
++}
++
++pub(crate) fn native_lock_active() -> bool {
++    #[cfg(target_os = "linux")]
++    return wayland::native_lock_active();
++    #[cfg(not(target_os = "linux"))]
++    false
++}
++
++pub(crate) fn authenticated_unlock(permit: crate::tohru_lock::Permit, release_faces: impl FnOnce(usize)) -> bool {
++    #[cfg(target_os = "linux")]
++    return wayland::authenticated_unlock(permit, release_faces);
++    #[cfg(not(target_os = "linux"))]
++    { let _ = (permit, release_faces); false }
+ }
+ 
+ /// The render has let go of the sheet of surface `id`, and with it of its
+--- a/src/platform/wayland.rs
++++ b/src/platform/wayland.rs
+@@ -1479,6 +1479,7 @@
+ /// would be that killing the locker unlocked it— and it's what forces this to
+ /// never fail halfway.
+ struct Locks {
++    retiring: std::sync::atomic::AtomicBool,
+     qh: QueueHandle<State>,
+     compositor: CompositorState,
+     manager: smithay_client_toolkit::session_lock::SessionLockState,
+@@ -1495,6 +1496,7 @@
+ }
+ 
+ struct Engaged {
++    cycle: crate::tohru_lock::Cycle,
+     which: usize,
+     /// The box the scene declares (`size:`), which gets centred on each monitor,
+     /// and where its piece of the plane lands.
+@@ -1536,26 +1538,26 @@
+ 
+ /// `Some((bounds, origin, screens))` engages the lock of surface `which`; `None`
+ /// releases it. The render calls it, having already released what it painted before releasing it.
+-pub fn lock_screen(which: usize, what: Option<((u32, u32), (f32, f32), Screens)>) {
+-    let Some(c) = LOCKS.get() else { return };
++pub fn lock_screen(which: usize, what: Option<((u32, u32), (f32, f32), Screens)>) -> bool {
++    let Some(c) = LOCKS.get() else { return false };
+     let mut engaged = c.engaged.lock().unwrap();
+     let Some((bounds, origin, screens)) = what else {
+-        if let Some(e) = engaged.take() {
+-            e.lock.unlock();
+-            drop(e);
++        // Only compositor-finished cycles may be disposed without a permit.
++        // An active request/open expression never owns unlock authority.
++        if engaged.as_ref().is_some_and(|e| !e.cycle.active()) {
++            drop(engaged.take());
+             let _ = c.connection.flush();
+-            println!("lock   · unlocked");
+-        }
+-        return;
++        }
++        return false;
+     };
+-    if engaged.is_some() {
+-        return;
++    if engaged.is_some() || c.retiring.load(Ordering::Acquire) {
++        return false;
+     }
+     let lock = match c.manager.lock(&c.qh) {
+         Ok(l) => l,
+         Err(_) => {
+             eprintln!("lock   · this compositor has no ext-session-lock: the session cannot be locked from here");
+-            return;
++            return false;
+         }
+     };
+     // One face per monitor, and all at once: until they're all there, the
+@@ -1576,8 +1578,77 @@
+         .map(|((output, name, mhz), shows)| lock_face(c, &lock, output, name, *mhz, shows || everywhere, origin))
+         .collect();
+     drop(monitors);
+-    *engaged = Some(Engaged { which, bounds, origin, screens, lock, faces, retiring: Vec::new() });
++    *engaged = Some(Engaged { cycle: crate::tohru_lock::Cycle::requested(which), which, bounds, origin, screens, lock, faces, retiring: Vec::new() });
+     let _ = c.connection.flush();
++    true
++}
++
++struct RetiredLock;
++
++impl Dispatch2<wayland_client::protocol::wl_callback::WlCallback, State> for RetiredLock {
++    fn event(&self, state: &mut State, _: &wayland_client::protocol::wl_callback::WlCallback, event: wayland_client::protocol::wl_callback::Event, _: &Connection, _: &QueueHandle<State>) {
++        if let wayland_client::protocol::wl_callback::Event::Done { .. } = event {
++            if let Some(c) = LOCKS.get() {
++                c.retiring.store(false, Ordering::Release);
++                let _ = state.to_render.send(ToRender::Repaint);
++            }
++        }
++    }
++}
++
++fn retire_lock(c: &Locks) {
++    c.retiring.store(true, Ordering::Release);
++    c.connection.display().sync(&c.qh, RetiredLock);
++    let _ = c.connection.flush();
++}
++
++pub(crate) fn native_lock_active() -> bool {
++    LOCKS.get().is_some_and(|c| c.engaged.lock().is_ok_and(|engaged| engaged.as_ref().is_some_and(|e| e.cycle.active())))
++}
++
++pub(crate) fn native_lock_held() -> bool {
++    LOCKS.get().is_some_and(|c| c.engaged.lock().is_ok_and(|engaged| engaged.as_ref().is_some_and(|e| e.cycle.held() && e.lock.is_locked())))
++}
++
++pub(crate) fn lock_snapshot() -> Option<crate::tohru_lock::authority::Snapshot> {
++    let c = LOCKS.get()?;
++    let engaged = c.engaged.lock().ok()?;
++    let e = engaged.as_ref()?;
++    if !e.lock.is_locked() { return None; }
++    e.cycle.snapshot()
++}
++
++pub(crate) fn authenticated_unlock(permit: crate::tohru_lock::Permit, release_faces: impl FnOnce(usize)) -> bool {
++    let Some(c) = LOCKS.get() else { return false };
++    let (owner, release) = {
++        let Ok(engaged) = c.engaged.lock() else { return false };
++        let Some(e) = engaged.as_ref() else { return false };
++        if !e.lock.is_locked() { return false; }
++        let Some(release) = e.cycle.reserve(permit) else { return false };
++        (e.which, release)
++    };
++    // Reservation excludes acquisition/authentication. Drop GPU resources
++    // WITHOUT engaged held: driver teardown may wait while Wayland callbacks
++    // need engaged. No nested dispatch or callback is required by the closure.
++    release_faces(owner);
++    let Ok(mut engaged) = c.engaged.lock() else { return false };
++    let Some(e) = engaged.as_ref() else { return false };
++    if !e.cycle.accepts_release(&release) || !e.lock.is_locked() {
++        // Only terminal Finished can revoke while reserved; no new cycle can
++        // acquire while engaged remains occupied. Finished needs no unlock.
++        if !e.cycle.active() {
++            drop(engaged.take());
++            return true;
++        }
++        return false;
++    }
++    let Some(e) = engaged.take() else { return false };
++    e.cycle.finish();
++    e.lock.unlock();
++    drop(e);
++    retire_lock(c);
++    println!("lock   · authenticated release");
++    true
+ }
+ 
+ /// The lock face of one monitor: the scene, if `shows`, or else a plain black
+@@ -2145,6 +2216,7 @@
+         Err(_) => eprintln!("warning: the compositor has no xdg-shell; there will be no popup surfaces"),
+     }
+     let _ = LOCKS.set(Locks {
++        retiring: std::sync::atomic::AtomicBool::new(false),
+         qh: qh.clone(),
+         compositor: state.compositor.clone(),
+         manager: smithay_client_toolkit::session_lock::SessionLockState::new(&globals, &qh),
+@@ -2266,11 +2338,22 @@
+ impl smithay_client_toolkit::session_lock::SessionLockHandler for State {
+     /// The compositor confirms it: now, and not before, the session is locked.
+     fn locked(&mut self, _: &Connection, _: &QueueHandle<Self>, _: smithay_client_toolkit::session_lock::SessionLock) {
++        if let Some(c) = LOCKS.get() {
++            let Ok(engaged) = c.engaged.lock() else { return };
++            let Some(e) = engaged.as_ref().filter(|e| e.cycle.active() && e.lock.is_locked()) else { return };
++            e.cycle.confirm();
++        } else { return; }
+         println!("lock   · the session is locked");
+         let _ = self.to_render.send(ToRender::LockScreen(true));
+     }
+     /// It didn't grant it —there's already another locker—, or it has ended it.
+     fn finished(&mut self, _: &Connection, _: &QueueHandle<Self>, _: smithay_client_toolkit::session_lock::SessionLock) {
++        if let Some(c) = LOCKS.get() {
++            let Ok(engaged) = c.engaged.lock() else { return };
++            let Some(e) = engaged.as_ref().filter(|e| e.cycle.active()) else { return };
++            e.cycle.finish();
++            retire_lock(c);
++        } else { return; }
+         eprintln!("lock   · the compositor did not grant the lock, or ended it: is another locker running?");
+         let _ = self.to_render.send(ToRender::LockScreen(false));
+     }
+--- a/src/render.rs
++++ b/src/render.rs
+@@ -541,6 +541,7 @@
+     let mut popups: Vec<Option<[i32; 4]>> = Vec::new();
+     // The lock surfaces that are engaged (or requested).
+     let mut locks: Vec<usize> = Vec::new();
++    let mut released_locks: Vec<usize> = Vec::new();
+     let mut uniforms = [0f32; N_UNIFORMS];
+     let mut size = (720.0f32, 224.0f32);
+     // If `--record` was asked for, the header is written once.
+@@ -905,6 +906,16 @@
+                     }
+                 }
+                 ToRender::Scene(fresh) => {
++                    if crate::platform::native_lock_active() {
++                        eprintln!("reload · scene definition is frozen while the native lock is active");
++                        continue;
++                    }
++                    // Queued conditions carry text indices; never reuse those across
++                    // a schema/privacy change or report their previous values.
++                    for (_, _, _, reply) in waits.drain(..) {
++                        let _ = reply.send("? scene changed; wait cancelled\n".into());
++                    }
++                    released_locks.clear();
+                     crate::platform::release_memory();
+                     crate::platform::CURSOR_WANTED.store(fresh.wants_cursor, std::sync::atomic::Ordering::Relaxed);
+                     // The properties with the same name survive the change.
+@@ -1227,11 +1238,32 @@
+                     Some(i) => texts[i] = value,
+                     None => eprintln!("render · I don't know the text '{name}'"),
+                 },
++                ToRender::Fact("lock.held", _) => {
++                    eprintln!("lock   · lock.held is compositor-owned");
++                }
+                 ToRender::Fact(name, v) => match scene.facts.iter().position(|h| h.0 == name) {
+                     Some(i) if name == "drag.over" && v == 0.0 && !drops.is_empty() => over_later = Some(i),
+                     Some(i) => facts[i] = v,
+                     None => eprintln!("render · I don't know the fact '{name}'"),
+                 },
++                ToRender::AuthenticatedUnlock(permit) => {
++                    let mut released = None;
++                    if crate::platform::authenticated_unlock(permit, |k| {
++                        // Pure renderer-owned drops only. Never call Wayland
++                        // callbacks/dispatch, sheet_released or wait here.
++                        locks.retain(|owner| *owner != k);
++                        sheets.retain(|sheet| !(sheet.view.surface == k && sheet.view.popup.is_none()));
++                        released = Some(k);
++                    }) {
++                        if let Some(k) = released { released_locks.push(k); }
++                        if let Some(k) = scene.facts.iter().position(|(name, _)| *name == "lock.held") {
++                            facts[k] = 0.0;
++                        }
++                        if let Some(g) = &gpu { assign_pace(g, &mut sheets, size, op.no_vsync); }
++                    } else {
++                        eprintln!("lock   · stale native release denied");
++                    }
++                }
+                 ToRender::LockScreen(held) => {
+                     if !held {
+                         // It has not granted it, or it has ended it: what was being painted is released
+@@ -1244,6 +1276,7 @@
+                         if let Some(g) = &gpu {
+                             assign_pace(g, &mut sheets, size, op.no_vsync);
+                         }
++                        released_locks.extend(locks.drain(..));
+                     }
+                     if let Some(k) = scene.facts.iter().position(|(n, _)| *n == "lock.held") {
+                         facts[k] = if held { 1.0 } else { 0.0 };
+@@ -1264,6 +1297,9 @@
+                         facts[h] = 0.0;
+                         let _ = to_logic.send(Event::Fact(scene.facts[h].0, 0.0));
+                     }
++                }
++                ToRender::ExternalFact("lock.held", _) => {
++                    eprintln!("lock   · lock.held is compositor-owned");
+                 }
+                 ToRender::ExternalFact(name, written) => match scene.facts.iter().position(|h| h.0 == name) {
+                     Some(i) => {
+@@ -1334,6 +1370,8 @@
+                             Some((_, t)) => t.to_text(facts[i]),
+                             None => number(facts[i]),
+                         }
++                    } else if crate::tohru_lock::secret(name) {
++                        "? secret input cannot be read".into()
+                     } else if let Some(i) = scene.texts.iter().position(|t| t.0 == name) {
+                         texts.get(i).cloned().unwrap_or_default()
+                     } else if let Some(i) = scene.props.iter().position(|p| p.0 == name) {
+@@ -3889,23 +3927,17 @@
+         let want: Vec<(usize, bool)> = scene.surfaces.iter().enumerate().filter(|(_, s)| s.lock_screen).map(|(k, _)| (k, open(k))).collect();
+         for (k, wants) in want {
+             let was = locks.contains(&k);
+-            if wants && !was {
+-                locks.push(k);
++            if !wants { released_locks.retain(|owner| *owner != k); }
++            if wants && !was && !released_locks.contains(&k) {
+                 let s = &scene.surfaces[k];
+-                crate::platform::lock_screen(k, Some(((s.width, s.height), s.origin, s.screens.clone())));
+-            } else if !wants && was {
+-                locks.retain(|x| *x != k);
+-                sheets.retain(|l| !(l.view.surface == k && l.view.popup.is_none()));
+-                crate::platform::lock_screen(k, None);
+-                if let Some(g) = &gpu {
+-                    assign_pace(g, &mut sheets, size, op.no_vsync);
+-                }
+-                if let Some(h) = scene.facts.iter().position(|(n, _)| *n == "lock.held") {
+-                    facts[h] = 0.0;
+-                }
+-            }
+-        }
+-        let open = |k: usize| scene.surfaces.get(k).and_then(|s| s.open.as_ref()).is_none_or(|e| e.is_true(Ctx { props: &props, facts: &facts, seen: None }));
++                if crate::platform::lock_screen(k, Some(((s.width, s.height), s.origin, s.screens.clone()))) {
++                    locks.push(k);
++                }
++            }
++            // An open expression, public fact or event cannot remove native
++            // lock faces. Only AuthenticatedUnlock or compositor-finished can.
++        }
++        let open = |k: usize| locks.contains(&k) || scene.surfaces.get(k).and_then(|s| s.open.as_ref()).is_none_or(|e| e.is_true(Ctx { props: &props, facts: &facts, seen: None }));
+         draw.views.clear();
+         draw.views.extend(sheets.iter().filter(|l| open(l.view.surface)).map(|l| l.view.bounds()));
+         for (k, em) in scene.popups.iter().enumerate() {
+@@ -4284,7 +4316,10 @@
+         // Conditions waited for: said as soon as they hold.
+         if !waits.is_empty() {
+             waits.retain(|(cond, start, deadline, reply)| {
+-                if cond.holds(&scene, c, &texts) {
++                if cond.reads_secret(&scene) {
++                    let _ = reply.send("? secret input cannot be read\n".into());
++                    false
++                } else if cond.holds(&scene, c, &texts) {
+                     let _ = reply.send(format!("yes, after {} ms\n", (now - *start).as_millis()));
+                     false
+                 } else if now >= *deadline {
+@@ -5455,6 +5490,8 @@
+                         format!("{:.4}", props[i].x)
+                     } else if let Some(i) = scene.facts.iter().position(|h| h.0 == n) {
+                         format!("{:.4}", facts[i])
++                    } else if crate::tohru_lock::secret(n) {
++                        "(hidden)".into()
+                     } else if let Some(i) = scene.texts.iter().position(|t| t.0 == n) {
+                         texts.get(i).cloned().unwrap_or_default()
+                     } else {
+--- a/src/scene.rs
++++ b/src/scene.rs
+@@ -2456,6 +2456,8 @@
+     Command(Command),
+     /// The boundary: the logic tells what happens, and nothing more.
+     Fact(&'static str, f32),
++    /// Native PAM-only, cycle-bound release authority; never accepted by IPC.
++    AuthenticatedUnlock(crate::tohru_lock::Permit),
+     Text(&'static str, String),
+     Signal(&'static str),
+     /// A signal that comes from outside the program: the scene and the logic hear it.
