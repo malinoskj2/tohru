@@ -86,6 +86,7 @@ return function(assign)
         if type(assignments) ~= "table" or type(outputs) ~= "table" or type(files) ~= "table"
             or type(canonical) ~= "function" then error("Randomization requires assignments, outputs, a shuffled catalog and canonical identities") end
         if #files > 4096 then error("Wallpaper catalog exceeds 4096 files") end
+        if #outputs > 4096 then error("Wallpaper target request exceeds 4096 entries") end
         local next, catalog, used, selected, seen, identities = {}, {}, {}, {}, {}, {}
         local function identity(path)
             if identities[path] then return identities[path] end
@@ -114,7 +115,13 @@ return function(assign)
         else
             for _, output in ipairs(outputs) do
                 validate(output, "/validation.png")
-                if not seen[output] then selected[#selected + 1], seen[output] = output, true end
+                if not seen[output] then
+                    if not next[output] then
+                        count = count + 1
+                        if count > 32 then error("Wallpaper assignment capacity is 32 outputs; nothing was changed") end
+                    end
+                    selected[#selected + 1], seen[output] = output, true
+                end
             end
         end
         if #selected == 0 or #files == 0 then return next end
