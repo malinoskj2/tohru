@@ -84,4 +84,5 @@ return function()
     if fact.sound_dragging then fact.sound_dragging = false end
     on("audio_report", publish)
     publish()
+    return {close = close}
 end

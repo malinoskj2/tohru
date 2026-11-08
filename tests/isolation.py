@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """CPU-only proof that the actual private runner overrides hostile transports."""
 import importlib.util
+import sys
+sys.dont_write_bytecode = True
 from pathlib import Path
 import unittest
 
