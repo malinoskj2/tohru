@@ -168,3 +168,31 @@ fn oversized_and_missing_managed_files_are_errors() {
     fs::write(files.user(), "#".repeat(1024 * 1024 + 1)).unwrap();
     assert!(Owner::load(files.user(), None).is_err());
 }
+
+#[test]
+fn serialized_size_limit_rejects_growth_without_changing_disk_or_memory() {
+    let files = Fixture::new();
+    let original = format!("#{}\n", "x".repeat(1024 * 1024 - 2));
+    fs::write(files.user(), &original).unwrap();
+    let mut owner = Owner::load(files.user(), None).unwrap();
+    assert!(matches!(
+        owner.set(Key::Mooncoil, Value::Bool(true)),
+        Err(tohru_shell::settings::Error::TooLarge(_))
+    ));
+    assert_eq!(fs::read_to_string(files.user()).unwrap(), original);
+    assert_eq!(owner.get(Key::Mooncoil).origin, Origin::Default);
+    assert_eq!(owner.get(Key::Mooncoil).value, Value::Bool(false));
+    let restarted = Owner::load(files.user(), None).unwrap();
+    assert_eq!(restarted.get(Key::Mooncoil).value, Value::Bool(false));
+    assert_eq!(fs::read_dir(&files.0).unwrap().count(), 1);
+
+    // An edit whose resulting document is exactly at the limit remains usable.
+    let suffix = "[bar]\nmooncoil = true\n";
+    let prefix = format!("#{}\n", "x".repeat(1024 * 1024 - suffix.len() - 2));
+    fs::write(files.user(), &prefix).unwrap();
+    let mut owner = Owner::load(files.user(), None).unwrap();
+    owner.set(Key::Mooncoil, Value::Bool(true)).unwrap();
+    assert_eq!(fs::metadata(files.user()).unwrap().len(), 1024 * 1024);
+    let restarted = Owner::load(files.user(), None).unwrap();
+    assert_eq!(restarted.get(Key::Mooncoil).value, Value::Bool(true));
+}

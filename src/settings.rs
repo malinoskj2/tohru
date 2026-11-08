@@ -280,7 +280,11 @@ impl Owner {
                 Value::Text(text) => value(text),
             },
         );
-        persist(&self.user_path, next.document.to_string().as_bytes())?;
+        let serialized = next.document.to_string();
+        if serialized.len() as u64 > MAX_CONFIG_BYTES {
+            return Err(Error::TooLarge(self.user_path.clone()));
+        }
+        persist(&self.user_path, serialized.as_bytes())?;
         next.values.insert(key, candidate);
         self.user = next;
         Ok(())
