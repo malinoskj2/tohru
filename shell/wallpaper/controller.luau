@@ -3,9 +3,20 @@ return function(assign)
     local slots, paths = {}, {}
     local static = {png = true, jpg = true, jpeg = true, webp = true}
     local video = {mp4 = true, mkv = true, webm = true, mov = true, gif = true}
+    -- Match Rust str::trim (Unicode White_Space), which native screens uses.
+    local function space(cp)
+        return (cp >= 9 and cp <= 13) or cp == 32 or cp == 133 or cp == 160
+            or cp == 5760 or (cp >= 8192 and cp <= 8202) or cp == 8232 or cp == 8233
+            or cp == 8239 or cp == 8287 or cp == 12288
+    end
+    local function altered_by_trim(output)
+        local first, last
+        for _, cp in utf8.codes(output) do first = first or cp; last = cp end
+        return (first and space(first)) or (last and space(last))
+    end
     local function validate(output, path)
         if type(output) ~= "string" or #output == 0 or #output > 255
-            or output:find("[,%z\r\n]") or output:match("^%s") or output:match("%s$") then
+            or output:find("[,%z\r\n]") or altered_by_trim(output) then
             error("Wallpaper output must be one native output name (no commas or surrounding whitespace)")
         end
         if type(path) ~= "string" or #path > 4096 or path:sub(1, 1) ~= "/" or path:find("%z") then
@@ -32,7 +43,7 @@ return function(assign)
         end
         table.sort(ordered)
         -- Retain slots across reload publications/reassignments. Detach before reuse,
-        -- so another output can never display the previous output's picture.
+        -- Native image identity reset is also required before a reused route paints.
         for i = 0, 31 do
             if slots[i] and not images[slots[i]] then
                 text["wallpaper_output_" .. i] = ""

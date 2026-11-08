@@ -48,3 +48,18 @@ harness in tree-root `.tmp/wallpaper-cpu/` (shared files remain S-owned): catalo
 validity/scope/overflow/encoding tests, real child timeout/reap/output limits,
 and actual sibling-layout query→probe success/failure. Native permission dispatch,
 packaging, UI picker and installed runtime calls remain integration gates.
+
+`image-reset.patch` fixes reviewed Q-W1 in native `Texts::image`: the fallback
+frame is keyed by both image index and live source identity (base name + declared
+size), rather than index alone. Different/cold/missing paths are blank until
+ready, including a coalesced detach/reassign/attach. Empty sources release that
+last-frame reference; same-source numeric versions retain native reload behavior.
+Picture sweeping follows the keyed reference. This applies to live images
+throughout the runtime; it adds no renderer, polling, slot tombstones or cache.
+GPU textures/atlas entries still follow existing native cache reclamation, so
+clearing a reference does not promise immediate deallocation of every cached
+pixel. Test `tests/wallpaper/image-reset.py --source PINNED_RUNTIME_SOURCE` compiles
+actual patched image/live-name/sweep methods with narrow type/I/O fixtures and
+checks cold/missing/empty/same-version and last-reference sweep behavior. The
+patch also installs an actual native text unit regression; full native compilation
+and private GPU old-output/new-cold-path pixel verification remain required.
