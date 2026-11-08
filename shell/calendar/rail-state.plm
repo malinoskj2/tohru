@@ -1,0 +1,11 @@
+part CalendarRailState {
+    shader cal_rail_shader = file "../bar/ribbon.wgsl"
+    fact cal_rail_width = 192
+    fact cal_rail_present = false
+    fact cal_rail_moving = false
+    fact cal_rail_r = 250
+    fact cal_rail_g = 179
+    fact cal_rail_b = 135
+    text cal_rail_error = ""
+    repeat i in 0..16 { fact cal_rail_v.$i = 0 }
+}

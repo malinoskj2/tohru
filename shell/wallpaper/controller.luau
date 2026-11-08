@@ -3,9 +3,20 @@ return function(assign)
     local slots, paths = {}, {}
     local static = {png = true, jpg = true, jpeg = true, webp = true}
     local video = {mp4 = true, mkv = true, webm = true, mov = true, gif = true}
+    -- Match Rust str::trim (Unicode White_Space), which native screens uses.
+    local function space(cp)
+        return (cp >= 9 and cp <= 13) or cp == 32 or cp == 133 or cp == 160
+            or cp == 5760 or (cp >= 8192 and cp <= 8202) or cp == 8232 or cp == 8233
+            or cp == 8239 or cp == 8287 or cp == 12288
+    end
+    local function altered_by_trim(output)
+        local first, last
+        for _, cp in utf8.codes(output) do first = first or cp; last = cp end
+        return (first and space(first)) or (last and space(last))
+    end
     local function validate(output, path)
         if type(output) ~= "string" or #output == 0 or #output > 255
-            or output:find("[,%z\r\n]") or output:match("^%s") or output:match("%s$") then
+            or output:find("[,%z\r\n]") or altered_by_trim(output) then
             error("Wallpaper output must be one native output name (no commas or surrounding whitespace)")
         end
         if type(path) ~= "string" or #path > 4096 or path:sub(1, 1) ~= "/" or path:find("%z") then
@@ -32,7 +43,7 @@ return function(assign)
         end
         table.sort(ordered)
         -- Retain slots across reload publications/reassignments. Detach before reuse,
-        -- so another output can never display the previous output's picture.
+        -- Native image identity reset is also required before a reused route paints.
         for i = 0, 31 do
             if slots[i] and not images[slots[i]] then
                 text["wallpaper_output_" .. i] = ""
@@ -83,15 +94,21 @@ return function(assign)
             identities[path] = key
             return key
         end
-        for output, path in pairs(assignments) do validate(output, path); next[output] = path end
+        local count = 0
+        for output, path in pairs(assignments) do
+            validate(output, path)
+            count = count + 1
+            if count > 32 then error("Wallpaper assignment capacity is 32 outputs; nothing was changed") end
+            next[output] = path
+        end
         for _, path in ipairs(files) do
             validate("catalog", path)
-            catalog[path] = true
-            identity(path)
+            catalog[identity(path)] = true
         end
+        if #files == 0 then return next end
         if #outputs == 0 then
             for output, path in pairs(assignments) do
-                if validate(output, path) == "video" or catalog[path] then selected[#selected + 1] = output end
+                if validate(output, path) == "video" or catalog[identity(path)] then selected[#selected + 1] = output end
             end
             table.sort(selected)
         else
@@ -120,7 +137,7 @@ return function(assign)
             used[identity(chosen)] = true
             next[output] = chosen
         end
-        local count = 0
+        count = 0
         for _ in pairs(next) do count = count + 1 end
         if count > 32 then error("Wallpaper assignment capacity is 32 outputs; nothing was changed") end
         return next

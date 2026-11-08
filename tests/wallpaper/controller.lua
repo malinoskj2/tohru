@@ -61,3 +61,25 @@ next = controller.randomize(original, {}, {}, canonical)
 assert(next["DP-1"] == files[1])
 assert(not pcall(controller.randomize, original, {"DP-1"}, files, function() return nil end))
 print("Wallpaper randomization: preference, alias, implicit-output and atomic proposal fixtures passed")
+-- Q-W2: native selectors use Unicode White_Space, not Lua's ASCII %s.
+for _, cp in ipairs({9,10,11,12,13,32,133,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288}) do
+    local edge = utf8.char(cp)
+    assert(not pcall(controller.validate, edge .. "DP-1", "/pictures/a.png"))
+    assert(not pcall(controller.validate, "DP-1" .. edge, "/pictures/a.png"))
+end
+assert(controller.validate("Display α", "/pictures/a.png") == "image")
+assert(controller.validate("DP" .. utf8.char(160) .. "1", "/pictures/a.png") == "image")
+-- Zero-width space/BOM are not Rust White_Space and must remain literal.
+assert(controller.validate(utf8.char(8203) .. "DP-1", "/pictures/a.png") == "image")
+assert(controller.validate("DP-1" .. utf8.char(65279), "/pictures/a.png") == "image")
+local previous = text.wallpaper_output_0
+assert(not pcall(controller.publish, true, {[utf8.char(160) .. "DP-1"] = "/pictures/a.png"}))
+assert(text.wallpaper_output_0 == previous)
+print("Wallpaper Unicode selector boundary fixtures passed")
+-- Q-W3: no-op branches enforce the same assignment bound as publication.
+assert(not pcall(controller.randomize, oversized, {}, {}, canonical))
+assert(not pcall(controller.randomize, oversized, {}, {"/new/a.png"}, canonical))
+-- Q-W4: implicit selection and duplicate avoidance both use canonical identity.
+next = controller.randomize({["DP-1"] = "/pictures/alias.png", ["DP-2"] = "/outside/still.png"}, {}, files, canonical)
+assert(next["DP-1"] == files[2] and next["DP-2"] == "/outside/still.png")
+print("Wallpaper randomization no-op bounds and implicit alias fixtures passed")

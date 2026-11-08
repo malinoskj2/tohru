@@ -144,51 +144,60 @@ fn queued_retired_target_keeps_native_owner_until_gpu_target_is_destroyed() {
     }
     struct Window {
         _native: Arc<Owner>,
-        cycle: authority::Cycle,
+        life: authority::Face,
     }
     impl crate::platform::PlatformWindow for Window {
         fn is_current(&self) -> bool {
-            self.cycle.publishable()
+            self.life.current()
         }
         fn update_input_region(&self, _: &[[i32; 4]]) {}
         fn cursor(&self, _: crate::scene::Cursor) {}
         fn keyboard(&self, _: crate::scene::Keyboard) {}
     }
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let native = Arc::new(Owner(events.clone()));
-    let cycle = authority::Cycle::requested(1);
-    cycle.confirm();
-    let (send, receive) = std::sync::mpsc::channel();
-    send.send(crate::gpu::NewSheet {
-        id: 1,
-        target: crate::gpu::Target::Frames(Box::new(Target {
-            native: Arc::downgrade(&native),
-            events: events.clone(),
-        })),
-        window: Box::new(Window {
-            _native: native.clone(),
-            cycle: cycle.clone(),
-        }),
-        scale: 1.0,
-        size: (100, 100),
-        mhz: 60000,
-        name: "queued-lock-face".into(),
-        view: crate::gpu::View {
-            surface: 1,
-            popup: None,
-            origin: (0.0, 0.0),
-            size: (100.0, 100.0),
-        },
-    })
-    .unwrap();
-    let permit = cycle.snapshot().unwrap().verified(true).unwrap();
-    let _release = cycle.reserve(permit).unwrap();
-    drop(native); // Engaged's owner reference can leave while the target is queued.
-    let queued = receive.recv().unwrap();
-    assert!(
-        !queued.window.is_current(),
-        "releasing targets must not install"
-    );
-    drop(queued); // Actual native NewSheet field order: target before window owner.
-    assert_eq!(*events.lock().unwrap(), ["gpu target", "native owner"]);
+    for removed_output in [false, true] {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let native = Arc::new(Owner(events.clone()));
+        let cycle = authority::Cycle::requested(1);
+        cycle.confirm();
+        let life = authority::Face::new(cycle.clone());
+        let (send, receive) = std::sync::mpsc::channel();
+        send.send(crate::gpu::NewSheet {
+            id: 1,
+            target: crate::gpu::Target::Frames(Box::new(Target {
+                native: Arc::downgrade(&native),
+                events: events.clone(),
+            })),
+            window: Box::new(Window {
+                _native: native.clone(),
+                life: life.clone(),
+            }),
+            scale: 1.0,
+            size: (100, 100),
+            mhz: 60000,
+            name: "queued-lock-face".into(),
+            view: crate::gpu::View {
+                surface: 1,
+                popup: None,
+                origin: (0.0, 0.0),
+                size: (100.0, 100.0),
+            },
+        })
+        .unwrap();
+        let _release = if removed_output {
+            life.retire();
+            assert!(cycle.held(), "output removal must not end the lock cycle");
+            None
+        } else {
+            let permit = cycle.snapshot().unwrap().verified(true).unwrap();
+            Some(cycle.reserve(permit).unwrap())
+        };
+        drop(native); // Engaged's owner reference can leave while the target is queued.
+        let queued = receive.recv().unwrap();
+        assert!(
+            !queued.window.is_current(),
+            "releasing targets must not install"
+        );
+        drop(queued); // Actual native NewSheet field order: target before window owner.
+        assert_eq!(*events.lock().unwrap(), ["gpu target", "native owner"]);
+    }
 }

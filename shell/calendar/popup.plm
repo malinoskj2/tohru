@@ -4,7 +4,7 @@ part CalendarPopup {
         size: 320, 165 + cal_weeks * 30
         open: cal_open
         body {
-            color: #181825; rim: 4%; shadow: 0, 4, 10, 25%
+            color: #181825; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 25%
             box { from: 0, 0; size: 320, 165 + cal_weeks * 30; corner: 22 }
         }
         text cal_title { at: 20, 29; anchor: left center; size: 17; weight: 600; color: #cdd6f4 }
@@ -28,11 +28,7 @@ part CalendarPopup {
             box { from: 12 + (d.col + 0.5) * 296 / 7 - 7, 100 + d.row * 30; size: 14, 3; color: #6c7086; show: d.today and not d.selected }
             on press cal_cell.$d.index { emit calendar_day(d.index) }
         }
-        repeat i in 1..13 {
-            box cal_rail.$i { from: 28 + (i - 1) * 22, 86 + cal_weeks * 30; size: 22, 22; corner: 3; color: #6c7086; opacity: 10%; cursor: pointer }
-            text "{i}" { at: 39 + (i - 1) * 22, 97 + cal_weeks * 30; anchor: center; size: 10; color: #cdd6f4 }
-            on press cal_rail.$i { emit calendar_month(i) }
-        }
+        include "rail.plm"
         text cal_footer { at: 20, 133 + cal_weeks * 30; anchor: left center; size: 13; color: #cdd6f4 }
         text cal_week { at: 300, 133 + cal_weeks * 30; anchor: right center; size: 11; color: #a6adc8 }
         zone box cal_today_hit { from: 150, 13; size: 90, 28; active: not cal_current; cursor: pointer }

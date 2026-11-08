@@ -13,7 +13,7 @@ or start a session-lock, polkit, notification or idle singleton owner.
 | Locker | Dedicated Pleamar process, `shell/lock/lock.plm`, native `kind: lock` | Independent of bar process/group/service. Keep alive while locked. Only successful native PAM result releases `open`; never release on Escape, denial, timeout, scene reload or power failure. Compositor must retain lock after crash. |
 | Polkit | Dedicated native Pleamar agent, `shell/polkit/polkit.plm` | Exactly one per login session. Cancel pending conversation on owner stop; no j2bar backend. |
 | Idle | One integrated process-owned boundary in existing shell package | Own standard idle/inhibitor observation, fade cancellation, screen-power adapter and logind delay inhibitor; never an additional daemon. |
-| Notifications | Dedicated native role after retention decision | Exactly one bus owner; no start until retention gap resolved. |
+| Notifications | Dedicated native role; internal retention accepted | Exactly one bus owner; no activation before singleton wiring/validation. |
 
 Nix owns independent service/process lifetime, PAM policy and polkit policy.
 An ordinary UI restart must not propagate stop/reload to the locker service.

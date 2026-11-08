@@ -1,0 +1,13 @@
+part WorkspaceRailState {
+    shader ws_shader = file "ribbon.wgsl"
+    fact ws_width = 80
+    fact ws_present = false
+    fact ws_moving = false
+    fact ws_r = 250
+    fact ws_g = 179
+    fact ws_b = 135
+    text ws_error = ""
+    repeat i in 0..16 { fact ws_v.$i = 0 }
+    fact ws_available = false
+    event workspace_select ->
+}

@@ -13,7 +13,7 @@ pub const SIDE_PADDING: f32 = workspace_track::PAD;
 pub const SHADER_HEIGHT: f32 = workspace_track::HEIGHT;
 pub const CENTER_Y: f32 = workspace_track::CENTER;
 
-/// Whether native frame delivery is needed after publishing this sample.
+/// Whether native timer publication is needed after publishing this sample.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Activity {
     Resting,
@@ -53,7 +53,7 @@ impl Indicator {
     }
 
     /// Advance at the design's fixed 240Hz step, capped at 50ms after a late frame.
-    /// The native host must unsubscribe/pause frame delivery when this rests.
+    /// The native host cancels its publication timer when this rests.
     pub fn advance(&mut self, now: Instant) -> Sample {
         self.track.advance(now);
         self.sample()
@@ -61,6 +61,10 @@ impl Indicator {
 
     /// Publish without advancing; changing view invocation cannot change physics.
     #[must_use]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "Retained shader math intentionally rounds bounded pixel values and scalar publication"
+    )]
     pub fn sample(&self) -> Sample {
         let values = self.track.shader_values();
         let mut shape = [0.0; 16];
@@ -89,6 +93,14 @@ mod tests {
     use std::time::Duration;
 
     #[test]
+    #[allow(
+        clippy::float_cmp,
+        reason = "Exact retained rest and cadence assertions require bit-identical floats"
+    )]
+    #[allow(
+        clippy::duration_suboptimal_units,
+        reason = "Duration::from_hours is newer than the project Rust1.85 MSRV"
+    )]
     fn native_observation_appears_at_rest_and_view_reads_do_not_advance() {
         let now = Instant::now();
         let mut indicator = Indicator::default();
@@ -106,6 +118,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::float_cmp,
+        reason = "Exact retained rest and cadence assertions require bit-identical floats"
+    )]
     fn interrupted_native_observations_keep_motion_and_settle_square() {
         let now = Instant::now();
         let mut indicator = Indicator::default();
@@ -132,6 +148,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "Test cadence is one of the small positive fixed millisecond values"
+    )]
     fn public_rest_and_next_switch_are_identical_across_sub_cap_cadences() {
         let now = Instant::now();
         let mut results = Vec::new();
@@ -142,10 +162,10 @@ mod tests {
             for ms in (cadence..=5000).step_by(cadence as usize) {
                 indicator.advance(now + Duration::from_millis(ms));
             }
-            indicator.advance(now + Duration::from_millis(5000));
+            indicator.advance(now + Duration::from_secs(5));
             let resting = indicator.sample();
             assert_eq!(resting.activity, Activity::Resting);
-            indicator.observe(Some(5), Some(1), now + Duration::from_millis(5000));
+            indicator.observe(Some(5), Some(1), now + Duration::from_secs(5));
             for ms in (cadence..=200).step_by(cadence as usize) {
                 indicator.advance(now + Duration::from_millis(5000 + ms));
             }
@@ -158,6 +178,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::float_cmp,
+        reason = "Exact retained rest and cadence assertions require bit-identical floats"
+    )]
     fn shader_sample_matches_retained_cpu_geometry() {
         let now = Instant::now();
         let mut indicator = Indicator::default();
@@ -171,6 +195,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::float_cmp,
+        reason = "Exact retained rest and cadence assertions require bit-identical floats"
+    )]
     fn native_capacity_and_calendar_month_track_are_bounded() {
         let now = Instant::now();
         let mut indicator = Indicator::default();
