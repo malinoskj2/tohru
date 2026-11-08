@@ -1,0 +1,248 @@
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -11,6 +11,7 @@
+ #[cfg(feature = "luau")]
+ mod tohru_settings;
+ mod tohru_lock;
++mod tohru_window;
+ pub mod scene;
+ mod scenes;
+ mod skill;
+--- a/src/scene.rs
++++ b/src/scene.rs
+@@ -2444,6 +2444,7 @@
+     /// plugged in.
+     Sheet(Box<crate::gpu::NewSheet>),
+     SheetGone(u32),
++    WindowClosed(usize),
+     /// The compositor has already shown that sheet's last frame and wants another.
+     Frame(u32),
+     /// What was seen on screen behind a glass, with it on top.
+--- a/src/render.rs
++++ b/src/render.rs
+@@ -633,6 +633,7 @@
+     // Which edge each surface is attached to right now, so as not to ask for it twice.
+     let mut levels_set: Vec<crate::scene::Level> = Vec::new();
+     let mut reserves_set: Vec<i32> = Vec::new();
++    let mut window_intents: Vec<crate::tohru_window::Intent> = Vec::new();
+     // How many frames a second at most right now: `rate:`, or its lower one
+     // while its `while` holds. 0 is the monitor's.
+     let mut rate_now: u32 = 0;
+@@ -1135,6 +1136,20 @@
+                     }
+                     assign_pace(g, &mut sheets, size, op.no_vsync);
+                     region = vec![[i32::MIN; 4]];
++                }
++                ToRender::WindowClosed(which) => {
++                    if let Some(surface) = scene.surfaces.get(which).filter(|surface| surface.window.is_some() && !surface.lock_screen) {
++                        window_intents.resize_with(scene.surfaces.len(), Default::default);
++                        window_intents[which].closed();
++                        // A simple presentation fact can acknowledge WM close directly.
++                        // Compound expressions rearm only after the condition goes false.
++                        if let Some(Expr::H(fact)) = &surface.open {
++                            if let (Some(value), Some((name, _))) = (facts.get_mut(fact.0 as usize), scene.facts.get(fact.0 as usize)) {
++                                *value = 0.0;
++                                let _ = to_logic.send(Event::Fact(name, 0.0));
++                            }
++                        }
++                    }
+                 }
+                 ToRender::SheetGone(id) => {
+                     sheets.retain(|l| l.id != id);
+@@ -4807,6 +4822,18 @@
+             }
+         }
+ 
++        // Conditional ordinary windows map only when requested. Layers and native
++        // lock faces keep their own independent ownership/lifecycle.
++        window_intents.resize_with(scene.surfaces.len(), Default::default);
++        for (which, surface) in scene.surfaces.iter().enumerate() {
++            if surface.window.is_none() || surface.lock_screen || surface.open.is_none() {
++                continue;
++            }
++            if let Some(wanted) = window_intents[which].update(open(which)) {
++                crate::platform::window_open(which, wanted);
++            }
++        }
++
+         // Which ones are open now. If that changes, the pace is handed out again: a
+         // closed surface that set it would wait with vsync for a frame that the
+         // compositor is not going to give it —what is not seen is not given any—, and with it
+--- a/src/platform/mod.rs
++++ b/src/platform/mod.rs
+@@ -382,6 +382,14 @@
+     wayland::sheet_released(id);
+     #[cfg(not(target_os = "linux"))]
+     let _ = id;
++}
++
++/// Sets desired native presentation for an ordinary conditional window.
++pub fn window_open(which: usize, open: bool) {
++    #[cfg(target_os = "linux")]
++    wayland::window_open(which, open);
++    #[cfg(not(target_os = "linux"))]
++    let _ = (which, open);
+ }
+ 
+ /// Sticks surface `which` to another edge, while running. On Wayland it's a
+--- a/src/platform/wayland.rs
++++ b/src/platform/wayland.rs
+@@ -1154,6 +1154,7 @@
+     wanted: Vec<Surface>,
+     extra_height: u32,
+     placed: Vec<Placed>,
++    retired_windows: RetiredWindows,
+     /// The monitors the compositor has finished telling about (`new_output`): only these are placed on again when
+     /// another comes or goes. One still being told about has no size yet, and a surface as big as the monitor that
+     /// keeps a reserve, placed on it then, stuck to its four edges, where layer-shell ignores the reserve: Calima's
+@@ -1262,6 +1263,12 @@
+             if self.wanted[which].lock_screen {
+                 continue;
+             }
++            if self.wanted[which].window.is_some() {
++                let desired = said_of(which).window_open.unwrap_or(self.wanted[which].open.is_none());
++                if !desired || self.retired_windows.0.iter().any(|placed| placed.which == which) {
++                    continue;
++                }
++            }
+             let already = self.placed.iter().filter(|p| &p.output == output && p.which == which).count();
+             let wants = Self::copies_wanted_on(&self.wanted[which], &name, number);
+             for k in already..wants {
+@@ -1364,6 +1371,35 @@
+     /// What the render asked to move (`rescreen`): each surface's layers off
+     /// the monitors it no longer names, and onto the one it does. The render
+     /// keeps its sheet's state, as for a monitor that comes back.
++    fn retire_window(&mut self, which: usize) {
++        let (windows, remaining): (Vec<_>, Vec<_>) = std::mem::take(&mut self.placed)
++            .into_iter().partition(|placed| placed.which == which && matches!(placed.role, Role::Window(_)));
++        self.placed = remaining;
++        for mut placed in windows {
++            // A configure can have queued a NewSheet not yet handed to render.
++            // Drop that unpublished GPU owner before destroying the native role.
++            let unpublished = placed.pending.is_some() || self.announced.iter().any(|sheet| sheet.id == placed.id);
++            self.announced.retain(|sheet| sheet.id != placed.id);
++            drop(placed.pending.take());
++            if unpublished {
++                continue;
++            }
++            let id = placed.id;
++            self.retired_windows.0.push(placed);
++            RETIRING_WINDOWS.lock().unwrap().insert(id);
++            let _ = self.to_render.send(ToRender::SheetGone(id));
++        }
++    }
++
++    fn refresh_windows(&mut self, qh: &QueueHandle<State>) {
++        let closing: Vec<usize> = self.placed.iter()
++            .filter(|placed| matches!(placed.role, Role::Window(_)) && self.wanted[placed.which].open.is_some()
++                && said_of(placed.which).window_open == Some(false))
++            .map(|placed| placed.which).collect();
++        for which in closing { self.retire_window(which); }
++        self.place_on_all(qh, None);
++    }
++
+     fn rescreen(&mut self, qh: &QueueHandle<State>) {
+         let asked = std::mem::take(&mut *RESCREENS.lock().unwrap());
+         if asked.is_empty() {
+@@ -1450,6 +1486,22 @@
+     name: String,
+     mhz: i32,
+ }
++
++// A role may outlive its swapchain retirement request. On process teardown,
++// unacknowledged handles are intentionally retained rather than destroyed under
++// a renderer that may still reference them; OS process exit releases them.
++#[derive(Default)]
++struct RetiredWindows(Vec<Placed>);
++
++impl Drop for RetiredWindows {
++    fn drop(&mut self) {
++        for window in self.0.drain(..) {
++            std::mem::forget(window);
++        }
++    }
++}
++
++static RETIRING_WINDOWS: std::sync::LazyLock<Mutex<std::collections::HashSet<u32>>> = std::sync::LazyLock::new(Mutex::default);
+ 
+ struct OpenPopup {
+     k: usize,
+@@ -1766,6 +1818,12 @@
+ /// The render has let go of surface `id`: if it was the face of a monitor that
+ /// went while locked, it can be destroyed now.
+ pub fn sheet_released(id: u32) {
++    if RETIRING_WINDOWS.lock().unwrap().remove(&id) {
++        if let Some(native) = MOVABLE_LAYERS.get() {
++            native.connection.display().sync(&native.qh, WindowReleased(id));
++            let _ = native.connection.flush();
++        }
++    }
+     let Some(c) = LOCKS.get() else { return };
+     let mut engaged = c.engaged.lock().unwrap();
+     let Some(e) = engaged.as_mut() else { return };
+@@ -1847,6 +1905,7 @@
+ #[derive(Clone, Copy, Default)]
+ struct Said {
+     zone: Option<i32>,
++    window_open: Option<bool>,
+     anchor: Option<SurfaceAnchor>,
+     level: Option<Level>,
+ }
+@@ -1867,6 +1926,32 @@
+     RESCREENS.lock().unwrap().push((which, screen.to_owned()));
+     c.connection.display().sync(&c.qh, Rescreen);
+     let _ = c.connection.flush();
++}
++
++pub fn window_open(which: usize, open: bool) {
++    let Some(native) = MOVABLE_LAYERS.get() else { return };
++    native.said.lock().unwrap().entry(which).or_default().window_open = Some(open);
++    native.connection.display().sync(&native.qh, WindowRefresh);
++    let _ = native.connection.flush();
++}
++
++struct WindowRefresh;
++impl Dispatch2<wayland_client::protocol::wl_callback::WlCallback, State> for WindowRefresh {
++    fn event(&self, state: &mut State, _: &wayland_client::protocol::wl_callback::WlCallback, event: wayland_client::protocol::wl_callback::Event, _: &Connection, qh: &QueueHandle<State>) {
++        if let wayland_client::protocol::wl_callback::Event::Done { .. } = event {
++            state.refresh_windows(qh);
++        }
++    }
++}
++
++struct WindowReleased(u32);
++impl Dispatch2<wayland_client::protocol::wl_callback::WlCallback, State> for WindowReleased {
++    fn event(&self, state: &mut State, _: &wayland_client::protocol::wl_callback::WlCallback, event: wayland_client::protocol::wl_callback::Event, _: &Connection, qh: &QueueHandle<State>) {
++        if let wayland_client::protocol::wl_callback::Event::Done { .. } = event {
++            state.retired_windows.0.retain(|placed| placed.id != self.0);
++            state.refresh_windows(qh);
++        }
++    }
+ }
+ 
+ struct Rescreen;
+@@ -2063,6 +2148,16 @@
+ impl WindowHandler for State {
+     /// Someone clicked the close button. That one closes; if it was the last one, it's over.
+     fn request_close(&mut self, _: &Connection, _: &QueueHandle<Self>, v: &Window) {
++        let conditional = self.placed.iter().find(|placed| placed.role.wl() == v.wl_surface())
++            .filter(|placed| self.wanted[placed.which].open.is_some()).map(|placed| placed.which);
++        if let Some(which) = conditional {
++            if let Some(native) = MOVABLE_LAYERS.get() {
++                native.said.lock().unwrap().entry(which).or_default().window_open = Some(false);
++            }
++            let _ = self.to_render.send(ToRender::WindowClosed(which));
++            self.retire_window(which);
++            return;
++        }
+         self.surface_gone(&v.wl_surface().clone());
+         if self.placed.is_empty() {
+             self.quit = true;
+@@ -2181,6 +2276,7 @@
+         wanted,
+         extra_height,
+         placed: Vec::new(),
++        retired_windows: RetiredWindows::default(),
+         announced: Vec::new(),
+         pointer: None,
+         pointer_seats: Vec::new(),
