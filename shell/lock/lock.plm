@@ -1,0 +1,27 @@
+language 0.4
+scene TohruLock {
+    surface { size: 1, 1; anchor: top_left }
+    permissions { services: "auth", "session.suspend" }
+    fact engaged = false
+    fact acknowledged = false
+    fact checking = false
+    text password = ""
+    text status = ""
+    event lock_request ->
+    event lock_and_suspend ->
+    on change lock.held { acknowledged = lock.held }
+    surface locked {
+        kind: lock
+        size: 600, 400
+        screens: each
+        open: engaged
+        box { from: -8000, -8000; size: 16600, 16400; color: #171219 }
+        box { at: 300, 224; size: 360, 200; corner: 26; color: #2a222c; glass: 100% }
+        text "Locked" { at: 300, 156; anchor: center; size: 28; color: #f5f5f5 }
+        text "Enter your password to unlock" { at: 300, 190; anchor: center; size: 13; color: #d4c8d4 }
+        box { at: 300, 234; size: 280, 38; corner: 19; color: #100c12 }
+        input password { at: 172, 222; width: 256; size: 15; color: #f5f5f5; secret: true; agent: no }
+        text status { at: 300, 282; anchor: center; width: 340; lines: 2; size: 12; color: #ffc0bf }
+        text "Securing the session…" { at: 300, 340; anchor: center; size: 12; color: #d4c8d4; show: not lock.held }
+    }
+}
