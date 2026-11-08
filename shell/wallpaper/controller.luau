@@ -1,5 +1,5 @@
 -- The root settings owner supplies persistence/provenance; this module only routes views.
-return function(assign)
+return function(assign, video_status)
     local slots, paths = {}, {}
     local static = {png = true, jpg = true, jpeg = true, webp = true}
     local video = {mp4 = true, mkv = true, webm = true, mov = true, gif = true}
@@ -28,7 +28,7 @@ return function(assign)
         if video[ext] then return "video" end
         error("Unsupported wallpaper file type")
     end
-    local function publish(enabled, assignments)
+    local function publish(enabled, assignments, fit)
         if type(enabled) ~= "boolean" or type(assignments) ~= "table" then
             error("Wallpaper publication requires an enabled boolean and an assignment table")
         end
@@ -65,6 +65,10 @@ return function(assign)
             end
             text["wallpaper_output_" .. i] = output
         end
+        -- Accepted user names differ from native image fit names: Fill means Cover.
+        -- Private/older publishers default safely without changing video policy.
+        local fits = {fill = 0, fit = 1, centre = 2, tile = 3}
+        fact.wallpaper_fit = type(fit) == "string" and fits[fit] or 0
         fact.wallpaper_enabled = enabled
         -- Video projection goes to the approved integrated renderer, never the image decoder.
         return videos
@@ -149,5 +153,35 @@ return function(assign)
         if count > 32 then error("Wallpaper assignment capacity is 32 outputs; nothing was changed") end
         return next
     end
-    return {publish = publish, validate = validate, randomize = randomize}
+    local function refresh_video()
+        if not video_status then return end
+        local ok, result = pcall(function()
+            local status = video_status()
+            if type(status) ~= "table" or type(status.outputs) ~= "table" then error("Video status is unavailable") end
+            local names = {}
+            for name in pairs(status.outputs) do
+                if type(name) ~= "string" then error("Invalid video output status") end
+                names[#names+1] = name
+                if #names > 32 then error("Video status exceeds32 outputs") end
+            end
+            table.sort(names)
+            local failure = type(status.error) == "string" and status.error or ""
+            for _, name in ipairs(names) do
+                local output = status.outputs[name]
+                if type(output) ~= "table" then error("Invalid video output status") end
+                if failure == "" and type(output.error) == "string" and output.error ~= "" then failure = name .. ": " .. output.error end
+            end
+            if #failure > 512 then
+                local boundary = utf8.offset(failure, 0, 513)
+                failure = failure:sub(1, boundary-1) .. "…"
+            end
+            return {json = json.encode(status), failure = failure}
+        end)
+        if ok then
+            text.wallpaper_video_status, text.wallpaper_video_error = result.json, result.failure
+        else text.wallpaper_video_error = tostring(result) end
+    end
+    on("wallpaper_video_changed", refresh_video)
+    refresh_video()
+    return {publish = publish, validate = validate, randomize = randomize, refresh_video = refresh_video}
 end
