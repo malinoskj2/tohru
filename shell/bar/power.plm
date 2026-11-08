@@ -1,0 +1,7 @@
+part BarPower {
+    zone box bar_power_hit { from: screen.width - 664, 4.5; size: 68, 22; active: power_present; cursor: pointer; label: "Battery" }
+    text "{round(power_percent * 100)}%" { at: screen.width - 609, 16.5; anchor: right center; size: 13; color: if(power_charging, #a6e3a1, if(power_percent <= 0.05, #f38ba8, #cdd6f4)); show: power_present and power_known }
+    text "?%" { at: screen.width - 609, 16.5; anchor: right center; size: 13; color: #a6adc8; show: power_present and not power_known }
+    text "+" { at: screen.width - 604, 16.5; anchor: left center; size: 11; color: #a6e3a1; show: power_present and power_charging }
+    on press bar_power_hit { emit info_open(6) }
+}
