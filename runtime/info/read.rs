@@ -111,12 +111,83 @@ impl<'a> Reader<'a> {
             return None;
         }
         match fs::read_link(self.path(source)) {
-            Ok(path) => Some(bounded(&path.to_string_lossy())),
+            Ok(path) => match path.to_str() {
+                Some(path) if path.chars().count() <= MAX_TEXT => Some(path.to_owned()),
+                Some(_) => {
+                    self.issue(source, IssueKind::TooLarge);
+                    None
+                }
+                None => {
+                    self.issue(source, IssueKind::Invalid);
+                    None
+                }
+            },
             Err(error) => {
                 self.issue(source, IssueKind::Io(error.kind()));
                 None
             }
         }
+    }
+
+    /// Resolve only the active system/profile symlink identity, never arbitrary
+    /// content. Eight hops and the common snapshot request budget bound cycles.
+    pub(super) fn system_identity(&mut self, source: &str) -> Option<String> {
+        use std::path::Component;
+        let mut path = PathBuf::from(source);
+        for _ in 0..8 {
+            let source = path.to_str()?;
+            if !self.permit(source) {
+                return None;
+            }
+            let metadata = match fs::symlink_metadata(self.root.join(&path)) {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    self.issue(source, IssueKind::Io(error.kind()));
+                    return None;
+                }
+            };
+            if metadata.is_dir() && path.starts_with("nix/store") && path.components().count() == 3
+            {
+                let identity = format!("/{}", path.to_str()?);
+                if identity.chars().count() > MAX_TEXT {
+                    self.issue(source, IssueKind::TooLarge);
+                    return None;
+                }
+                return Some(identity);
+            }
+            if !metadata.is_symlink() {
+                self.issue(source, IssueKind::Invalid);
+                return None;
+            }
+            let target = self.link(source)?;
+            let joined = if target.starts_with('/') {
+                PathBuf::from(target)
+            } else {
+                path.parent()?.join(target)
+            };
+            let mut normalized = PathBuf::new();
+            for component in joined.components() {
+                match component {
+                    Component::Normal(part) => normalized.push(part),
+                    Component::ParentDir => {
+                        if !normalized.pop() {
+                            return None;
+                        }
+                    }
+                    Component::RootDir | Component::CurDir => {}
+                    Component::Prefix(_) => return None,
+                }
+            }
+            if !normalized.starts_with("nix/store")
+                && !normalized.starts_with("nix/var/nix/profiles")
+            {
+                self.issue(source, IssueKind::Invalid);
+                return None;
+            }
+            path = normalized;
+        }
+        self.issue(source, IssueKind::Budget);
+        None
     }
 
     pub(super) fn names(&mut self, source: &str, max: usize) -> Vec<String> {

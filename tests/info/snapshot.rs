@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 struct Fixture(PathBuf);
+
 impl Fixture {
     fn new() -> Self {
         let path = std::env::current_dir().unwrap().join(".tmp").join(format!(
@@ -29,6 +30,7 @@ impl Fixture {
         std::os::unix::fs::symlink(target, path).unwrap();
     }
 }
+
 impl Drop for Fixture {
     fn drop(&mut self) {
         fs::remove_dir_all(&self.0).unwrap();
@@ -110,8 +112,11 @@ fn mounts_capacities_and_generations_are_read_only_metadata() {
     fixture.file("sys/class/block/nvme0n1p2/removable", "0\n");
     fixture.file("sys/class/block/nvme0n1p2/device/model", "Fixture Disk\n");
     fixture.file("proc/self/mountinfo","35 1 8:2 / / rw,relatime - ext4 /dev/nvme0n1p2 rw\n36 1 8:3 / /media/a\\040b ro - ext4 /dev/sda3 ro\nmalformed\n");
-    fixture.file("run/system-42/configuration-revision", "abcdef\n");
-    fixture.link("run/current-system", "system-42");
+    fixture.file(
+        "nix/store/fixture-system42/configuration-revision",
+        "abcdef\n",
+    );
+    fixture.link("run/current-system", "../nix/store/fixture-system42");
     fixture.link("nix/var/nix/profiles/system", "system-42-link");
     fixture.link(
         "nix/var/nix/profiles/system-42-link",
@@ -205,4 +210,66 @@ fn no_shell_evaluation_or_unbounded_public_field_strings() {
     assert_eq!(snapshot.system.os_version.as_deref(), Some("${HOME}"));
     assert_eq!(snapshot.system.hostname.unwrap().chars().count(), 256);
     assert!(!fixture.0.join("never").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn active_system_generation_is_not_selected_profile_and_unknown_stays_unknown() {
+    let fixture = Fixture::new();
+    fixture.file("nix/store/system41/configuration-revision", "old\n");
+    fixture.file("nix/store/system42/configuration-revision", "new\n");
+    fixture.link("run/current-system", "../nix/store/system41");
+    fixture.link("nix/var/nix/profiles/system", "system-42-link");
+    fixture.link("nix/var/nix/profiles/system-41-link", "/nix/store/system41");
+    fixture.link(
+        "nix/var/nix/profiles/system-42-link",
+        "../../../store/system42",
+    );
+    let snapshot = collect(&fixture.0);
+    assert_eq!(snapshot.system.current_generation, Some(41));
+    assert!(!snapshot.generations[0].current && snapshot.generations[1].current);
+    fs::remove_file(fixture.0.join("run/current-system")).unwrap();
+    fixture.link("run/current-system", "../nix/store/system42");
+    let snapshot = collect(&fixture.0);
+    assert_eq!(snapshot.system.current_generation, Some(42));
+    assert!(snapshot.generations[0].current && !snapshot.generations[1].current);
+    fs::remove_file(fixture.0.join("run/current-system")).unwrap();
+    fixture.link("run/current-system", "../nix/store/missing-system");
+    let snapshot = collect(&fixture.0);
+    assert_eq!(snapshot.system.current_generation, None);
+    assert!(
+        snapshot
+            .generations
+            .iter()
+            .all(|generation| !generation.current)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn generation_alias_ambiguity_and_symlink_cycles_are_unknown() {
+    let fixture = Fixture::new();
+    fixture.file("nix/store/system42/configuration-revision", "rev\n");
+    fixture.link("run/current-system", "../nix/store/system42");
+    fixture.link("nix/var/nix/profiles/system-41-link", "/nix/store/system42");
+    fixture.link("nix/var/nix/profiles/system-42-link", "/nix/store/system42");
+    let snapshot = collect(&fixture.0);
+    assert_eq!(snapshot.system.current_generation, None);
+    assert!(
+        snapshot
+            .generations
+            .iter()
+            .all(|generation| !generation.current)
+    );
+    fs::remove_file(fixture.0.join("run/current-system")).unwrap();
+    fixture.link("run/current-system", "../nix/var/nix/profiles/cycle");
+    fixture.link("nix/var/nix/profiles/cycle", "cycle");
+    let snapshot = collect(&fixture.0);
+    assert_eq!(snapshot.system.system_target, None);
+    assert!(
+        snapshot
+            .issues
+            .iter()
+            .any(|issue| issue.kind == IssueKind::Budget)
+    );
 }

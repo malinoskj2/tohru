@@ -58,13 +58,7 @@ pub(super) fn read(reader: &mut Reader<'_>) -> System {
             .and_then(|value| value.parse().ok());
     }
     out.configuration_revision = reader.line("run/current-system/configuration-revision");
-    out.system_target = reader.link("run/current-system");
-    out.current_generation = reader
-        .link("nix/var/nix/profiles/system")
-        .and_then(|target| {
-            let name = target.rsplit('/').next()?;
-            super::storage::generation_number(name)
-        });
+    out.system_target = reader.system_identity("run/current-system");
     // Public NVIDIA product names when available; DRM device IDs remain honest
     // identifiers if the kernel has no human-readable product name.
     for name in reader.names("proc/driver/nvidia/gpus", 8) {
