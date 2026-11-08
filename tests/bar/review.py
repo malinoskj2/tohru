@@ -57,7 +57,7 @@ def verify(root, runtime, evidence, env, start, say, expect, wait_for):
     assert 'NVIDIA GeForce RTX 5090' in (evidence / 'review.log').read_text()
     # Keep the virtual pointer alive until the app binds its no-input seat.
     # A one-shot wlrctl device can disappear before wl_pointer is bound.
-    pointer = start([str(root / '.tmp/pointer-build/pointer')], 'pointer', stdin=subprocess.PIPE)
+    pointer = start([str(root / '.tmp/pointer-build/pointer'), env['XDG_RUNTIME_DIR']], 'pointer', stdin=subprocess.PIPE)
     wait_for(lambda: 'ready' in (evidence / 'pointer.log').read_text(), 'persistent private pointer')
     wait_for(lambda: '.get_pointer(' in (evidence / 'review.log').read_text(), 'app pointer binding')
     pointer.stdin.write(b'click 1060 16\n')

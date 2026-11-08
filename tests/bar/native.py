@@ -82,6 +82,36 @@ def bootstrap_private_bus(child_dir, token, inherited, arguments, run=subprocess
     return True
 
 
+def finish_owned(processes, logs, evidence, events):
+    # Ownership cleanup must finish before evidence writing can fail. Each owned
+    # process/log gets its attempt even if another cleanup operation fails.
+    failures = []
+    for process in reversed(processes):
+        try:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+        except Exception as error:
+            failures.append(error)
+    for log in logs:
+        try:
+            log.close()
+        except Exception as error:
+            failures.append(error)
+    try:
+        (evidence / 'events.json').write_text(json.dumps(events, indent=2) + '\n')
+    except Exception as error:
+        failures.append(error)
+    finally:
+        print(evidence, flush=True)
+    if failures:
+        raise ExceptionGroup('Native test cleanup/evidence failures', failures)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime', type=Path, required=True)
@@ -218,18 +248,7 @@ def main():
         summary = {'result': 'passed', 'app_gpu': 'NVIDIA GeForce RTX 5090 / Vulkan', 'compositor_gpu': 'NVIDIA GeForce RTX 5090 / GLES2', 'sway_ext_workspace': 'ext_workspace_manager_v1' in registry, 'sway_wlr_toplevel': 'zwlr_foreign_toplevel_manager_v1' in registry, 'checks': ['native bar clock', 'Mooncoil default off', 'native empty MPRIS state', 'MPRIS properties/play/pause', 'foreign toplevel title', 'native catalog icon matching', 'calendar open/month/year/Today/close', 'native click and Escape'], 'parity_acceptance': False, 'performance_acceptance': False}
         (evidence / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
     finally:
-        (evidence / 'events.json').write_text(json.dumps(events, indent=2) + '\n')
-        for process in reversed(processes):
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
-        for log in logs:
-            log.close()
-        print(evidence, flush=True)
+        finish_owned(processes, logs, evidence, events)
 
 
 if __name__ == '__main__':

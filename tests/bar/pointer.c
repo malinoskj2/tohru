@@ -27,12 +27,17 @@ static void removed(void *data, struct wl_registry *registry, uint32_t name) {
 
 static const struct wl_registry_listener listener = {global, removed};
 
-int main(void) {
-    const char *private_bus = getenv("TOHRU_B_PRIVATE_BUS");
+int main(int argc, char **argv) {
     const char *display_name = getenv("WAYLAND_DISPLAY");
     const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
     const char *sockets = getenv("PLEAMAR_SOCKETS");
-    if (!private_bus || strcmp(private_bus, "1") || !display_name || !runtime_dir || !sockets)
+    char expected_ipc[512];
+    if (argc != 2 || !display_name || !runtime_dir || !sockets ||
+        strcmp(runtime_dir, argv[1]) || strncmp(display_name, "wayland-", 8) ||
+        strchr(display_name, '/') || getenv("WAYLAND_SOCKET") || getenv("CUA_INJECT_SOCKET"))
+        return 2;
+    if (snprintf(expected_ipc, sizeof(expected_ipc), "%s/ipc", argv[1]) >= (int)sizeof(expected_ipc) ||
+        strcmp(sockets, expected_ipc))
         return 2;
     struct wl_display *display = wl_display_connect(NULL);
     if (!display) return 3;
