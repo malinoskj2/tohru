@@ -37,7 +37,7 @@ let
     cargoLock.lockFile = ../runtime/Cargo.lock;
     patches = [ ../runtime/patches/0001-shell-settings.patch ../runtime/patches/0002-lock-boundary.patch
       ../runtime/workspace/shader-inputs.patch ../runtime/patches/0004-workspace-binding.patch
-      ../runtime/wallpaper/catalog.patch ../runtime/wallpaper/image-reset.patch ../runtime/patches/0005-wallpaper-module.patch
+      ../runtime/wallpaper/catalog.patch ../runtime/wallpaper/image-reset.patch ../runtime/wallpaper/fit.patch ../runtime/patches/0005-wallpaper-module.patch
       ../runtime/launcher/namespace.patch ../runtime/patches/0003-window-lifecycle.patch ../runtime/patches/0006-info-binding.patch
       ../runtime/capture/native.patch ../runtime/capture/layout-link.patch
       ../runtime/capture/image-lifecycle.patch ../runtime/capture/output-events.patch

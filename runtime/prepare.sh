@@ -17,6 +17,7 @@ git apply --unsafe-paths --directory="$destination" "$root/runtime/workspace/sha
 git apply --unsafe-paths --directory="$destination" "$root/runtime/patches/0004-workspace-binding.patch"
 git apply --unsafe-paths --directory="$destination" "$root/runtime/wallpaper/catalog.patch"
 git apply --unsafe-paths --directory="$destination" "$root/runtime/wallpaper/image-reset.patch"
+git apply --unsafe-paths --directory="$destination" "$root/runtime/wallpaper/fit.patch"
 git apply --unsafe-paths --directory="$destination" "$root/runtime/patches/0005-wallpaper-module.patch"
 git apply --unsafe-paths --directory="$destination" "$root/runtime/launcher/namespace.patch"
 git apply --unsafe-paths --directory="$destination" "$root/runtime/patches/0003-window-lifecycle.patch"

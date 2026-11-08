@@ -53,6 +53,12 @@ fn picker_commits_once_through_owner_and_preserves_failure_and_provenance() {
         wallpaper=factory(function(settings) wallpaper.publish(settings) end)
         local snapshot=tohru_settings.snapshot()
         wallpaper.publish(snapshot)
+        for index, mode in ipairs({'fill','fit','centre','tile'}) do
+            snapshot['wallpaper.fit'].value=mode
+            wallpaper.publish(snapshot)
+            assert(fact.wallpaper_fit==index-1)
+        end
+        snapshot['wallpaper.fit'].value='fill';wallpaper.publish(snapshot)
         assert(not fact.wallpaper_enabled and text.wallpaper_output_0=='OFFLINE')
         assert(string.find(text.wallpaper_settings_notice,'Nix%-managed'))
         assert(wallpaper.open())
