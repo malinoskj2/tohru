@@ -27,9 +27,9 @@ with tempfile.TemporaryDirectory(prefix="capture-native-source-", dir=root / ".t
     (temp / "src/platform").mkdir(parents=True)
     (temp / "src/language").mkdir()
     (temp / "tests").mkdir()
-    for relative in ["src/text.rs", "src/scene.rs", "src/render.rs", "src/logic_luau.rs", "src/platform/capture.rs", "src/platform/wayland.rs", "src/gpu.rs", "src/shape.wgsl", "src/language/vocabulary.rs"]:
+    for relative in ["src/text.rs", "src/scene.rs", "src/render.rs", "src/logic_luau.rs", "src/platform/capture.rs", "src/platform/wayland.rs", "src/gpu.rs", "src/shape.wgsl", "src/language/vocabulary.rs", "src/platform/mod.rs"]:
         shutil.copyfile(args.source / relative, temp / relative)
-    for patch in ["runtime/wallpaper/image-reset.patch", "runtime/wallpaper/fit.patch", "runtime/capture/native.patch", "runtime/capture/layout-link.patch", "runtime/capture/image-lifecycle.patch", "runtime/capture/output-events.patch"]:
+    for patch in ["runtime/wallpaper/catalog.patch", "runtime/wallpaper/image-reset.patch", "runtime/wallpaper/fit.patch", "runtime/capture/native.patch", "runtime/capture/layout-link.patch", "runtime/capture/image-lifecycle.patch", "runtime/wallpaper/raster-limits.patch", "runtime/wallpaper/presets.patch", "runtime/capture/output-events.patch"]:
         subprocess.run(["git", "apply", "--unsafe-paths", f"--directory={temp}", str(root / patch)], check=True)
     wayland = (temp / "src/platform/wayland.rs").read_text()
     handlers = wayland[wayland.index("impl OutputHandler for State"):]
@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory(prefix="capture-native-source-", dir=root / ".t
         assert "self.require_copy()?;" in body and body.index("self.require_copy()?;") < body.index("self.output(")
     print("Readonly topology connects without capture protocol; pixel/freeze require copy before protocol use", flush=True)
     logic = (temp / "src/logic_luau.rs").read_text()
-    assert 'check_service_permission(&c, &name, capture_query_mutates(&name))?' in logic
+    assert 'check_service_permission(&c, &name, query_mutates(&name))?' in logic
     permission = r'''
 use std::sync::Mutex;
 mod mlua {pub type Result<T> = std::result::Result<T,String>;}
@@ -66,11 +66,11 @@ fn denied(_: &Mutex<Shared>,_:&str,_:&str)->String{"denied".into()}
  }
 }
 '''
-    permission += function(logic, "fn capture_query_mutates(") + "\n" + function(logic, "fn check_service_permission(")
+    permission += function(logic, "fn capture_query_mutates(") + "\n" + function(logic, "fn query_mutates(") + "\n" + function(logic, "fn check_service_permission(")
     permission += r'''
 fn can(declared:&[&str],name:&str)->bool{
  let c=Mutex::new(Shared{permissions:Permissions{services:declared.iter().map(|s|s.to_string()).collect()}});
- check_service_permission(&c,name,capture_query_mutates(name)).is_ok()
+ check_service_permission(&c,name,query_mutates(name)).is_ok()
 }
 #[test]fn readonly_capture_grant_does_not_gain_save_copy_or_release(){
  assert!(can(&["capture"],"capture.outputs"));assert!(can(&["capture"],"capture.freeze"));
@@ -79,6 +79,7 @@ fn can(declared:&[&str],name:&str)->bool{
  assert!(can(&["capture.*"],"capture.region"));assert!(can(&["capture.*"],"capture.outputs"));
 }
 #[test]fn catalog_query_uses_native_base_read_permission(){
+ assert!(!can(&["wallpaper"],"wallpaper.preset"));assert!(can(&["wallpaper.preset"],"wallpaper.preset"));assert!(can(&["wallpaper.*"],"wallpaper.preset"));
  assert!(!can(&["wallpaper.catalog"],"wallpaper.catalog"));assert!(can(&["wallpaper"],"wallpaper.catalog"));
 }
 '''

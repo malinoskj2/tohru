@@ -1,0 +1,34 @@
+--- a/src/platform/mod.rs
++++ b/src/platform/mod.rs
+@@ -275,7 +275,7 @@
+ /// It can take a while —there's another application on the other side—, and
+ /// that's why it's up to the logic, which can wait without it showing.
+ pub fn query(from: &str, name: &str, args: &[SysValue]) -> Result<SysValue, String> {
+-    if matches!(name, "wallpaper.catalog" | "wallpaper.identities") {
++    if matches!(name, "wallpaper.catalog" | "wallpaper.identities" | "wallpaper.preset") {
+         return crate::tohru_wallpaper::query(name, args);
+     }
+     if name.starts_with("files.") {
+--- a/src/logic_luau.rs
++++ b/src/logic_luau.rs
+@@ -323,6 +323,11 @@
+     matches!(name, "capture.region" | "capture.release")
+ }
+ 
++// The fixed built-in preset operation is a mutation, never a base read grant.
++fn query_mutates(name: &str) -> bool {
++    capture_query_mutates(name) || name == "wallpaper.preset"
++}
++
+ fn check_service_permission(c: &Mutex<Shared>, name: &str, commands: bool) -> mlua::Result<()> {
+     let service = name.split(['.', ':']).next().unwrap_or(name);
+     let has = |what: &str| c.lock().unwrap().permissions.services.iter().any(|s| s == what);
+@@ -1323,7 +1328,7 @@
+         let unlock_render = self.tx.clone();
+         sys.set("ask", lua.create_function(move |lua, (name, args): (String, mlua::Variadic<Value>)| {
+             if !name.starts_with("terminal.") {
+-                check_service_permission(&c, &name, capture_query_mutates(&name))?;
++                check_service_permission(&c, &name, query_mutates(&name))?;
+             }
+             let args: Vec<SysValue> = args.iter().map(|v| lua_to_value(v, 0)).collect();
+             // However long asking the system takes does NOT count against the

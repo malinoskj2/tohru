@@ -13,8 +13,8 @@ local function fixture(configure)
         connected={{name="A",routable=true},{name="B",routable=true}},catalog={},identities={}}
     for i=1,19 do s.catalog[i]="/chosen/file" .. i .. ".png" end
     on=function(name,handler) s.handlers[name]=handler end
-    sys={ask=function(name,args)
-        s.calls[#s.calls+1]={name=name,args=args}
+    sys={ask=function(name,args,palette)
+        s.calls[#s.calls+1]={name=name,args=args,palette=palette}
         if name == "wallpaper.catalog" then
             if s.catalog_failure then error("catalog failed") end
             local copy={}; for i,path in ipairs(s.catalog) do copy[i]=path end; return copy
@@ -22,18 +22,22 @@ local function fixture(configure)
         if name == "wallpaper.identities" then
             local result={};for i,path in ipairs(args) do result[i]=s.identities[path] or path end; return result
         end
+        if name=="wallpaper.preset" then
+            if s.preset_failure then error("preset cache failed") end
+            return s.preset_result or {path="/owned/preset.png",durable=true,cached=false}
+        end
         error("unexpected native query: " .. name)
     end}
     json={decode=function() error("unexpected JSON in fixture") end}
     if configure then configure(s) end
     s.wallpaper=make_wallpaper()
-    s.picker=make_picker(s.wallpaper,function() return s.value end,function(map)
+    s.picker=make_picker(s.wallpaper,function() return s.value end,function(map,preset)
         s.proposed=map
         if s.commit_failure then error("settings persist failed") end
-        s.value.assignments=map;s.accepted=s.accepted+1
-    end,function(folder)
+        s.value.assignments=map;if preset then s.value.preset=preset end;s.accepted=s.accepted+1
+    end,function(folder,proposal)
         if s.commit_failure then error("folder persist failed") end
-        s.value.folder=folder;s.folder_saves=s.folder_saves+1
+        s.value.folder=folder;if proposal then s.value.assignments=proposal end;s.folder_saves=s.folder_saves+1
     end,function() return s.connected end)
     return s
 end
@@ -138,5 +142,47 @@ check("new output cannot exceed32 retained assignments before commit",function()
     end)
     assert(s.picker.open() and text.wallpaper_picker_output=="A")
     assert(not s.picker.choose(0) and s.accepted==0 and text.wallpaper_picker_error:find("capacity"))
+end)
+check("fixed preset uses ordinary map acceptance plus selected metadata",function()
+    local s=fixture(function(v) v.value.palette="nord" end)
+    assert(s.picker.open() and #model.wallpaper_picker_presets==6)
+    assert(s.picker.apply_preset(5) and s.accepted==1 and s.value.assignments.A=="/owned/preset.png" and s.value.preset=="solid")
+    local request=s.calls[#s.calls];assert(request.name=="wallpaper.preset" and request.args=="solid" and request.palette=="nord")
+    assert(model.wallpaper_picker_presets[6].selected)
+    assert(not s.picker.apply_preset(6) and s.accepted==1)
+end)
+check("preset native/acceptance failures and unconfirmed durability stay truthful",function()
+    local s=fixture();assert(s.picker.open());s.preset_failure=true
+    assert(not s.picker.apply_preset(0) and s.accepted==0 and s.value.preset==nil)
+    s.preset_failure=false;s.commit_failure=true
+    assert(not s.picker.apply_preset(0) and s.accepted==0 and s.value.assignments.A=="/chosen/old.png")
+    s.commit_failure=false;s.preset_result={path="/owned/preset.png",durable=false,cached=true}
+    assert(s.picker.apply_preset(0) and text.wallpaper_picker_warning~="" and s.value.preset=="spectrum")
+    s.preset_result={path="/owned/preset.png",cached=true};assert(not s.picker.apply_preset(0))
+end)
+check("no-folder rotation cycles default next Dusk and Solid back to Spectrum",function()
+    local s=fixture(function(v) v.value.folder="" end)
+    assert(s.picker.rotate("A") and s.value.preset=="dusk" and s.accepted==1)
+    s.value.preset="solid";assert(s.picker.rotate("A") and s.value.preset=="spectrum")
+    assert(not s.picker.rotate(nil) and s.accepted==2)
+end)
+check("folder rotation prefers another file without changing unrelated outputs",function()
+    local s=fixture(function(v) v.catalog={"/chosen/old.png","/chosen/other.png"};v.value.assignments.B="/saved/b.png" end)
+    assert(s.picker.rotate("A") and s.value.assignments.A=="/chosen/other.png" and s.value.assignments.B=="/saved/b.png")
+    s.catalog={};assert(not s.picker.rotate("A") and s.accepted==1)
+end)
+check("preset and rotate reject overcapacity before native mutation",function()
+    local s=fixture(function(v) v.value.assignments={};for i=1,32 do v.value.assignments["SAVED"..i]="/saved/a.png" end end)
+    assert(s.picker.open());local before=#s.calls
+    assert(not s.picker.apply_preset(0) and #s.calls==before and s.accepted==0)
+    assert(not s.picker.rotate("NEW") and #s.calls==before and s.accepted==0)
+end)
+check("folder change proposes its first rotation in the same accepted settings write",function()
+    local s=fixture(function(v) v.catalog={"/chosen/old.png","/other/new.png"} end)
+    assert(s.picker.open());text.wallpaper_picker_folder="/other"
+    s.handlers.wallpaper_picker_folder_submit()
+    assert(s.folder_saves==1 and s.accepted==0 and s.value.folder=="/other" and s.value.assignments.A=="/other/new.png")
+    s.catalog={};text.wallpaper_picker_folder="/empty";s.handlers.wallpaper_picker_folder_submit()
+    assert(s.folder_saves==1 and s.value.folder=="/other" and text.wallpaper_picker_error~="")
 end)
 print("wallpaper production picker: " .. count .. " cases passed")

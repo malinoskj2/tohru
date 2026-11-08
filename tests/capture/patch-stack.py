@@ -14,7 +14,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 W_PATCHES = {
     'runtime/wallpaper/catalog.patch', 'runtime/wallpaper/image-reset.patch',
-    'runtime/wallpaper/fit.patch', 'runtime/capture/native.patch',
+    'runtime/wallpaper/fit.patch', 'runtime/wallpaper/raster-limits.patch', 'runtime/wallpaper/presets.patch', 'runtime/capture/native.patch',
     'runtime/capture/layout-link.patch', 'runtime/capture/image-lifecycle.patch',
     'runtime/capture/output-events.patch',
 }
@@ -35,10 +35,14 @@ def main():
     assert 1 <= len(patches) <= 32 and len(patches) == len(set(patches)), 'invalid/unbounded patch order'
     if 'runtime/wallpaper/fit.patch' not in patches:
         patches.insert(patches.index('runtime/wallpaper/image-reset.patch') + 1, 'runtime/wallpaper/fit.patch')
+    if 'runtime/wallpaper/raster-limits.patch' not in patches:
+        patches.insert(patches.index('runtime/capture/image-lifecycle.patch') + 1, 'runtime/wallpaper/raster-limits.patch')
+    if 'runtime/wallpaper/presets.patch' not in patches:
+        patches.insert(patches.index('runtime/wallpaper/raster-limits.patch') + 1, 'runtime/wallpaper/presets.patch')
     required = ['runtime/wallpaper/catalog.patch', 'runtime/wallpaper/image-reset.patch',
                 'runtime/wallpaper/fit.patch', 'runtime/capture/native.patch',
                 'runtime/capture/layout-link.patch', 'runtime/capture/image-lifecycle.patch',
-                'runtime/capture/output-events.patch']
+                'runtime/wallpaper/raster-limits.patch', 'runtime/wallpaper/presets.patch', 'runtime/capture/output-events.patch']
     assert [patches.index(p) for p in required] == sorted(patches.index(p) for p in required)
     stamp = str(time.time_ns())
     work = ROOT / '.tmp' / ('capture-patch-stack-' + stamp)
@@ -101,6 +105,11 @@ def main():
             original.write_bytes(subprocess.check_output(['git', 'show', '24cce12:runtime/capture/image-lifecycle.patch'], cwd=ROOT))
             apply(original, expected=1)  # Replay is check-only; preserve diagnostic and partial source.
         apply(patch_dir / (str(index).zfill(2) + '-' + pathlib.Path(name).name))
+    raster_module = ROOT / 'runtime/wallpaper/raster.rs'
+    raster_target = source / 'src/tohru_wallpaper/raster.rs'
+    raster_target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(raster_module, raster_target)
+    record('INSTALLED_W_SOURCE: runtime/wallpaper/raster.rs SHA256: ' + hashlib.sha256(raster_target.read_bytes()).hexdigest())
     text = (source / 'src/text.rs').read_text()
     start = text.index('fn capture_picture(')
     end = text.index('\n    }', start)
@@ -108,7 +117,20 @@ def main():
     assert 'slot.source_size = (frame.width, frame.height)' in capture
     assert 'fit_within((frame.width, frame.height)' in capture and 'fit_frame(&frame, px)' in capture
     assert 'pub fn release_capture(' in text and 'slot.source_size = source_size' in text
+    assert 'std::fs::read(path)' not in text
+    assert 'image::load_from_memory' not in text and 'collect_frames()' not in text
+    assert text.count('slot.source_size = decoded_size') == 4
+    assert 'raster::decode(&data)' in text and 'raster::dimensions_bytes(&data)' in text
+    compact = re.sub(r'\s+', '', raster_target.read_text())
+    for guard in ('64*1024*1024', '32*1024*1024', '16_384', '256*1024*1024',
+                  'libc::O_NONBLOCK', 'file.metadata()?', 'reader.take(limit.saturating_add(1))',
+                  'reader.limits(limits())', 'Cursor::new(bytes)', 'output.len()>=4096', '*total<=MAX_ALLOC'):
+        assert guard in compact, guard
+
     assert 'ToRender::ReleaseCapture(name)' in (source / 'src/render.rs').read_text()
+    logic = (source / 'src/logic_luau.rs').read_text()
+    assert 'capture_query_mutates(name) || name == "wallpaper.preset"' in logic
+    assert 'check_service_permission(&c, &name, query_mutates(&name))?' in logic
     record('PASS: complete ordered patch application; original collision reproduced; frozen source dimensions and release hooks retained.')
     print('PASS:', len(patches), 'patches;', len(files), 'existing source files;', total, 'bytes')
     print('Evidence:', log)

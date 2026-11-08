@@ -12,6 +12,10 @@ use std::time::{Duration, Instant};
 
 use crate::platform::SysValue;
 
+#[cfg(target_os = "linux")]
+#[path = "presets.rs"]
+mod presets;
+
 const DEADLINE: Duration = Duration::from_secs(5);
 const STDERR_LIMIT: usize = 4096;
 
@@ -63,8 +67,40 @@ fn drain(pipe: &mut impl Read, bytes: &mut Vec<u8>, limit: usize) -> Result<bool
     }
 }
 
-/// Read-only requests for explicitly selected folders or assigned media paths.
+/// Bounded catalog/identity reads and the explicitly granted fixed-preset mutation.
 pub(crate) fn query(name: &str, args: &[SysValue]) -> Result<SysValue, String> {
+    if name == "wallpaper.preset" {
+        let [SysValue::Text(preset), SysValue::Text(palette)] = args else {
+            return Err("wallpaper.preset takes a fixed preset and retained palette name".into());
+        };
+        let preset = preset
+            .parse::<tohru_shell::wallpaper::preset::Preset>()
+            .map_err(|e| e.to_string())?;
+        let palette = palette
+            .parse::<tohru_shell::wallpaper::preset::Palette>()
+            .map_err(|e| e.to_string())?;
+        #[cfg(target_os = "linux")]
+        {
+            let generated =
+                presets::generate(preset, palette).map_err(|e| format!("{e}: {e:?}"))?;
+            let path = generated
+                .path
+                .into_os_string()
+                .into_string()
+                .map_err(|_| "preset cache path is not UTF-8")?;
+            return Ok(SysValue::Map(vec![
+                ("path".into(), SysValue::Text(path)),
+                ("durable".into(), SysValue::Bool(generated.durable)),
+                ("cached".into(), SysValue::Bool(generated.cached)),
+            ]));
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (preset, palette);
+            return Err("fixed preset cache requires the native Linux package".into());
+        }
+    }
+
     let paths: Vec<&str> = match (name, args) {
         ("wallpaper.catalog", [SysValue::Text(folder)]) => vec![folder.as_str()],
         ("wallpaper.identities", [SysValue::List(paths)]) if paths.len() <= 32 => paths.iter().map(|path| {
