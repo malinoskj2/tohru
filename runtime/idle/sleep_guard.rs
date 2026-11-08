@@ -95,7 +95,10 @@ impl Guard {
                         // This native helper acquires engaged BEFORE guard. Held
                         // callbacks use the identical lock order, never the inverse.
                         if !crate::platform::acknowledge_idle_sleep() {
-                            let _ = render.send(ToRender::Fact("engaged", 1.0));
+                            // Unlike a fact produced by Lua, this request must also
+                            // synchronize Lua's fact table BEFORE a resulting held
+                            // event, even while its VM is blocked in native PAM.
+                            let _ = render.send(ToRender::ExternalFact("engaged", "true".into()));
                             let _ = render.send(ToRender::ExternalSignal("lock_request", None));
                         }
                     } else {
