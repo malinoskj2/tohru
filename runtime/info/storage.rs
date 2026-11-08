@@ -96,19 +96,29 @@ pub(super) fn generation_number(name: &str) -> Option<u64> {
     number.parse().ok()
 }
 
-pub(super) fn generations(reader: &mut Reader<'_>, current: Option<u64>) -> Vec<Generation> {
+pub(super) fn generations(reader: &mut Reader<'_>, current: Option<&str>) -> Vec<Generation> {
     let mut out = Vec::new();
     for name in reader.names("nix/var/nix/profiles", 256) {
         let Some(number) = generation_number(&name) else {
             continue;
         };
-        if let Some(target) = reader.link(&format!("nix/var/nix/profiles/{name}")) {
+        let source = format!("nix/var/nix/profiles/{name}");
+        if let Some(target) = reader.link(&source) {
+            let active = current.is_some() && reader.system_identity(&source).as_deref() == current;
             out.push(Generation {
                 number,
                 target,
-                current: current == Some(number),
+                current: active,
             });
         }
+    }
+    if out.iter().filter(|generation| generation.current).count() > 1 {
+        // The active configuration can have several generation aliases: its
+        // numeric generation is ambiguous, so no alias is labelled current.
+        for generation in &mut out {
+            generation.current = false;
+        }
+        reader.issue("run/current-system", IssueKind::Invalid);
     }
     out.sort_by_key(|generation| std::cmp::Reverse(generation.number));
     out

@@ -91,11 +91,15 @@ pub fn snapshot() -> Snapshot {
 
 fn collect(root: &Path) -> Snapshot {
     let mut reader = read::Reader::new(root);
-    let system = system::read(&mut reader);
+    let mut system = system::read(&mut reader);
     let accounts = system::accounts(&mut reader);
     let disks = storage::disks(&mut reader);
     let mounts = storage::mounts(&mut reader);
-    let generations = storage::generations(&mut reader, system.current_generation);
+    let generations = storage::generations(&mut reader, system.system_target.as_deref());
+    system.current_generation = generations
+        .iter()
+        .find(|generation| generation.current)
+        .map(|generation| generation.number);
     Snapshot {
         system,
         accounts,

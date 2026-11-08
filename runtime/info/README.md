@@ -23,7 +23,12 @@ current system public configuration revision and profile generation symlink
 names/targets. Block capacity uses512-byte kernel sectors; it is not filesystem
 free space. Unsupported mount free/used, avatars, configuration timestamps and
 other missing facts remain Unknown; no invented startup disk fallback or admin
-links. Generation symlinks are observed, never switched or recursively scanned.
+links. Generation symlinks are observed, never switched or recursively scanned. Active
+generation is derived by matching the resolved /run/current-system identity to
+bounded profile generation targets, never by treating the selected system profile
+as active. Eight symlink hops under Nix store/profile paths, existing target
+directory required; dangling/cyclic/ambiguous aliases leave active generation
+Unknown. Invalid/non-UTF8/too-long link identities are never truncated for matching.
 
 Limits: one snapshot has1MiB file-byte budget,384 filesystem requests,250ms
 cooperative deadline checked between operations; each text4KiB except bounded
@@ -41,7 +46,7 @@ Checks (lightweight, no runtime build/GPU):
     clippy-driver --edition 2024 --test -Wclippy::pedantic -Dwarnings runtime/info/mod.rs -o .tmp/info-tests
     .tmp/info-tests
 
-Five actual filesystem fixtures cover partial/missing/invalid/overflow facts,
+Seven actual filesystem fixtures cover partial/missing/invalid/overflow facts,
 real public record formats and leading names, capacities/escaped mounts/current
 generation ordering, unchanged symlink after snapshot, per-file/entry/record and
 cumulative bounds, no shell evaluation, UTF-8 field bounds. Rust1.85 test passes.
