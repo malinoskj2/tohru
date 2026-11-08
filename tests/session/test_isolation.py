@@ -19,9 +19,15 @@ class Isolation(unittest.TestCase):
             inherited = {'PLEAMAR_SOCKETS':'/live/host/sockets', 'WAYLAND_SOCKET':'9',
                          'SWAYSOCK':'/live/sway', 'CUA_INJECT_SOCKET':'/live/cursor',
                          'XDG_SESSION_ID':'live', 'DBUS_STARTER_ADDRESS':'live',
+                         'TOHRU_PRIVATE_SESSION_TEST':'1', 'DBUS_SESSION_BUS_ADDRESS':'unix:path=/live/bus',
+                         'DBUS_SYSTEM_BUS_ADDRESS':'unix:path=/live/system',
                          'PATH':'/test/bin'}
             env = native.private_ipc_environment(inherited, run)
-            self.assertEqual(env, {'PLEAMAR_SOCKETS':str(run/'ipc'),'PATH':'/test/bin'})
+            self.assertEqual(env['PLEAMAR_SOCKETS'],str(run/'ipc'))
+            self.assertEqual(env['DBUS_SESSION_BUS_ADDRESS'],'unix:path='+str(run/'bus'))
+            self.assertEqual(env['DBUS_SYSTEM_BUS_ADDRESS'],env['DBUS_SESSION_BUS_ADDRESS'])
+            self.assertNotIn('WAYLAND_SOCKET',env)
+            self.assertNotIn('XDG_SESSION_ID',env)
             native.check_ipc_directory(env, run)
             self.assertEqual(inherited['PLEAMAR_SOCKETS'], '/live/host/sockets')
 

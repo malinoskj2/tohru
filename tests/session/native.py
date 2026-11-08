@@ -31,6 +31,8 @@ def private_ipc_environment(inherited, run):
                 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE', 'TOHRU_SHELL']:
         result.pop(key, None)
     result['PLEAMAR_SOCKETS'] = str(ipc)
+    result['DBUS_SESSION_BUS_ADDRESS'] = 'unix:path=' + str(run / 'bus')
+    result['DBUS_SYSTEM_BUS_ADDRESS'] = result['DBUS_SESSION_BUS_ADDRESS']
     return result
 
 def check_ipc_directory(env, run):
@@ -45,8 +47,6 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--runtime', type=Path, required=True)
     a = p.parse_args()
-    assert os.environ.get('TOHRU_PRIVATE_SESSION_TEST') == '1'
-    assert os.environ.get('DBUS_SESSION_BUS_ADDRESS', '').startswith('unix:')
     evidence = ROOT / '.tmp' / ('native-session-' + str(time.time_ns()))
     evidence.mkdir()
     run = ROOT / '.tmp' / ('l' + str(os.getpid()))
@@ -59,7 +59,7 @@ def main():
     env = {**private_ipc_environment(os.environ, run), 'HOME':str(home), 'XDG_RUNTIME_DIR':str(run),
            'XDG_CONFIG_HOME':str(evidence/'config'), 'XDG_CACHE_HOME':str(evidence/'cache'),
            'XDG_DATA_HOME':str(evidence/'data'), 'XDG_STATE_HOME':str(evidence/'state'),
-           'DBUS_SYSTEM_BUS_ADDRESS':os.environ['DBUS_SESSION_BUS_ADDRESS'],
+           
            'PLEAMAR_SOCKETS':str(run/'ipc'),
            'WLR_BACKENDS':'headless', 'WLR_HEADLESS_OUTPUTS':'1', 'WLR_RENDERER':'gles2',
            'WLR_LIBINPUT_NO_DEVICES':'1', 'WLR_RENDER_DRM_DEVICE':'/dev/dri/renderD128',
@@ -95,6 +95,12 @@ def main():
         wait(lambda:'NVIDIA GeForce RTX 5090' in (evidence/(name+'.log')).read_text(),name+' hardware')
         return proc
     try:
+        bus_config=evidence/'bus.conf'
+        from xml.sax.saxutils import escape
+        bus_config.write_text('<busconfig><type>session</type><listen>unix:path='+escape(str(run/'bus'))+'</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
+        bus=start(['dbus-daemon','--nofork','--config-file',str(bus_config)],'bus.log')
+        wait(lambda:(run/'bus').exists() and bus.poll() is None,'owned private bus')
+        assert (run/'bus').stat().st_uid==os.getuid() and not (run/'bus').is_symlink()
         sway=start(['sway','--unsupported-gpu','-d','-c',str(config)],'sway.log')
         env['SWAYSOCK']=str(wait(lambda:next(run.glob('sway-ipc.*.sock'),None),'private sway socket'))
         env['WAYLAND_DISPLAY']=wait(lambda:next((p.name for p in run.glob('wayland-*') if not p.name.endswith('.lock')),None),'private display')
