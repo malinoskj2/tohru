@@ -1,9 +1,9 @@
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -11,6 +11,7 @@
- #[cfg(feature = "luau")]
+@@ -14,6 +14,7 @@
  mod tohru_settings;
  mod tohru_lock;
+ mod tohru_wallpaper;
 +mod tohru_window;
  pub mod scene;
  mod scenes;
@@ -52,7 +52,7 @@
                  }
                  ToRender::SheetGone(id) => {
                      sheets.retain(|l| l.id != id);
-@@ -4398,9 +4415,28 @@
+@@ -4401,9 +4418,28 @@
                  screens_set[k] = Some(wants);
              }
          }
@@ -85,7 +85,7 @@
          // `lens = image ... while`: the picture while it holds, a capture of what is behind when it does not.
 --- a/src/platform/mod.rs
 +++ b/src/platform/mod.rs
-@@ -382,6 +382,14 @@
+@@ -385,6 +385,14 @@
      wayland::sheet_released(id);
      #[cfg(not(target_os = "linux"))]
      let _ = id;
@@ -129,33 +129,35 @@
                  for job in rx {
                      match job {
                          Show::Frame { buffer, px, pieces, sent } => {
-@@ -293,6 +305,7 @@
+@@ -293,7 +305,7 @@
                              // The compositor reads it as it is: not before the card has finished it.
                              sent.wait(&device, std::time::Duration::from_secs(1));
                              if lock_face.as_ref().is_some_and(|face| !face.life.current()) { continue; }
-+                            conditional_commit(conditional_window, || {
+-                            lock_publication(lock_face.as_ref(), || {
++                            conditional_commit(conditional_window, || lock_publication(lock_face.as_ref(), || {
                              wl.attach(Some(&buffer), 0, 0);
                              match pieces {
                                  None => wl.damage_buffer(0, 0, px.0 as i32, px.1 as i32),
-@@ -303,13 +316,14 @@
+@@ -304,14 +316,14 @@
                                  }
                              }
                              wl.commit();
-+                            });
+-                            });
++                            }));
                          }
                          Show::Forget(buffers) => buffers.iter().for_each(|b| b.destroy()),
                          Show::Commit => {
--                            if lock_face.as_ref().is_none_or(|face| face.life.current()) { wl.commit(); }
-+                            if lock_face.as_ref().is_none_or(|face| face.life.current()) { conditional_commit(conditional_window, || wl.commit()); }
+-                            lock_publication(lock_face.as_ref(), || wl.commit());
++                            conditional_commit(conditional_window, || lock_publication(lock_face.as_ref(), || wl.commit()));
                          }
                          Show::Run(f) => {
--                            if lock_face.as_ref().is_none_or(|face| face.life.current()) { f(); }
-+                            if lock_face.as_ref().is_none_or(|face| face.life.current()) { conditional_commit(conditional_window, f); }
+-                            lock_publication(lock_face.as_ref(), f);
++                            conditional_commit(conditional_window, || lock_publication(lock_face.as_ref(), f));
                          }
                          Show::Settled(done) => {
                              if let Some(c) = &connection {
-@@ -874,7 +888,45 @@
-     life: crate::tohru_lock::authority::Face,
+@@ -886,7 +898,45 @@
+     }
  }
 
 +#[derive(Clone)]
@@ -200,16 +202,16 @@
      lock_face: Option<LockFaceLease>,
      wl: wl_surface::WlSurface,
      compositor: CompositorState,
-@@ -909,7 +961,7 @@
+@@ -921,7 +971,7 @@
                  let _ = tx.send(Show::Commit);
              }
              None => {
--                self.wl.commit();
-+                conditional_commit(self.conditional_window.as_ref(), || self.wl.commit());
+-                lock_publication(self.lock_face.as_ref(), || self.wl.commit());
++                conditional_commit(self.conditional_window.as_ref(), || lock_publication(self.lock_face.as_ref(), || self.wl.commit()));
                  if let Some(c) = MOVABLE_LAYERS.get() {
                      let _ = c.connection.flush();
                  }
-@@ -928,7 +980,8 @@
+@@ -940,18 +990,19 @@
 
  impl PlatformWindow for WaylandWindow {
      fn is_current(&self) -> bool {
@@ -218,8 +220,22 @@
 +            && self.lock_face.as_ref().is_none_or(|face| face.life.current())
      }
 
-     fn update_input_region(&self, boxes: &[[i32; 4]]) {
-@@ -963,7 +1016,7 @@
+     fn present(&self, queue: &wgpu::Queue, frame: wgpu::SurfaceTexture) {
+-        if self.lock_face.is_none() { queue.present(frame); return; }
++        if self.lock_face.is_none() && self.conditional_window.is_none() { queue.present(frame); return; }
+         // Retain the backing texture across submission so its final resource
+         // destruction cannot occur while the publication guard is held.
+         let keep_texture = frame.texture.clone();
+         let mut pending = Some(frame);
+-        lock_publication(self.lock_face.as_ref(), || {
++        conditional_commit(self.conditional_window.as_ref(), || lock_publication(self.lock_face.as_ref(), || {
+             if let Some(frame) = pending.take() { queue.present(frame); }
+-        });
++        }));
+         drop(pending);
+         drop(keep_texture);
+     }
+@@ -989,7 +1040,7 @@
      }
 
      fn own_frames(&self) -> Option<Box<dyn gpu::Frames>> {
@@ -228,7 +244,7 @@
      }
 
      fn desktop_place(&self) -> Option<(String, (i32, i32))> {
-@@ -1161,6 +1214,8 @@
+@@ -1187,6 +1238,8 @@
      /// A layer: which edges it's stuck to and with what margins, to know
      /// where it lands on its monitor; and what's needed to see what's behind.
      backdrop: Option<Arc<BackdropTarget>>,
@@ -237,7 +253,7 @@
  }
 
  struct State {
-@@ -1176,6 +1231,7 @@
+@@ -1203,6 +1256,7 @@
      wanted: Vec<Surface>,
      extra_height: u32,
      placed: Vec<Placed>,
@@ -245,7 +261,7 @@
      /// The monitors the compositor has finished telling about (`new_output`): only these are placed on again when
      /// another comes or goes. One still being told about has no size yet, and a surface as big as the monitor that
      /// keeps a reserve, placed on it then, stuck to its four edges, where layer-shell ignores the reserve: Calima's
-@@ -1206,6 +1262,15 @@
+@@ -1233,6 +1287,15 @@
      card_buffers: std::collections::HashMap<u32, (Arc<super::CardBackdrop>, WlBuffer)>,
  }
 
@@ -261,7 +277,7 @@
  /// The Wayland objects that tell us nothing.
  struct Silent;
  impl<I: Proxy> Dispatch2<I, State> for Silent {
-@@ -1284,6 +1349,12 @@
+@@ -1311,6 +1374,12 @@
              if self.wanted[which].lock_screen {
                  continue;
              }
@@ -274,7 +290,7 @@
              let already = self.placed.iter().filter(|p| &p.output == output && p.which == which).count();
              let wants = Self::copies_wanted_on(&self.wanted[which], &name, number);
              for k in already..wants {
-@@ -1305,13 +1376,14 @@
+@@ -1332,13 +1401,14 @@
                  window.set_min_size(Some((p.width, height)));
                  let id = next_surface_id();
                  window.commit();
@@ -290,7 +306,7 @@
                  continue;
              }
              let layer = self.layers.create_layer_surface(qh, wl, level, Some("pleamar"), Some(output));
-@@ -1346,7 +1418,7 @@
+@@ -1373,7 +1443,7 @@
              layer.commit();
              let surface = self.wgpu_surface_for(layer.wl_surface());
              let backdrop = Some(backdrop);
@@ -299,7 +315,7 @@
              LAYERS_PLACED.fetch_add(1, Ordering::Relaxed);
              }
          }
-@@ -1386,6 +1458,34 @@
+@@ -1413,6 +1483,34 @@
      /// What the render asked to move (`rescreen`): each surface's layers off
      /// the monitors it no longer names, and onto the one it does. The render
      /// keeps its sheet's state, as for a monitor that comes back.
@@ -334,7 +350,7 @@
      fn rescreen(&mut self, qh: &QueueHandle<State>) {
          let asked = std::mem::take(&mut *RESCREENS.lock().unwrap());
          if asked.is_empty() {
-@@ -1430,6 +1530,7 @@
+@@ -1457,6 +1555,7 @@
              let _ = self.to_render.send(ToRender::SheetGone(id));
          }
          for p in self.placed.iter().filter(|p| &p.output == output) {
@@ -342,7 +358,7 @@
              let _ = self.to_render.send(ToRender::SheetGone(p.id));
              forget_parent(p.role.wl());
              if let Some(c) = MOVABLE_LAYERS.get() {
-@@ -1472,6 +1573,8 @@
+@@ -1499,6 +1598,8 @@
      name: String,
      mhz: i32,
  }
@@ -351,7 +367,7 @@
 
  struct OpenPopup {
      k: usize,
-@@ -1809,6 +1912,12 @@
+@@ -1836,6 +1937,12 @@
  /// The render has let go of surface `id`: if it was the face of a monitor that
  /// went while locked, it can be destroyed now.
  pub fn sheet_released(id: u32) {
@@ -364,7 +380,7 @@
      let Some(c) = LOCKS.get() else { return };
      let mut engaged = c.engaged.lock().unwrap();
      let Some(e) = engaged.as_mut() else { return };
-@@ -1890,6 +1999,7 @@
+@@ -1917,6 +2024,7 @@
  #[derive(Clone, Copy, Default)]
  struct Said {
      zone: Option<i32>,
@@ -372,7 +388,7 @@
      anchor: Option<SurfaceAnchor>,
      level: Option<Level>,
  }
-@@ -1910,6 +2020,35 @@
+@@ -1937,6 +2045,35 @@
      RESCREENS.lock().unwrap().push((which, screen.to_owned()));
      c.connection.display().sync(&c.qh, Rescreen);
      let _ = c.connection.flush();
@@ -408,7 +424,7 @@
  }
 
  struct Rescreen;
-@@ -2106,6 +2245,16 @@
+@@ -2133,6 +2270,16 @@
  impl WindowHandler for State {
      /// Someone clicked the close button. That one closes; if it was the last one, it's over.
      fn request_close(&mut self, _: &Connection, _: &QueueHandle<Self>, v: &Window) {
@@ -425,7 +441,7 @@
          self.surface_gone(&v.wl_surface().clone());
          if self.placed.is_empty() {
              self.quit = true;
-@@ -2134,7 +2283,7 @@
+@@ -2161,7 +2308,7 @@
              let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
                  id: a.id,
                  target: gpu::Target::Surface(surface),
@@ -434,7 +450,7 @@
                  scale: a.parent.scale,
                  size: a.size,
                  mhz: a.parent.mhz,
-@@ -2224,6 +2373,7 @@
+@@ -2252,6 +2399,7 @@
          wanted,
          extra_height,
          placed: Vec::new(),
@@ -442,7 +458,7 @@
          announced: Vec::new(),
          pointer: None,
          pointer_seats: Vec::new(),
-@@ -2240,6 +2390,7 @@
+@@ -2268,6 +2416,7 @@
      match XdgShell::bind(&globals, &qh) {
          Ok(xdg) => {
              let _ = MOVABLE_LAYERS.set(MovableLayers { connection: connection.clone(), qh: qh.clone(), placed: Mutex::default(), said: Mutex::default() });
@@ -450,7 +466,7 @@
              let _ = POPUPS.set(Popups {
                  qh: qh.clone(),
                  compositor: state.compositor.clone(),
-@@ -2358,7 +2509,7 @@
+@@ -2386,7 +2535,7 @@
              let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
                  id: p.id,
                  target: gpu::Target::Surface(surface),
@@ -459,7 +475,7 @@
                  scale: p.scale,
                  size,
                  mhz,
-@@ -2442,7 +2593,7 @@
+@@ -2471,7 +2620,7 @@
              Box::new(gpu::NewSheet {
                  id: face.id,
                  target: gpu::Target::Surface(paints),
