@@ -1,6 +1,9 @@
 # Session/auth process ownership contract
 
 Status: proposed activation contract; no owner is started by the ordinary bar.
+Production security BLOCKED: unrestricted native IPC can write `engaged=false`
+and bypass UI authentication; the proposed auth-only release rule below is not
+enforced at the native control boundary. User decision pending, no workaround.
 The root shell may open the session menu and send requests; it must never import
 or start a session-lock, polkit, notification or idle singleton owner.
 
