@@ -425,6 +425,15 @@
                      } else if let Some(i) = scene.texts.iter().position(|t| t.0 == name) {
                          texts.get(i).cloned().unwrap_or_default()
                      } else if let Some(i) = scene.props.iter().position(|p| p.0 == name) {
+@@ -2881,7 +2919,7 @@
+                 .iter()
+                 .filter(|t| {
+                     let Some(s) = scene.surfaces.get(t.surface) else { return false };
+-                    s.open.as_ref().is_some_and(|e| !e.is_true(c)) || (s.instance > 0 && !shown(t.surface))
++                    !crate::tohru_lock::surface_open(t.surface, s.open.as_ref().is_none_or(|e| e.is_true(c)), &locks) || (s.instance > 0 && !shown(t.surface))
+                 })
+                 .collect()
+         };
 @@ -3889,23 +3927,17 @@
          let want: Vec<(usize, bool)> = scene.surfaces.iter().enumerate().filter(|(_, s)| s.lock_screen).map(|(k, _)| (k, open(k))).collect();
          for (k, wants) in want {
@@ -455,7 +464,7 @@
 +            // An open expression, public fact or event cannot remove native
 +            // lock faces. Only AuthenticatedUnlock or compositor-finished can.
 +        }
-+        let open = |k: usize| locks.contains(&k) || scene.surfaces.get(k).and_then(|s| s.open.as_ref()).is_none_or(|e| e.is_true(Ctx { props: &props, facts: &facts, seen: None }));
++        let open = |k: usize| crate::tohru_lock::surface_open(k, scene.surfaces.get(k).and_then(|s| s.open.as_ref()).is_none_or(|e| e.is_true(Ctx { props: &props, facts: &facts, seen: None })), &locks);
          draw.views.clear();
          draw.views.extend(sheets.iter().filter(|l| open(l.view.surface)).map(|l| l.view.bounds()));
          for (k, em) in scene.popups.iter().enumerate() {
@@ -471,6 +480,27 @@
                      let _ = reply.send(format!("yes, after {} ms\n", (now - *start).as_millis()));
                      false
                  } else if now >= *deadline {
+@@ -4531,9 +4566,9 @@
+         let closed: Vec<[f32; 4]> = sheets
+             .iter()
+             .filter(|l| l.view.popup.is_none())
+-            .filter(|l| scene.surfaces.get(l.view.surface).is_some_and(|s| s.open.as_ref().is_some_and(|e| !e.is_true(c))))
++            .filter(|l| !crate::tohru_lock::surface_open(l.view.surface, scene.surfaces.get(l.view.surface).and_then(|s| s.open.as_ref()).is_none_or(|e| e.is_true(c)), &locks))
+             .map(|l| l.view.bounds())
+-            .chain(scene.surfaces.iter().filter(|s| s.open.as_ref().is_some_and(|e| !e.is_true(c))).map(|s| [s.origin.0, s.origin.1, s.origin.0 + s.width.max(1) as f32, s.origin.1 + s.height.max(1) as f32]))
++            .chain(scene.surfaces.iter().enumerate().filter(|(k, s)| !crate::tohru_lock::surface_open(*k, s.open.as_ref().is_none_or(|e| e.is_true(c)), &locks)).map(|(_, s)| [s.origin.0, s.origin.1, s.origin.0 + s.width.max(1) as f32, s.origin.1 + s.height.max(1) as f32]))
+             .collect();
+         // From the zones as they are now: the rules may have moved some since the mouse looked.
+         zone_memo.update(&scene, &facts, &props, &draw.hidden, &absent, check_shortcuts);
+@@ -4756,7 +4791,7 @@
+             // A copy that is closed (`open:`) keeps none: Marea lives on one
+             // monitor, and the other's copy left an empty strip there.
+             let c = Ctx { props: &props, facts: &facts, seen: None };
+-            let open_here = sup.open.as_ref().is_none_or(|e| e.is_true(c));
++            let open_here = crate::tohru_lock::surface_open(k, sup.open.as_ref().is_none_or(|e| e.is_true(c)), &locks);
+             let wants = if when.is_true(c) && open_here { sup.exclusive_zone } else { 0 };
+             if reserves_set[k] != wants {
+                 reserves_set[k] = wants;
 @@ -5455,6 +5490,8 @@
                          format!("{:.4}", props[i].x)
                      } else if let Some(i) = scene.facts.iter().position(|h| h.0 == n) {
