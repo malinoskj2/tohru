@@ -2,7 +2,7 @@
 //! No polling at rest: commands use a coalescing calloop ping, fades alone tick.
 use anyhow::{Context, Result};
 use smithay_client_toolkit::{
-    delegate_output, delegate_registry, delegate_seat,
+    delegate_registry,
     output::{OutputHandler, OutputState},
     reexports::{
         calloop::{
@@ -556,8 +556,8 @@ impl ProvidesRegistryState for State {
     }
     registry_handlers!(OutputState, SeatState);
 }
-delegate_output!(State);
-delegate_seat!(State);
+// SCTK 0.21 dispatches SeatData/OutputData through its shared Dispatch2 adapter.
+smithay_client_toolkit::delegate_dispatch2!(State);
 delegate_registry!(State);
 
 impl Drop for State {
@@ -570,5 +570,31 @@ impl Drop for State {
             power.proxy.destroy();
         }
         let _ = self.connection.flush();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use smithay_client_toolkit::{globals::GlobalData, output::OutputData, seat::SeatData};
+    use wayland_protocols::xdg::xdg_output::zv1::client::{
+        zxdg_output_manager_v1::ZxdgOutputManagerV1, zxdg_output_v1::ZxdgOutputV1,
+    };
+
+    #[test]
+    fn pinned_sctk_registry_seat_output_dispatch_bounds() {
+        fn delegated<I: Proxy, Data>()
+        where
+            State: Dispatch<I, Data>,
+        {
+        }
+        delegated::<wl_seat::WlSeat, SeatData>();
+        delegated::<wl_output::WlOutput, OutputData>();
+        delegated::<ZxdgOutputV1, OutputData>();
+        delegated::<ZxdgOutputManagerV1, GlobalData>();
+        delegated::<
+            wayland_client::protocol::wl_registry::WlRegistry,
+            wayland_client::globals::GlobalListContents,
+        >();
     }
 }
