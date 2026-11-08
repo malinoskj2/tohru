@@ -8,6 +8,12 @@ import time
 from xml.sax.saxutils import escape
 
 
+SECRET_DENIAL = "? secret input cannot be read"
+
+def assert_secret_denied(response):
+    assert response == SECRET_DENIAL, "Secret observation did not return the exact protected denial"
+
+
 def verify(root,runtime,evidence,env,start,say,expect,wait_for):
     runtime_dir=Path(env['XDG_RUNTIME_DIR'])
     expected='unix:path='+str(runtime_dir/'system-bus')
@@ -96,11 +102,11 @@ on("fixture_about", function() network.close(); bluetooth.close(); info.close();
     select('Fixture Open');expect('features','net.online','true');expect('features','net.name','Fixture Open')
     select('Fixture Secure');expect('features','net_joining','true')
     keyboard('fixture-password')
-    assert 'fixture-password' not in (say('features','get net_password') or ''), 'synthetic password exported before submit'
+    assert_secret_denied(say('features','get net_password'))
     keyboard('-k','Return')
     expect('features','net.name','Fixture Secure');expect('features','net_joining','false')
     wait_for(lambda:any(call.get('password_matches_fixture') is True for call in record()['calls']),'native NM received synthetic credentials')
-    assert say('features','get net_password') in (None,'','[secret]','<secret>'), 'secret input observation must be absent/masked'
+    assert_secret_denied(say('features','get net_password'))
     select('Fixture Secure');say('features','emit network_disconnect');expect('features','net.online','false')
     say('features','emit network_forget')
     wait_for(lambda:any(call['event']=='ForgetNetwork' for call in record()['calls']),'native NM forget')
