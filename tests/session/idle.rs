@@ -249,7 +249,7 @@ fn late_held_acknowledgment_cannot_win_a_race_against_timeout_callback() {
         .unwrap();
     assert!(
         policy
-            .session(true, now + LOCK_ACK_LIMIT - Duration::from_millis(1))
+            .session(true, now + Duration::from_millis(4999))
             .contains(&Effect::RequestSuspend)
     );
 }
