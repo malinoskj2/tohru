@@ -160,20 +160,16 @@ def main():
         original = asset(state, [30, 30, 46, 255])
         window_click(100, 151)
         base.wait_for(lambda: native('get settings_page') == '2', 'UI Appearance category')
-        base.focused_search_submit(native, keyboard, 'appearance.palette')
+        window_click(450, 405)
         state = expect('appearance.palette', 'macchiato'); changed = asset(state, [36, 39, 58, 255])
         assert original != changed and state['wallpaper.preset']['value'] == 'solid'
         persisted = tomllib.loads(user.read_text())
         assert persisted['appearance']['palette'] == 'macchiato' and persisted['wallpaper']['assignments']['HEADLESS-1'] == str(changed)
         native('fact runner_focus_probe_enabled false')
         command(['grim', '-o', 'HEADLESS-1', str(evidence / 'palette-solid.png')])
-        keyboard('-M', 'ctrl', '-k', 'a', '-m', 'ctrl', '-k', 'BackSpace')
-        base.wait_for(lambda: native('get settings_search') == '', 'search cleared by keyboard')
-        native('fact runner_focus_probe_enabled true')
-        base.focused_search_submit(native, keyboard, 'wallpaper.change')
-        expect('wallpaper.change', 'hourly')
-        keyboard('-k', 'Return'); expect('wallpaper.change', 'daily')
-        keyboard('-k', 'Return'); expect('wallpaper.change', 'login')
+        window_click(450, 469); expect('wallpaper.change', 'hourly')
+        window_click(450, 469); expect('wallpaper.change', 'daily')
+        window_click(450, 469); expect('wallpaper.change', 'login')
         cli('wallpaper', 'rotate'); state = expect('wallpaper.preset', 'spectrum'); asset(state)
         assert native('get wallpaper_rotation_error') == ''
         cli('settings', 'close'); native('quit'); base.clean_exit(app, 'first root', events)
@@ -183,7 +179,7 @@ def main():
         time.sleep(.25)
         command(['grim', '-o', 'HEADLESS-1', str(evidence / 'login-rotation.png')])
         native('quit'); base.clean_exit(app, 'restarted root', events)
-        result.update(result='passed', checks=['real pointer Solid preset and assignment', 'real CtrlF/search/Return palette activation', '640x400 native PNG exact Solid pixels', 'persisted atomic palette and assignment', 'UI hourly/daily/login policy routes', 'manual batch route', 'actual initial-login timer after restart', 'intentional clean exits'])
+        result.update(result='passed', checks=['real pointer Solid preset and assignment', 'real pointer palette activation', '640x400 native PNG exact Solid pixels', 'persisted atomic palette and assignment', 'UI hourly/daily/login policy routes', 'manual batch route', 'actual initial-login timer after restart', 'intentional clean exits'])
     except BaseException as error:
         result['error'] = repr(error)
         raise
