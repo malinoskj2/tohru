@@ -235,10 +235,16 @@ def main():
                 wait(lambda:'lock   · authenticated release' in (evidence/'tohru-lock.log').read_text(),'controlled PAM native release')
                 wait(lambda:(evidence/'tohru-lock.log').read_text().count('lock   · the session is locked')>=2,'fresh lock cycle after queued request')
                 value('tohru-lock','lock.held','1')
+                released=(evidence/'tohru-lock.log').read_text().count('lock   · authenticated release')
+                assert released==1
+                cli('tohru-lock','fact engaged false');value('tohru-lock','lock.held','1')
+                cli('tohru-lock','fact acknowledged true');value('tohru-lock','lock.held','1')
+                assert (evidence/'tohru-lock.log').read_text().count('lock   · authenticated release')==released
+                checks.append('new cycle cannot reuse consumed PAM authority through public state writes')
                 checks.append('controlled PAM success with queued new lock and hotplug produces authenticated release and fresh held cycle')
             else:
                 wait(lambda:'Password not accepted' in (cli('tohru-lock','get status',False) or ''),'controlled PAM denial')
-                value('tohru-lock','lock.held','1')
+                value('tohru-lock','lock.held','1');value('tohru-lock','checking','0')
                 assert 'lock   · authenticated release' not in (evidence/'tohru-lock.log').read_text()
                 checks.append('controlled native '+a.pam_mode+' retains held lock without release')
         polkit=launch('polkit/polkit.plm','tohru-polkit')
