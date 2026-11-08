@@ -5,7 +5,7 @@ let
   # Keep documentation/flake/test changes from rebuilding the full runtime.
   foundationSource = lib.fileset.toSource {
     root = ../.;
-    fileset = lib.fileset.unions [ ../Cargo.toml ../src ../runtime/settings_luau.rs ../LICENSE ];
+    fileset = lib.fileset.unions [ ../Cargo.toml ../src ../runtime/settings_luau.rs ../runtime/idle ../tests/session/idle.rs ../LICENSE ];
   };
   source = lib.fileset.toSource {
     root = ../.;
@@ -21,6 +21,9 @@ let
       mkdir foundation
       cp ${foundationSource}/Cargo.toml foundation/
       cp -r ${foundationSource}/src foundation/
+      mkdir -p foundation/runtime foundation/tests/session
+      cp -r ${foundationSource}/runtime/idle foundation/runtime/
+      cp ${foundationSource}/tests/session/idle.rs foundation/tests/session/
       cp ${foundationSource}/runtime/settings_luau.rs src/tohru_settings.rs
       cp ${../runtime/Cargo.lock} Cargo.lock
     '';
