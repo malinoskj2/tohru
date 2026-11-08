@@ -123,3 +123,19 @@ newer nixpkgs pin does not supply Hyprland 0.56.2. Keep this input independent o
 the shell nixpkgs follow unless the replacement package set has the exact reviewed
 candidate compositor. The native portable shell neither builds nor loads this
 plugin as a dependency.
+
+## Follow-up verification
+
+Q1/Q3 persistence fixes pass the locked root tests, Clippy with warnings denied,
+actual Rust 1.85.0 tests, and a real Luau binding VM/warning test. Final committed
+root `nix build .#tohru --max-jobs 1 --cores 4` succeeded on x86_64-linux; installed
+help, scene check, runtime version and zero-instance exit boundaries passed.
+The artifact paths/NAR hashes and raw evidence are in `docs/implementation/progress/F.md`.
+A real exported Home Manager consumer evaluated and generated the expected TOML
+without services or activation; the available HM26.05 source warned about pinned
+nixpkgs26.11. Release-matched machine integration is still a later gate.
+Optional archived E output evaluates with its separately locked compositor package
+set; no E build, machine-candidate ABI or plugin runtime acceptance is claimed.
+Earlier generic pending-build/MSRV notes describe the initial checkpoint; these
+checks close those foundation gates, while compositor/motion/visual/performance
+acceptance remains pending. No GPU check was repeated for these persistence fixes.
