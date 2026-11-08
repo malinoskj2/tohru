@@ -167,7 +167,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
              end}
         json={encode=function(value) return 'snapshot' end}
         tohru_settings={snapshot=function() return {
-            ['bar.mooncoil']={value=false},['appearance.corners']={value=true},
+            ['bar.mooncoil']={value=false},['appearance.corners']={value=true},['appearance.corner_size']={value=32},
             ['bar.preferred_output']={value='legacy'}
         } end}
     "#).exec().unwrap();
@@ -199,6 +199,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         .unwrap();
     lua.load(
         r#"
+        assert(fact.corners and fact.corner_size==32)
         dispatch('calendar_open'); assert(fact.cal_open and not fact.sound_open)
         dispatch('sound_open_request'); assert(fact.sound_open and not fact.cal_open)
         fact.sound_dragging=true; dispatch('audio_set',0.8)

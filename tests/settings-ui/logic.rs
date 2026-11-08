@@ -8,7 +8,8 @@ fn actual_settings_search_history_and_managed_edits_share_the_owner() {
         text={settings_search=''}; model={}; handlers={}; saves=0; applied_count=0
         function on(name,callback) handlers[name]=callback end
         config={['bar.mooncoil']={value=false,managed=true,runtime_override=false},
-                ['appearance.corners']={value=true,managed=false,runtime_override=false}}
+                ['appearance.corners']={value=true,managed=false,runtime_override=false},
+                ['appearance.corner_size']={value=32,managed=false,runtime_override=false}}
         tohru_settings={snapshot=function() return config end,
           set=function(key,value)
             if denied then error('write refused') end
@@ -37,18 +38,21 @@ fn actual_settings_search_history_and_managed_edits_share_the_owner() {
         handlers.settings_back(); assert(fact.settings_page==2 and fact.settings_can_forward)
         handlers.settings_back(); assert(fact.settings_page==1)
         handlers.settings_forward(); assert(fact.settings_page==2)
+        assert(model.settings_rows[1].key=='appearance.corners' and model.settings_rows[1].editable)
+        handlers.settings_row(0); assert(not config['appearance.corners'].value and saves==1)
+        assert(string.find(model.settings_rows[2].detail,'32 logical pixels'))
         handlers.settings_category(1); assert(not fact.settings_can_forward)
         text.settings_search='mooncoil'; handlers['text:settings_search']()
         assert(#model.settings_rows==1 and model.settings_rows[1].editable)
         handlers['submit:settings_search']()
-        assert(applied_count==2 and saves==0 and not config['bar.mooncoil'].value)
+        assert(applied_count==3 and saves==1 and not config['bar.mooncoil'].value)
         text.settings_search='does-not-exist'; handlers['text:settings_search']()
         assert(#model.settings_rows==0)
         text.settings_search=''; handlers['text:settings_search']()
         denied=true; handlers.settings_row(0)
         assert(string.find(text.settings_ui_error,'write refused'))
         denied=false; config['bar.mooncoil'].managed=false
-        handlers.settings_row(0); assert(saves==1)
+        handlers.settings_row(0); assert(saves==2)
         handlers.settings_close(); assert(not fact.settings_open)
     "#,
     )

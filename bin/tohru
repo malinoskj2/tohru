@@ -11,6 +11,7 @@ Usage: tohru panel toggle|open sound|calendar
        tohru status --json
        tohru config reload
        tohru config set bar.mooncoil|appearance.corners true|false
+       tohru config set appearance.corner_size 1..100
        tohru settings-error
        tohru help
 
@@ -86,6 +87,10 @@ case ${1:-help} in
                         ;;
                     bar.preferred_output)
                         fail 'bar.preferred_output is deprecated and ignored: bars use every output'
+                        ;;
+                    appearance.corner_size)
+                        [[ $4 =~ ^([1-9]|[1-9][0-9]|100)$ ]] || fail 'Corner size must be an integer from 1 to 100'
+                        exec "$pleamar" --say tohru "emit setting_corner_size $4"
                         ;;
                     *) fail 'Unknown setting key' ;;
                 esac

@@ -40,6 +40,45 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn corner_size_bounds_atomic_reload_and_restart() {
+    let files = Fixture::new();
+    fs::write(
+        files.user(),
+        "# retained\n[appearance]\nfuture_key = 'kept'\n",
+    )
+    .unwrap();
+    let mut owner = Owner::load(files.user(), None).unwrap();
+    assert_eq!(owner.get(Key::CornerSize).value, Value::Integer(32));
+    for invalid in [
+        Value::Integer(0),
+        Value::Integer(101),
+        Value::Bool(true),
+        Value::Text("32".into()),
+    ] {
+        let before = fs::read(files.user()).unwrap();
+        assert!(owner.set(Key::CornerSize, invalid).is_err());
+        assert_eq!(fs::read(files.user()).unwrap(), before);
+        assert_eq!(owner.get(Key::CornerSize).value, Value::Integer(32));
+    }
+    owner.set(Key::CornerSize, Value::Integer(100)).unwrap();
+    let restarted = Owner::load(files.user(), None).unwrap();
+    assert_eq!(restarted.get(Key::CornerSize).value, Value::Integer(100));
+    let written = fs::read_to_string(files.user()).unwrap();
+    assert!(written.contains("# retained") && written.contains("future_key = 'kept'"));
+    fs::write(files.user(), "[appearance]\ncorner_size = 100.5\n").unwrap();
+    assert!(owner.reload().is_err());
+    assert_eq!(owner.get(Key::CornerSize).value, Value::Integer(100));
+    fs::write(files.user(), written).unwrap();
+    fs::write(files.managed(), "[appearance]\ncorner_size = 1\n").unwrap();
+    let mut managed = files.owner();
+    managed.set(Key::CornerSize, Value::Integer(80)).unwrap();
+    managed.reload().unwrap();
+    assert_eq!(managed.get(Key::CornerSize).value, Value::Integer(80));
+    assert!(managed.get(Key::CornerSize).runtime_override);
+    assert_eq!(files.owner().get(Key::CornerSize).value, Value::Integer(1));
+}
+
+#[test]
 fn precedence_reload_and_restart() {
     let files = Fixture::new();
     fs::write(
