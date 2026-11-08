@@ -204,10 +204,13 @@ def main():
             wait(lambda:(evidence/'tohru-notifications.log').read_text().count('notifications.luau running')>previous,'actual notification VM reload')
             assert owner()==identity
             value('tohru-notifications','last_id',str(first))
+            assert notify(first,'Close fixture','Visible before close')==first
+            wait(lambda:'Close fixture' in cli('tohru-notifications','describe json'),'native close fixture visible')
             bus('org.freedesktop.Notifications.CloseNotification',str(first))
-            wait(lambda:'Replacement title' not in cli('tohru-notifications','describe json'),'native notification close')
-            expired=notify(0,'Expiring fixture','Transient body',150)
+            wait(lambda:'Close fixture' not in cli('tohru-notifications','describe json'),'native notification close')
+            expired=notify(0,'Expiring fixture','Transient body',1000)
             value('tohru-notifications','last_id',str(expired))
+            wait(lambda:'Expiring fixture' in cli('tohru-notifications','describe json'),'native expiring fixture visible')
             wait(lambda:'Expiring fixture' not in cli('tohru-notifications','describe json'),'native expiry')
             notification.terminate();notification.wait(timeout=8)
             checks.append('native private Notify/replacement/close/expiry/power events/VM singleton reload and tone routed to owned null sink')
