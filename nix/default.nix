@@ -1,5 +1,5 @@
 { lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage
-, fontconfig, wayland, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd }:
+, fontconfig, wayland, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3 }:
 let
   pin = builtins.fromJSON (builtins.readFile ../runtime/pin.json);
   # Keep documentation/flake/test changes from rebuilding the full runtime.
@@ -70,6 +70,10 @@ let
       cp ${foundationSource}/runtime/workspace_luau.rs src/tohru_workspace.rs
       mkdir -p src/tohru_wallpaper tests/wallpaper
       cp ${foundationSource}/runtime/wallpaper/native.rs src/tohru_wallpaper/mod.rs
+      # The native catalog transport tests generate Python fixtures at runtime;
+      # patch their literal shebang because Nix has no /usr/bin/env interpreter.
+      substituteInPlace src/tohru_wallpaper/mod.rs \
+        --replace-fail '#!/usr/bin/env python3' '#!${python3}/bin/python3'
       cp ${foundationSource}/runtime/wallpaper/presets.rs ${foundationSource}/runtime/wallpaper/raster.rs src/tohru_wallpaper/
       cp ${foundationSource}/tests/wallpaper/presets.rs ${foundationSource}/tests/wallpaper/raster.rs tests/wallpaper/
       cp ${foundationSource}/runtime/window/visibility.rs src/tohru_window.rs
@@ -90,6 +94,7 @@ let
       cp ${../runtime/Cargo.lock} Cargo.lock
     '';
     nativeBuildInputs = [ pkg-config makeWrapper ];
+    nativeCheckInputs = [ python3 ];
     buildInputs = [ fontconfig wayland libxkbcommon linux-pam libffi ];
     # Owned native boundaries only; includes the isolated role-install regression.
     # Upstream's broader tests can require desktop services and remain separate.
