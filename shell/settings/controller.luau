@@ -3,6 +3,17 @@ return function(applied, wallpaper)
     local pages = {"Bar", "Appearance", "System", "Wallpaper", "Capture"}
     local history, position, rows = {1}, 1, {}
     local snapshot = tohru_settings.snapshot()
+    local choices = {
+        ["appearance.palette"]={"mocha","macchiato","rose_pine","nord","gruvbox","tokyo_night","dracula","everforest"},
+        ["wallpaper.change"]={"never","hourly","daily","login"},
+    }
+    local function choice_detail(setting)
+        local provenance
+        if setting.runtime_override then
+            provenance=setting.managed and "Nix managed · temporary runtime override" or "Temporary until shell exit"
+        else provenance=setting.managed and "Nix managed · edits are temporary" or "Saved in config.toml" end
+        return setting.value .. " · " .. provenance .. " · Activate to cycle"
+    end
     local function refresh(settings)
         snapshot = settings or snapshot
         local page = history[position]
@@ -33,6 +44,12 @@ return function(applied, wallpaper)
             {page=2, key="wallpaper.fit", title="Wallpaper fit", choice=true,
              detail=snapshot["wallpaper.fit"].value .. " · Activate to cycle Fill, Fit, Centre, Tile (static images)",
              editable=true, managed=snapshot["wallpaper.fit"].managed, temporary=snapshot["wallpaper.fit"].runtime_override},
+            {page=2, key="appearance.palette", title="Palette", choice=true,
+             detail=choice_detail(snapshot["appearance.palette"]), editable=true,
+             managed=snapshot["appearance.palette"].managed, temporary=snapshot["appearance.palette"].runtime_override},
+            {page=2, key="wallpaper.change", title="Wallpaper change", choice=true,
+             detail=choice_detail(snapshot["wallpaper.change"]), editable=true,
+             managed=snapshot["wallpaper.change"].managed, temporary=snapshot["wallpaper.change"].runtime_override},
             {page=5,key="capture.save",title="Save screenshots",detail="Native PNG export after a completed region selection",
              value=snapshot["capture.save"].value,editable=true,managed=snapshot["capture.save"].managed,temporary=snapshot["capture.save"].runtime_override},
             {page=5,key="capture.copy",title="Copy screenshots",detail="Native image/png clipboard after a completed selection",
@@ -69,6 +86,31 @@ return function(applied, wallpaper)
         if type(index)~="number" or index~=math.floor(index) then return end
         local row=rows[index+1]
         if not row or not row.editable then return end
+        local cycle=choices[row.key]
+        if cycle then
+            local value
+            for i,current in ipairs(cycle)do
+                if current==snapshot[row.key].value then value=cycle[i%#cycle+1];break end
+            end
+            local action
+            if wallpaper then
+                if row.key=="appearance.palette"then action=wallpaper.palette
+                else action=wallpaper.change_policy end
+            end
+            if not value or type(action)~="function"then
+                text.settings_ui_error="Wallpaper choice handler or current value is unavailable."
+                return
+            end
+            local ok,result=pcall(action,value)
+            if not ok then text.settings_ui_error=tostring(result)
+            elseif result==false then text.settings_ui_error="Wallpaper change was not accepted."
+            else
+                -- Atomic wallpaper hooks publish their own acceptance/warnings.
+                -- Only refresh the catalog; do not issue a second set/applied.
+                refresh(tohru_settings.snapshot())
+            end
+            return
+        end
         local value
         if row.key == "wallpaper.fit" then
             local next_mode = {fill="fit", fit="centre", centre="tile", tile="fill"}

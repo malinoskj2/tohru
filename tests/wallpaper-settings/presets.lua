@@ -1,5 +1,6 @@
 -- Actual S root bridges/actions + W picker/controller/timer. No PNG, native
 -- backend, filesystem settings write, display or real timer is executed.
+math.clamp=math.clamp or function(v,a,b)return math.max(a,math.min(b,v))end
 local function copy(value)
     if type(value)~='table'then return value end
     local result={};for key,item in pairs(value)do result[key]=copy(item)end;return result
@@ -177,6 +178,27 @@ end)
 check('VM replacement does not repeat login but owns one interval timer',function()
     local f=fixture({change='login'});assert(f.count()==1);f.reinstall();assert(f.count()==0)
     f=fixture({change='hourly'});assert(f.count()==1);f.reinstall();assert(f.count()==1);f.app.stop();assert(f.count()==0)
+end)
+check('actual Settings choices preserve atomic Solid assignments and policy callbacks',function()
+    local f=fixture({values={['wallpaper.preset']='solid',['wallpaper.assignments']={A='/mock-presets/solid-mocha.png',OFFLINE='/offline/missing.png'}}})
+    for key,value in pairs({['bar.mooncoil']=false,['appearance.corners']=true,['appearance.corner_size']=32,['capture.save']=true,['capture.copy']=true})do
+        f.config[key]={value=value}
+    end
+    fact.settings_selected=0;fact.settings_sidebar=false;text.settings_search='appearance.palette'
+    local make=assert(loadfile('shell/settings/controller.luau'))()
+    make(function()error('atomic wallpaper hook must not trigger generic applied')end,f.app)
+    assert(#model.settings_rows==1 and model.settings_rows[1].key=='appearance.palette')
+    handlers['submit:settings_search']()
+    local p=f.commits[1]
+    assert(#f.commits==1 and p.palette=='macchiato' and p.preset=='solid')
+    assert(p.assignments.A=='/mock-presets/solid-macchiato.png' and p.assignments.OFFLINE=='/offline/missing.png')
+    f.refused=true;handlers.settings_row(0)
+    assert(#f.commits==1 and f.config['appearance.palette'].value=='macchiato' and text.settings_ui_error:find('refused'))
+    f.refused=false;text.settings_search='wallpaper.change';handlers['text:settings_search']()
+    handlers['submit:settings_search']()
+    assert(f.config['wallpaper.change'].value=='hourly' and f.count()==1 and #f.commits==1)
+    local timer=f.next_id;f.refused=true;handlers.settings_row(0)
+    assert(f.config['wallpaper.change'].value=='hourly' and f.next_id==timer and f.count()==1)
 end)
 check('invalid native generation and preparation errors never accept partial config',function()
     local f=fixture();f.bad_result=true;handlers.wallpaper_rotate()

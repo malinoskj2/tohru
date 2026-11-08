@@ -1,9 +1,9 @@
 part CornerSizePreferences {
     group {
         show: settings_page == 2 and settings_search == ""
-        text "Corner size (logical pixels, 1–100)" { at: 244, 432; size: 12; color: #a6adc8 }
-        input settings_corner_size_edit { at: 244, 464; width: 160; size: 13; color: #cdd6f4; placeholder: "32"; label: "Corner size in logical pixels" }
-        text "Press Enter to apply." { at: 244, 500; size: 11; color: #a6adc8 }
-        text settings_corner_size_notice { at: 244, 528; width: 528; lines: 2; size: 11; color: #a6adc8 }
+        text "Corner size (logical pixels, 1–100)" { at: 244, 548; size: 12; color: #a6adc8 }
+        input settings_corner_size_edit { at: 244, 580; width: 160; size: 13; color: #cdd6f4; placeholder: "32"; label: "Corner size in logical pixels" }
+        text "Press Enter to apply." { at: 244, 616; size: 11; color: #a6adc8 }
+        text settings_corner_size_notice { at: 244, 644; width: 528; lines: 2; size: 11; color: #a6adc8 }
     }
 }

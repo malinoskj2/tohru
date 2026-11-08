@@ -20,7 +20,7 @@ part SettingsWindow {
  group { show: not settings_wallpaper_page
  input settings_search { at: 244, 32; width: 528; size: 13; color: #cdd6f4; placeholder: "Search settings"; label: "Search settings" }
  text settings_heading { at: 244, 88; anchor: left center; size: 20; weight: 600; color: #cdd6f4 }
- column settings_list { at: 232, 120; view: 556, 340; gap: 6
+ column settings_list { at: 232, 120; view: 556, 400; gap: 6
   for setting in settings_rows {
    group {
     size: 556, 58

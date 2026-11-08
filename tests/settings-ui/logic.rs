@@ -9,7 +9,7 @@ fn actual_settings_search_history_and_managed_edits_share_the_owner() {
         function on(name,callback) handlers[name]=callback end
         config={['bar.mooncoil']={value=false,managed=true,runtime_override=false},
                 ['appearance.corners']={value=true,managed=false,runtime_override=false},
-                ['appearance.corner_size']={value=32,managed=false,runtime_override=false}, ['wallpaper.fit']={value='fill'}, ['wallpaper.enabled']={value=false,managed=false,runtime_override=false}, ['capture.save']={value=true}, ['capture.copy']={value=true}}
+                ['appearance.corner_size']={value=32,managed=false,runtime_override=false}, ['wallpaper.fit']={value='fill'}, ['appearance.palette']={value='mocha'}, ['wallpaper.change']={value='never'}, ['wallpaper.enabled']={value=false,managed=false,runtime_override=false}, ['capture.save']={value=true}, ['capture.copy']={value=true}}
         tohru_settings={snapshot=function() return config end,
           set=function(key,value)
             if denied then error('write refused') end
