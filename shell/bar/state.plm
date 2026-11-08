@@ -1,0 +1,16 @@
+part BarState {
+    text bar_title = ""
+    text bar_icon = ""
+    text bar_media = ""
+    text bar_date = ""
+    text bar_time = "--:--"
+    text bar_error = ""
+    fact bar_has_icon = false
+    fact bar_playing = false
+    fact bar_mooncoil = false
+    event calendar_toggle ->
+    event session_toggle ->
+    image bar_app_icon = from bar_icon, 14, 14
+    image bar_mark = file "mooncoil.svg", 15, 15
+    measure bar_title_measure
+}
