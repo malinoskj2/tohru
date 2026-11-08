@@ -56,12 +56,14 @@ return function()
         publish()
     end)
     on("sound_open_request", function() fact.sound_open = true; fact.sound_focus = 1; publish() end)
-    on("panel_close", function()
+    local function close()
         flush()
         fact.sound_dragging = false
         fact.sound_open = false
         publish()
-    end)
+    end
+    on("panel_close", close)
+    on("panel_close_sound", close)
     on("fact:sound_open", publish)
     on("audio_report", publish)
     publish()

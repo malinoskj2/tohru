@@ -2,7 +2,7 @@
 set -euo pipefail
 usage() {
     cat <<'HELP'
-Usage: tohru panel toggle|open sound
+Usage: tohru panel toggle|open sound|calendar
        tohru panel close
        tohru audio volume up|down
        tohru audio mute toggle
@@ -28,15 +28,18 @@ case ${1:-help} in
     panel)
         case ${2:-} in
             open|toggle)
-                [[ $# == 3 && $3 == sound ]] || fail 'Usage: tohru panel open|toggle sound'
-                case $2 in open) event=sound_open_request ;; toggle) event=sound_toggle ;; esac
+                [[ $# == 3 && ( $3 == sound || $3 == calendar ) ]] || fail 'Usage: tohru panel open|toggle sound|calendar'
+                case "$3:$2" in
+                    sound:open) event=sound_open_request ;; sound:toggle) event=sound_toggle ;;
+                    calendar:open) event=calendar_open ;; calendar:toggle) event=calendar_toggle ;;
+                esac
                 exec "$pleamar" --say tohru "emit $event"
                 ;;
             close)
                 [[ $# == 2 ]] || fail 'Usage: tohru panel close'
                 exec "$pleamar" --say tohru 'emit panel_close'
                 ;;
-            *) fail 'Usage: tohru panel open|toggle sound | close' ;;
+            *) fail 'Usage: tohru panel open|toggle sound|calendar | close' ;;
         esac
         ;;
     audio)
@@ -58,7 +61,7 @@ case ${1:-help} in
         esac
         ;;
     status)
-        [[ $# == 2 && $2 == --json ]] || fail 'Usage: tohru panel toggle|open sound
+        [[ $# == 2 && $2 == --json ]] || fail 'Usage: tohru panel toggle|open sound|calendar
        tohru panel close
        tohru audio volume up|down
        tohru audio mute toggle

@@ -1,5 +1,6 @@
 -- Settings ownership is in Rust, outside this reloadable VM.
 local function publish(settings)
+    fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
     fact.corners = settings["appearance.corners"].value
     settings["bar.preferred_output"].deprecated = true
@@ -28,3 +29,11 @@ on("setting_output", function()
 end)
 
 require("sound/controller")()
+
+require("bar/controller")()
+require("calendar/controller")()
+on("calendar_toggle", function() emit("panel_close_sound") end)
+on("calendar_open", function() emit("panel_close_sound") end)
+on("sound_toggle", function() emit("calendar_close") end)
+on("sound_open_request", function() emit("calendar_close") end)
+on("panel_close", function() emit("calendar_close") end)

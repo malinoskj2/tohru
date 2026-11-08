@@ -25,6 +25,11 @@ class Cli(unittest.TestCase):
 
     def test_native_arguments(self):
         for args, expected in [
+            (("panel", "open", "sound"), ["--say", "tohru", "emit sound_open_request"]),
+            (("panel", "toggle", "sound"), ["--say", "tohru", "emit sound_toggle"]),
+            (("panel", "open", "calendar"), ["--say", "tohru", "emit calendar_open"]),
+            (("panel", "toggle", "calendar"), ["--say", "tohru", "emit calendar_toggle"]),
+            (("panel", "close"), ["--say", "tohru", "emit panel_close"]),
             (("audio", "volume", "up"), ["--say", "tohru", "emit audio_step 1"]),
             (("audio", "volume", "down"), ["--say", "tohru", "emit audio_step -1"]),
             (("audio", "mute", "toggle"), ["--say", "tohru", "emit audio_mute"]),

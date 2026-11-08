@@ -10,6 +10,7 @@ part SoundState {
  text audio_error = ""
  event sound_toggle ->
  event sound_open_request ->
+ event panel_close_sound ->
  event panel_close ->
  event audio_step ->
  event audio_set ->

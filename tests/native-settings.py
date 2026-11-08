@@ -53,6 +53,7 @@ def main():
            "WLR_RENDER_DRM_DEVICE": "/dev/dri/renderD128",
            "VK_DRIVER_FILES": "/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json",
            "WGPU_BACKEND": "vulkan", "PLEAMAR_BACKEND": "vulkan",
+           "PULSE_SERVER": "unix:" + str(runtime_dir / "no-audio-socket"),
            "TOHRU_RUNTIME": str(args.runtime.resolve()),
            "TOHRU_MANAGED_CONFIG": str(managed), "TOHRU_SCENE": str(scene / "bar.plm")}
     for key in ("WAYLAND_DISPLAY", "SWAYSOCK", "DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE"):
