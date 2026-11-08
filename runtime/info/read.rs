@@ -16,6 +16,7 @@ pub(super) struct Reader<'a> {
     reads: usize,
     deadline: Instant,
     pub(super) issues: Vec<Issue>,
+    failures: usize,
 }
 
 impl<'a> Reader<'a> {
@@ -26,10 +27,16 @@ impl<'a> Reader<'a> {
             reads: MAX_READS,
             deadline: Instant::now() + Duration::from_millis(250),
             issues: Vec::new(),
+            failures: 0,
         }
     }
 
+    pub(super) fn failure_count(&self) -> usize {
+        self.failures
+    }
+
     pub(super) fn issue(&mut self, source: &str, kind: IssueKind) {
+        self.failures = self.failures.saturating_add(1);
         if self.issues.len() < MAX_ISSUES {
             self.issues.push(Issue {
                 source: bounded(source),
@@ -211,6 +218,8 @@ impl<'a> Reader<'a> {
                 Ok(entry) => {
                     if let Some(name) = entry.file_name().to_str() {
                         names.push(name.to_owned());
+                    } else {
+                        self.issue(source, IssueKind::Invalid);
                     }
                 }
                 Err(error) => self.issue(source, IssueKind::Io(error.kind())),
@@ -223,4 +232,23 @@ impl<'a> Reader<'a> {
 
 pub(super) fn bounded(text: &str) -> String {
     text.chars().take(MAX_TEXT).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expired_generation_scan_cannot_establish_uniqueness() {
+        let mut reader = Reader::new(Path::new("/"));
+        reader.deadline = Instant::now();
+        let generations = crate::storage::generations(&mut reader, Some("/nix/store/active"));
+        assert!(generations.is_empty());
+        assert!(
+            reader
+                .issues
+                .iter()
+                .any(|issue| issue.kind == IssueKind::Budget)
+        );
+    }
 }

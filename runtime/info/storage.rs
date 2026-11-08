@@ -98,13 +98,18 @@ pub(super) fn generation_number(name: &str) -> Option<u64> {
 
 pub(super) fn generations(reader: &mut Reader<'_>, current: Option<&str>) -> Vec<Generation> {
     let mut out = Vec::new();
+    let failures = reader.failure_count();
     for name in reader.names("nix/var/nix/profiles", 256) {
         let Some(number) = generation_number(&name) else {
             continue;
         };
         let source = format!("nix/var/nix/profiles/{name}");
         if let Some(target) = reader.link(&source) {
-            let active = current.is_some() && reader.system_identity(&source).as_deref() == current;
+            let identity = current.and_then(|_| reader.system_identity(&source));
+            if current.is_some() && identity.is_none() {
+                reader.issue(&source, IssueKind::Invalid);
+            }
+            let active = current.is_some() && identity.as_deref() == current;
             out.push(Generation {
                 number,
                 target,
@@ -112,9 +117,11 @@ pub(super) fn generations(reader: &mut Reader<'_>, current: Option<&str>) -> Vec
             });
         }
     }
-    if out.iter().filter(|generation| generation.current).count() > 1 {
-        // The active configuration can have several generation aliases: its
-        // numeric generation is ambiguous, so no alias is labelled current.
+    if reader.failure_count() != failures
+        || out.iter().filter(|generation| generation.current).count() > 1
+    {
+        // A partial scan or unresolved eligible target cannot establish a unique
+        // active generation. Retain partial rows, but label no alias current.
         for generation in &mut out {
             generation.current = false;
         }
