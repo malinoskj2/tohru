@@ -7,6 +7,15 @@ let
     root = ../.;
     fileset = lib.fileset.unions [ ../Cargo.toml ../src ../runtime/settings_luau.rs ../runtime/idle ../tests/session/idle.rs ../LICENSE ];
   };
+  lockSource = lib.fileset.toSource {
+    root = ../.;
+    fileset = lib.fileset.unions [
+      ../runtime/lock/native.rs ../runtime/lock/authority.rs
+      ../tests/session/lock_authority.rs ../tests/session/native_security.rs ../tests/session/native_binding.rs
+      ../tests/session/security-owner.luau ../tests/session/security-owner.plm
+      ../tests/session/security-public.plm ../tests/session/security-secret.plm
+    ];
+  };
   source = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [ ../bin ../shell ../LICENSE ];
@@ -16,7 +25,7 @@ let
     version = pin.version;
     src = fetchurl { url = pin.archive; hash = pin.hash; };
     cargoLock.lockFile = ../runtime/Cargo.lock;
-    patches = [ ../runtime/patches/0001-shell-settings.patch ];
+    patches = [ ../runtime/patches/0001-shell-settings.patch ../runtime/patches/0002-lock-boundary.patch ];
     postPatch = ''
       mkdir foundation
       cp ${foundationSource}/Cargo.toml foundation/
@@ -25,6 +34,10 @@ let
       cp -r ${foundationSource}/runtime/idle foundation/runtime/
       cp ${foundationSource}/tests/session/idle.rs foundation/tests/session/
       cp ${foundationSource}/runtime/settings_luau.rs src/tohru_settings.rs
+      mkdir -p src/tohru_lock tests/session
+      cp ${lockSource}/runtime/lock/native.rs src/tohru_lock.rs
+      cp ${lockSource}/runtime/lock/authority.rs src/tohru_lock/authority.rs
+      cp ${lockSource}/tests/session/* tests/session/
       cp ${../runtime/Cargo.lock} Cargo.lock
     '';
     nativeBuildInputs = [ pkg-config makeWrapper ];

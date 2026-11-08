@@ -12,6 +12,7 @@ curl --fail --location --silent --show-error \
 printf '%s  %s\n' '3b9e9320c4240ff0af7b43d5bba6bc8625f5f8d110c75eefd0d9904cbf1bafbf' "$archive" | sha256sum --check --status
 tar -xzf "$archive" -C "$destination" --strip-components=1
 git apply --unsafe-paths --directory="$destination" "$root/runtime/patches/0001-shell-settings.patch"
+git apply --unsafe-paths --directory="$destination" "$root/runtime/patches/0002-lock-boundary.patch"
 mkdir "$destination/foundation"
 cp "$root/Cargo.toml" "$destination/foundation/"
 cp -r "$root/src" "$destination/foundation/"
@@ -19,5 +20,10 @@ mkdir -p "$destination/foundation/runtime" "$destination/foundation/tests/sessio
 cp -r "$root/runtime/idle" "$destination/foundation/runtime/"
 cp "$root/tests/session/idle.rs" "$destination/foundation/tests/session/"
 cp "$root/runtime/settings_luau.rs" "$destination/src/tohru_settings.rs"
+mkdir -p "$destination/src/tohru_lock" "$destination/tests/session"
+cp "$root/runtime/lock/native.rs" "$destination/src/tohru_lock.rs"
+cp "$root/runtime/lock/authority.rs" "$destination/src/tohru_lock/authority.rs"
+cp "$root/tests/session/lock_authority.rs" "$root/tests/session/native_security.rs" "$root/tests/session/native_binding.rs" "$destination/tests/session/"
+cp "$root"/tests/session/security-* "$destination/tests/session/"
 cp "$root/runtime/Cargo.lock" "$destination/Cargo.lock"
 printf 'Prepared %s\n' "$destination"
