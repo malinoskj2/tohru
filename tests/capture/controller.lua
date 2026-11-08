@@ -44,8 +44,8 @@ local function harness(configure)
         error("unexpected native query: " .. name)
     end}
     if configure then configure(state) end
-    state.controller=factory(function() return state.settings end, function(message, failure)
-        state.notices[#state.notices+1]={message=message, failure=failure}
+    state.controller=factory(function() return state.settings end, function(message, failure, result)
+        state.notices[#state.notices+1]={message=message, failure=failure, result=result}
         if state.notify_failure then error("notification service unavailable") end
     end)
     return state
@@ -154,5 +154,30 @@ check("layout changing during freeze releases all frames before any overlay open
     end)
     assert(not state.controller.open() and state.freezes == 2 and #state.released == 2)
     assert(not fact.capture_open and text.capture_output_0 == "" and text.capture_error:find("changed while freezing"))
+end)
+check("notification callback receives exact native success/partial/failure data", function()
+    local cases={
+        {saved=true,copied=false,durable=true,path="/pictures/saved.png",save_error="",clipboard_error=""},
+        {saved=false,copied=true,durable=false,path="",save_error="",clipboard_error=""},
+        {saved=true,copied=true,durable=true,path="/pictures/both.png",save_error="",clipboard_error=""},
+        {saved=true,copied=true,durable=false,path="/pictures/uncertain.png",save_error="directory sync failed",clipboard_error=""},
+        {saved=false,copied=true,durable=false,path="",save_error="disk full",clipboard_error=""},
+        {saved=true,copied=false,durable=true,path="/pictures/partial.png",save_error="",clipboard_error="clipboard unavailable"},
+        {saved=false,copied=false,durable=false,path="",save_error="disk full",clipboard_error="clipboard unavailable"},
+    }
+    for _, result in ipairs(cases) do
+        local state=harness(function(s) s.result=result end)
+        assert(state.controller.open()); drag(state)
+        local received=state.notices[1].result
+        -- Same actual native table; classification need not parse the English message.
+        assert(received == result and received.saved == result.saved and received.copied == result.copied)
+        assert(received.durable == result.durable and received.save_error == result.save_error and received.clipboard_error == result.clipboard_error)
+    end
+    local state=harness(function(s) s.export_failure=true end)
+    assert(state.controller.open()); drag(state)
+    assert(state.notices[1].result == nil)
+    state=harness(function(s) s.result={unexpected=true} end)
+    assert(state.controller.open()); drag(state)
+    assert(state.notices[1].result == nil)
 end)
 print("capture production controller: " .. count .. " cases passed")

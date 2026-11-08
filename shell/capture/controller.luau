@@ -124,7 +124,7 @@ return function(options, notify)
             status(cleanup ~= "" and message .. "; cleanup: " .. cleanup or message)
         end
         if notify then
-            local delivered, failure = pcall(notify, message, text.capture_error)
+            local delivered, failure = pcall(notify, message, text.capture_error, last_result)
             if not delivered then status(text.capture_error .. (text.capture_error ~= "" and "; " or "") .. "Result notification unavailable: " .. tostring(failure)) end
         end
     end
