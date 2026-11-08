@@ -1,31 +1,56 @@
-# Integrated idle boundary
+# Native integrated idle
 
-`mod.rs` is pure policy for the existing `tohru-shell` package, not another crate,
-service or daemon. It does not activate a bus/display or run system commands.
-Defaults preserve retained j2bar timers: lock1800s, unlocked screen-off disabled,
-locked screen-off60s, suspend7200s unlocked/5400s locked, fade2s. Settings schema
-and process integration remain S-owned and are not wired by this checkpoint.
+Source checkpoint; native compile/protocol acceptance outstanding. No activation.
+The existing `tohru-shell` library owns policy/cookies/delay. Pinned Pleamar owns
+native transport/renderer, without a new crate/daemon/backend.
 
-A native process-owned observer must execute `arm()` effects once and own exactly
-three ext-idle-notify subscriptions. Destroy replaced handles and attach the opaque
-Subscription to callbacks; old generations are ignored after rearm. Standard
-compositor inhibitors apply to those notifications. Feed independent Screensaver
-cookie, logind-idle and caffeine observations via `inhibited`; releasing one source
-cannot clear another. Any active inhibition cancels fades and pending sleep.
+Shared-owner wiring after review:
 
-Execute `Fade`/`ClearFade` with native Pleamar rendering; schedule only `deadline()`
-for fade completion/5s locker timeout, no recurring policy polling. Lock and suspend
-coalesce into one lock request. Feed actual native compositor held state into
-`session`; request acceptance does not qualify. Route RequestSuspend through the
-locker so its current native held state is revalidated at execution, never blindly
-call session.suspend from a stale ordinary-shell observation. `resumed()` cancels
-pending work, restores powered-off screens and restarts locked/unlocked timers;
-it never unlocks. Screen power adapters remain isolated by compositor/protocol.
+- Copy native.rs to upstream `src/tohru_idle.rs`, and observer.rs/screensaver.rs/
+  logind.rs/sleep_guard.rs to `src/tohru_idle/`.
+- Declare `mod tohru_idle;` in native lib and call
+  `crate::tohru_idle::install(&lua, self.tx.clone(), self.to_logic.clone())?`
+  beside native settings install, inside immutable root-only TOHRU_SHELL gate.
+- Apply `runtime/idle/0004-idle-native.patch` after reviewed0002 and window0003.
+  It only adds the native held transaction and callback, not auth behavior.
+- Existing library fileset includes delay.rs plus tests/session/idle_delay.rs.
+- Ordinary root imports `shell/session/idle.plm`; its logic requires private
+  `idle.luau` and calls returned `configure([idle] typed table)` on startup and
+  successful config reload. Keys/defaults match coordinator's chosen schema.
+  Native global `tohru_idle` APIs: start(config), held(bool), resume(),
+  caffeine(bool), stop(); locker alone calls start_guard()/stop_guard().
+- Root events idle_lock_state(number0/1), idle_resume, idle_caffeine_toggle;
+  idle_alpha number, idle_caffeine boolean and idle_status text are actual
+  bindings. Dedicated locker emits fixed native `say:tohru` hint on native
+  held changes/state_request. Native dedicated role remains separately launched.
 
-Required shared integration request: declare this module in existing src/lib.rs
-with `#[path = "../runtime/idle/mod.rs"] pub mod idle;` and include runtime/idle
-plus tests/session/idle.rs in runtime prepare/Nix foundation sources. No dependency
-changes needed (existing thiserror). Tests are included by the module under cfg(test).
-The adapter/owned protocol threads, logind prepare-for-sleep delay inhibitor,
-notification/cookie owner and native fade scene are still unimplemented; this is
-an independently checked policy boundary, not complete idle integration.
+One process Owner persists across VM replacement; config validates before enqueue
+and reconfigures existing Policy without generation reset. Config queue8,
+action queue4, cookie limits32/client256total, signal queues16/32. Calloop ping
+coalesces observations without dropped inhibitor transitions. No timer at rest;
+16ms scalar publication only while visible fade runs, existing native renderer
+paints full-output overlay. Input cancels fade/rearms generation. Native callbacks
+use proxy+generation currentness, replaced waits are destroyed, output hotplug
+owns/destroys native power handles. Protocol failures report unavailable; native
+power request is not a claim that hardware switched off. Unknown locker state
+inhibits automatic actions until dedicated owner answers; hints never authorize
+native release or final sleep. In-flight already delivered native actions cannot
+be revoked by a later cancellation, consistent with accepted spawn-only API.
+
+ScreenSaver owns both standard paths without replacing/queueing behind another
+owner; bus authenticates unique-client cookie ownership and disconnect cleanup.
+No application/reason strings retained. Logind idle-block observer conservatively
+inhibits when state is unknown; caffeine owns independent close-on-exec idle-block
+FD. Separate locker delay subscribes before acquiring sleep-delay FD, marks sleep
+intent then asks actual held transaction. Native held callback and immediate
+check both use engaged→guard lock order. Only those callbacks close pending delay
+FD while confirmed cycle remains held; no GPU/Wayland dispatch/wait/call under
+that guard. Resume reacquires delay and cancels stale sleep request; failed
+reacquisition reports absence accurately. Guard process/thread closes bus and
+joins on explicit stop; no unlock/power action on teardown. Ordinary shell stop
+closes own services, restores requested screen power and joins observer/actions;
+it does not own or stop locker guard.
+
+Native adapters are parse-checked only at this checkpoint. Core18CPU tests,
+Clippy and actual Lua/private scene parser checks cover their respective scopes;
+no native observer/logind/fade/screen-power/PAM/security acceptance inferred.

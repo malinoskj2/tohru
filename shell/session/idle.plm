@@ -1,0 +1,19 @@
+language 0.4
+// Imported by the ordinary root; this contains no authentication owner.
+scene TohruIdle {
+    fact idle_alpha = 0
+    fact idle_caffeine = false
+    text idle_status = "Idle starting"
+    event idle_lock_state ->
+    event idle_resume ->
+    event idle_caffeine_toggle ->
+    surface idleveil {
+        size: full, full
+        anchor: center
+        level: overlay
+        screens: each
+        keyboard: none
+        open: idle_alpha > 0
+        box { from: 0, 0; size: idleveil.width, idleveil.height; color: #000000; opacity: idle_alpha }
+    }
+}
