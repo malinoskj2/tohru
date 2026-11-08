@@ -21,6 +21,11 @@ pub(crate) const MAX_SLOTS: usize = 10;
 pub(crate) const RAIL_SLOTS: usize = 12;
 /// One ribbon vertex per pixel column boundary.
 #[cfg(test)]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "SLOT is the exact positive integral constant16"
+)]
 pub(crate) const MAX_VERTICES: usize = RAIL_SLOTS * SLOT as usize + 1;
 /// Segments of the moving bead's outline.
 #[cfg(test)]
@@ -159,6 +164,11 @@ impl Default for Track {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "Retained shader math intentionally rounds bounded pixel values and scalar publication"
+)]
 fn vertices(slots: usize) -> usize {
     slots * SLOT as usize + 1
 }
@@ -194,10 +204,20 @@ impl Track {
         }
     }
 
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss,
+        reason = "Retained shader math intentionally rounds bounded pixel values and scalar publication"
+    )]
     pub(crate) fn width(&self) -> f64 {
         (self.slots * SLOT as usize) as f64
     }
 
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "Retained shader math intentionally rounds bounded pixel values and scalar publication"
+    )]
     fn target(&self) -> f64 {
         self.active
             .map_or(self.x, |a| (a - 1) as f64 * f64::from(SLOT) + 8.0)
@@ -314,6 +334,14 @@ impl Track {
     }
 
     /// One step of `dt`; returns the energy left in the springs and the wave.
+    #[cfg_attr(
+        test,
+        allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_precision_loss,
+            reason = "Independent test-only CPU geometry preserves retained rounding"
+        )
+    )]
     fn step(&mut self, dt: f64) -> f64 {
         let tx = self.target();
         let accel = self.stiffness * (tx - self.x) - self.damping * self.vx;
@@ -377,22 +405,31 @@ impl Track {
     }
 
     /// The bead's colour at its current position, blended between the slots it is between.
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss,
+        reason = "Retained shader math intentionally rounds bounded pixel values and scalar publication"
+    )]
     fn color(&self) -> [f64; 3] {
         if self.ramp {
             let last = (PALETTE.len() - 1) as f64;
-            let p = (self.x / self.width() * last).clamp(0.0, last);
-            let i = p.floor().min(last - 1.0);
-            let f = p - i;
-            let (a, b) = (PALETTE[i as usize], PALETTE[i as usize + 1]);
-            return std::array::from_fn(|k| js_round(a[k] + (b[k] - a[k]) * f));
+            let position = (self.x / self.width() * last).clamp(0.0, last);
+            let index = position.floor().min(last - 1.0);
+            let fraction = position - index;
+            let (start, end) = (PALETTE[index as usize], PALETTE[index as usize + 1]);
+            return std::array::from_fn(|k| js_round(start[k] + (end[k] - start[k]) * fraction));
         }
         let last = (self.slots - 1) as f64;
-        let p = ((self.x - 8.0) / f64::from(SLOT)).clamp(0.0, last);
-        let i = p.floor().min(last - 1.0);
-        let f = p - i;
-        let i = i as usize;
-        let (a, b) = (PALETTE[i % PALETTE.len()], PALETTE[(i + 1) % PALETTE.len()]);
-        std::array::from_fn(|k| js_round(a[k] + (b[k] - a[k]) * f))
+        let position = ((self.x - 8.0) / f64::from(SLOT)).clamp(0.0, last);
+        let index = position.floor().min(last - 1.0);
+        let fraction = position - index;
+        let index = index as usize;
+        let (start, end) = (
+            PALETTE[index % PALETTE.len()],
+            PALETTE[(index + 1) % PALETTE.len()],
+        );
+        std::array::from_fn(|k| js_round(start[k] + (end[k] - start[k]) * fraction))
     }
 
     /// The bead's extent `(left, right, behind, ahead)`: it stretches behind as it speeds up.
@@ -420,12 +457,23 @@ impl Track {
     }
 
     #[cfg(test)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "Retained shader math intentionally rounds bounded pixel values and scalar publication"
+    )]
     fn offset_at(&self, x: f64) -> f64 {
         let i = js_round(x).clamp(0.0, self.width()) as usize;
         f64::from(self.o[i])
     }
 
     #[cfg(test)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss,
+        reason = "Retained shader math intentionally rounds bounded pixel values and scalar publication"
+    )]
     pub(crate) fn frame(&self) -> Frame {
         let width = self.width();
         let last = self.slots * SLOT as usize;
@@ -445,6 +493,11 @@ impl Track {
     }
 
     #[cfg(test)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        reason = "Retained shader math intentionally rounds bounded pixel values and scalar publication"
+    )]
     fn bead(&self) -> Bead {
         let sp = self.vx.abs();
         let (left, right, behind, ahead) = self.span();
@@ -482,6 +535,10 @@ impl Track {
     }
 
     /// The wide glow's Gaussian standard deviation, growing with the bead's speed.
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "Retained shader math intentionally rounds bounded pixel values and scalar publication"
+    )]
     fn glow_sigma(&self) -> f32 {
         ((9.0 + (self.vx.abs() * 0.03).min(5.0)) * 0.5) as f32
     }
@@ -508,6 +565,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::float_cmp,
+        reason = "Exact retained rest and cadence assertions require bit-identical floats"
+    )]
     fn a_bead_that_appears_lands_in_place() {
         let t0 = Instant::now();
         let mut track = Track::default();
@@ -521,6 +582,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::float_cmp,
+        reason = "Exact retained rest and cadence assertions require bit-identical floats"
+    )]
     fn a_bead_on_an_end_slot_is_square_at_rest() {
         for (slot, end) in [(1, 0), (5, BEAD_SEGMENTS)] {
             let mut track = Track::default();
@@ -533,6 +598,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::float_cmp,
+        reason = "Exact retained rest and cadence assertions require bit-identical floats"
+    )]
     fn a_switch_springs_to_the_new_slot_and_settles_exactly_there() {
         let t0 = Instant::now();
         let mut track = Track::default();
@@ -554,6 +623,11 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::float_cmp,
+        reason = "Retained shader math intentionally rounds bounded pixel values and scalar publication"
+    )]
     fn the_ribbon_tapers_to_a_point_at_both_ends() {
         let track = Track::default();
         let frame = track.frame();
@@ -567,6 +641,11 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::float_cmp,
+        reason = "Retained shader math intentionally rounds bounded pixel values and scalar publication"
+    )]
     fn the_ribbon_grows_to_the_highest_workspace_up_to_ten_slots() {
         assert_eq!(slots_for(None), 5);
         assert_eq!(slots_for(Some(3)), 5);
@@ -582,6 +661,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::float_cmp,
+        reason = "Exact retained rest and cadence assertions require bit-identical floats"
+    )]
     fn a_switch_mid_flight_redirects_the_running_animation() {
         let t0 = Instant::now();
         let mut track = Track::default();
@@ -596,6 +679,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::float_cmp,
+        reason = "Exact retained rest and cadence assertions require bit-identical floats"
+    )]
     fn a_late_frame_advances_at_most_50ms() {
         let t0 = Instant::now();
         let mut track = Track::default();
@@ -611,6 +698,10 @@ mod tests {
 }
 
 impl Track {
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "Retained shader math intentionally rounds bounded pixel values and scalar publication"
+    )]
     pub(crate) fn shader_values(&self) -> [f32; 20] {
         let w = &self.wave;
         let (l, r, _, _) = self.span();
@@ -677,6 +768,12 @@ impl Replay {
         }
     }
 
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss,
+        reason = "Test-only bounded canonical replay preserves the frozen reference conversion order"
+    )]
     pub(crate) fn advance_ms(&mut self, ms: f64) {
         let until = ((if self.active { ms } else { ms.min(12000.0) }) * 0.24).floor() as u64;
         while self.ticks < until {
@@ -687,11 +784,9 @@ impl Replay {
             } else {
                 EVENTS.get(self.event).copied()
             };
-            if let Some((at, target)) = next {
-                if elapsed >= at as f64 {
-                    self.track.sync(5, Some(target), Instant::now());
-                    self.event += 1;
-                }
+            if let Some((_, target)) = next.filter(|(at, _)| elapsed >= *at as f64) {
+                self.track.sync(5, Some(target), Instant::now());
+                self.event += 1;
             }
             if self.track.animating() {
                 let energy = self.track.step(STEP);
@@ -711,6 +806,10 @@ mod replay_tests {
     use super::*;
 
     #[test]
+    #[allow(
+        clippy::float_cmp,
+        reason = "Exact retained rest and cadence assertions require bit-identical floats"
+    )]
     fn replay_is_independent_of_render_cadence_and_finishes_flat() {
         let mut a = Replay::new(false);
         let mut b = Replay::new(false);
@@ -749,6 +848,10 @@ mod replay_tests {
     }
 
     #[test]
+    #[allow(
+        clippy::float_cmp,
+        reason = "Exact retained rest and cadence assertions require bit-identical floats"
+    )]
     fn seed_and_per_switch_variation_are_reproducible() {
         let mut a = Replay::new(false);
         let mut b = Replay::new(false);
