@@ -5,6 +5,9 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
+import sys
+sys.dont_write_bytecode = True
 
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('session_native', HERE / 'native.py')
@@ -39,5 +42,28 @@ class Isolation(unittest.TestCase):
             with self.assertRaises(AssertionError): native.check_ipc_directory(env,run)
             (run/'ipc/escape.sock').unlink();(run/'ipc').chmod(0o755)
             with self.assertRaises(AssertionError): native.private_ipc_environment({},run)
+
+    def test_evidence_write_failure_cannot_skip_any_owned_process(self):
+        class Process:
+            def __init__(self,fail=False): self.actions=[]; self.fail=fail
+            def poll(self): return None
+            def terminate(self):
+                self.actions.append('terminate')
+                if self.fail: raise OSError('terminate failure')
+            def kill(self): self.actions.append('kill')
+            def wait(self,timeout): self.actions.append('wait')
+        class Log:
+            def __init__(self): self.closed=False
+            def close(self): self.closed=True
+        with tempfile.TemporaryDirectory(dir=native.ROOT/'.tmp') as path:
+            directory=Path(path);run=directory/'run';run.mkdir()
+            processes=[Process(),Process(True),Process()];log=Log()
+            with patch.object(Path,'write_text',side_effect=OSError('disk full')):
+                errors=native.cleanup(processes,[log],run,directory,[])
+            self.assertTrue(any('disk full' in error for error in errors))
+            for process in processes:self.assertIn('wait',process.actions)
+            self.assertIn('kill',processes[1].actions)
+            self.assertTrue(log.closed)
+            self.assertFalse(run.exists())
 
 if __name__=='__main__': unittest.main()
