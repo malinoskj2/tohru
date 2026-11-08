@@ -1,4 +1,4 @@
-# Integrated video boundary investigation (no runtime implementation yet)
+# Integrated video renderer source
 
 The approved scope is an in-process renderer using an established decoder/playback
 backend, integrated with the shell's assignment/output/settings/lifetime owners.
@@ -73,3 +73,33 @@ only video surfaces/contexts/callbacks, and root teardown joins/stops that owner
 This is a proposed boundary, not permission to launch a separate daemon/player
 or a tested implementation. Check codec/plugin availability, library ABI and
 license packaging before committing concrete backend bindings.
+
+## Approved concrete boundary and initial policy
+
+Coordinator approved in-process libmpv0.41 render API on video-only Wayland/EGL
+per-output surfaces. Reuse native EGL6/SCTK0.21/wayland-client0.31; the safe
+wayland-egl0.32.11 window wrapper is the one requested additional dependency.
+The earlier GStreamer discussion records rejected investigation, not the chosen
+implementation. No mpvpaper/player process, custom decoder, screenshot loop or
+second general shell renderer.
+
+`mod.rs` is the root foundation's std/thiserror-only video policy. S exposes
+`#[path = "../runtime/video/mod.rs"] pub mod video;` and copies its owning tests
+under tests/wallpaper/video.rs during preparation. `Snapshot` bounds32 video
+assignments/occupancy observations, validates literal output names/video paths,
+and keeps actual root revision. Backend native code validates a whole snapshot
+before publication. Disabled/disconnected/unassigned outputs stop their owner;
+unknown/protected logind or dedicated-locker observations pause, as does unknown
+or occupied visible workspace. Both observations Clear and occupancy Empty are
+required for Playing. Dedicated locker state must describe its actual protected
+role, never a different process-local lock.held. Missing observations are Unknown.
+
+Root supplies accepted video projection and verified observations. Native owner
+must coalesce updates, recheck revision before unpause, create paused/muted/looping
+cover players, retire removed/reassigned/disconnected players and drop render
+contexts before backend cores and EGL/Wayland objects. Failures back off100ms up
+to10s. Policy tests execute27 protection/occupancy combinations, assignment
+lifecycle/bounds and retry saturation; these do not instantiate a decoder.
+`python3 tests/wallpaper/check_cpu.py` includes these4 tests (17 total at this
+checkpoint), Clippy and existing scoped metadata/probe checks. No full native
+build or GL/decoder role has been allocated or started.
