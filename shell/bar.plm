@@ -5,8 +5,8 @@ scene Tohru {
  include "calendar/state.plm"
  include "settings/state.plm"
  include "sound/declarations.plm"
+ include "corners/state.plm"
  fact mooncoil = false
- fact corners = true
  text settings_status = "{}"
  text settings_error = ""
  text routing_error = ""
@@ -14,6 +14,7 @@ scene Tohru {
  event config_reload ->
  event setting_mooncoil ->
  event setting_corners ->
+ event setting_corner_size ->
  event setting_output ->
  box { from: 100, 0; size: screen.width - 200, 31; corner: 10; color: #160e14; opacity: 70% }
  include "bar/contents.plm"
@@ -30,4 +31,5 @@ scene Tohru {
   size: 800, 560; open: settings_open; keyboard: exclusive
  }
  include "settings/window.plm"
+ include "corners/view.plm"
 }

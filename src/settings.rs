@@ -14,10 +14,16 @@ pub enum Key {
     PreferredOutput,
     Mooncoil,
     Corners,
+    CornerSize,
 }
 
 impl Key {
-    pub const ALL: [Self; 3] = [Self::PreferredOutput, Self::Mooncoil, Self::Corners];
+    pub const ALL: [Self; 4] = [
+        Self::PreferredOutput,
+        Self::Mooncoil,
+        Self::Corners,
+        Self::CornerSize,
+    ];
 
     #[must_use]
     pub const fn name(self) -> &'static str {
@@ -25,6 +31,7 @@ impl Key {
             Self::PreferredOutput => "bar.preferred_output",
             Self::Mooncoil => "bar.mooncoil",
             Self::Corners => "appearance.corners",
+            Self::CornerSize => "appearance.corner_size",
         }
     }
 
@@ -44,6 +51,7 @@ impl Key {
             Self::PreferredOutput => ("bar", "preferred_output"),
             Self::Mooncoil => ("bar", "mooncoil"),
             Self::Corners => ("appearance", "corners"),
+            Self::CornerSize => ("appearance", "corner_size"),
         }
     }
 
@@ -52,6 +60,7 @@ impl Key {
             Self::PreferredOutput => Value::Text(String::new()),
             Self::Mooncoil => Value::Bool(false),
             Self::Corners => Value::Bool(true),
+            Self::CornerSize => Value::Integer(32),
         }
     }
 
@@ -62,7 +71,8 @@ impl Key {
             {
                 Ok(())
             }
-            (Self::Mooncoil | Self::Corners, Value::Bool(_)) => Ok(()),
+            (Self::Mooncoil | Self::Corners, Value::Bool(_))
+            | (Self::CornerSize, Value::Integer(1..=100)) => Ok(()),
             _ => Err(Error::InvalidValue(self.name())),
         }
     }
@@ -72,6 +82,7 @@ impl Key {
 pub enum Value {
     Bool(bool),
     Text(String),
+    Integer(i64),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -191,6 +202,8 @@ impl Layer {
                 Value::Text(text.to_owned())
             } else if let Some(boolean) = item.as_bool() {
                 Value::Bool(boolean)
+            } else if let Some(integer) = item.as_integer() {
+                Value::Integer(integer)
             } else {
                 return Err(Error::InvalidValue(key.name()));
             };
@@ -308,6 +321,7 @@ impl Owner {
             match &candidate {
                 Value::Bool(boolean) => value(*boolean),
                 Value::Text(text) => value(text),
+                Value::Integer(integer) => value(*integer),
             },
         );
         let serialized = next.document.to_string();

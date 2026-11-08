@@ -21,7 +21,10 @@ return function(applied)
             {page=1, key="bar.mooncoil", title="Mooncoil mark", detail=managed_detail,
              value=mooncoil.value, editable=true, managed=mooncoil.managed, temporary=mooncoil.runtime_override},
             {page=1, title="Outputs", detail="Native bar is shown on every output", editable=false},
-            {page=2, title="Screen corners", detail="Overlay integration is pending; no active control in this slice", editable=false},
+            {page=2, key="appearance.corners", title="Screen corners", detail="Native corner overlays on every output",
+             value=snapshot["appearance.corners"].value, editable=true, managed=snapshot["appearance.corners"].managed,
+             temporary=snapshot["appearance.corners"].runtime_override},
+            {page=2, title="Corner size", detail=tostring(snapshot["appearance.corner_size"].value) .. " logical pixels", editable=false},
             {page=3, title="Shell", detail="Tohru · pinned native Pleamar 0.7.27", editable=false},
         }
         rows = {}

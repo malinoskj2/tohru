@@ -40,6 +40,8 @@ class Cli(unittest.TestCase):
             (("config", "reload"), ["--say", "tohru", "emit config_reload"]),
             (("config", "set", "bar.mooncoil", "true"), ["--say", "tohru", "emit setting_mooncoil 1"]),
             (("config", "set", "appearance.corners", "false"), ["--say", "tohru", "emit setting_corners 0"]),
+            (("config", "set", "appearance.corner_size", "1"), ["--say", "tohru", "emit setting_corner_size 1"]),
+            (("config", "set", "appearance.corner_size", "100"), ["--say", "tohru", "emit setting_corner_size 100"]),
         ]:
             with self.subTest(args=args):
                 result = self.invoke(*args)
@@ -74,6 +76,13 @@ class Cli(unittest.TestCase):
     def test_native_failure_is_preserved(self):
         result = self.invoke("status", "--json", NATIVE_EXIT="1")
         self.assertEqual(result.returncode, 1)
+
+    def test_corner_size_rejection_never_calls_native(self):
+        for value in ("0", "101", "-1", "32.5", "01", "1e2", "100\nemit quit", "9999999999999999999999999"):
+            with self.subTest(value=value):
+                result = self.invoke("config", "set", "appearance.corner_size", value)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(result.stdout, "")
 
 
 if __name__ == "__main__":

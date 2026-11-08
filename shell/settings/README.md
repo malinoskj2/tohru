@@ -8,11 +8,13 @@ real root events `settings_open_request`/`settings_close`.
 Initial source-mapped dimensions: 800x560 window,220px sidebar,30px navigation
 rows, source15/13/11px typography. This is a native functional candidate, not
 accepted1:1 layout/glass/font/liquid motion. Current categories are Bar, Appearance
-and System. One effective editable control, the optional Mooncoil mark, updates
-root bar immediately. Nix-managed rows explicitly describe temporary process
+and System. Mooncoil and screen-corner toggles update root surfaces immediately.
+Corner size is displayed, with edits available through `tohru config set
+appearance.corner_size 1..100`. Nix-managed rows explicitly describe temporary process
 edits; unmanaged edits persist through the existing writable TOML owner.
 Deprecated preferred_output is not offered as an active placement control.
-Corner overlays are explicitly pending and have no misleading active toggle.
+Corner surfaces use W's reviewed shader/native layout; GPU pixels/click-through,
+scale/hotplug and actual toggle resource lifecycle remain native validation gates.
 
 Search matches setting title/detail/key literally, with15 result slots and256
 query bytes processed. Back/Forward retains at most64 routes and truncates stale

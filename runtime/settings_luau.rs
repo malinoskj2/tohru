@@ -34,6 +34,7 @@ fn snapshot(lua: &Lua, owner: &Owner) -> mlua::Result<Table> {
         match setting.value {
             Value::Bool(value) => row.set("value", value)?,
             Value::Text(value) => row.set("value", value)?,
+            Value::Integer(value) => row.set("value", value)?,
         }
         row.set(
             "origin",
@@ -94,9 +95,23 @@ pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
             let value = match value {
                 LuaValue::Boolean(value) => Value::Bool(value),
                 LuaValue::String(value) => Value::Text(value.to_str()?.to_owned()),
+                LuaValue::Integer(value) => Value::Integer(value),
+                LuaValue::Number(value)
+                    if key == Key::CornerSize
+                        && value.fract() == 0.0
+                        && (1.0..=100.0).contains(&value) =>
+                {
+                    // Finite integral value in 1..100, validated before conversion.
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "validated integral range 1..100"
+                    )]
+                    let integer = value as i64;
+                    Value::Integer(integer)
+                }
                 _ => {
                     return Err(mlua::Error::runtime(
-                        "setting value must be boolean or string",
+                        "setting value must be a supported boolean, string or bounded integer",
                     ));
                 }
             };
@@ -131,6 +146,7 @@ mod tests {
         let replacement = Lua::new();
         install(&replacement).unwrap();
         replacement.load("local s = tohru_settings.reload()['bar.mooncoil']; assert(s.value and s.managed and s.runtime_override and s.origin == 'runtime')").exec().unwrap();
+        replacement.load("tohru_settings.set('appearance.corner_size', 100); assert(tohru_settings.reload()['appearance.corner_size'].value == 100); for _, n in {0, 101, 32.5, math.huge, 0/0} do assert(not pcall(tohru_settings.set, 'appearance.corner_size', n)) end; assert(tohru_settings.snapshot()['appearance.corner_size'].value == 100)").exec().unwrap();
         assert_eq!(
             std::fs::read_to_string(managed).unwrap(),
             "[bar]\nmooncoil = false\n"
