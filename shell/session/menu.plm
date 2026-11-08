@@ -1,0 +1,43 @@
+language 0.4
+scene TohruSession {
+    surface { size: 320, 38; anchor: top_left; keyboard: exclusive while open }
+    permissions { services: "say:tohru-lock", "session.reboot", "session.poweroff", "session.logout" }
+    fact open = false
+    fact selected = 1
+    fact confirming = 0
+    fact remaining = 0
+    text prompt = ""
+    text accept = ""
+    text error = ""
+    text status = ""
+    event menu_open ->
+    event menu_close ->
+    event choose ->
+    event cancel_choice ->
+    event accept_choice ->
+    box menu_button { at: 42, 18; size: 72, 28; corner: 9; color: #201a21; glass: 100%; cursor: pointer }
+    text "Session" { at: 42, 18; anchor: center; size: 13; color: #f5f5f5 }
+    on press menu_button { emit menu_open }
+    popup menu { at: 8, 38; size: 304, 292; open: open
+        box { from: 0, 0; size: 304, 292; corner: 16; color: #201a21; glass: 100% }
+        text "NixOS" { at: 16, 20; anchor: left center; size: 13; color: #f5f5f5 }
+        repeat i in 0..5 {
+            box row { from: 8, 40 + i * 24; size: 288, 24; corner: 7; color: #f5cddd; opacity: if(selected == i + 1, 18%, 0%); cursor: pointer }
+            on press row { emit choose(i + 1) }
+        }
+        text "Lock Screen" { at: 20, 52; anchor: left center; size: 13; color: #f5f5f5 }
+        text "Sleep" { at: 20, 76; anchor: left center; size: 13; color: #f5f5f5 }
+        text "Restart…" { at: 20, 100; anchor: left center; size: 13; color: #f5f5f5 }
+        text "Shut Down…" { at: 20, 124; anchor: left center; size: 13; color: #f5f5f5 }
+        text "Log Out…" { at: 20, 148; anchor: left center; size: 13; color: #f5f5f5 }
+        text prompt { at: 16, 180; anchor: left center; size: 13; color: #f5f5f5; show: confirming > 0 }
+        box cancel_button { at: 74, 211; size: 112, 28; corner: 9; color: #514851; cursor: pointer; show: confirming > 0 }
+        text "Cancel" { at: 74, 211; anchor: center; size: 13; color: #f5f5f5; show: confirming > 0 }
+        box accept_button { at: 224, 211; size: 128, 28; corner: 9; color: #bb6f9a; cursor: pointer; show: confirming > 0; agent: no }
+        text accept { at: 224, 211; anchor: center; size: 13; color: #ffffff; show: confirming > 0 }
+        text "{remaining}s to cancel automatically" { at: 16, 242; anchor: left center; size: 11; color: #b4aab4; show: confirming > 0 }
+        text error { at: 16, 263; width: 272; lines: 2; size: 11; color: #ffc0bf }
+        on press cancel_button { emit cancel_choice }
+        on press accept_button { emit accept_choice }
+    }
+}
