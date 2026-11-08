@@ -87,7 +87,9 @@ return function(make_usage, search, geometry, output)
         model.launcher_tiles = tiles
     end
     local function show()
-        fact.launcher_focus_armed = false
+        -- Repeated open keeps the same focused native role: no fresh enter is
+        -- promised. A closed-to-open cycle must establish ownership anew.
+        if not fact.launcher_visible then fact.launcher_focus_armed = false end
         tab, selected, scroll, query = 0, -1, 0, ""
         text.launcher_query = ""
         close_menu(); rebuild(); if output then output.open() end; fact.launcher_visible = true

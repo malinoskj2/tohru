@@ -43,4 +43,7 @@ local token=fact.launcher_close_token;events.blur();assert(fact.launcher_close_t
 -- Focus gained while closed cannot arm a later open.
 events.focus();events.launcher_open();events.blur();assert(fact.launcher_visible)
 events.focus();events.blur();assert(not fact.launcher_visible)
+events.launcher_open();events.focus();events.launcher_open()
+assert(fact.launcher_focus_armed)
+events.blur();assert(not fact.launcher_visible)
 print("Actual entry ignores old-role blur before new focus, retains real blur dismissal and reload ownership")
