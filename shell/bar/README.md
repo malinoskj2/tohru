@@ -8,8 +8,9 @@ bar's origin; call `require("bar/controller")()` once from root logic. Declare
 read permissions `window`, `apps`, `media`, `clock`. Forward the existing
 process-owned `bar.mooncoil` setting to `fact.bar_mooncoil`; do not create a
 second settings owner. Route `calendar_toggle` and `session_toggle` to their
-named scenes. This part does not select outputs: root owns one selected output,
-preferred/focused/first fallback and reconnect, and reserves the 31px surface.
+named scenes. Accepted output policy is now native `screens: all`: the bar appears on every
+output. Root owns this layout and the 31px reservation; no preferred/focused-first
+selection adapter or reconnect-selection policy is retained.
 
 Source mapping: j2bar `bar.rs` / `bar/providers.rs` (100px inset, 14px app icon,
 360px centered title limit, 180px playing-only media, 12-hour default clock),
