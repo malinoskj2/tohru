@@ -19,9 +19,9 @@ S shared hooks (W does not modify shared files):
 4. Build/install probe **next to the actual Pleamar executable**, including Nix
    runtime output. The query resolves `current_exe().parent()/tohru-wallpaper-probe`,
    never PATH or a caller-supplied executable/environment override.
-5. Scene declares `permissions { services: "wallpaper.catalog" }`; Luau calls
+5. Scene declares `permissions { services: "wallpaper" }`; Luau calls
    `sys.ask("wallpaper.catalog", explicitly_configured_or_chosen_absolute_folder)`.
-   The native permission check remains authoritative. Result is a sorted list
+   The native read-query permission checks the base service `wallpaper` (an exact `wallpaper.catalog` permission alone does not grant sys.ask). Result is a sorted list
    of canonical absolute file paths; failures throw, empty folders return `[]`.
    Picker and shuffle/rotation consume this list; root commits an assignment map
    once through the existing TOML/Nix/runtime owner.
@@ -39,7 +39,7 @@ Overflow fails the whole request instead of publishing a truncated catalog.
 The native wrapper concurrently drains nonblocking stdout/stderr, limits stdout
 to1MiB/stderr4096, checks a5s deadline and kills/reaps its fixed probe on every
 exit path. No detached filesystem thread or uncounted helper remains.
-The probe itself never spawns descendants. Kernel-uninterruptible filesystem
+The probe itself never spawns descendants; parent-death protection and a fork/exec parent check also cancel it when its requesting process/thread exits. Kernel-uninterruptible filesystem
 I/O can delay kill/reap despite the deadline; no hard kernel shutdown bound is
 claimed. Tests exercise responsive local filesystems/processes, not hung mounts.
 
