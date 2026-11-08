@@ -72,3 +72,29 @@ for _, case in ipairs({{2024, "29"}, {2100, "28"}, {2000, "29"}}) do
     assert(last == case[2])
 end
 print("Production bar/calendar controller fixtures passed")
+
+-- Q-B-1: source alias insertion and exact/lower/tail lookup precedence.
+events, watches = environment()
+assert(loadfile("shell/bar/controller.luau"))()()
+watches.apps({
+    {id = "org.gnome.Nautilus", wmclass = "Files", icon = "first"},
+    {id = "Nautilus", wmclass = "FILES", icon = "later"},
+    {id = "editor-bin", icon = "base"},
+    {id = "tool-desktop", icon = "tool"},
+})
+for class, icon in pairs({Nautilus = "first", nautilus = "first", Files = "first", FILES = "later", ["/usr/bin/Nautilus"] = "first", editor = "base", tool = "tool"}) do
+    watches.window({title = "Window", class = class})
+    assert(text.bar_icon == icon, class .. ": " .. tostring(text.bar_icon))
+end
+watches.window({class = "unknown"})
+assert(text.bar_icon == "" and not fact.bar_has_icon)
+-- Q-B-2: use chosen Identity, or first playing native bus order, then status.
+watches.media({playing = true, title = "", artist = "", player = "foo", players = {{id = "foo.instance1", name = "First phone", playing = true}, {id = "foo.instance2", name = "Second phone", playing = true}}})
+assert(text.bar_media == "▶ First phone")
+watches.media({playing = true, players = {{id = "foo.instance1", name = "First phone", playing = true}, {id = "foo.instance2", name = "Second phone", playing = true, chosen = true}}})
+assert(text.bar_media == "▶ Second phone")
+watches.media({playing = true, players = {{id = "foo", name = "", playing = true}}})
+assert(text.bar_media == "▶ Playing")
+watches.media({playing = false, players = {}})
+assert(not fact.bar_playing)
+print("Q-B-1/Q-B-2 regression fixtures passed")
