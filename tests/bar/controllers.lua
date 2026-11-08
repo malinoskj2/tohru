@@ -105,7 +105,7 @@ events, watches = environment()
 local rail_calls = {}
 local rail = {}
 for _, operation in ipairs({"observe", "reset", "stop"}) do
-    rail[operation] = function(...) rail_calls[#rail_calls + 1] = {operation, ...} end
+    rail[operation] = function(...) rail_calls[#rail_calls + 1] = {operation, ...}; return true end
 end
 calendar = assert(loadfile("shell/calendar/controller.luau"))()(rail)
 watches.clock({year = 2026, month = 11, day = 7})
@@ -124,3 +124,12 @@ assert(rail_calls[count + 1][1] == "reset" and rail_calls[count + 2][3] == 12)
 events["fact:cal_open"](false)
 assert(rail_calls[#rail_calls][1] == "stop")
 print("Calendar publication lifecycle passed")
+
+-- A failed reset must remain visible; observe must not erase its error.
+local failed_reset, observed = 0, 0
+events, watches = environment()
+calendar = assert(loadfile("shell/calendar/controller.luau"))()({reset = function() failed_reset = failed_reset + 1; return false end, observe = function() observed = observed + 1 end, stop = function() end})
+watches.clock({year = 2026, month = 11, day = 7})
+calendar.open(); events.calendar_next(); watches.clock({year = 2026, month = 11, day = 8})
+assert(failed_reset == 1 and observed == 0)
+print("Failed rail reset is not masked by a following observation")

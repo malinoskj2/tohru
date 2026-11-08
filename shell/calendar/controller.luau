@@ -1,6 +1,7 @@
 -- Gregorian date arithmetic is interaction policy; the native clock supplies today.
 return function(rail)
-    if not rail and tohru_workspace then rail = require("rail-publisher")(tohru_workspace, "calendar", "cal_rail_") end
+    -- Inject from the actual entry: native require resolves relative to that entry.
+    local rail_ready = false
     local today, selected, year, month
     local months = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"}
     local short = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
@@ -38,7 +39,7 @@ return function(rail)
         end
         model.cal_days = days
         fact.cal_month, fact.cal_weeks = month, weeks
-        if rail and fact.cal_open then rail.observe(12, month) end
+        if rail_ready and fact.cal_open then rail.observe(12, month) end
         fact.cal_current = year == today.year and month == today.month
         text.cal_title = months[month] .. " " .. tostring(year)
         text.cal_footer = string.format("%s %d %s", weekdays[weekday(selected.year, selected.month, selected.day) + 1], selected.day, short[selected.month])
@@ -56,7 +57,11 @@ return function(rail)
         today = {year = value.year, month = value.month, day = value.day}
         if not year then reset() else publish() end
     end)
-    local function open() if rail then rail.reset() end; fact.cal_open = true; reset() end
+    local function open()
+        rail_ready = rail and rail.reset() == true or false
+        fact.cal_open = true
+        reset()
+    end
     local function close() fact.cal_open = false; if rail then rail.stop() end end
     local function toggle() if fact.cal_open then close() else open() end end
     on("fact:cal_open", function(visible) if visible then open() elseif rail then rail.stop() end end)
