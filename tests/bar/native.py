@@ -33,6 +33,9 @@ def private_environment(inherited, evidence, runtime_dir):
            'VK_DRIVER_FILES': '/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json',
            'WGPU_BACKEND': 'vulkan', 'PLEAMAR_BACKEND': 'vulkan', 'PLEAMAR_GENERIC': '1'}
     env['PLEAMAR_SOCKETS'] = str(runtime_dir / 'ipc')
+    # Native connectivity resolves the system bus separately from the session bus.
+    # Default to an owned endpoint even before its optional fixture daemon exists.
+    env['DBUS_SYSTEM_BUS_ADDRESS'] = 'unix:path=' + str(runtime_dir / 'system-bus')
     for key in ('WAYLAND_DISPLAY', 'SWAYSOCK', 'DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE', 'TOHRU_RUNTIME', 'TOHRU_SCENE', 'TOHRU_MANAGED_CONFIG', 'WAYLAND_SOCKET', 'CUA_INJECT_SOCKET', 'TOHRU_B_PRIVATE_BUS', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE'):
         env.pop(key, None)
     return env
@@ -42,6 +45,9 @@ def assert_private_ipc(env, runtime_dir):
     expected = runtime_dir.absolute() / 'ipc'
     assert Path(env['PLEAMAR_SOCKETS']).absolute() == expected, 'IPC route escaped private directory'
     assert expected.resolve() == expected, 'Private IPC directory resolves outside its owner'
+    system = runtime_dir.absolute() / 'system-bus'
+    assert env['DBUS_SYSTEM_BUS_ADDRESS'] == 'unix:path=' + str(system), 'Outside system bus rejected'
+    assert system.resolve() == system and not system.is_symlink(), 'System bus symlink rejected'
     if expected.exists():
         for endpoint in expected.iterdir():
             assert endpoint.resolve().parent == expected and not endpoint.is_symlink(), 'Outside IPC endpoint rejected'
@@ -75,7 +81,7 @@ def bootstrap_private_bus(child_dir, token, inherited, arguments, run=subprocess
         config = directory / 'bus.conf'
         config.write_text('<busconfig><type>session</type><listen>unix:path=' + escape(str(directory / 'bus')) + '</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
         clean = dict(inherited)
-        for key in ('TOHRU_B_PRIVATE_BUS', 'DBUS_SESSION_BUS_ADDRESS', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE', 'WAYLAND_SOCKET', 'CUA_INJECT_SOCKET'):
+        for key in ('TOHRU_B_PRIVATE_BUS', 'DBUS_SESSION_BUS_ADDRESS', 'DBUS_SYSTEM_BUS_ADDRESS', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE', 'WAYLAND_SOCKET', 'CUA_INJECT_SOCKET'):
             clean.pop(key, None)
         run(['dbus-run-session', '--config-file', str(config), '--', sys.executable, __file__, *arguments,
              '--bus-child', str(directory), '--bus-token', private_token], env=clean, check=True, close_fds=True)
@@ -88,15 +94,36 @@ def finish_owned(processes, logs, evidence, events):
     failures = []
     for process in reversed(processes):
         try:
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
+            running = process.poll() is None
         except Exception as error:
             failures.append(error)
+            running = True
+        if not running:
+            continue
+        force = False
+        try:
+            process.terminate()
+        except Exception as error:
+            failures.append(error)
+            force = True
+        if not force:
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                force = True
+            except Exception as error:
+                failures.append(error)
+                force = True
+        if force:
+            try:
+                process.kill()
+            except Exception as error:
+                failures.append(error)
+            # Reap is attempted even when termination and kill both failed.
+            try:
+                process.wait(timeout=5)
+            except Exception as error:
+                failures.append(error)
     for log in logs:
         try:
             log.close()
@@ -134,6 +161,7 @@ def main():
     sway_config = evidence / 'sway.conf'
     sway_config.write_text('output HEADLESS-1 mode 1280x720@60Hz\noutput HEADLESS-1 scale 1\noutput HEADLESS-1 bg #30232b solid_color\nseat seat0 hide_cursor 100\n')
     processes, logs, events = [], [], []
+    private_session = env['DBUS_SESSION_BUS_ADDRESS']
     runtime = str(args.runtime.resolve())
 
     def start(command, label, extra=None, stdin=None):
@@ -141,12 +169,14 @@ def main():
         logs.append(log)
         child_env = {**env, **(extra or {})}
         assert_private_ipc(child_env, runtime_dir)
+        assert child_env.get('DBUS_SESSION_BUS_ADDRESS') == private_session, 'Outside session bus override rejected'
         process = subprocess.Popen(command, env=child_env, stdout=log, stderr=subprocess.STDOUT, close_fds=True, stdin=stdin)
         processes.append(process)
         return process
 
     def say(scene, command):
         assert_private_ipc(env, runtime_dir)
+        assert env.get('DBUS_SESSION_BUS_ADDRESS') == private_session, 'Outside session bus override rejected'
         result = subprocess.run([runtime, '--say', scene, command], env=env, text=True, capture_output=True, timeout=10, close_fds=True)
         events.append({'scene': scene, 'command': command, 'exit': result.returncode, 'out': result.stdout, 'err': result.stderr})
         return result.stdout.strip() if result.returncode == 0 else None

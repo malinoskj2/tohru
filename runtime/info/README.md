@@ -41,7 +41,10 @@ bounded, but individual regular-file/kernel operations are not a hard250ms
 latency guarantee. Linux nonblocking open plus regular-file validation avoids
 blocking on substituted FIFOs/devices; no unsafe/FFI or arbitrary UI paths.
 
-Checks (lightweight, no runtime build/GPU):
+Checks (lightweight, no runtime build/GPU; Cargo entry verifies nested module layout):
+
+    CARGO_TARGET_DIR=.tmp/b-info-target cargo test --locked --offline --test info --jobs 1
+    CARGO_TARGET_DIR=.tmp/b-info-target cargo clippy --locked --offline --test info --jobs 1 -- -Dwarnings
 
     rustfmt --check --edition 2024 runtime/info/*.rs tests/info/snapshot.rs
     clippy-driver --edition 2024 --crate-type lib -Wclippy::pedantic -Dwarnings runtime/info/mod.rs -o .tmp/libinfo.rlib

@@ -242,7 +242,8 @@ mod tests {
     fn expired_generation_scan_cannot_establish_uniqueness() {
         let mut reader = Reader::new(Path::new("/"));
         reader.deadline = Instant::now();
-        let generations = crate::storage::generations(&mut reader, Some("/nix/store/active"));
+        let generations =
+            super::super::storage::generations(&mut reader, Some("/nix/store/active"));
         assert!(generations.is_empty());
         assert!(
             reader

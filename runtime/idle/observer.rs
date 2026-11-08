@@ -22,7 +22,7 @@ use std::sync::{
 };
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
-use tohru_shell::idle::{Config, Effect, Inhibitors, Policy, Subscription};
+use tohru_shell::idle::{Config, Effect, Policy, Subscription};
 use wayland_client::{
     Connection, Dispatch, Proxy, QueueHandle,
     globals::registry_queue_init,
@@ -37,17 +37,13 @@ use wayland_protocols_wlr::output_power_management::v1::client::{
     zwlr_output_power_v1::{self, ZwlrOutputPowerV1},
 };
 
-#[derive(Clone, Copy, Default)]
-pub(super) struct Observations {
-    pub held: Option<bool>,
-    pub inhibitors: Inhibitors,
-    pub resume: u64,
-}
+use tohru_shell::idle::input::{Cancellation, Input, Observation};
 
 pub(super) struct Observer {
     commands: SyncSender<Config>,
-    latest: Arc<Mutex<Observations>>,
+    latest: Arc<Mutex<Input>>,
     ping: Ping,
+    cancellation: Cancellation,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
@@ -58,19 +54,24 @@ pub(super) trait Sink: Send + Sync {
     fn opacity(&self, alpha: f32);
     fn status(&self, status: &str);
     fn rearmed(&self);
-    fn lock(&self);
-    fn suspend(&self);
-    fn state(&self);
+    fn lock(&self, stamp: u64);
+    fn suspend(&self, stamp: u64);
+    fn state(&self, stamp: u64);
 }
 
 impl Observer {
-    pub(super) fn spawn(config: Config, sink: Arc<dyn Sink>) -> Result<Self> {
+    pub(super) fn spawn(
+        config: Config,
+        sink: Arc<dyn Sink>,
+        cancellation: Cancellation,
+    ) -> Result<Self> {
         let policy = Policy::new(config, false).context("validate idle configuration")?;
         let (commands, receiver) = mpsc::sync_channel(8);
         let (ping, source) = make_ping().context("create idle observer wakeup")?;
-        let latest = Arc::new(Mutex::new(Observations::default()));
+        let latest = Arc::new(Mutex::new(Input::new(cancellation.clone())));
         let stop = Arc::new(AtomicBool::new(false));
         let (thread_latest, thread_stop) = (latest.clone(), stop.clone());
+        let thread_cancellation = cancellation.clone();
         let thread = thread::Builder::new()
             .name("tohru-idle".into())
             .spawn(move || {
@@ -81,6 +82,7 @@ impl Observer {
                     thread_stop,
                     source,
                     sink.clone(),
+                    thread_cancellation,
                 );
                 if let Err(error) = result {
                     sink.status(&format!("idle unavailable: {error:#}"));
@@ -93,6 +95,7 @@ impl Observer {
             commands,
             latest,
             ping,
+            cancellation,
             stop,
             thread: Some(thread),
         })
@@ -104,16 +107,16 @@ impl Observer {
         self.commands
             .try_send(config)
             .context("idle configuration queue unavailable")?;
-        self.ping.ping();
+        self.observe(|state| state.resume = state.resume.wrapping_add(1))?;
         Ok(())
     }
 
-    pub(super) fn observe(&self, change: impl FnOnce(&mut Observations)) -> Result<()> {
+    pub(super) fn observe(&self, change: impl FnOnce(&mut Observation)) -> Result<()> {
         let mut latest = self
             .latest
             .lock()
             .map_err(|_| anyhow::anyhow!("idle observation mutex poisoned"))?;
-        change(&mut latest);
+        latest.update(change);
         drop(latest);
         self.ping.ping();
         Ok(())
@@ -122,6 +125,7 @@ impl Observer {
 
 impl Drop for Observer {
     fn drop(&mut self) {
+        self.cancellation.invalidate();
         self.stop.store(true, Ordering::Release);
         self.ping.ping();
         if let Some(thread) = self.thread.take() {
@@ -134,10 +138,12 @@ struct Wait {
     proxy: ExtIdleNotificationV1,
     subscription: Subscription,
 }
+
 struct Power {
     output: wl_output::WlOutput,
     proxy: ZwlrOutputPowerV1,
 }
+
 struct State {
     connection: Connection,
     registry: RegistryState,
@@ -149,18 +155,20 @@ struct State {
     powers: Vec<Power>,
     policy: Policy,
     sink: Arc<dyn Sink>,
-    applied: Observations,
     requested_off: bool,
     alpha: f32,
+    cancellation: Cancellation,
+    applied_stamp: u64,
 }
 
 fn run(
     policy: Policy,
     commands: Receiver<Config>,
-    latest: Arc<Mutex<Observations>>,
+    latest: Arc<Mutex<Input>>,
     stop: Arc<AtomicBool>,
     source: smithay_client_toolkit::reexports::calloop::ping::PingSource,
     sink: Arc<dyn Sink>,
+    cancellation: Cancellation,
 ) -> Result<()> {
     let connection = Connection::connect_to_env().context("connect idle observer to Wayland")?;
     let (globals, queue) =
@@ -181,9 +189,10 @@ fn run(
         powers: Vec::new(),
         policy,
         sink,
-        applied: Observations::default(),
         requested_off: false,
         alpha: -1.0,
+        applied_stamp: cancellation.stamp(),
+        cancellation,
     };
     let mut event_loop: EventLoop<State> =
         EventLoop::try_new().context("create idle event loop")?;
@@ -194,38 +203,35 @@ fn run(
         .handle()
         .insert_source(source, |_, _, _| {})
         .map_err(|e| anyhow::anyhow!("install idle wakeup: {e}"))?;
-    let effects = state.policy.inhibited(Inhibitors {
-        logind_idle: true,
-        ..Inhibitors::default()
-    });
+    let (effects, stamp) = {
+        let mut input = latest
+            .lock()
+            .map_err(|_| anyhow::anyhow!("idle observation mutex poisoned"))?;
+        let effects = input.drain(&mut state.policy, Instant::now());
+        (effects, state.cancellation.stamp())
+    };
+    state.applied_stamp = stamp;
     state.effects(effects, &qh);
     state.sink.status(if state.power_manager.is_some() {
         "idle observer ready"
     } else {
         "idle ready; output power unavailable"
     });
-    state.sink.state();
+    state.sink.state(state.applied_stamp);
     while !stop.load(Ordering::Acquire) {
         for config in commands.try_iter() {
             let effects = state.policy.configure(config)?;
             state.effects(effects, &qh);
         }
-        let observed = *latest
-            .lock()
-            .map_err(|_| anyhow::anyhow!("idle observation mutex poisoned"))?;
-        if observed.resume != state.applied.resume {
-            let effects = state.policy.resumed();
-            state.effects(effects, &qh);
-        }
-        let mut inhibitors = observed.inhibitors;
-        inhibitors.logind_idle |= observed.held.is_none();
-        let effects = state.policy.inhibited(inhibitors);
+        let (effects, stamp) = {
+            let mut input = latest
+                .lock()
+                .map_err(|_| anyhow::anyhow!("idle observation mutex poisoned"))?;
+            let effects = input.drain(&mut state.policy, Instant::now());
+            (effects, state.cancellation.stamp())
+        };
+        state.applied_stamp = stamp;
         state.effects(effects, &qh);
-        let effects = state
-            .policy
-            .session(observed.held.unwrap_or(false), Instant::now());
-        state.effects(effects, &qh);
-        state.applied = observed;
         let now = Instant::now();
         let effects = state.policy.step(now)?;
         state.effects(effects, &qh);
@@ -269,8 +275,33 @@ fn run(
 
 impl State {
     fn effects(&mut self, effects: Vec<Effect>, qh: &QueueHandle<Self>) {
-        if effects.iter().any(|e| matches!(e, Effect::Arm { .. })) {
-            self.sink.rearmed();
+        let arms = effects
+            .iter()
+            .any(|effect| matches!(effect, Effect::Arm { .. }));
+        let valid = if arms {
+            self.cancellation
+                .advance(self.applied_stamp)
+                .map(|stamp| self.applied_stamp = stamp)
+                .is_some()
+        } else {
+            self.cancellation.current(self.applied_stamp)
+        };
+        if !valid {
+            // Input/resume may race the prepared decision. Restoration remains
+            // safe; stale requests and subscriptions cannot become new work.
+            for effect in effects {
+                match effect {
+                    Effect::ScreensOn => self.power(false),
+                    Effect::ClearFade => {
+                        self.alpha = 0.0;
+                        self.sink.opacity(0.0);
+                    }
+                    _ => {}
+                }
+            }
+            return;
+        }
+        if arms {
             for wait in self.waits.drain(..) {
                 wait.proxy.destroy();
             }
@@ -305,8 +336,8 @@ impl State {
                     self.alpha = 0.0;
                     self.sink.opacity(0.0);
                 }
-                Effect::RequestLock => self.sink.lock(),
-                Effect::RequestSuspend => self.sink.suspend(),
+                Effect::RequestLock => self.sink.lock(self.applied_stamp),
+                Effect::RequestSuspend => self.sink.suspend(self.applied_stamp),
                 Effect::ScreensOff => self.power(true),
                 Effect::ScreensOn => self.power(false),
                 Effect::LockTimedOut => self
@@ -348,6 +379,7 @@ impl Dispatch<ExtIdleNotifierV1, ()> for State {
     ) {
     }
 }
+
 impl Dispatch<ExtIdleNotificationV1, Subscription> for State {
     fn event(
         state: &mut Self,
@@ -357,6 +389,9 @@ impl Dispatch<ExtIdleNotificationV1, Subscription> for State {
         _: &Connection,
         qh: &QueueHandle<Self>,
     ) {
+        if !state.cancellation.current(state.applied_stamp) {
+            return;
+        }
         if !state
             .waits
             .iter()
@@ -379,6 +414,7 @@ impl Dispatch<ExtIdleNotificationV1, Subscription> for State {
         }
     }
 }
+
 impl Dispatch<ZwlrOutputPowerManagerV1, ()> for State {
     fn event(
         _: &mut Self,
@@ -390,6 +426,7 @@ impl Dispatch<ZwlrOutputPowerManagerV1, ()> for State {
     ) {
     }
 }
+
 impl Dispatch<ZwlrOutputPowerV1, ()> for State {
     fn event(
         state: &mut Self,
@@ -404,6 +441,7 @@ impl Dispatch<ZwlrOutputPowerV1, ()> for State {
         }
     }
 }
+
 impl OutputHandler for State {
     fn output_state(&mut self) -> &mut OutputState {
         &mut self.outputs
@@ -436,6 +474,7 @@ impl OutputHandler for State {
         });
     }
 }
+
 impl SeatHandler for State {
     fn seat_state(&mut self) -> &mut SeatState {
         &mut self.seats
@@ -463,6 +502,7 @@ impl SeatHandler for State {
     ) {
     }
 }
+
 impl ProvidesRegistryState for State {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry

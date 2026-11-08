@@ -1,7 +1,13 @@
 scene TohruLauncher {
-    surface { size: full, full; anchor: top; level: overlay; keyboard: exclusive while launcher_visible; open: launcher_visible or launcher_seen > 0.001 }
-    permissions { services: "apps", "apps.launch", "files", "files.write" }
+    // Empty-input1px native bootstrap supplies names; it never matches recession.
+    surface { size: 1, 1; anchor: top_left; screens: each max 8; reserve: 0; keyboard: none; open: false }
+    permissions { services: "apps", "apps.launch", "files", "files.write", "window" }
     fact launcher_visible = false
+    fact launcher_closing = false
+    fact launcher_close_token = 0
+    fact launcher_output_count = 0
+    fact launcher_outputs_known = false
+    text launcher_outputs = ""
     fact launcher_searching = false
     text launcher_query = ""
     fact launcher_tab = 0
@@ -21,6 +27,8 @@ scene TohruLauncher {
     text launcher_error = ""
     model launcher_tiles max 96 { position: number; x: number; y: number; name: text; id: text; icon: image 96, 96; pinned: bool }
     model launcher_choices max 14 { position: number; y: number; label: text; action: number }
+    event launcher_unmap ->
+    event launcher_outputs_changed ->
     event launcher_toggle ->
     event launcher_open ->
     event launcher_close ->
@@ -39,112 +47,127 @@ scene TohruLauncher {
     event launcher_menu_scroll ->
     event launcher_menu_move ->
     event launcher_escape ->
-    let cols = clamp(floor((screen.width - 94) / 72), 3, 8)
-    let view_height = clamp(screen.height - 230, 72, 452)
-    let card_width = cols * 72 + 32
-    let card_height = view_height + 104
-    let card_x = floor((screen.width - card_width) / 2)
-    let card_y = floor((screen.height + 37 - card_height) / 2)
-    prop launcher_seen = 0 ~spring(170, 13.04)
-    follow launcher_seen = if(launcher_visible, 1, 0)
-    prop tile_scroll = 0 ~120ms
-    follow tile_scroll = launcher_scroll
-    on launcher_open { focus launcher_query; emit launcher_layout(cols); emit launcher_viewport(view_height) }
-    on launcher_toggle { focus launcher_query; emit launcher_layout(cols); emit launcher_viewport(view_height) }
-    on change launcher_menu while launcher_menu { blur }
-    on change launcher_menu while not launcher_menu { focus launcher_query }
-    on change cols { emit launcher_layout(cols) }
-    on change view_height { emit launcher_viewport(view_height) }
-    group {
-        pivot: screen.width / 2, (screen.height + 37) / 2
-        scale: 0.94 + 0.06 * launcher_seen
-        move: 0, (1 - launcher_seen) * 16
-        opacity: clamp(launcher_seen / 0.55, 0, 1)
-        body {
-            color: #181825; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 18, 44, 25%
-            box { from: card_x, card_y; size: card_width, card_height; corner: 22 }
-        }
-        zone box launcher_card { from: card_x, card_y; size: card_width, card_height }
-        text launcher_error { at: card_x + 22, card_y + 49; anchor: left center; width: card_width - 44; lines: 1; size: 10; color: #f38ba8 }
-        input launcher_query { show: launcher_visible; at: card_x + 22, card_y + 20; width: card_width - 64; size: 15; color: #cdd6f4; placeholder: "Search applications…"; selection: #2f5f52 }
-        zone box launcher_clear { from: card_x + card_width - 40, card_y + 12; size: 28, 28; active: launcher_searching; cursor: pointer }
-        text "×" { at: card_x + card_width - 26, card_y + 26; anchor: center; size: 18; color: #cdd6f4; show: launcher_searching }
-        on press launcher_clear { launcher_query = ""; focus launcher_query }
-        on submit launcher_query while not launcher_menu { emit launcher_launch(max(0, launcher_selected)) }
-        repeat i in 0..7 {
-            let tab_width = (card_width - 16) / 7
-            box launcher_tab_hit.$i { from: card_x + 8 + i * tab_width, card_y + 62; size: tab_width - 2, 26; corner: 7; color: #89dceb; opacity: if(launcher_tab == i, 12%, 0%); cursor: pointer }
-            text pick(i, "Home", "Create", "Code", "Media", "Web", "Office", "System") { at: card_x + 8 + (i + 0.5) * tab_width, card_y + 75; anchor: center; size: 13; color: #cdd6f4 }
-            box { from: card_x + 8 + (i + 0.5) * tab_width - 7, card_y + 90; size: 14, 3; color: #89dceb; show: launcher_tab == i }
-            on press launcher_tab_hit.$i { emit launcher_tab(i) }
-        }
+    surface launcher_layer {
+        size: full, full
+        anchor: top
+        level: overlay
+        screens: launcher_outputs
+        layer_namespace: "tohru-launcher-backdrop"
+        keyboard: exclusive while launcher_visible
+        open: launcher_visible or launcher_seen != 0 or vel(launcher_seen) != 0
+        let cols = clamp(floor((launcher_layer.width - 94) / 72), 3, 8)
+        let view_height = clamp(launcher_layer.height - 230, 72, 452)
+        let card_width = cols * 72 + 32
+        let card_height = view_height + 104
+        let card_x = floor((launcher_layer.width - card_width) / 2)
+        let card_y = floor((launcher_layer.height + 37 - card_height) / 2)
+        prop launcher_seen = 0 ~spring(170, 13.04)
+        follow launcher_seen = if(launcher_visible, 1, 0)
+        prop tile_scroll = 0 ~120ms
+        follow tile_scroll = launcher_scroll
+        on launcher_open { focus launcher_query; emit launcher_layout(cols); emit launcher_viewport(view_height) }
+        on launcher_toggle { focus launcher_query; emit launcher_layout(cols); emit launcher_viewport(view_height) }
+        on change launcher_menu while launcher_menu { blur }
+        on change launcher_menu while not launcher_menu { focus launcher_query }
+        on change cols { emit launcher_layout(cols) }
+        on change view_height { emit launcher_viewport(view_height) }
         group {
-            clip box { from: card_x + 8, card_y + 96; size: card_width - 16, view_height }
-            text "Pinned" { at: card_x + 16, card_y + 110 - tile_scroll; anchor: left center; size: 11; color: #a6adc8; show: launcher_tab == 0 and launcher_pins > 0 }
-            text "Applications" { at: card_x + 16, card_y + 139 + launcher_pin_rows * 72 - tile_scroll; anchor: left center; size: 11; color: #a6adc8; show: launcher_tab == 0 and launcher_pins > 0 }
-            for t in launcher_tiles {
-                group {
-                    move: card_x + 16 + t.x, card_y + 96 + t.y - tile_scroll
-                    prop hover = 0 ~140ms
-                    box launcher_tile.$t.index { from: 0, 0; size: 72, 72; corner: 12; color: #89dceb; opacity: hover * 10% + if(launcher_selected == t.position, 8%, 0%); cursor: pointer }
-                    prop surge = 0 ~spring(170, 13.04)
-                    follow surge = if(launcher_selected == t.position, 0.6, 0)
-                    on change launcher_selected == t.position while launcher_selected == t.position { impulse surge 20 }
-                    on change launcher_selected == t.position while launcher_selected != t.position { impulse surge -9 }
+            pivot: launcher_layer.width / 2, (launcher_layer.height + 37) / 2
+            scale: 0.94 + 0.06 * launcher_seen
+            move: 0, (1 - launcher_seen) * 16
+            opacity: clamp(launcher_seen / 0.55, 0, 1)
+            body {
+                color: #181825; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 18, 44, 25%
+                box { from: card_x, card_y; size: card_width, card_height; corner: 22 }
+            }
+            zone box launcher_card { active: launcher_visible; from: card_x, card_y; size: card_width, card_height }
+            text launcher_error { at: card_x + 22, card_y + 49; anchor: left center; width: card_width - 44; lines: 1; size: 10; color: #f38ba8 }
+            input launcher_query { show: launcher_visible; at: card_x + 22, card_y + 20; width: card_width - 64; size: 15; color: #cdd6f4; placeholder: "Search applications…"; selection: #2f5f52 }
+            zone box launcher_clear { from: card_x + card_width - 40, card_y + 12; size: 28, 28; active: launcher_visible and launcher_searching; cursor: pointer }
+            text "×" { at: card_x + card_width - 26, card_y + 26; anchor: center; size: 18; color: #cdd6f4; show: launcher_searching }
+            on press launcher_clear { launcher_query = ""; focus launcher_query }
+            on submit launcher_query while not launcher_menu { emit launcher_launch(max(0, launcher_selected)) }
+            repeat i in 0..7 {
+                let tab_width = (card_width - 16) / 7
+                box launcher_tab_hit.$i { from: card_x + 8 + i * tab_width, card_y + 62; size: tab_width - 2, 26; corner: 7; color: #89dceb; opacity: if(launcher_tab == i, 12%, 0%); active: launcher_visible; cursor: pointer }
+                text pick(i, "Home", "Create", "Code", "Media", "Web", "Office", "System") { at: card_x + 8 + (i + 0.5) * tab_width, card_y + 75; anchor: center; size: 13; color: #cdd6f4 }
+                box { from: card_x + 8 + (i + 0.5) * tab_width - 7, card_y + 90; size: 14, 3; color: #89dceb; show: launcher_tab == i }
+                on press launcher_tab_hit.$i { emit launcher_tab(i) }
+            }
+            group {
+                clip box { from: card_x + 8, card_y + 96; size: card_width - 16, view_height }
+                text "Pinned" { at: card_x + 16, card_y + 110 - tile_scroll; anchor: left center; size: 11; color: #a6adc8; show: launcher_tab == 0 and launcher_pins > 0 }
+                text "Applications" { at: card_x + 16, card_y + 139 + launcher_pin_rows * 72 - tile_scroll; anchor: left center; size: 11; color: #a6adc8; show: launcher_tab == 0 and launcher_pins > 0 }
+                for t in launcher_tiles {
                     group {
-                        pivot: 36, 32
-                        scale: 1 + 0.1 * surge + clamp(vel(surge) * 0.009, -0.18, 0.18), 1 + 0.1 * surge - clamp(vel(surge) * 0.009, -0.18, 0.18)
-                        glow: 9, min(0.7, abs(surge)), #89dceb
-                        image t.icon { at: 14, 10; size: 44, 44 }
+                        move: card_x + 16 + t.x, card_y + 96 + t.y - tile_scroll
+                        prop hover = 0 ~140ms
+                        box launcher_tile.$t.index { from: 0, 0; size: 72, 72; corner: 12; color: #89dceb; opacity: hover * 10% + if(launcher_selected == t.position, 8%, 0%); active: launcher_visible; cursor: pointer }
+                        prop surge = 0 ~spring(170, 13.04)
+                        follow surge = if(launcher_selected == t.position, 0.6, 0)
+                        on change launcher_selected == t.position while launcher_selected == t.position { impulse surge 20 }
+                        on change launcher_selected == t.position while launcher_selected != t.position { impulse surge -9 }
+                        group {
+                            pivot: 36, 32
+                            scale: 1 + 0.1 * surge + clamp(vel(surge) * 0.009, -0.18, 0.18), 1 + 0.1 * surge - clamp(vel(surge) * 0.009, -0.18, 0.18)
+                            glow: 9, min(0.7, abs(surge)), #89dceb
+                            image t.icon { at: 14, 10; size: 44, 44 }
+                        }
+                        text t.name { at: 36, 64; anchor: center; width: 68; lines: 1; size: 11; color: #cdd6f4 }
+                        on enter launcher_tile.$t.index while not launcher_menu { hover: 1 ~140ms; emit launcher_select(t.position) }
+                        on leave launcher_tile.$t.index { hover: 0 ~140ms }
+                        on press launcher_tile.$t.index while not launcher_menu { emit launcher_launch(t.position) }
+                        on press launcher_tile.$t.index while launcher_menu { emit launcher_menu_close }
+                        on press right launcher_tile.$t.index { launcher_menu_x = pointer.x; launcher_menu_y = pointer.y; emit launcher_context(t.position) }
                     }
-                    text t.name { at: 36, 64; anchor: center; width: 68; lines: 1; size: 11; color: #cdd6f4 }
-                    on enter launcher_tile.$t.index while not launcher_menu { hover: 1 ~140ms; emit launcher_select(t.position) }
-                    on leave launcher_tile.$t.index { hover: 0 ~140ms }
-                    on press launcher_tile.$t.index while not launcher_menu { emit launcher_launch(t.position) }
-                    on press launcher_tile.$t.index while launcher_menu { emit launcher_menu_close }
-                    on press right launcher_tile.$t.index { launcher_menu_x = pointer.x; launcher_menu_y = pointer.y; emit launcher_context(t.position) }
+                }
+            }
+            on press launcher_card while launcher_menu { emit launcher_menu_close }
+            on scroll launcher_card while not launcher_menu { emit launcher_scroll(wheel) }
+            group {
+                show: launcher_menu
+                let menu_x = clamp(launcher_menu_x, 8, launcher_layer.width - 228)
+                let menu_y = clamp(launcher_menu_y, 8, launcher_layer.height - launcher_menu_height - 8)
+                body { color: #181825; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; box { from: menu_x, menu_y; size: 220, launcher_menu_height; corner: 12 } }
+                zone box launcher_menu_area { from: menu_x, menu_y; size: 220, launcher_menu_height }
+                on scroll launcher_menu_area { emit launcher_menu_scroll(wheel) }
+                clip box { from: menu_x + 6, menu_y + 6; size: 208, launcher_menu_height - 12 }
+                for c in launcher_choices {
+                    box launcher_choice_hit.$c.index { from: menu_x + 6, menu_y + 6 + c.y; size: 208, 30; corner: 6; color: #89dceb; opacity: if(launcher_menu_selected == c.position, 12%, 4%); active: launcher_visible; cursor: pointer }
+                    text c.label { at: menu_x + 16, menu_y + 21 + c.y; anchor: left center; size: 13; color: #cdd6f4 }
+                    on press launcher_choice_hit.$c.index { emit launcher_choice(c.position) }
                 }
             }
         }
-        on press launcher_card while launcher_menu { emit launcher_menu_close }
-        on scroll launcher_card while not launcher_menu { emit launcher_scroll(wheel) }
-        group {
-            show: launcher_menu
-            let menu_x = clamp(launcher_menu_x, 8, screen.width - 228)
-            let menu_y = clamp(launcher_menu_y, 8, screen.height - launcher_menu_height - 8)
-            body { color: #181825; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; box { from: menu_x, menu_y; size: 220, launcher_menu_height; corner: 12 } }
-            zone box launcher_menu_area { from: menu_x, menu_y; size: 220, launcher_menu_height }
-            on scroll launcher_menu_area { emit launcher_menu_scroll(wheel) }
-            clip box { from: menu_x + 6, menu_y + 6; size: 208, launcher_menu_height - 12 }
-            for c in launcher_choices {
-                box launcher_choice_hit.$c.index { from: menu_x + 6, menu_y + 6 + c.y; size: 208, 30; corner: 6; color: #89dceb; opacity: if(launcher_menu_selected == c.position, 12%, 4%); cursor: pointer }
-                text c.label { at: menu_x + 16, menu_y + 21 + c.y; anchor: left center; size: 13; color: #cdd6f4 }
-                on press launcher_choice_hit.$c.index { emit launcher_choice(c.position) }
-            }
+        on key Escape { emit launcher_escape }
+        on blur { emit launcher_close }
+        on key Left while not launcher_menu { emit launcher_move(-1) }
+        on key Right while not launcher_menu { emit launcher_move(1) }
+        on key Up while not launcher_menu { emit launcher_vertical(-1) }
+        on key Down while not launcher_menu { emit launcher_vertical(1) }
+        on key Return while not launcher_menu { emit launcher_launch(max(0, launcher_selected)) }
+        on key Up while launcher_menu { emit launcher_menu_move(-1) }
+        on key Down while launcher_menu { emit launcher_menu_move(1) }
+        on key Return while launcher_menu { emit launcher_choice(launcher_menu_selected) }
+        on key Next while not launcher_menu { emit launcher_page(1) }
+        on key Prior while not launcher_menu { emit launcher_page(-1) }
+        on key Menu while not launcher_menu { launcher_menu_x = card_x + 52 + launcher_selected_x; launcher_menu_y = card_y + 132 + launcher_selected_y - tile_scroll; emit launcher_context(max(0, launcher_selected)) }
+        on key Shift+F10 while not launcher_menu { launcher_menu_x = card_x + 52 + launcher_selected_x; launcher_menu_y = card_y + 132 + launcher_selected_y - tile_scroll; emit launcher_context(max(0, launcher_selected)) }
+        on key Tab { emit launcher_tab(launcher_tab + 1) }
+        on key Shift+Tab { emit launcher_tab(launcher_tab - 1) }
+        on key Shift+ISO_Left_Tab { emit launcher_tab(launcher_tab - 1) }
+        on key ISO_Left_Tab { emit launcher_tab(launcher_tab - 1) }
+        on key KP_Up while not launcher_menu { emit launcher_vertical(-1) }
+        on key KP_Down while not launcher_menu { emit launcher_vertical(1) }
+        on key KP_Left while not launcher_menu { emit launcher_move(-1) }
+        on key KP_Right while not launcher_menu { emit launcher_move(1) }
+        on key KP_Next while not launcher_menu { emit launcher_page(1) }
+        on key KP_Prior while not launcher_menu { emit launcher_page(-1) }
+        // Separate timer condition and firing guard: keep one native appointment
+        // through final spring snap, then remove the role on the next check.
+        every 16.666667ms while launcher_closing while launcher_seen == 0 and vel(launcher_seen) == 0 {
+            emit launcher_unmap(launcher_close_token)
         }
     }
-    on key Escape { emit launcher_escape }
-    on blur { emit launcher_close }
-    on key Left while not launcher_menu { emit launcher_move(-1) }
-    on key Right while not launcher_menu { emit launcher_move(1) }
-    on key Up while not launcher_menu { emit launcher_vertical(-1) }
-    on key Down while not launcher_menu { emit launcher_vertical(1) }
-    on key Return while not launcher_menu { emit launcher_launch(max(0, launcher_selected)) }
-    on key Up while launcher_menu { emit launcher_menu_move(-1) }
-    on key Down while launcher_menu { emit launcher_menu_move(1) }
-    on key Return while launcher_menu { emit launcher_choice(launcher_menu_selected) }
-    on key Next while not launcher_menu { emit launcher_page(1) }
-    on key Prior while not launcher_menu { emit launcher_page(-1) }
-    on key Menu while not launcher_menu { launcher_menu_x = card_x + 52 + launcher_selected_x; launcher_menu_y = card_y + 132 + launcher_selected_y - tile_scroll; emit launcher_context(max(0, launcher_selected)) }
-    on key Shift+F10 while not launcher_menu { launcher_menu_x = card_x + 52 + launcher_selected_x; launcher_menu_y = card_y + 132 + launcher_selected_y - tile_scroll; emit launcher_context(max(0, launcher_selected)) }
-    on key Tab { emit launcher_tab(launcher_tab + 1) }
-    on key Shift+Tab { emit launcher_tab(launcher_tab - 1) }
-    on key Shift+ISO_Left_Tab { emit launcher_tab(launcher_tab - 1) }
-    on key ISO_Left_Tab { emit launcher_tab(launcher_tab - 1) }
-    on key KP_Up while not launcher_menu { emit launcher_vertical(-1) }
-    on key KP_Down while not launcher_menu { emit launcher_vertical(1) }
-    on key KP_Left while not launcher_menu { emit launcher_move(-1) }
-    on key KP_Right while not launcher_menu { emit launcher_move(1) }
-    on key KP_Next while not launcher_menu { emit launcher_page(1) }
-    on key KP_Prior while not launcher_menu { emit launcher_page(-1) }
+    on change screens.count { launcher_output_count = screens.count; launcher_outputs_known = true; emit launcher_outputs_changed }
 }
