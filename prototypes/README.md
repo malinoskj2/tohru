@@ -1,9 +1,11 @@
 # Workspace switcher comparison
 
 Both native implementations were built by separate Codex workers on sibling Orca
-worktrees and integrated here on 7 November 2026. The workers and their compiled
-applications remain available in `/home/jesse/orca/workspaces/tohru/workspace-amane`
-and `/home/jesse/orca/workspaces/tohru/workspace-pleamar`.
+worktrees and integrated here on 7 November 2026. The completed worker worktrees
+were subsequently removed at the user's request. All recordings and raw evidence
+were copied and hash-verified under this checkout's `.tmp/prototypes/amane/` and
+`.tmp/prototypes/pleamar/`. Rebuild from the integrated source for further runs;
+old worker executable paths and compositor sessions are historical.
 
 Start with [Amane](amane/README.md) or [Pleamar](pleamar/README.md) for build,
 live workspace, replay, idle and active commands. Both preserve the reference's
@@ -16,10 +18,10 @@ upstream Hyprland services, but that path has not been runtime-tested.
 
 - Combined, labelled, enlarged video: `/home/jesse/projects/tohru/.tmp/workspace-comparison.mp4`
 - Review timeline: `/home/jesse/projects/tohru/.tmp/comparison-timeline.png`
-- Native Amane bar: `/home/jesse/orca/workspaces/tohru/workspace-amane/.tmp/amane-replay-1x.mp4`
-- Amane enlarged: `/home/jesse/orca/workspaces/tohru/workspace-amane/.tmp/amane-replay-6x.mp4`
-- Native Pleamar bar: `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/pleamar-replay-1x.mp4`
-- Pleamar enlarged: `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/pleamar-replay-8x.mp4`
+- Native Amane bar: `/home/jesse/projects/tohru/.tmp/prototypes/amane/amane-replay-1x.mp4`
+- Amane enlarged: `/home/jesse/projects/tohru/.tmp/prototypes/amane/amane-replay-6x.mp4`
+- Native Pleamar bar: `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/pleamar-replay-1x.mp4`
+- Pleamar enlarged: `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/pleamar-replay-8x.mp4`
 
 The combined video uses actual recorded pixels enlarged 6x with nearest-neighbour
 sampling. Pleamar's recording is trimmed by 0.4 seconds to approximately align

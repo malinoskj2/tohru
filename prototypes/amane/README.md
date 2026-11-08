@@ -29,7 +29,8 @@ The public Rectangle shader API receives six vec4 rows. The GLSL shader adapts j
 
 The bar is 31 logical pixels high, with 100-pixel side margins and dark translucent fill; the widget retains its 104×42 drawing bounds and 80×22 hit area. Its center is at bar y=15.5, so the physical top screen edge clips the uppermost 5.5 pixels of drawing overhang. This deliberately basic bar does not implement glass blur, flares, panels or unrelated shell features.
 
-For the existing isolated sandbox display:
+Historical environment from the completed worker session (recreate the isolated
+compositor below and resolve its current display/socket before rerunning):
 
 ```sh
 export WAYLAND_DISPLAY=wayland-4

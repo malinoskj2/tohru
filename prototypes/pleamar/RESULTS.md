@@ -1,5 +1,10 @@
 # Pleamar results
 
+The completed worker worktree has been removed after integration. Recordings and
+raw evidence are preserved at the current `.tmp/prototypes/` paths below.
+Worker executable paths and compositor PID/socket facts are historical; rebuild
+from the integrated source and start a new isolated display for reruns.
+
 Implemented and ran a genuine Pleamar Rust/wgpu scene with Luau logic; only the
 workspace switcher is drawn in a 31px translucent top bar with 100px side margins.
 PLAN.md is unchanged. Sources, exact dependency lock, commands, capture/measurement
@@ -33,7 +38,7 @@ still has background wake-ups, visible as 84 render-loop rounds in 16 seconds.
 48 native process threads (including Luau and the software renderer), no helper
 processes. CPU is AMD Ryzen 9 9950X3D; sandbox memory total approximately 31GiB.
 The final video uses this same display and renderer. No sibling display or
-process was changed. The private session remains available as
+process was changed. The historical measurement session used
 `WAYLAND_DISPLAY=wayland-4`, `SWAYSOCK=/run/user/1000/sway-ipc.1000.15325.sock`.
 
 Five-second warm-up, then at least 16 seconds per mode, without recording:
@@ -78,14 +83,14 @@ WAYLAND_DISPLAY=wayland-4 SWAYSOCK=/run/user/1000/sway-ipc.1000.15325.sock /home
 
 Absolute host evidence paths:
 
-- 1× bar MP4: `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/pleamar-replay-1x.mp4` (1280×42, 30fps, 13s).
-- Enlarged native crop MP4: `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/pleamar-replay-8x.mp4` (832×336, 30fps, 13s; nearest-neighbor enlargement of actual captures).
-- Bar screenshot: `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/replay-motion-1x.png`.
-- Interrupted motion screenshot: `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/replay-interruption-8x.png`.
-- Settled square screenshot: `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/replay-settled-8x.png`.
-- External workspace screenshot: `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/live-workspace3.png`.
-- Native run log: `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/replay-native.log`.
-- Raw idle/active measurements: `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/benchmark-idle.json`, `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/benchmark-active.json`.
-- Measurement commands/method: `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/measurement-method.md`.
-- Display facts: `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/display-comparable.json`.
-- Build/test/ABI logs: `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/build-verified.log`, `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/tests-final.log`, `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/shader-tests.log`, `/home/jesse/orca/workspaces/tohru/workspace-pleamar/.tmp/abi-check.log`.
+- 1× bar MP4: `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/pleamar-replay-1x.mp4` (1280×42, 30fps, 13s).
+- Enlarged native crop MP4: `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/pleamar-replay-8x.mp4` (832×336, 30fps, 13s; nearest-neighbor enlargement of actual captures).
+- Bar screenshot: `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/replay-motion-1x.png`.
+- Interrupted motion screenshot: `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/replay-interruption-8x.png`.
+- Settled square screenshot: `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/replay-settled-8x.png`.
+- External workspace screenshot: `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/live-workspace3.png`.
+- Native run log: `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/replay-native.log`.
+- Raw idle/active measurements: `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/benchmark-idle.json`, `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/benchmark-active.json`.
+- Measurement commands/method: `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/measurement-method.md`.
+- Display facts: `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/display-comparable.json`.
+- Build/test/ABI logs: `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/build-verified.log`, `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/tests-final.log`, `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/shader-tests.log`, `/home/jesse/projects/tohru/.tmp/prototypes/pleamar/abi-check.log`.

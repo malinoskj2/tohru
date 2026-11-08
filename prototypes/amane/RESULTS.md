@@ -1,12 +1,17 @@
 # Amane results — 7 November 2026
 
+The completed worker worktree has been removed after integration. Recordings and
+raw evidence are preserved at the current `.tmp/prototypes/` paths below.
+Worker executable paths and compositor PID/socket facts are historical; rebuild
+from the integrated source and start a new isolated display for reruns.
+
 Implemented, built and ran genuine Amane at pinned revision `544cbfc23af37f84ac237cd9bec53173981772b3`, with no upstream patches. The public shader API accommodates the effect. Native release executable: `/home/jesse/orca/workspaces/tohru/workspace-amane/prototypes/amane/target/release/workspace-amane` (16 MiB). Run instructions and exact replay controls are in README.md; PLAN.md is untouched.
 
 Validation passed: `cargo build --release --locked`, `cargo fmt --check`, `cargo test --release --locked` (10 tests), and `cargo clippy --release --locked --all-targets -- -D warnings`. Tests cover independent seeded JS numerical agreement, full replay determinism, exact settled geometry, interrupted velocity, variation ranges, long travel, wave generation and late-frame clamping. Final logs: `.tmp/build-final.log`, `.tmp/test-final.log`, `.tmp/clippy-final.log`, `.tmp/fmt.log`. Earlier failed attempts remain separately named in `.tmp`; they are not the final results.
 
 External focus to workspace 4 was observed by native Sway subscription, producing lavender; clicking cell 2 through a persistent virtual pointer changed Sway's actual focused workspace to 2 and the bead to yellow. Evidence: `.tmp/live-external-command.json`, `.tmp/live-after-click-final.json`, `.tmp/live-pointer-final.log` (native Wayland enter/press/release trace). Initial one-shot wlrctl/sway cursor attempts had no persistent pointer capability; `.tmp/click.c` and `.tmp/click` retain the successful persistent input helper. The application itself requires no helper process.
 
-All evidence is host-shared beneath `/home/jesse/orca/workspaces/tohru/workspace-amane/.tmp/`:
+All evidence is host-shared beneath `/home/jesse/projects/tohru/.tmp/prototypes/amane/`:
 
 - `amane-replay-1x.mp4`: 1080×42, 30 fps, 390 captures / 13 seconds, bar only.
 - `amane-replay-6x.mp4`: same native recording, widget cropped and enlarged to 624×252 using nearest-neighbour sampling.
