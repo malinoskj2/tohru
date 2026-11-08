@@ -8,6 +8,7 @@ part WorkspaceRailState {
     fact ws_b = 135
     text ws_error = ""
     repeat i in 0..16 { fact ws_v.$i = 0 }
+    repeat i in 1..11 { fact ws_advertised.$i = false }
     fact ws_available = false
     event workspace_select ->
 }

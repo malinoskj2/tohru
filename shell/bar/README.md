@@ -54,3 +54,12 @@ media cap/anchor and service buttons, rather than B guessing final cluster size.
 Current default private title fixtures retain360/340 text limits and placement.
 This corrects the exposed fixed-layout overlap possibility without claiming final
 root narrow-output layout/visual acceptance; S owns those measured formulas.
+
+Workspace cells are native advertised-only: `ws_advertised.1..10` updates from the
+native list, absent cells have a native dim treatment/no hit target, and Lua also
+rejects stale/unadvertised activation. Exact5..10 physics/scalars stay unchanged.
+Pinned generic ext-workspace can only activate advertised handles; it has no
+create-workspace command. Coordinator accepted this native UI behavior instead
+of a Sway IPC/create adapter; no compositor detection/poll or backend fork. Native
+Hyprland focus semantics remain unchanged when native actions are invoked; the
+bar does not infer extra capabilities from environment variables or row counts.
