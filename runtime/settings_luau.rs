@@ -4,7 +4,7 @@ use std::sync::{Mutex, OnceLock};
 
 use anyhow::{Context, Result};
 use mlua::{Lua, Table, Value as LuaValue};
-use tohru_shell::settings::{Key, Origin, Owner, SetOutcome, Value};
+use tohru_shell::settings::{Key, Origin, Owner, SetOutcome, Value, WallpaperFit};
 
 static SETTINGS: OnceLock<Mutex<Owner>> = OnceLock::new();
 
@@ -34,6 +34,7 @@ fn snapshot(lua: &Lua, owner: &Owner) -> mlua::Result<Table> {
         match setting.value {
             Value::Bool(value) => row.set("value", value)?,
             Value::Text(value) => row.set("value", value)?,
+            Value::WallpaperFit(value) => row.set("value", value.as_str())?,
             Value::Integer(value) => row.set("value", value)?,
             Value::Assignments(assignments) => {
                 row.set("value", lua.create_table_from(assignments)?)?
@@ -97,6 +98,9 @@ pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
             let key = Key::parse(&name).map_err(report)?;
             let value = match value {
                 LuaValue::Boolean(value) => Value::Bool(value),
+                LuaValue::String(value) if key == Key::WallpaperFit => Value::WallpaperFit(
+                    WallpaperFit::parse(value.to_str()?.as_ref()).map_err(report)?,
+                ),
                 LuaValue::String(value) => Value::Text(value.to_str()?.to_owned()),
                 LuaValue::Integer(value) => Value::Integer(value),
                 LuaValue::Table(table) if key == Key::WallpaperAssignments => {
@@ -120,8 +124,13 @@ pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
                     if value.fract() == 0.0
                         && key.integer_bounds().is_some_and(|(min, max)| {
                             // All schema bounds fit exactly in f64 (currently <=4294967).
-                            #[expect(clippy::cast_precision_loss, reason = "schema integer bounds fit exactly in f64")]
-                            { (min as f64..=max as f64).contains(&value) }
+                            #[expect(
+                                clippy::cast_precision_loss,
+                                reason = "schema integer bounds fit exactly in f64"
+                            )]
+                            {
+                                (min as f64..=max as f64).contains(&value)
+                            }
                         }) =>
                 {
                     // Finite integral value in the schema range, validated before conversion.
@@ -177,9 +186,46 @@ mod tests {
         lua.load("tohru_settings.set('bar.mooncoil', true)")
             .exec()
             .unwrap();
+        lua.load("tohru_settings.set('wallpaper.fit', 'centre')")
+            .exec()
+            .unwrap();
         drop(lua);
         let replacement = Lua::new();
         install(&replacement).unwrap();
+        replacement.load(r#"
+            assert(tohru_settings.snapshot()['wallpaper.fit'].value=='centre')
+            for _,mode in ipairs({'fill','fit','centre','tile'}) do
+                local updated=tohru_settings.set('wallpaper.fit',mode)
+                assert(type(updated['wallpaper.fit'].value)=='string' and updated['wallpaper.fit'].value==mode)
+                assert(tohru_settings.reload()['wallpaper.fit'].value==mode)
+            end
+        "#).exec().unwrap();
+        let fit_disk = std::fs::read(root.join("tohru/config.toml")).unwrap();
+        replacement
+            .load(
+                r#"
+            for _,invalid in ipairs({'cover','contain','center','Fill','tile ','',true,1,{}}) do
+                assert(not pcall(tohru_settings.set,'wallpaper.fit',invalid))
+                assert(tohru_settings.snapshot()['wallpaper.fit'].value=='tile')
+            end
+        "#,
+            )
+            .exec()
+            .unwrap();
+        assert_eq!(
+            std::fs::read(root.join("tohru/config.toml")).unwrap(),
+            fit_disk
+        );
+        assert_eq!(
+            SETTINGS
+                .get()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .get(Key::WallpaperFit)
+                .value,
+            Value::WallpaperFit(WallpaperFit::Tile)
+        );
         replacement.load("local s = tohru_settings.reload()['bar.mooncoil']; assert(s.value and s.managed and s.runtime_override and s.origin == 'runtime')").exec().unwrap();
         replacement.load("tohru_settings.set('appearance.corner_size', 100); assert(tohru_settings.reload()['appearance.corner_size'].value == 100); for _, n in {0, 101, 32.5, math.huge, 0/0} do assert(not pcall(tohru_settings.set, 'appearance.corner_size', n)) end; assert(tohru_settings.snapshot()['appearance.corner_size'].value == 100)").exec().unwrap();
         replacement.load("tohru_settings.set('wallpaper.assignments', {OFFLINE='/offline.png'}); tohru_settings.wallpaper_assign('DP-1', '/new.webp'); local s=tohru_settings.reload()['wallpaper.assignments']; assert(s.value.OFFLINE=='/offline.png' and s.value['DP-1']=='/new.webp'); assert(not pcall(tohru_settings.set, 'wallpaper.assignments', {[1]='/bad.png'})); assert(not pcall(tohru_settings.set, 'wallpaper.assignments', {BAD=false})); assert(not pcall(tohru_settings.wallpaper_assign, ' DP-1', '/bad.png')); tohru_settings.wallpaper_assign('DP-1', nil); assert(tohru_settings.snapshot()['wallpaper.assignments'].value['DP-1']==nil)").exec().unwrap();

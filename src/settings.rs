@@ -135,7 +135,7 @@ impl Key {
             Self::Corners | Self::CaptureSave | Self::CaptureCopy => Value::Bool(true),
             Self::CornerSize => Value::Integer(32),
             Self::WallpaperAssignments => Value::Assignments(BTreeMap::new()),
-            Self::WallpaperFit => Value::Text("fill".to_owned()),
+            Self::WallpaperFit => Value::WallpaperFit(WallpaperFit::Fill),
             Self::IdleLockSeconds => Value::Integer(1800),
             Self::IdleScreenOffUnlockedSeconds => Value::Integer(0),
             Self::IdleScreenOffLockedSeconds => Value::Integer(60),
@@ -165,11 +165,7 @@ impl Key {
             {
                 Ok(())
             }
-            (Self::WallpaperFit, Value::Text(text))
-                if matches!(text.as_str(), "fill" | "fit" | "centre" | "tile") =>
-            {
-                Ok(())
-            }
+            (Self::WallpaperFit, Value::WallpaperFit(_)) => Ok(()),
             (Self::CaptureDirectory, Value::Text(text)) if valid_capture_directory(text) => Ok(()),
             (Self::CaptureFilenamePattern, Value::Text(text))
                 if text.len() <= 1024 && !text.contains(['/', '\\', '\0']) =>
@@ -196,10 +192,46 @@ impl Key {
     }
 }
 
+/// Static wallpaper image placement, parsed at configuration boundaries.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WallpaperFit {
+    Fill,
+    Fit,
+    Centre,
+    Tile,
+}
+
+impl WallpaperFit {
+    /// Parse the exact public TOML/Lua representation.
+    ///
+    /// # Errors
+    /// Rejects aliases, noncanonical case and unknown modes.
+    pub fn parse(value: &str) -> Result<Self, Error> {
+        match value {
+            "fill" => Ok(Self::Fill),
+            "fit" => Ok(Self::Fit),
+            "centre" => Ok(Self::Centre),
+            "tile" => Ok(Self::Tile),
+            _ => Err(Error::InvalidValue(Key::WallpaperFit.name())),
+        }
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Fill => "fill",
+            Self::Fit => "fit",
+            Self::Centre => "centre",
+            Self::Tile => "tile",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Value {
     Bool(bool),
     Text(String),
+    WallpaperFit(WallpaperFit),
     Integer(i64),
     Assignments(BTreeMap<String, String>),
 }
@@ -371,6 +403,9 @@ impl Layer {
                     assignments.insert(output.to_owned(), path.to_owned());
                 }
                 Value::Assignments(assignments)
+            } else if key == Key::WallpaperFit {
+                let text = item.as_str().ok_or(Error::InvalidValue(key.name()))?;
+                Value::WallpaperFit(WallpaperFit::parse(text)?)
             } else if let Some(text) = item.as_str() {
                 Value::Text(text.to_owned())
             } else if let Some(boolean) = item.as_bool() {
@@ -515,6 +550,7 @@ impl Owner {
         let item = match &candidate {
             Value::Bool(boolean) => value(*boolean),
             Value::Text(text) => value(text),
+            Value::WallpaperFit(fit) => value(fit.as_str()),
             Value::Integer(integer) => value(*integer),
             Value::Assignments(assignments) => {
                 let mut entries = Table::new();

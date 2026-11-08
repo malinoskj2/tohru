@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use tohru_shell::settings::{Key, Origin, Owner, Value};
+use tohru_shell::settings::{Key, Origin, Owner, Value, WallpaperFit};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -521,20 +521,27 @@ fn wallpaper_fit_validates_atomically_and_retains_layer_lifetimes() {
     let mut owner = files.owner();
     assert_eq!(
         owner.get(Key::WallpaperFit).value,
-        Value::Text("fill".into())
+        Value::WallpaperFit(WallpaperFit::Fill)
     );
-    for mode in ["fill", "fit", "centre", "tile"] {
+    for mode in [
+        WallpaperFit::Fill,
+        WallpaperFit::Fit,
+        WallpaperFit::Centre,
+        WallpaperFit::Tile,
+    ] {
+        assert_eq!(WallpaperFit::parse(mode.as_str()).unwrap(), mode);
         owner
-            .set(Key::WallpaperFit, Value::Text(mode.into()))
+            .set(Key::WallpaperFit, Value::WallpaperFit(mode))
             .unwrap();
         assert_eq!(
             files.owner().get(Key::WallpaperFit).value,
-            Value::Text(mode.into())
+            Value::WallpaperFit(mode)
         );
     }
     let before = owner.get(Key::WallpaperFit);
     let disk = fs::read(files.user()).unwrap();
     for invalid in [
+        Value::Text("fill".into()), // Raw text cannot enter the typed domain.
         Value::Text("cover".into()),
         Value::Text("contain".into()),
         Value::Text("center".into()),
@@ -548,29 +555,46 @@ fn wallpaper_fit_validates_atomically_and_retains_layer_lifetimes() {
         assert_eq!(owner.get(Key::WallpaperFit), before);
         assert_eq!(fs::read(files.user()).unwrap(), disk);
     }
+    assert!(
+        owner
+            .set(
+                Key::WallpaperFolder,
+                Value::WallpaperFit(WallpaperFit::Fill)
+            )
+            .is_err()
+    );
     let persisted = fs::read_to_string(files.user()).unwrap();
     assert!(persisted.contains("# retain me") && persisted.contains("future='kept'"));
-    fs::write(files.user(), "[wallpaper]\nfit='bad'\nenabled=true\n").unwrap();
-    assert!(owner.reload().is_err());
-    assert_eq!(owner.get(Key::WallpaperFit), before);
-    assert_eq!(owner.get(Key::WallpaperEnabled).value, Value::Bool(false));
+    for invalid in ["cover", "contain", "center", "Fill", "tile ", "", "bad"] {
+        assert!(WallpaperFit::parse(invalid).is_err());
+        fs::write(
+            files.user(),
+            format!("[wallpaper]\nfit='{invalid}'\nenabled=true\n"),
+        )
+        .unwrap();
+        let rejected_disk = fs::read(files.user()).unwrap();
+        assert!(owner.reload().is_err());
+        assert_eq!(owner.get(Key::WallpaperFit), before);
+        assert_eq!(owner.get(Key::WallpaperEnabled).value, Value::Bool(false));
+        assert_eq!(fs::read(files.user()).unwrap(), rejected_disk);
+    }
     fs::write(files.user(), persisted).unwrap();
     fs::write(files.managed(), "[wallpaper]\nfit='fit'\n").unwrap();
     owner.reload().unwrap();
     assert!(owner.get(Key::WallpaperFit).managed);
     let disk = fs::read(files.user()).unwrap();
     owner
-        .set(Key::WallpaperFit, Value::Text("centre".into()))
+        .set(Key::WallpaperFit, Value::WallpaperFit(WallpaperFit::Centre))
         .unwrap();
     owner.reload().unwrap();
     assert_eq!(
         owner.get(Key::WallpaperFit).value,
-        Value::Text("centre".into())
+        Value::WallpaperFit(WallpaperFit::Centre)
     );
     assert!(owner.get(Key::WallpaperFit).runtime_override);
     assert_eq!(fs::read(files.user()).unwrap(), disk);
     assert_eq!(
         files.owner().get(Key::WallpaperFit).value,
-        Value::Text("fit".into())
+        Value::WallpaperFit(WallpaperFit::Fit)
     );
 }
