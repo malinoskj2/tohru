@@ -1,0 +1,8 @@
+part WorkspaceRibbon {
+    let ws_x = 112 + if(bar_mooncoil, 29, 0)
+    shader ws_shader { at: ws_x - 12, -5.5; size: ws_width + 24, 42; values: ws_v.0, ws_v.1, ws_v.2, ws_v.3, ws_v.4, ws_v.5, ws_v.6, ws_v.7, ws_v.8, ws_v.9, ws_v.10, ws_v.11, ws_v.12, ws_v.13, ws_v.14, ws_v.15; colors: rgb(ws_r, ws_g, ws_b), if(ws_present, #ffffff, #000000); show: ws_available }
+    repeat i in 1..11 {
+        zone box workspace_cell.$i { from: ws_x + (i - 1) * 16, 4.5; size: 16, 22; active: ws_available and i * 16 <= ws_width; cursor: pointer; label: "Workspace {i}" }
+        on press workspace_cell.$i { emit workspace_select(i) }
+    }
+}

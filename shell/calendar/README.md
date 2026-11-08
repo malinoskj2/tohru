@@ -26,14 +26,14 @@ follow j2bar `src/panel/calendar.rs` (MIT, notice in ../bar/J2BAR-LICENSE).
 Every open resets to today; clock changes update today's marker without losing
 an already open view/selection. No shell process/date polling is used.
 
-CLI-open after idle does not acquire an outside-click grab in the pinned runtime;
-the native gap is awaiting decision. No catcher or replacement dismissal is used.
-Same-scene click-open composition needs runtime input/serial evidence at the next
-allocated native pass; parser acceptance alone is not proof of popup grabbing.
+CLI-open after idle may require Escape; native click grab and Escape behavior
+are accepted. Actual same-root input/grab/outside dismissal and stable VM reload
+are recorded in progress/B.md. No cross-process catcher is used.
 
-Current checks exercise native events, month/year/Today transitions, click/Escape,
-and production-code fixtures for 4/5/6-week months, century leap years and adjacent
-selection. Screenshots are intermediate evidence, not visual parity. Liquid
-month-rail/selection motion, exact native glass, typography and pixel comparison
-remain incomplete; numbered month controls are real action entry points while
-exact track integration awaits the frame decision. No parity reduction accepted.
+The exact reviewed twelve-slot240Hz rail is published at native60Hz while moving.
+The controller resets it on open and cancels its timer on close/rest/error.
+State includes rail declarations; the popup includes the shared shader asset.
+S must provide tohru_workspace observe/tick/reset as documented in
+../../runtime/workspace/README.md and the authorized16-scalar shader patch.
+Native glass/frost/refraction/ripple provide the accepted visual approximation;
+physical output/visual review remains coordinator scope.

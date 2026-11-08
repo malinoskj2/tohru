@@ -51,10 +51,13 @@ retained nearest visual row across pin sections rather than adding the column
 count. Native Menu/Shift+F10 open actions on the selected tile. A fresh empty
 query starts with no selected highlight, as in the source.
 
-Incomplete gates: liquid tile/reveal/ripple/menu visuals, exact native glass/font
-pixel matching and final output/root lifecycle. Native metadata/discovery/launch
-and CLI-open outside-dismissal decisions are still pending independently of the
-search simplification. No catcher or alternate catalog workaround is included.
+Accepted native approximation: reveal spring/scale/opacity/vertical motion,
+per-tile spring/velocity squash/impulse and glow, panel/menu native glass, frost,
+refraction and ripple. Nested group blur+glow is rejected by the native compiler;
+background frost supplies blur instead. Exact Warp/Slosh/turbulence was dropped
+by AUTONOMOUS_DECISIONS.md. Native caret, catalog/launch, whole-file read and
+CLI idle Escape limitations are accepted. No catcher/alternate catalog is used.
+Optional exact namespace/map lifetime and final root/visual review remain.
 
 CPU: `lua tests/launcher/controllers.lua` executes production modules and checks
 category precedence, pin order, native launch refusal,100 actions including last

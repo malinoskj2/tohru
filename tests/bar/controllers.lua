@@ -99,3 +99,28 @@ assert(text.bar_media == "▶ Playing")
 watches.media({playing = false, players = {}})
 assert(not fact.bar_playing)
 print("Q-B-1/Q-B-2 regression fixtures passed")
+
+-- The real calendar controller owns publication only while visible.
+events, watches = environment()
+local rail_calls = {}
+local rail = {}
+for _, operation in ipairs({"observe", "reset", "stop"}) do
+    rail[operation] = function(...) rail_calls[#rail_calls + 1] = {operation, ...} end
+end
+calendar = assert(loadfile("shell/calendar/controller.luau"))()(rail)
+watches.clock({year = 2026, month = 11, day = 7})
+assert(#rail_calls == 0)
+calendar.open()
+assert(rail_calls[1][1] == "reset" and rail_calls[2][1] == "observe" and rail_calls[2][2] == 12 and rail_calls[2][3] == 11)
+events.calendar_month(12)
+assert(rail_calls[#rail_calls][3] == 12)
+calendar.close()
+assert(rail_calls[#rail_calls][1] == "stop")
+local count = #rail_calls
+watches.clock({year = 2026, month = 12, day = 8})
+assert(#rail_calls == count)
+calendar.open()
+assert(rail_calls[count + 1][1] == "reset" and rail_calls[count + 2][3] == 12)
+events["fact:cal_open"](false)
+assert(rail_calls[#rail_calls][1] == "stop")
+print("Calendar publication lifecycle passed")
