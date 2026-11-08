@@ -35,3 +35,10 @@ with the same protocol ID; empty-input proof requires a real assigned empty
 region, not merely absence of visible shapes. Actual native command/script
 syntax and semantic failures are reported as failures, never replaced with a
 workaround or visual/performance claim.
+
+Input-region evidence tracks Wayland double-buffered state: a region assignment
+is only pending until that surface commits. Region contents are copied at the
+assignment, so destroying the region afterward does not discard pending state.
+A committed nil region restores default full input; surface destroy/recreation
+invalidates earlier evidence even when the numeric object ID is reused. The
+CPU parser cases cover these ownership/commit transitions before native use.
