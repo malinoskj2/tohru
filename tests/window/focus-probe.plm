@@ -1,0 +1,6 @@
+ // Private test-only field: keeps a distinct native focus target across keyboard devices.
+ fact runner_focus_probe_enabled = true
+ text runner_focus_canary = "fixture canary"
+ group { show: runner_focus_probe_enabled
+  input runner_focus_canary { at: 244, 500; width: 200; size: 11; color: #cdd6f4; label: "Private focus probe" }
+ }

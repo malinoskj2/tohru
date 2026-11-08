@@ -6,6 +6,7 @@ sys.dont_write_bytecode = True
 from pathlib import Path
 import unittest
 import tempfile
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("native_settings", ROOT / "tests/native-settings.py")
@@ -65,22 +66,39 @@ class Isolation(unittest.TestCase):
 
     def test_search_focus_cannot_pass_when_keyboard_focus_is_broken(self):
         def native(command):
-            self.assertTrue(command.startswith("get "), "IPC search mutation bypasses focus evidence")
+            self.assertTrue(command.startswith("get ") or command == "focus runner_focus_canary", "IPC search mutation bypasses focus evidence")
             return "" if command == "get settings_search" else "1"
         with self.assertRaisesRegex(AssertionError, "focused native search"):
             runner.focused_search_submit(native, lambda *keys: None, "mooncoil", timeout=0.001)
 
     def test_search_focus_types_before_submit_with_no_ipc_mutation(self):
-        state = {"focus": False, "query": "", "submitted": False}
+        state = {"focus": "search", "query": "", "submitted": False}
         def keyboard(*keys):
-            if keys == ("-M", "ctrl", "-k", "f", "-m", "ctrl"): state["focus"] = True
-            elif keys == ("mooncoil",) and state["focus"]: state["query"] = keys[0]
+            if keys == ("-M", "ctrl", "-k", "f", "-m", "ctrl"): state["focus"] = "search"
+            elif keys == ("mooncoil",) and state["focus"] == "search": state["query"] = keys[0]
             elif keys == ("-k", "Return"): state["submitted"] = True
         def native(command):
+            if command == "focus runner_focus_canary": state["focus"] = "canary"; return ""
             self.assertTrue(command.startswith("get "))
-            return state["query"] if command == "get settings_search" else "1"
+            return state["query"] if command == "get settings_search" else "canary" if command == "get runner_focus_canary" else "1"
         runner.focused_search_submit(native, keyboard, "mooncoil")
         self.assertTrue(state["submitted"])
+
+    def test_native_first_field_autofocus_cannot_hide_broken_ctrl_f(self):
+        state = {"focus": "search", "query": "", "canary": "canary"}
+        def native(command):
+            if command == "focus runner_focus_canary": state["focus"] = "canary"; return ""
+            if command == "get settings_search": return state["query"]
+            if command == "get runner_focus_canary": return state["canary"]
+            self.assertEqual(command, "get settings_rows.count")
+            return "1"
+        def keyboard(*keys):
+            if keys == ("mooncoil",):
+                if state["focus"] == "search": state["query"] = keys[0]
+                else: state["canary"] += keys[0]
+            # Deliberately ignore Ctrl+F; native first-field focus started on search.
+        with self.assertRaisesRegex(AssertionError, "focused native search"):
+            runner.focused_search_submit(native, keyboard, "mooncoil", timeout=0.001)
 
     def test_intentional_quit_rejects_crash_status(self):
         class Process:
@@ -88,8 +106,23 @@ class Isolation(unittest.TestCase):
             def wait(self, timeout): return self.status
         runner.clean_exit(Process(0), "test")
         for status in (-11, 1):
+            evidence = []
             with self.assertRaisesRegex(AssertionError, "exited"):
-                runner.clean_exit(Process(status), "test")
+                runner.clean_exit(Process(status), "test", evidence)
+            self.assertEqual(evidence, [{"process_exit": "test", "status": status}])
+        class Timeout:
+            def wait(self, timeout): raise subprocess.TimeoutExpired("native", timeout)
+        with self.assertRaises(subprocess.TimeoutExpired): runner.clean_exit(Timeout(), "test")
+
+    def test_focus_probe_only_changes_cloned_settings_view(self):
+        with tempfile.TemporaryDirectory() as path:
+            scene = Path(path)
+            (scene / "settings").mkdir()
+            view = scene / "settings/window.plm"
+            view.write_text("part SettingsWindow {\n}\n")
+            runner.install_focus_probe(scene)
+            self.assertIn("input runner_focus_canary", view.read_text())
+            self.assertIn("runner_focus_probe_enabled", view.read_text())
 
     def test_diagnostics_and_one_owner_failure_cannot_skip_other_cleanup(self):
         events = []
