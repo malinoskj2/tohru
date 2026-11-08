@@ -1,6 +1,11 @@
 part CalendarState {
     include "rail-state.plm"
     fact cal_open = false
+    fact cal_year = 0
+    fact cal_selected_year = 0
+    fact cal_selected_month = 0
+    fact cal_selected_day = 0
+    fact cal_rail_ready = false
     fact cal_month = 1
     fact cal_weeks = 5
     fact cal_current = true

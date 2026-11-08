@@ -21,7 +21,7 @@ part NetworkPopup {
             box { from: 18, 118 + (n.index - floor(n.index / 7) * 7) * 34; size: 354, 32; corner: 8; color: #cdd6f4; opacity: 8%; show: n.index == net_selected and floor(n.index / 7) == net_page and not net_joining }
             text "•" { at: 282, 134 + (n.index - floor(n.index / 7) * 7) * 34; anchor: center; size: 13; color: #a6adc8; show: n.secure and floor(n.index / 7) == net_page and not net_joining }
             text n.ssid { at: 24, 134 + (n.index - floor(n.index / 7) * 7) * 34; width: 260; anchor: left center; size: 13; color: if(n.active, #a6e3a1, #cdd6f4); show: floor(n.index / 7) == net_page and not net_joining }
-            text "{round(n.strength)}%" { at: 365, 134 + (n.index - floor(n.index / 7) * 7) * 34; anchor: right center; size: 11; color: #a6adc8; show: floor(n.index / 7) == net_page and not net_joining }
+            text "{round(n.strength * 100)}%" { at: 365, 134 + (n.index - floor(n.index / 7) * 7) * 34; anchor: right center; size: 11; color: #a6adc8; show: floor(n.index / 7) == net_page and not net_joining }
             on press net_row.$n.index { emit network_select(n.index) }
         }
         text "No Wi-Fi networks reported" { at: 24, 140; size: 13; color: #a6adc8; show: net_rows.count == 0 and not net_joining }

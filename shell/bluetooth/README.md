@@ -12,10 +12,12 @@ required by native logic_luau::offer_pairing; raw sys.watch alone is insufficien
 No second raw observer, custom agent, BlueZ binding or polling is used.
 
 Power/discovery/connect/disconnect/forget are native commands. Discovery started
-here stops on close; an already running outside scan is not stopped just because
+here is tracked by process-retained scene fact bt_scan_owned across VM reload
+and stops on close only after a successful native stop; failures retain the
+obligation for retry. An already running outside scan is not stopped just because
 this popup closes. Device actions reject stale address/index changes. PIN and
 passkey preserve leading zeros; secret native input agent:no clears after send,
-question change and close. Confirm/authorize reply only to the question displayed
+question change, creation/reload reconciliation and close. Confirm/authorize reply only to the question displayed
 by this controller, checking current native id/kind; display code waits for the
 device. Cancellation names the native question id. A new question opens popup;
 close/Escape/outside native blur cancels pending question so it cannot hang unseen.
