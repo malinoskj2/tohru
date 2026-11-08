@@ -132,6 +132,32 @@ mod tests {
     }
 
     #[test]
+    fn public_rest_and_next_switch_are_identical_across_sub_cap_cadences() {
+        let now = Instant::now();
+        let mut results = Vec::new();
+        for cadence in [1, 5, 10, 25, 40] {
+            let mut indicator = Indicator::default();
+            indicator.observe(Some(5), Some(1), now);
+            indicator.observe(Some(5), Some(5), now);
+            for ms in (cadence..=5000).step_by(cadence as usize) {
+                indicator.advance(now + Duration::from_millis(ms));
+            }
+            indicator.advance(now + Duration::from_millis(5000));
+            let resting = indicator.sample();
+            assert_eq!(resting.activity, Activity::Resting);
+            indicator.observe(Some(5), Some(1), now + Duration::from_millis(5000));
+            for ms in (cadence..=200).step_by(cadence as usize) {
+                indicator.advance(now + Duration::from_millis(5000 + ms));
+            }
+            indicator.advance(now + Duration::from_millis(5200));
+            results.push((resting, indicator.sample()));
+        }
+        for result in &results[1..] {
+            assert_eq!(result, &results[0]);
+        }
+    }
+
+    #[test]
     fn shader_sample_matches_retained_cpu_geometry() {
         let now = Instant::now();
         let mut indicator = Indicator::default();
