@@ -138,3 +138,21 @@ It is not full native compilation, a display/bus test or authentication evidence
 The actual teardown/configuration helpers are exercised by existing-package CPU
 tests for every ordered cleanup stage, failure continuation, poison recovery,
 idempotence, no post-cancel action dispatch and reload configuration stability.
+
+## Pinned SCTK delegation
+
+SCTK0.21.1 uses `smithay_client_toolkit::delegate_dispatch2!(State)` for its
+SeatData/OutputData/GlobalData dispatch, plus `delegate_registry!(State)` for
+registry globals. The observer uses that exact API (SDK output.rs100,
+dispatch2.rs25, seat/mod.rs428), as the pinned SDK examples do, rather than older
+seat/output-specific delegation macros.
+
+The inline native production-boundary test is
+`tohru_idle::observer::tests::pinned_sctk_registry_seat_output_dispatch_bounds`;
+it asserts the actual observer State implements Dispatch for WlSeat/SeatData,
+WlOutput/OutputData, ZxdgOutput/OutputData, ZxdgOutputManager/GlobalData and the
+registry. It needs no compositor connection when run, but compilation requires
+the assembled native crate with pinned dependencies. After source review and
+explicit build allocation, run its exact test filter in that native crate;
+root foundation tests do not compile the SDK observer. No preparation copy
+changes or extra fixture file are required because the test lives in observer.rs.
