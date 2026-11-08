@@ -19,6 +19,28 @@ def wait(fn, label, timeout=12):
         time.sleep(.05)
     raise AssertionError('timed out: ' + label)
 
+def private_ipc_environment(inherited, run):
+    ipc = run / 'ipc'
+    for directory in (run, ipc):
+        info = directory.stat()
+        assert not directory.is_symlink() and directory.resolve() == directory
+        assert info.st_uid == os.getuid() and info.st_mode & 0o777 == 0o700
+    result = dict(inherited)
+    for key in ['WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'SWAYSOCK', 'DISPLAY',
+                'HYPRLAND_INSTANCE_SIGNATURE', 'CUA_INJECT_SOCKET', 'XDG_SESSION_ID',
+                'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE', 'TOHRU_SHELL']:
+        result.pop(key, None)
+    result['PLEAMAR_SOCKETS'] = str(ipc)
+    return result
+
+def check_ipc_directory(env, run):
+    ipc = run / 'ipc'
+    assert env['PLEAMAR_SOCKETS'] == str(ipc)
+    private_ipc_environment(env, run)
+    for endpoint in ipc.rglob('*'):
+        assert not endpoint.is_symlink() and endpoint.resolve().is_relative_to(ipc)
+        assert endpoint.stat().st_uid == os.getuid()
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--runtime', type=Path, required=True)
@@ -34,7 +56,7 @@ def main():
     shutil.copytree(ROOT / 'shell', scenes)
     home = evidence / 'home'; home.mkdir()
     # Native processes cannot reach the live authority through either bus.
-    env = {**os.environ, 'HOME':str(home), 'XDG_RUNTIME_DIR':str(run),
+    env = {**private_ipc_environment(os.environ, run), 'HOME':str(home), 'XDG_RUNTIME_DIR':str(run),
            'XDG_CONFIG_HOME':str(evidence/'config'), 'XDG_CACHE_HOME':str(evidence/'cache'),
            'XDG_DATA_HOME':str(evidence/'data'), 'XDG_STATE_HOME':str(evidence/'state'),
            'DBUS_SYSTEM_BUS_ADDRESS':os.environ['DBUS_SESSION_BUS_ADDRESS'],
@@ -54,10 +76,12 @@ def main():
     config.write_text('output HEADLESS-1 mode 1280x800@60Hz\noutput HEADLESS-1 bg #30232b solid_color\nseat seat0 hide_cursor 100\n')
     processes=[]; files=[]; events=[]; checks=[]
     def start(args, log):
+        check_ipc_directory(env, run)
         f=(evidence/log).open('w');files.append(f)
         proc=subprocess.Popen(args, env=env, stdout=f, stderr=subprocess.STDOUT)
         processes.append(proc);return proc
     def cli(scene, command, check=True):
+        check_ipc_directory(env, run)
         result=subprocess.run([str(a.runtime),'--say',scene,command],env=env,text=True,capture_output=True,timeout=6)
         events.append({'scene':scene,'command':command,'exit':result.returncode,'out':result.stdout,'err':result.stderr})
         if check: assert result.returncode==0, events[-1]
