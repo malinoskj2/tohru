@@ -1,6 +1,9 @@
 //! CPU-only checks of the actual feature controller at its native API boundary.
 use mlua::Lua;
 
+#[path = "../osd/logic.rs"]
+mod osd;
+
 #[path = "../../runtime/workspace_luau.rs"]
 mod actual_workspace_binding;
 
@@ -183,6 +186,10 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
     let modules: mlua::Table = lua.globals().get("modules").unwrap();
     for (name, source) in [
         (
+            "osd/controller",
+            include_str!("../../shell/osd/controller.luau"),
+        ),
+        (
             "sound/controller",
             include_str!("../../shell/sound/controller.luau"),
         ),
@@ -217,6 +224,12 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
     lua.load(
         r#"
         assert(fact.corners and fact.corner_size==32)
+        dispatch('audio_report'); assert(not fact.osd_open)
+        dispatch('audio_step',1); assert(not fact.osd_open, 'ack is not an observation')
+        fact['audio.volume']=0.4; dispatch('audio_report')
+        assert(fact.osd_open and text.osd_label=='40')
+        dispatch('sound_open_request'); assert(not fact.osd_open)
+        dispatch('panel_close')
         dispatch('calendar_open'); assert(fact.cal_open and not fact.sound_open)
         assert(text.cal_rail_error=='' and not fact.cal_rail_moving and fact.cal_rail_present)
         dispatch('calendar_next'); assert(fact.cal_rail_moving and timers[2])

@@ -6,6 +6,7 @@ scene Tohru {
  include "calendar/state.plm"
  include "settings/state.plm"
  include "sound/declarations.plm"
+ include "osd/state.plm"
  include "corners/state.plm"
  fact mooncoil = false
  text settings_status = "{}"
@@ -34,4 +35,5 @@ scene Tohru {
  }
  include "settings/window.plm"
  include "corners/view.plm"
+ include "osd/view.plm"
 }

@@ -34,7 +34,10 @@ on("setting_output", function()
     text.settings_error = "bar.preferred_output is deprecated and ignored: bars use every output"
 end)
 
-local sound = require("sound/controller")()
+local osd = require("osd/controller")()
+local sound = require("sound/controller")(osd.observe)
+on("sound_open_request", osd.hide)
+on("sound_toggle", function() if fact.sound_open then osd.hide() end end)
 
 require("bar/controller")()
 local make_rail = require("calendar/rail-publisher")

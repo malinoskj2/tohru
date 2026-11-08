@@ -1,6 +1,6 @@
 -- One declarative native audio service owns observation across logic reloads.
 -- Commands only publish acknowledgements/errors; reported levels remain authoritative.
-return function()
+return function(observed)
     local pending, timer = nil, nil
     local last_error = ""
     local function publish()
@@ -82,7 +82,10 @@ return function()
     -- Replacing the VM cancels its native timers and drops unissued drag work.
     -- Never let a preserved presentation fact override the native observation.
     if fact.sound_dragging then fact.sound_dragging = false end
-    on("audio_report", publish)
+    on("audio_report", function()
+        publish()
+        if observed then observed() end
+    end)
     publish()
     return {close = close}
 end
