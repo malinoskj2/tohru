@@ -8,6 +8,7 @@ scene TohruLauncher {
     fact launcher_output_count = 0
     fact launcher_outputs_known = false
     text launcher_outputs = ""
+    text launcher_focused_output = ""
     fact launcher_searching = false
     text launcher_query = ""
     fact launcher_tab = 0
