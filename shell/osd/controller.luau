@@ -7,6 +7,7 @@ return function()
     local function hide()
         stop()
         fact.osd_open = false
+        fact.osd_hover = false
     end
     local function hold()
         stop()
@@ -41,6 +42,9 @@ return function()
         if input_available then fact.osd_last_input_volume,fact.osd_last_input_muted,fact.osd_last_input_id=input,input_muted,input_id end
         if fact.osd_open and (fact.osd_input and not input_available or not fact.osd_input and not available) then hide() end
         if not available and not input_available or fact.sound_open then hide(); return end
+        -- Metadata can change without a level/mute/identity transition. Refresh
+        -- the visible label without reopening or extending its finite hold.
+        if fact.osd_open then text.osd_device = fact.osd_input and input_name or output_name end
         if not changed and not input_changed then return end
         -- A combined native report can change both; output takes deterministic priority.
         fact.osd_input=input_changed and not changed
@@ -54,7 +58,11 @@ return function()
         fact.osd_open=true
         hold()
     end
-    on("osd_enter", function() fact.osd_hover = true; stop() end)
+    on("osd_enter", function()
+        if not fact.osd_open then return end
+        fact.osd_hover = true
+        stop()
+    end)
     on("osd_leave", function() fact.osd_hover = false; hold() end)
     on("fact:sound_open", function() if fact.sound_open then hide() end end)
     -- Old VM timers are cancelled natively. Never retain a stale pointer hold;

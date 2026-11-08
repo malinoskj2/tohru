@@ -19,7 +19,8 @@ panel at the sound button center minus150px, 6px below the31px bar; native slide
 constraints keep it onscreen. Sound header uses j2bar15px/600 type,6px padding,
 40px header and30px row; SVG speaker paths are from j2bar's OSD speaker with its
 MIT notice retained. Mocha text/sky palette follows the source. This is a native
-glass/interaction candidate, not accepted1:1 graphics/motion or glass parity.
+glass/interaction candidate using the accepted native effects approximation;
+no claim of1:1 graphics/motion or glass pixel parity.
 The More control exposes native output selection, microphone level/mute and
 per-stream application level/mute in a paged view.
 
@@ -47,8 +48,9 @@ Tab selects mute/slider; arrows adjust5%, Return/Space on mute toggles, Escape
 closes. Parent asks exclusive keyboard only while panel is open and releases it
 on close. Native pointer-open popup grabs use a recent real pointer serial;
 outside click then follows compositor popup_done. CLI-open without recent pointer
-serial has no native outside grab: this remains an explicit pending user decision,
-not claimed as parity. No layer catcher, serial workaround or native patch added.
+serial has no native outside grab and may require Escape. This native behavior
+is accepted by AUTONOMOUS_DECISIONS.md; outside-click parity is not claimed.
+No layer catcher, serial workaround or native patch added.
 
 User accepted native every-output bars, superseding preferred single-output
 policy. Root now uses screens:all, which also permits native root popup compilation;
@@ -123,3 +125,20 @@ IPC; output/app IDs must be canonical unsigned32-bit integers. Mic SVGs retain
 Lucide's license under LICENSE.LUCIDE. Controller/CLI/compiler checks cover source
 and API mappings only; private Pulse input/apps/hotplug/input/visual evidence
 remains pending an exclusive native workload allocation.
+
+## Whole-report sound/OSD presentation boundary
+
+The volume vessel consumes the sound controller's already-published native audio
+report; it does not create a second watch, issue commands, or poll. A same-ID
+device rename refreshes a visible vessel's label without reopening it or extending
+the hold. Hidden metadata updates do not show an OSD. Explicit hide, panel-open
+suppression and disappearing devices clear pointer-hover presentation state so a
+later observed level/mute transition gets its finite hold. A queued enter after
+hide is ignored. Native commands alone never display an optimistic new level.
+
+`tests/sound/osd-integration.lua` executes both production controllers against a
+plain model/fact boundary, one native-watch fixture and cancellable timer fixture.
+It verifies native report ordering, rename/mute/device/disappearance, hover/hide,
+command acceptance/error and reload baseline behavior. These are CPU source
+checks, not real Pulse/input/compositor/pixel/resource measurements. Native audio
+I/O can still block root logic indefinitely, as accepted.
