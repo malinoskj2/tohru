@@ -13,6 +13,12 @@ hyprlandPlugins.mkHyprlandPlugin {
     make -j1
     runHook postBuild
   '';
+  doCheck = true;
+  checkPhase = ''
+    runHook preCheck
+    make check-abi
+    runHook postCheck
+  '';
   installPhase = ''
     runHook preInstall
     make install PREFIX=$out

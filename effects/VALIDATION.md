@@ -7,10 +7,16 @@
 - Compilation: GCC 16.2.0, existing stdenv and exact reviewed Hyprland 0.56.2
   dev output, Lua 5.5.0; `make -j1` succeeded. One inherited warning about
   deprecated `HyprlandAPI::addConfigKeyword` in the legacy-config branch.
+- `make check-abi` uses the real candidate version macros and the actual
+  private ABI helper with a fake host-hash boundary; exact matching passes and
+  wrong source/dependency hashes fail. Nix runs this as its package check phase.
+- Lua example syntax passes `luac -p` (does not establish compositor semantics).
 - Packaging expressions parsed with `nix-instantiate --parse`; standalone
   flake resolves offline at the recorded nixpkgs pin. Nix package derivation
-  evaluates and its dry-run initially requested only this plugin, no compositor
-  or dependency build.
+  evaluates for x86_64-linux and aarch64-linux (only x86_64-linux is compiled).
+  The x86_64-linux plugin-only Nix build/install/fixup passed; final package
+  check-phase validation is recorded in the progress log. No compositor or
+  dependency build was needed.
 - The shared object has the required `pluginInit`, `pluginExit`,
   `pluginAPIVersion` exports, four selected component init functions, debug
   information/build ID. No extracted glass/panel/managed-rule component.
