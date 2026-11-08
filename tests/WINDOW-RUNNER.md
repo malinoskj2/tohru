@@ -41,6 +41,9 @@ retirement and active shutdown. The same private compositor then runs actual roo
 click/grab/outside-dismissal, CLI Escape, private output volume/mute/error paths,
 Settings search Return/provenance/WM-close/reopen, visible-calendar VM reload and
 retained timer rest, writable/managed settings reload and process restart.
+Ctrl+F evidence types the query through the virtual keyboard and checks the live
+input text before Return; no IPC search setter can bypass a failed focus action.
+Intentional window/root quit must return exit status zero; crashes remain failures.
 
 This is driver/lifecycle/input evidence, not performance, exact pixel parity or
 physical-session acceptance. Both application and compositor hardware adapters

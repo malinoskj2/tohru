@@ -63,6 +63,34 @@ class Isolation(unittest.TestCase):
         self.assertEqual({node["id"] for node in runner.windows_for_app(tree, app)}, {1, 2})
         self.assertEqual(runner.windows_for_app({"nodes": []}, app), [])
 
+    def test_search_focus_cannot_pass_when_keyboard_focus_is_broken(self):
+        def native(command):
+            self.assertTrue(command.startswith("get "), "IPC search mutation bypasses focus evidence")
+            return "" if command == "get settings_search" else "1"
+        with self.assertRaisesRegex(AssertionError, "focused native search"):
+            runner.focused_search_submit(native, lambda *keys: None, "mooncoil", timeout=0.001)
+
+    def test_search_focus_types_before_submit_with_no_ipc_mutation(self):
+        state = {"focus": False, "query": "", "submitted": False}
+        def keyboard(*keys):
+            if keys == ("-M", "ctrl", "-k", "f", "-m", "ctrl"): state["focus"] = True
+            elif keys == ("mooncoil",) and state["focus"]: state["query"] = keys[0]
+            elif keys == ("-k", "Return"): state["submitted"] = True
+        def native(command):
+            self.assertTrue(command.startswith("get "))
+            return state["query"] if command == "get settings_search" else "1"
+        runner.focused_search_submit(native, keyboard, "mooncoil")
+        self.assertTrue(state["submitted"])
+
+    def test_intentional_quit_rejects_crash_status(self):
+        class Process:
+            def __init__(self, status): self.status = status
+            def wait(self, timeout): return self.status
+        runner.clean_exit(Process(0), "test")
+        for status in (-11, 1):
+            with self.assertRaisesRegex(AssertionError, "exited"):
+                runner.clean_exit(Process(status), "test")
+
     def test_diagnostics_and_one_owner_failure_cannot_skip_other_cleanup(self):
         events = []
         class Process:
