@@ -66,4 +66,10 @@ class Isolation(unittest.TestCase):
             self.assertTrue(log.closed)
             self.assertFalse(run.exists())
 
+    def test_pam_guard_rejects_current_host_namespace_before_policy_or_exec(self):
+        spec=importlib.util.spec_from_file_location('pam_guard',HERE/'pam_guard.py')
+        guard=importlib.util.module_from_spec(spec);spec.loader.exec_module(guard)
+        with self.assertRaisesRegex(RuntimeError,'mount namespace was not isolated'):
+            guard.verify('unused',os.readlink('/proc/self/ns/mnt'),os.readlink('/proc/self/ns/user'))
+
 if __name__=='__main__': unittest.main()
