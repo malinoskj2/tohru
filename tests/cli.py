@@ -23,6 +23,16 @@ class Cli(unittest.TestCase):
     def invoke(self, *args, **env):
         return subprocess.run([str(ROOT / "bin/tohru"), *args], env={**self.env, **env}, text=True, capture_output=True)
 
+    def test_session_menu_routes_never_start_a_role(self):
+        for action in ['open','close','toggle']:
+            result=self.invoke('session',action)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(json.loads(result.stdout),['--say','tohru-session','emit menu_'+action])
+        self.assertEqual(self.invoke('session','poweroff').returncode,2)
+        result=self.invoke('routing-error')
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(json.loads(result.stdout),['--say','tohru','get routing_error'])
+
     def test_native_input_app_and_output_commands_reject_ambiguous_or_invalid_ids(self):
         for arguments, event in [
             (('audio','input','volume','up'),'audio_input_up'),

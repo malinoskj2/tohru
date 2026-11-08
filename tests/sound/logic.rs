@@ -277,6 +277,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
     "#).exec().unwrap();
     let modules: mlua::Table = lua.globals().get("modules").unwrap();
     for (name, source) in [
+        ("session-route", include_str!("../../shell/session-route.luau")),
         (
             "settings/capture",
             include_str!("../../shell/settings/capture.luau"),

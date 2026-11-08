@@ -131,3 +131,5 @@ on("capture_cancel", capture_keyboard)
 on("capture_output_changed", capture_keyboard)
 on("fact:capture_open", capture_keyboard)
 capture_keyboard()
+
+require("session-route")

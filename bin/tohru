@@ -5,6 +5,8 @@ usage() {
 Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru panel close
        tohru settings open|close
+       tohru session open|close|toggle
+       tohru routing-error
        tohru wallpaper open|randomize
        tohru screenshot region|cancel|status --json
        tohru audio volume up|down
@@ -58,6 +60,15 @@ case ${1:-help} in
         [[ $# == 2 ]] || fail 'Usage: tohru wallpaper open|randomize'
         case $2 in open) event=settings_wallpaper_open ;; randomize) event=wallpaper_randomize ;; *) fail 'Usage: tohru wallpaper open|randomize' ;; esac
         exec "$pleamar" --say tohru "emit $event"
+        ;;
+    session)
+        [[ $# == 2 ]] || fail 'Usage: tohru session open|close|toggle'
+        case $2 in open|close|toggle) ;; *) fail 'Usage: tohru session open|close|toggle' ;; esac
+        exec "$pleamar" --say tohru-session "emit menu_$2"
+        ;;
+    routing-error)
+        [[ $# == 1 ]] || fail 'routing-error takes no arguments'
+        exec "$pleamar" --say tohru 'get routing_error'
         ;;
     settings)
         [[ $# == 2 ]] || fail 'Usage: tohru settings open|close'

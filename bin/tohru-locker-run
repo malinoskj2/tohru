@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Dedicated process; never imported/owned by the ordinary bar lifecycle.
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+unset TOHRU_SHELL
+export TOHRU_LOCKER=1
+exec "${TOHRU_RUNTIME:-pleamar}" --scene "${TOHRU_LOCK_SCENE:-$root/shell/lock/lock.plm}" --no-hud --stall 0 --answer-as tohru-lock "$@"

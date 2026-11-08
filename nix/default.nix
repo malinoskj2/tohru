@@ -15,7 +15,7 @@ let
       ../tests/wallpaper/catalog.rs ../tests/capture
       ../runtime/idle/mod.rs ../runtime/idle/cookies.rs ../runtime/idle/delay.rs ../runtime/idle/input.rs ../runtime/idle/logind_state.rs ../runtime/idle/configuration.rs ../runtime/idle/teardown.rs
       ../runtime/idle/native.rs ../runtime/idle/observer.rs ../runtime/idle/screensaver.rs ../runtime/idle/logind.rs ../runtime/idle/sleep_guard.rs
-      ../tests/session/idle.rs ../tests/session/idle_cookies.rs ../tests/session/idle_delay.rs ../tests/session/idle_input.rs ../tests/session/idle_logind.rs ../tests/session/idle_configuration.rs ../tests/session/idle_teardown.rs ../LICENSE ];
+      ../tests/session/idle.rs ../tests/session/idle_cookies.rs ../tests/session/idle_delay.rs ../tests/session/idle_input.rs ../tests/session/idle_logind.rs ../tests/session/idle_configuration.rs ../tests/session/idle_teardown.rs ../tests/runtime/role-install.rs ../LICENSE ];
   };
   lockSource = lib.fileset.toSource {
     root = ../.;
@@ -80,6 +80,8 @@ let
       cp ${lockSource}/runtime/lock/authority.rs src/tohru_lock/authority.rs
       cp ${lockSource}/runtime/lock/publication.rs src/tohru_lock/publication.rs
       cp ${lockSource}/tests/session/* tests/session/
+      mkdir -p tests/runtime
+      cp ${foundationSource}/tests/runtime/role-install.rs tests/runtime/
       cp ${../runtime/Cargo.lock} Cargo.lock
     '';
     nativeBuildInputs = [ pkg-config makeWrapper ];
@@ -117,11 +119,14 @@ in stdenvNoCC.mkDerivation {
     mkdir -p $out/bin $out/share/tohru
     cp -r shell $out/share/tohru/
     cp LICENSE $out/share/tohru/LICENSE
-    cp bin/tohru bin/tohru-run $out/bin/
+    cp bin/tohru bin/tohru-run bin/tohru-locker-run $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar
     wrapProgram $out/bin/tohru-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_SCENE $out/share/tohru/shell/bar.plm
+    wrapProgram $out/bin/tohru-locker-run \
+      --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
+      --set TOHRU_LOCK_SCENE $out/share/tohru/shell/lock/lock.plm
     runHook postInstall
   '';
   passthru = { inherit runtime; };

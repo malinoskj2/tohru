@@ -11,7 +11,16 @@
  #[cfg(feature = "luau")]
 --- a/src/logic_luau.rs
 +++ b/src/logic_luau.rs
-@@ -1415,6 +1415,7 @@
+@@ -1411,10 +1411,15 @@
+         json.set("encode", lua.create_function(|_, v: Value| Ok(crate::platform::json_encode(&lua_to_value(&v, 0))))?)?;
+         g.set("json", json)?;
+
+-        if self.prefix.is_none() && std::env::var("TOHRU_SHELL").as_deref() == Ok("1") {
++        // Config selection only: native prefix/lock-held/auth authority is unchanged.
++        // Dedicated lockers must not load unrelated shell TOML before authentication.
++        if self.prefix.is_none() && std::env::var("TOHRU_LOCKER").as_deref() == Ok("1") {
++            crate::tohru_idle::install(&lua, self.tx.clone(), self.to_logic.clone())?;
++        } else if self.prefix.is_none() && std::env::var("TOHRU_SHELL").as_deref() == Ok("1") {
              crate::tohru_settings::install(&lua)?;
              crate::tohru_workspace::install(&lua)?;
              crate::tohru_info::install(&lua)?;
@@ -19,6 +28,14 @@
          }
 
          // The sandbox, last of all: from here on the globals are not touched.
+@@ -1790,6 +1795,7 @@
+ mod tests {
+     use super::{command_allowed, say_allowed};
+     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/session/native_binding.rs"));
++    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/runtime/role-install.rs"));
+
+     #[test]
+     fn a_command_declared_with_its_script_runs_only_that() {
 --- a/src/lib.rs
 +++ b/src/lib.rs
 @@ -661,5 +661,7 @@
