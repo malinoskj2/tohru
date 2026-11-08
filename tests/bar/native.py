@@ -22,6 +22,28 @@ def wait_for(operation, label, timeout=12):
     raise AssertionError(f"Timed out: {label}")
 
 
+def private_environment(inherited, evidence, runtime_dir):
+    env = {**inherited, 'HOME': str(evidence / 'home'), 'XDG_RUNTIME_DIR': str(runtime_dir),
+           **{f'XDG_{key}_HOME': str(evidence / key.lower()) for key in ('CONFIG', 'CACHE', 'DATA', 'STATE')},
+           'WLR_BACKENDS': 'headless', 'WLR_HEADLESS_OUTPUTS': '1', 'WLR_LIBINPUT_NO_DEVICES': '1',
+           'WLR_RENDERER': 'gles2', 'WLR_RENDER_DRM_DEVICE': '/dev/dri/renderD128',
+           'VK_DRIVER_FILES': '/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json',
+           'WGPU_BACKEND': 'vulkan', 'PLEAMAR_BACKEND': 'vulkan', 'PLEAMAR_GENERIC': '1'}
+    env['PLEAMAR_SOCKETS'] = str(runtime_dir / 'ipc')
+    for key in ('WAYLAND_DISPLAY', 'SWAYSOCK', 'DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE', 'TOHRU_RUNTIME', 'TOHRU_SCENE', 'TOHRU_MANAGED_CONFIG'):
+        env.pop(key, None)
+    return env
+
+
+def assert_private_ipc(env, runtime_dir):
+    expected = runtime_dir.absolute() / 'ipc'
+    assert Path(env['PLEAMAR_SOCKETS']).absolute() == expected, 'IPC route escaped private directory'
+    assert expected.resolve() == expected, 'Private IPC directory resolves outside its owner'
+    if expected.exists():
+        for endpoint in expected.iterdir():
+            assert endpoint.resolve().parent == expected and not endpoint.is_symlink(), 'Outside IPC endpoint rejected'
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime', type=Path, required=True)
@@ -40,14 +62,8 @@ def main():
     runtime_dir = ROOT / '.tmp' / f'b{os.getpid()}'
     runtime_dir.mkdir(mode=0o700)
     (evidence / 'home').mkdir()
-    env = {**os.environ, 'HOME': str(evidence / 'home'), 'XDG_RUNTIME_DIR': str(runtime_dir),
-           **{f'XDG_{key}_HOME': str(evidence / key.lower()) for key in ('CONFIG', 'CACHE', 'DATA', 'STATE')},
-           'WLR_BACKENDS': 'headless', 'WLR_HEADLESS_OUTPUTS': '1', 'WLR_LIBINPUT_NO_DEVICES': '1',
-           'WLR_RENDERER': 'gles2', 'WLR_RENDER_DRM_DEVICE': '/dev/dri/renderD128',
-           'VK_DRIVER_FILES': '/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json',
-           'WGPU_BACKEND': 'vulkan', 'PLEAMAR_BACKEND': 'vulkan', 'PLEAMAR_GENERIC': '1'}
-    for key in ('WAYLAND_DISPLAY', 'SWAYSOCK', 'DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE'):
-        env.pop(key, None)
+    env = private_environment(os.environ, evidence, runtime_dir)
+    Path(env['PLEAMAR_SOCKETS']).mkdir(mode=0o700)
     sway_config = evidence / 'sway.conf'
     sway_config.write_text('output HEADLESS-1 mode 1280x720@60Hz\noutput HEADLESS-1 scale 1\noutput HEADLESS-1 bg #30232b solid_color\nseat seat0 hide_cursor 100\n')
     processes, logs, events = [], [], []
@@ -56,11 +72,14 @@ def main():
     def start(command, label, extra=None):
         log = (evidence / f'{label}.log').open('w')
         logs.append(log)
-        process = subprocess.Popen(command, env={**env, **(extra or {})}, stdout=log, stderr=subprocess.STDOUT)
+        child_env = {**env, **(extra or {})}
+        assert_private_ipc(child_env, runtime_dir)
+        process = subprocess.Popen(command, env=child_env, stdout=log, stderr=subprocess.STDOUT)
         processes.append(process)
         return process
 
     def say(scene, command):
+        assert_private_ipc(env, runtime_dir)
         result = subprocess.run([runtime, '--say', scene, command], env=env, text=True, capture_output=True, timeout=10)
         events.append({'scene': scene, 'command': command, 'exit': result.returncode, 'out': result.stdout, 'err': result.stderr})
         return result.stdout.strip() if result.returncode == 0 else None
