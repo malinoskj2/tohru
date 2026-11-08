@@ -94,15 +94,36 @@ def finish_owned(processes, logs, evidence, events):
     failures = []
     for process in reversed(processes):
         try:
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
+            running = process.poll() is None
         except Exception as error:
             failures.append(error)
+            running = True
+        if not running:
+            continue
+        force = False
+        try:
+            process.terminate()
+        except Exception as error:
+            failures.append(error)
+            force = True
+        if not force:
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                force = True
+            except Exception as error:
+                failures.append(error)
+                force = True
+        if force:
+            try:
+                process.kill()
+            except Exception as error:
+                failures.append(error)
+            # Reap is attempted even when termination and kill both failed.
+            try:
+                process.wait(timeout=5)
+            except Exception as error:
+                failures.append(error)
     for log in logs:
         try:
             log.close()
