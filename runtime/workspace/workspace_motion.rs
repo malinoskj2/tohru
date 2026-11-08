@@ -5,14 +5,16 @@ pub(crate) const STEP: f64 = 1.0 / 240.0;
 pub(crate) const MAX_FRAME: f64 = 0.05;
 /// Below this residual energy a spring system with pixel-sized coordinates comes to rest.
 pub(crate) const SETTLE_ENERGY: f64 = 6e-3;
-/// How long a colour change takes to fade (`--color-fade`).
-
 /// xorshift64*: the design draws each spring's stiffness and damping from `Math.random`. A fixed
 /// seed keeps rendering reproducible; consecutive draws still differ.
 #[derive(Clone, Debug)]
 pub(crate) struct Rng(pub(crate) u64);
 
 impl Rng {
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "The RNG shifts to 53 bits before conversion, exactly representable in f64"
+    )]
     pub(crate) fn unit(&mut self) -> f64 {
         self.0 ^= self.0 >> 12;
         self.0 ^= self.0 << 25;
