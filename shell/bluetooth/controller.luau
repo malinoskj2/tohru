@@ -1,6 +1,5 @@
 -- The declarative native Bluetooth service explicitly offers the pairing agent.
 return function()
-    local scanning = false
     local shown_id, shown_kind = 0, "none"
     local function request(command, ...)
         local ok, err = pcall(sys.call, "bluetooth." .. command, ...)
@@ -16,7 +15,7 @@ return function()
     local function close()
         fact.bt_open = false
         cancel_question()
-        if scanning then request("scan", false); scanning = false end
+        if fact.bt_scan_owned and request("scan", false) then fact.bt_scan_owned = false end
     end
     local function open() fact.bt_open = true; fact.bt_page = 0; fact.bt_selected = -1; fact.bt_has_target = false; text.bt_target = "" end
     local function toggle() if fact.bt_open then close() else open() end end
@@ -49,21 +48,24 @@ return function()
     on("bluetooth_open", open); on("bluetooth_close", close)
     on("bluetooth_toggle", toggle); on("bluetooth_select", select)
     on("bluetooth_connect", connect)
-    on("bluetooth_activate", function() select(fact.bt_selected); connect() end)
+    on("bluetooth_activate", connect)
     on("bluetooth_forget", function() if text.bt_target ~= "" then request("forget", text.bt_target) end end)
     on("bluetooth_power", function() request("power", not fact["bt.powered"]) end)
     on("bluetooth_scan", function()
-        local next_scan = not fact["bt.discovering"]
-        if request("scan", next_scan) then scanning = next_scan end
+        if fact.bt_scan_owned then
+            if request("scan", false) then fact.bt_scan_owned = false end
+        elseif fact["bt.discovering"] then text.bt_request = "Discovery is already active"
+        elseif request("scan", true) then fact.bt_scan_owned = true end
     end)
     on("bluetooth_answer", answer); on("submit:bt_answer", answer)
     on("bluetooth_cancel", cancel_question)
-    on("bluetooth_question", function()
+    local function reconcile_question()
         text.bt_answer = ""
         local id, kind = question()
         shown_id, shown_kind = id, kind
         if id > 0 and kind ~= "none" then fact.bt_open = true end
-    end)
+    end
+    on("bluetooth_question", reconcile_question)
     on("bluetooth_move", function(delta)
         local count = fact["bt_devices.count"] or 0
         if count == 0 then return end
@@ -72,5 +74,7 @@ return function()
     end)
     on("bluetooth_page", function(delta) fact.bt_page = math.max(0, math.min(math.max(0, math.ceil((fact["bt_devices.count"] or 0) / 6) - 1), fact.bt_page + delta)) end)
     on("fact:bt_open", function(value) if not value then close() end end)
+    reconcile_question()
+    if not fact.bt_open and fact.bt_scan_owned and request("scan", false) then fact.bt_scan_owned = false end
     return {open = open, close = close, toggle = toggle}
 end

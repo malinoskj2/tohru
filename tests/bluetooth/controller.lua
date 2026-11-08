@@ -28,3 +28,23 @@ events.bluetooth_cancel();assert(calls[#calls][1]=="bluetooth.cancel" and calls[
 fact["bt.pairing_id"]=0;fact["bt.pairing"]="none";events.bluetooth_question();count=#calls;events.bluetooth_answer();assert(#calls==count)
 failure="No adapter";events.bluetooth_power();assert(text.bt_request:find(failure,1,true))
 print("Production Bluetooth stale device/question, leading-zero code, confirmation/display/cancel and owned discovery fixtures passed")
+
+-- Real native Shared.fresh retains facts/texts; handlers and local VM state reset.
+failure=nil
+for _,kind in ipairs({"pin","passkey","confirm","authorize"}) do
+ fact["bt.pairing_id"]=42;fact["bt.pairing"]=kind;fact.bt_open=false;text.bt_answer="old secret"
+ events={};bluetooth=assert(loadfile("shell/bluetooth/controller.luau"))()()
+ assert(fact.bt_open and text.bt_answer=="")
+ text.bt_answer="001234";count=#calls;events.bluetooth_answer()
+ assert(#calls==count+1 and calls[#calls][2]==42)
+end
+fact["bt.pairing_id"]=0;fact["bt.pairing"]="none";fact["bt.discovering"]=false
+bluetooth.open();events.bluetooth_scan();assert(fact.bt_scan_owned)
+fact["bt.discovering"]=true;events={};bluetooth=assert(loadfile("shell/bluetooth/controller.luau"))()()
+failure="Stop failed";bluetooth.close();assert(fact.bt_scan_owned and text.bt_request:find(failure,1,true))
+failure=nil;bluetooth.close();assert(not fact.bt_scan_owned and calls[#calls][1]=="bluetooth.scan" and calls[#calls][2]==false)
+count=#calls;events={};bluetooth=assert(loadfile("shell/bluetooth/controller.luau"))()();bluetooth.close()
+assert(#calls==count) -- Aggregate discovery alone confers no stop obligation.
+bluetooth.open();events.bluetooth_select(0);text["bt_devices.0.address"]="reordered"
+count=#calls;events.bluetooth_activate();assert(#calls==count)
+print("Bluetooth Return and actual controller reload/pending question/owned failed-stop regressions passed")

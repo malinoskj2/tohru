@@ -41,3 +41,7 @@ S must provide tohru_workspace observe/tick/reset as documented in
 ../../runtime/workspace/README.md and the authorized16-scalar shader patch.
 Native glass/frost/refraction/ripple provide the accepted visual approximation;
 physical output/visual review remains coordinator scope.
+
+Visible logic reload retains cal_year/month/selected date facts and cal_rail_ready.
+It rearms the process-owned Indicator through observe without resetting date or
+physics; failed reset readiness remains false until explicit open succeeds.
