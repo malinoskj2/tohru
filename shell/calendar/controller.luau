@@ -54,10 +54,13 @@ return function()
         today = {year = value.year, month = value.month, day = value.day}
         if not year then reset() else publish() end
     end)
-    on("fact:cal_open", function(open) if open then reset() end end)
-    on("calendar_toggle", function() fact.cal_open = not fact.cal_open end)
-    on("calendar_open", function() fact.cal_open = true; reset() end)
-    on("calendar_close", function() fact.cal_open = false end)
+    local function open() fact.cal_open = true; reset() end
+    local function close() fact.cal_open = false end
+    local function toggle() if fact.cal_open then close() else open() end end
+    on("fact:cal_open", function(visible) if visible then reset() end end)
+    on("calendar_toggle", toggle)
+    on("calendar_open", open)
+    on("calendar_close", close)
     on("calendar_today", reset)
     local function shift(delta)
         if not year then return end
@@ -79,4 +82,5 @@ return function()
         year, month = day.year, day.month
         publish()
     end)
+    return {open = open, close = close, toggle = toggle}
 end
