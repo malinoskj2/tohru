@@ -25,8 +25,10 @@ pub(super) enum Error {
     },
     #[error("libmpv event queue exceeded its bounded drain budget")]
     EventOverflow,
-    #[error("video ended or backend shut down")]
-    Ended,
+    #[error("video backend shut down")]
+    Shutdown,
+    #[error("video ended (reason{reason})")]
+    Ended { reason: c_int },
     #[error("video startup exceeded10 seconds")]
     StartupTimeout,
     #[error("video pause acknowledgment exceeded500 milliseconds")]
@@ -82,6 +84,12 @@ struct FrameInfo {
     flags: u64,
     target_time: i64,
 }
+/// Only the stable reason/error prefix of `mpv_event_end_file` is read.
+#[repr(C)]
+struct EndFile {
+    reason: c_int,
+    error: c_int,
+}
 
 // Checked independently against the pinned SDK with tests/wallpaper/mpv-abi.c.
 const _: () = {
@@ -94,6 +102,7 @@ const _: () = {
     assert!(offset_of!(Property, data) == 16);
     assert!(size_of::<Property>() == 24);
     assert!(size_of::<FrameInfo>() == 16);
+    assert!(size_of::<EndFile>() == 8 && offset_of!(EndFile, error) == 4);
 };
 
 #[cfg_attr(not(test), link(name = "mpv"))]
@@ -225,6 +234,9 @@ impl Player {
             (c"terminal", c"no"),
             (c"access-references", c"no"),
             (c"load-unsafe-playlists", c"no"),
+            (c"autoload-files", c"no"),
+            (c"demuxer-max-bytes", c"32MiB"),
+            (c"demuxer-max-back-bytes", c"8MiB"),
             (c"vo", c"libmpv"),
             (c"audio", c"no"),
             (c"sub", c"no"),
@@ -301,7 +313,21 @@ impl Player {
                     }
                     return Ok(());
                 }
-                1 | 7 => return Err(Error::Ended),
+                1 => return Err(Error::Shutdown),
+                7 => {
+                    if event.data.is_null() {
+                        return Err(Error::Ended { reason: -1 });
+                    }
+                    // SAFETY: END_FILE payload begins with the SDK's reason/error int pair.
+                    let end = unsafe { &*event.data.cast::<EndFile>() };
+                    if end.reason == 4 && end.error < 0 {
+                        return Err(Error::Api {
+                            operation: "media decode/open",
+                            code: end.error,
+                        });
+                    }
+                    return Err(Error::Ended { reason: end.reason });
+                }
                 4 => {
                     check(event.error, "set pause reply")?;
                     if self
@@ -366,6 +392,33 @@ impl Player {
         )?;
         self.pending_pause = Some((id, paused, now));
         Ok(())
+    }
+
+    /// Last-resort bounded client-only request if EGL cannot be made current.
+    /// This does NOT acknowledge pause or make it safe to free render resources.
+    pub(super) fn terminal_pause(&mut self) -> Result<(), Error> {
+        let mut paused = 1;
+        check(
+            // SAFETY: FLAG copied by the render-thread-safe async client API; one final request only.
+            unsafe {
+                mpv_set_property_async(
+                    self.handle.as_ptr(),
+                    9,
+                    c"pause".as_ptr(),
+                    3,
+                    ptr::from_mut(&mut paused).cast(),
+                )
+            },
+            "enqueue terminal pause",
+        )
+    }
+
+    pub(super) fn deadline(&self) -> Option<Instant> {
+        let startup = (!self.loaded).then(|| self.started + Duration::from_secs(10));
+        let pause = self
+            .pending_pause
+            .map(|(_, _, since)| since + Duration::from_millis(500));
+        startup.into_iter().chain(pause).min()
     }
 
     pub(super) fn paused(&self) -> Option<bool> {

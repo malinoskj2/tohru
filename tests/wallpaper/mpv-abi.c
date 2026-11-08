@@ -16,3 +16,5 @@ _Static_assert(MPV_RENDER_PARAM_WL_DISPLAY==9 && MPV_RENDER_PARAM_NEXT_FRAME_INF
 _Static_assert(_Generic(&mpv_get_time_us, int64_t (*)(mpv_handle*):1,default:0),"time query signature");
 _Static_assert(_Generic(&mpv_set_property_async, int (*)(mpv_handle*,uint64_t,const char*,mpv_format,void*):1,default:0),"async pause signature");
 _Static_assert(_Generic(&mpv_command_async,int (*)(mpv_handle*,uint64_t,const char**):1,default:0),"async load signature");
+
+_Static_assert(offsetof(mpv_event_end_file,reason)==0 && offsetof(mpv_event_end_file,error)==4,"end-file payload prefix ABI");

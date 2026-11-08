@@ -1,0 +1,15 @@
+// Compile-only full W-owned actor. Framework SysValue/ToRender are explicit type
+// fixtures; no actor constructor/query is executed, no native role is started.
+extern crate self as tohru_shell;
+#[path="POLICY_SOURCE"] pub mod video;
+pub mod scene {pub enum ToRender{ExternalSignal(&'static str,Option<f32>),Quit}}
+pub mod platform {
+    pub enum SysValue{Text(String),List(Vec<SysValue>),Num(f64),Bool(bool),Map(Vec<(String,SysValue)>)}
+}
+#[path="NATIVE_SOURCE"] mod native;
+#[expect(clippy::missing_errors_doc,reason="compile-only actual root binding entry")]
+pub fn publish(snapshot:video::Snapshot,changed:std::sync::mpsc::Sender<scene::ToRender>)->Result<(),String>{native::publish(snapshot,changed)}
+#[expect(clippy::missing_errors_doc,reason="compile-only actual root binding entry")]
+pub fn status()->Result<platform::SysValue,String>{native::query("video.status",&[])}
+#[expect(clippy::missing_errors_doc,reason="compile-only actual root teardown entry")]
+pub fn shutdown()->Result<(),String>{native::shutdown()}
