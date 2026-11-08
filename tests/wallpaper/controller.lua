@@ -87,3 +87,21 @@ local exact = {}
 for i = 1, 32 do exact["OUTPUT-" .. i] = "/pictures/a.png" end
 assert(controller.randomize(exact, {}, {}, canonical)["OUTPUT-32"] == "/pictures/a.png")
 assert(not pcall(controller.randomize, exact, {"NEW"}, files, canonical))
+
+-- Native video status is optional in private entries and independently errors;
+-- it never mutates accepted image routes or assignment-request diagnostics.
+local status={phase="running",error="",outputs={B={state="failed",error="decoder failed"},A={state="paused",error=""}}}
+json={encode=function(value) assert(value==status);return "status-fixture" end}
+local video_controller=assert(loadfile("shell/wallpaper/controller.luau"))()(nil,function() return status end)
+assert(text.wallpaper_video_status=="status-fixture" and text.wallpaper_video_error=="B: decoder failed")
+local assignment_error=text.wallpaper_error
+status.outputs.B.error="";events.wallpaper_video_changed()
+assert(text.wallpaper_video_error=="" and text.wallpaper_error==assignment_error)
+status.error=string.rep("日本語",100)
+video_controller.refresh_video()
+assert(#text.wallpaper_video_error<=515 and utf8.len(text.wallpaper_video_error))
+status.outputs={};for i=1,33 do status.outputs[tostring(i)]={} end
+video_controller.refresh_video()
+assert(text.wallpaper_video_error:find("exceeds32"))
+assert(text.wallpaper_video_status=="status-fixture")
+print("Wallpaper native video status callback/UTF-8/error isolation fixtures passed")
