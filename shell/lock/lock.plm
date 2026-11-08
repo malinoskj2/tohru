@@ -1,7 +1,7 @@
 language 0.4
 scene TohruLock {
     surface { size: 1, 1; anchor: top_left }
-    permissions { services: "auth", "session.suspend" }
+    permissions { services: "auth", "lock", "session.suspend" }
     fact engaged = false
     fact acknowledged = false
     fact checking = false

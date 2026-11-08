@@ -3,6 +3,7 @@
 local function boot(path, facts, texts)
     local h, timers, calls, watches = {}, {}, {}, {}
     local now, auth, failure = 0, false, false
+    local native_held = facts.acknowledged or false
     local env = setmetatable({ fact = facts, text = texts }, { __index = _G })
     env.on = function(name, fn) h[name] = fn end
     env.focus = function() end
@@ -15,7 +16,8 @@ local function boot(path, facts, texts)
             calls[#calls+1] = {name, ...}
         end,
         ask = function(name, password)
-            assert(name == "auth.check")
+            if name == "lock.held" then return native_held end
+            assert(name == "auth.unlock")
             assert(texts.password == "", "secret must be cleared before PAM call")
             if failure then error("PAM unavailable") end
             return auth
@@ -28,6 +30,7 @@ local function boot(path, facts, texts)
         event=function(name, ...) assert(h[name], name)(...) end,
         report=function(name, value) watches[name](value) end,
         auth=function(value) auth=value end,
+        held=function(value) native_held=value end,
         fail=function(value) failure=value end,
         advance=function(ms)
             for _=1,ms do
@@ -76,26 +79,26 @@ local function locker(held)
 end
 local l=locker(false)
 l.event("lock_and_suspend"); assert(l.fact.engaged and #l.calls==0)
-l.advance(5000); l.fact.acknowledged=true; l.event("fact:acknowledged",true)
+l.advance(5000); l.held(true);l.fact.acknowledged=true; l.event("fact:acknowledged",true)
 assert(#l.calls==0 and l.text.status:find("cancelled"))
 l.event("lock_and_suspend"); assert(#l.calls==1 and l.calls[1][1]=="session.suspend")
 assert(l.fact.engaged)
 l.event("submit:password","bad"); assert(l.fact.engaged and l.text.password=="")
 l.fail(true); l.event("submit:password","bad"); assert(l.fact.engaged and l.text.status:find("unavailable"))
 l.fail(false); l.auth(true); l.event("submit:password","good"); assert(not l.fact.engaged)
-l=locker(false);l.event("lock_and_suspend");l.event("key","Escape");l.fact.acknowledged=true;l.event("fact:acknowledged",true)
+l=locker(false);l.event("lock_and_suspend");l.event("key","Escape");l.held(true);l.fact.acknowledged=true;l.event("fact:acknowledged",true)
 assert(l.fact.engaged and #l.calls==0)
 l=locker(true);assert(l.fact.engaged and l.text.password=="") -- logic reload preserves lock
 l.event("lock_and_suspend");assert(l.fact.engaged and #l.calls==1)
 l=locker(false);l.auth(true);l.event("submit:password","good");assert(not l.fact.engaged and #l.calls==0)
-l.event("lock_and_suspend");l.event("lock_request");l.fact.acknowledged=true;l.event("fact:acknowledged",true);assert(#l.calls==0)
+l.event("lock_and_suspend");l.event("lock_request");l.held(true);l.fact.acknowledged=true;l.event("fact:acknowledged",true);assert(#l.calls==0)
 -- Queued sleep behind PAM cannot reuse the released cycle's acknowledgment.
 l=locker(true);l.auth(true);l.event("submit:password","good")
 l.event("lock_and_suspend");assert(#l.calls==0 and not l.fact.engaged)
 l.event("fact:acknowledged",true);assert(#l.calls==0)
-l.fact.acknowledged=false;l.event("fact:acknowledged",false)
+l.held(false);l.fact.acknowledged=false;l.event("fact:acknowledged",false)
 assert(l.fact.engaged and #l.calls==0)
-l.fact.acknowledged=true;l.event("fact:acknowledged",true)
+l.held(true);l.fact.acknowledged=true;l.event("fact:acknowledged",true)
 assert(#l.calls==1 and l.fact.sleep_submitted)
 l.event("lock_and_suspend");l.event("lock_and_suspend");assert(#l.calls==1)
 l.event("system_resumed");l.event("lock_and_suspend");assert(#l.calls==2)
@@ -116,3 +119,10 @@ p.report("polkit",{pending=false,asking=false});p.event("cancel_request");assert
 p.report("polkit",{pending=true,asking=true});p.fail(true);p.event("submit:answer","bad")
 assert(p.text.status:find("rejected") and p.text.answer=="")
 print("session, lock and polkit entry logic: passed")
+
+-- Public mirror spoof cannot authorize native suspend or release.
+l=locker(false);l.fact.engaged=true;l.fact.acknowledged=true
+l.event("fact:acknowledged",true);l.event("lock_and_suspend")
+assert(#l.calls==0)
+l.auth(true);l.event("submit:password","irrelevant")
+assert(l.fact.engaged and #l.calls==0)
