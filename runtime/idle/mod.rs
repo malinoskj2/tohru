@@ -3,6 +3,7 @@
 //! This module never connects to a display/bus or executes system actions.
 
 pub mod cookies;
+pub mod delay;
 
 use std::time::{Duration, Instant};
 
