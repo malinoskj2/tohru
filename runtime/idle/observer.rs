@@ -65,7 +65,7 @@ pub(super) trait Sink: Send + Sync {
 
 impl Observer {
     pub(super) fn spawn(config: Config, sink: Arc<dyn Sink>) -> Result<Self> {
-        let policy = Policy::new(config).context("validate idle configuration")?;
+        let policy = Policy::new(config, false).context("validate idle configuration")?;
         let (commands, receiver) = mpsc::sync_channel(8);
         let (ping, source) = make_ping().context("create idle observer wakeup")?;
         let latest = Arc::new(Mutex::new(Observations::default()));
@@ -100,7 +100,7 @@ impl Observer {
 
     pub(super) fn configure(&self, config: Config) -> Result<()> {
         // Validate before enqueue; process policy remains the sole generation owner.
-        Policy::new(config).context("validate idle configuration")?;
+        Policy::new(config, false).context("validate idle configuration")?;
         self.commands
             .try_send(config)
             .context("idle configuration queue unavailable")?;
