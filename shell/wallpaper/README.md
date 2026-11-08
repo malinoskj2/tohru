@@ -36,7 +36,7 @@ snapshot is validated first, so invalid input preserves previous routes.
 
 This source slice has a **32 assignment capacity**, rejects overflow before any
 publication, and never silently truncates. This is an explicit implementation
-bound awaiting coordinator disposition, not accepted unrestricted output parity.
+bound accepted by the coordinator, not unrestricted output capacity.
 The pinned compiler does not expand these declaration/surface repeats into a
 usable scene, so the 32 small declarations are explicit. Unassigned outputs
 create no surfaces, and disconnected assignments remain routed by name for
@@ -49,8 +49,8 @@ Checks: `lua tests/wallpaper/controller.lua` runs the production controller;
 These establish source/controller behavior only. Root TOML persistence, native
 CLI/UI assignment, GPU image rendering/errors, resource reclamation, output
 hotplug/scale/rotation, picker/randomization, video, and performance remain gates.
-Native arbitrary-folder listing, capture export/image clipboard and frozen-frame
-release are pending decisions, with no workaround here.
+Scoped native-folder catalog, capture export/image clipboard and frozen release
+are now authorized and implemented as source slices; see their owning modules.
 
 `controller.randomize(assignments, outputs, shuffled_catalog, canonical)` returns
 an all-or-nothing proposed assignment map; the shared owner must commit the map
@@ -63,3 +63,59 @@ cannot defeat the previous/other-output checks. No filesystem probing, shell
 command or implicit folder substitution is added. Folder discovery, picker UI
 and root persistence/event wiring remain pending; this policy is not advertised
 as an integrated randomize command yet.
+
+## Settings picker integration
+
+Include `picker-state.plm` globally and `picker-view.plm` in the existing Settings
+content group. The drawing is540×526 logical pixels; S owns positioning/window
+layout/category and hides the generic settings rows while this page is active.
+The part directly includes input fields, preserving their global text bindings.
+No production picker window is added. `picker-entry.*` are private development
+entry points with transient fixture settings and no wallpaper surfaces.
+
+Instantiate `picker.luau(wallpaper, read, commit, save_folder, connected_outputs)`:
+
+- `wallpaper` is the existing controller object, including validate/randomize.
+- `read()` returns fresh `{assignments, folder}` from the one root owner. The
+  picker copies assignments before any proposed change, even if read shares data.
+- `commit(map)` atomically accepts/persists the complete assignment setting once,
+  republishes static/video projections and propagates failures. S also retains
+  durability/provenance warnings in the existing root settings presentation.
+- `save_folder(path)` updates `wallpaper.folder` through the same owner; string
+  default empty, bounded4096 bytes. Native catalog succeeds before persistence.
+  Empty clears the folder, and no old mutable state or implicit folder is read.
+- `connected_outputs()` returns native records `{name,routable}`; the readonly
+  `capture.outputs` query supplies these after `layout-link.patch`, requiring only
+  base `capture`. Assigned disconnected outputs are merged, retained and editable.
+
+Emit `wallpaper_picker_open_request` from the Settings page. Set
+`wallpaper_request_output` first for an explicit initial target; otherwise the
+previous/first sorted output is selected honestly, not advertised as focused.
+Root category/window close hides `wallpaper_picker_open`; root modal policy sets
+`wallpaper_picker_keyboard=false` during capture/other exclusive root flows and
+guards the generic Settings arrow/Escape actions while the picker is active.
+Physical input/focus and root modal precedence remain integration tests.
+
+The model publishes at most8 files (native max8), backed by at most4096 catalog
+paths. Filename filtering/paging/output cycling/keyboard up-down and Enter,
+clear, randomize selected output and randomize saved assignments are wired.
+Native text rows retain the source picker's filename/current selection behavior;
+no preview decoders are created. Current identical literal choice is a no-op.
+Accepted assignment capacity remains32; connected plus offline choices are at
+most64, and adding a33rd assignment fails before commit. Displayed filenames are
+native text, never command lines or tab/newline-delimited transport.
+
+CLI randomization emits `wallpaper_randomize` with `wallpaper_randomize_outputs`
+empty for retained implicit selection or a JSON array of explicit names. The
+factory's `randomize(targets)` is also available to root adapters. Randomization
+refreshes the chosen catalog, Fisher-Yates shuffles it, queries canonical keys of
+at most32 existing assigned paths through `wallpaper.identities`, then uses the
+reviewed preference policy and commits its whole proposal once. Invalid requests,
+missing identities/catalog failures and persistence errors preserve accepted
+assignments. No generic filesystem/command wrapper or extra settings owner.
+
+`lua tests/wallpaper/picker.lua` executes11 production picker cases; existing
+controller fixtures also pass. Actual native `--check picker-entry.plm` accepts
+17properties/101instructions/21rules/18zones; `--luau-types` generates names only.
+Root persistence/provenance/native CLI/keyboard/modal/window/installed-probe/GPU
+and video rendering checks remain distinct gates.
