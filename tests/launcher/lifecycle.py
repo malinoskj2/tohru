@@ -27,8 +27,16 @@ def layers(log):
 
 
 def empty_inputs(log):
-    regions,empty={},set()
+    # wl_surface input state is double-buffered. set_input_region copies the
+    # region now, but only commit applies it; object IDs can later be reused.
+    regions,pending,empty={},{},set()
     for line in log.splitlines():
+        created_surface=re.search(r'create_surface\(new id wl_surface[#@](\d+)\)',line)
+        destroyed_surface=re.search(r'wl_surface[#@](\d+)\.destroy\(',line)
+        for surface in (created_surface,destroyed_surface):
+            if surface:
+                pending.pop(surface.group(1),None)
+                empty.discard(surface.group(1))
         created=re.search(r'create_region\(new id wl_region[#@](\d+)\)',line)
         if created:regions[created.group(1)]=True
         changed=re.search(r'wl_region[#@](\d+)\.(?:add|subtract)\(',line)
@@ -36,7 +44,15 @@ def empty_inputs(log):
         assigned=re.search(r'wl_surface[#@](\d+)\.set_input_region\(wl_region[#@](\d+)\)',line)
         if assigned:
             surface,region=assigned.groups()
-            if regions.get(region) is True:empty.add(surface)
+            pending[surface]=regions.get(region) is True
+        reset=re.search(r'wl_surface[#@](\d+)\.set_input_region\((?:nil|null)\)',line)
+        if reset:pending[reset.group(1)]=False
+        destroyed_region=re.search(r'wl_region[#@](\d+)\.destroy\(',line)
+        if destroyed_region:regions.pop(destroyed_region.group(1),None)
+        committed=re.search(r'wl_surface[#@](\d+)\.commit\(',line)
+        if committed and committed.group(1) in pending:
+            surface=committed.group(1)
+            if pending.pop(surface):empty.add(surface)
             else:empty.discard(surface)
     return empty
 
@@ -50,7 +66,7 @@ def verify(root,runtime,evidence,env,start,say,expect,wait_for):
     log_path=evidence/'launcher-lifecycle.log'
     app=start([runtime,'--scene',str(scene/'entry.plm'),'--answer-as','launcher','--no-hud','--stall','0'],'launcher-lifecycle',{'WAYLAND_DEBUG':'1'})
     wait_for(lambda:say('launcher','get screen.0.name')=='HEADLESS-1','native bootstrap output name')
-    wait_for(lambda:'NVIDIA GeForce RTX 5090' in log_path.read_text(),'app hardware adapter')
+    wait_for(lambda:'render · NVIDIA GeForce RTX 5090 (Vulkan)' in log_path.read_text(),'app hardware adapter')
     expect('launcher','launcher_visible','false')
     expect('launcher','launcher_outputs','')
 
@@ -139,8 +155,21 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--cpu',action='store_true',required=True);parser.parse_args()
     sample='\n'.join(['-> zwlr_layer_shell_v1#1.get_layer_surface(new id zwlr_layer_surface_v1#7, wl_surface#8, wl_output#2, 4, "tohru-launcher-backdrop")','-> zwlr_layer_surface_v1#7.destroy()','-> zwlr_layer_shell_v1#1.get_layer_surface(new id zwlr_layer_surface_v1#7, wl_surface#9, wl_output#2, 4, "tohru-launcher-backdrop")'])
     assert layers(sample)==[{'surface':'9','namespace':NAMESPACE}]
+    sample+='\n-> wl_compositor#1.create_surface(new id wl_surface#9)'
     sample+='\n-> wl_compositor#1.create_region(new id wl_region#3)\n-> wl_surface#9.set_input_region(wl_region#3)'
+    assert '9' not in empty_inputs(sample), 'pending state is not applied evidence'
+    sample+='\n-> wl_region#3.destroy()\n-> wl_surface#9.commit()'
+    assert '9' in empty_inputs(sample), 'set copies region before its destruction'
+    sample+='\n-> wl_surface#9.set_input_region(nil)'
+    assert '9' in empty_inputs(sample), 'reset is also pending until commit'
+    sample+='\n-> wl_surface#9.commit()'
+    assert '9' not in empty_inputs(sample), 'nil restores default full input'
+    sample+='\n-> wl_compositor#1.create_region(new id wl_region#3)\n-> wl_surface#9.set_input_region(wl_region#3)\n-> wl_surface#9.commit()'
     assert '9' in empty_inputs(sample)
-    sample+='\n-> wl_compositor#1.create_region(new id wl_region#3)\n-> wl_region#3.add(0, 0, 1, 1)\n-> wl_surface#9.set_input_region(wl_region#3)'
+    sample+='\n-> wl_surface#9.destroy()'
+    assert '9' not in empty_inputs(sample), 'destroyed surface has no live evidence'
+    sample+='\n-> wl_compositor#1.create_surface(new id wl_surface#9)\n-> wl_surface#9.commit()'
+    assert '9' not in empty_inputs(sample), 'reused surface starts with default input'
+    sample+='\n-> wl_compositor#1.create_region(new id wl_region#3)\n-> wl_region#3.add(0, 0, 1, 1)\n-> wl_surface#9.set_input_region(wl_region#3)\n-> wl_surface#9.commit()'
     assert '9' not in empty_inputs(sample)
-    print('Native lifecycle evidence parser handles role/region ID reuse and real empty input assignment')
+    print('Native evidence parser requires committed input state and handles role/region/surface ID reuse and nil reset')

@@ -19,9 +19,9 @@ S shared hooks (W does not modify shared files):
 4. Build/install probe **next to the actual Pleamar executable**, including Nix
    runtime output. The query resolves `current_exe().parent()/tohru-wallpaper-probe`,
    never PATH or a caller-supplied executable/environment override.
-5. Scene declares `permissions { services: "wallpaper.catalog" }`; Luau calls
+5. Scene declares `permissions { services: "wallpaper" }`; Luau calls
    `sys.ask("wallpaper.catalog", explicitly_configured_or_chosen_absolute_folder)`.
-   The native permission check remains authoritative. Result is a sorted list
+   The native read-query permission checks the base service `wallpaper` (an exact `wallpaper.catalog` permission alone does not grant sys.ask). Result is a sorted list
    of canonical absolute file paths; failures throw, empty folders return `[]`.
    Picker and shuffle/rotation consume this list; root commits an assignment map
    once through the existing TOML/Nix/runtime owner.
@@ -39,7 +39,7 @@ Overflow fails the whole request instead of publishing a truncated catalog.
 The native wrapper concurrently drains nonblocking stdout/stderr, limits stdout
 to1MiB/stderr4096, checks a5s deadline and kills/reaps its fixed probe on every
 exit path. No detached filesystem thread or uncounted helper remains.
-The probe itself never spawns descendants. Kernel-uninterruptible filesystem
+The probe itself never spawns descendants; parent-death protection and a fork/exec parent check also cancel it when its requesting process/thread exits. Kernel-uninterruptible filesystem
 I/O can delay kill/reap despite the deadline; no hard kernel shutdown bound is
 claimed. Tests exercise responsive local filesystems/processes, not hung mounts.
 
@@ -63,3 +63,24 @@ actual patched image/live-name/sweep methods with narrow type/I/O fixtures and
 checks cold/missing/empty/same-version and last-reference sweep behavior. The
 patch also installs an actual native text unit regression; full native compilation
 and private GPU old-output/new-cold-path pixel verification remain required.
+
+## Explicit assignment identities
+
+`sys.ask("wallpaper.identities", {absolute_media_path, ...})` returns canonical
+identities in request order for at most32 explicitly assigned/chosen paths. It
+uses the same fixed-sibling probe,5s deadline, bounded transport and read-only
+`wallpaper` permission; it never lists unrelated directories or opens media
+contents. Regular target files are required, symlink aliases canonicalize, and a
+canonical identity may lack a media extension even though the chosen alias has
+one. Identities are comparison keys, not a silent rewrite of accepted paths.
+This lets retained randomization compare existing alias assignments against the
+canonical catalog without adding a general filesystem/command API. Missing files
+fail honestly, preserving the old all-or-nothing proposal. S installs updated
+catalog.patch/native/probe/domain files; no new dependencies/common modules.
+
+`python3 tests/wallpaper/check_cpu.py` runs actual scoped catalog/identity and
+native transport tests, Clippy, builds the real probe plus an explicit adapter
+fixture beside it, and exercises actual query→probe catalog/alias/missing-file
+results. These checks use local metadata; no display, decoder or native role is
+started. Rust1.85 is declared by this fixture, but the installed toolchain is
+newer, so an actual MSRV toolchain check remains distinct.

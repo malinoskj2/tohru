@@ -1,0 +1,101 @@
+// Native protocol types are fixtures; with_link always fails closed without a compositor.
+extern crate self as tohru_shell;
+#[derive(Debug)]
+pub enum StubValue {
+    Text(String),
+    List(Vec<StubValue>),
+    Num(f64),
+    Bool(bool),
+    Map(Vec<(String, StubValue)>),
+}
+#[path = "ROOT_CAPTURE_SOURCE"]
+pub mod capture;
+mod native_capture_parent {
+    use crate::StubValue as SysValue;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+    #[expect(
+        dead_code,
+        reason = "native frame fixture has unused renderer-only fields"
+    )]
+    struct Frame {
+        version: u64,
+        width: u32,
+        height: u32,
+        pixels: Vec<u8>,
+        opaque: bool,
+        card: Option<()>,
+    }
+    #[derive(Clone)]
+    struct Frozen {
+        frame: Arc<Frame>,
+        layout: crate::capture::Layout,
+        transform: u32,
+        mode: Option<(i32, i32)>,
+    }
+    static FROZEN: Mutex<Option<HashMap<String, Frozen>>> = Mutex::new(None);
+    #[expect(
+        dead_code,
+        reason = "native link fixture does not dispatch real Wayland errors"
+    )]
+    enum Asked {
+        No(String),
+    }
+    struct Output {
+        name: String,
+        at: (i32, i32),
+        size: (i32, i32),
+        transform: u32,
+        mode: Option<(i32, i32)>,
+    }
+    #[expect(clippy::unused_self, reason = "native type fixture")]
+    impl Output {
+        fn scale(&self) -> f64 {
+            1.0
+        }
+    }
+    struct State {
+        outputs: Vec<Output>,
+    }
+    struct Link {
+        state: State,
+    }
+    #[expect(clippy::unused_self, reason = "native type fixture")]
+    impl Link {
+        fn settle(&mut self) -> Result<(), Asked> {
+            Err(Asked::No("no compositor in CPU fixture".into()))
+        }
+        fn output(&self, _: &str) -> Result<&Output, Asked> {
+            Err(Asked::No("no compositor in CPU fixture".into()))
+        }
+    }
+    fn with_link<T>(_: impl FnOnce(&mut Link) -> Result<T, Asked>) -> Result<T, String> {
+        Err("no compositor in CPU fixture".into())
+    }
+    #[path = "NATIVE_CAPTURE_SOURCE"]
+    mod export;
+    pub(super) fn query(name: &str, args: &[SysValue]) -> Result<SysValue, String> {
+        match (name, args) {
+            ("capture.outputs", []) => with_link(export::outputs),
+            ("capture.destination", [SysValue::Text(directory), SysValue::Text(pattern)]) => {
+                export::destination(directory, pattern)
+            }
+            ("capture.release", [SysValue::Text(token)]) => export::release(token),
+            ("capture.region", _) => export::region(args),
+            _ => Err("unsupported capture fixture request".into()),
+        }
+    }
+    pub(super) fn shutdown() {
+        export::shutdown();
+    }
+}
+#[expect(
+    clippy::missing_errors_doc,
+    reason = "ephemeral native adapter harness"
+)]
+pub fn native_capture_query(name: &str, args: &[StubValue]) -> Result<StubValue, String> {
+    native_capture_parent::query(name, args)
+}
+pub fn native_capture_shutdown() {
+    native_capture_parent::shutdown();
+}

@@ -17,6 +17,10 @@ pub enum Error {
     InvalidEntry,
     #[error("wallpaper file changed outside the selected folder during listing")]
     ChangedOutsideFolder,
+    #[error("wallpaper identity requires an existing regular supported media file")]
+    InvalidFile,
+    #[error("wallpaper identity request exceeds32 files")]
+    TooManyFiles,
     #[error("reading wallpaper folder")]
     Io(#[from] std::io::Error),
 }
@@ -47,6 +51,35 @@ pub fn validate_folder(path: &Path) -> Result<(), Error> {
         return Err(Error::InvalidFolder);
     }
     Ok(())
+}
+
+/// Canonical identities for at most32 explicitly assigned/chosen media paths.
+/// This checks file metadata only; it never opens or decodes media contents.
+///
+/// # Errors
+/// Rejects invalid/unsupported/nonregular/missing files and request bounds.
+pub fn identities(paths: &[PathBuf]) -> Result<Vec<String>, Error> {
+    if paths.len() > 32 {
+        return Err(Error::TooManyFiles);
+    }
+    paths
+        .iter()
+        .map(|path| {
+            validate_folder(path)?;
+            if kind(path).is_none() {
+                return Err(Error::InvalidFile);
+            }
+            let canonical = fs::canonicalize(path)?;
+            validate_folder(&canonical)?;
+            if !fs::metadata(&canonical)?.is_file() {
+                return Err(Error::InvalidFile);
+            }
+            canonical
+                .into_os_string()
+                .into_string()
+                .map_err(|_| Error::InvalidEntry)
+        })
+        .collect()
 }
 
 /// Invoke in the narrow probe process: individual filesystem calls may block.

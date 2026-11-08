@@ -5,7 +5,7 @@ diff --git a/src/platform/mod.rs b/src/platform/mod.rs
  /// It can take a while —there's another application on the other side—, and
  /// that's why it's up to the logic, which can wait without it showing.
  pub fn query(from: &str, name: &str, args: &[SysValue]) -> Result<SysValue, String> {
-+    if name == "wallpaper.catalog" {
++    if matches!(name, "wallpaper.catalog" | "wallpaper.identities") {
 +        return crate::tohru_wallpaper::query(name, args);
 +    }
      if name.starts_with("files.") {

@@ -1,0 +1,12 @@
+scene TohruWallpaperPicker {
+    permissions { services: "wallpaper", "capture" }
+    include "state.plm"
+    include "picker-state.plm"
+    surface tohru_wallpaper_picker {
+        size: 588, 580
+        kind: window; title: "Tohru Wallpaper Picker"; app_id: "dev.tohru.WallpaperPicker"
+        open: wallpaper_picker_open
+
+    }
+    group { move: 24, 24; include "picker-view.plm" }
+}

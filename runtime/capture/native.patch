@@ -1,0 +1,145 @@
+diff --git a/src/platform/capture.rs b/src/platform/capture.rs
+--- a/src/platform/capture.rs
++++ b/src/platform/capture.rs
+@@ -57,7 +57,20 @@
+ const SYNC_WAIT: Duration = Duration::from_millis(500);
+ 
+ /// Every monitor's last freeze, by its name.
+-static FROZEN: Mutex<Option<HashMap<String, Arc<Frame>>>> = Mutex::new(None);
++#[derive(Clone)]
++struct Frozen {
++    frame: Arc<Frame>,
++    layout: tohru_shell::capture::Layout,
++    transform: u32,
++    mode: Option<(i32, i32)>,
++}
++
++#[path = "tohru_capture/native.rs"]
++mod export;
++
++pub(super) fn shutdown() { export::shutdown(); }
++
++static FROZEN: Mutex<Option<HashMap<String, Frozen>>> = Mutex::new(None);
+ /// Each freeze's version: one counter for all, so a name is never reused.
+ static VERSION: AtomicU64 = AtomicU64::new(0);
+ /// The connection, made the first time it is asked, and again if it ends.
+@@ -66,12 +79,23 @@
+ /// The frame a `capture:DP-1` names (without its version), if it was frozen.
+ pub fn frame(name: &str) -> Option<Arc<Frame>> {
+     let output = name.strip_prefix("capture:")?;
+-    FROZEN.lock().unwrap().as_ref()?.get(output).cloned()
++    let (output, version) = match output.rsplit_once('?') {
++        Some((base, version)) if version.parse::<u64>().is_ok() => (base, version.parse::<u64>().ok()),
++        _ => (output, None),
++    };
++    let frozen = FROZEN.lock().ok()?;
++    let record = frozen.as_ref()?.get(output)?;
++    if version.is_some_and(|version| version != record.frame.version) { return None; }
++    Some(Arc::clone(&record.frame))
+ }
+ 
+ /// `sys.ask("capture.pixel", …)` and `sys.ask("capture.freeze", …)`.
+ pub fn query(name: &str, args: &[SysValue]) -> Result<SysValue, String> {
+     match (name, args) {
++        ("capture.outputs", []) => with_link(export::outputs),
++        ("capture.destination", [SysValue::Text(directory), SysValue::Text(pattern)]) => export::destination(directory, pattern),
++        ("capture.release", [SysValue::Text(token)]) => export::release(token),
++        ("capture.region", _) => export::region(args),
+         ("capture.pixel", [SysValue::Num(x), SysValue::Num(y)]) => with_link(|l| l.pixel(*x, *y, None)).map(SysValue::Text),
+         ("capture.pixel", [SysValue::Num(x), SysValue::Num(y), SysValue::Text(o)]) => with_link(|l| l.pixel(*x, *y, Some(o))).map(SysValue::Text),
+         ("capture.pixel", _) => Err("`capture.pixel` takes a point, and a monitor if the point is inside it: sys.ask(\"capture.pixel\", x, y[, screen.name])".into()),
+@@ -305,17 +329,34 @@
+ 
+     fn freeze(&mut self, name: &str) -> Result<String, Asked> {
+         self.settle()?;
+-        let wl = self.output(name)?.wl.clone();
+-        let (pixels, width, height, _) = match (&self.state.sources, &self.state.copies) {
++        let output = self.output(name)?;
++        let (at, size, transform, mode) = (output.at, output.size, output.transform, output.mode);
++        let logical = tohru_shell::capture::Rect::new(at.0, at.1, u32::try_from(size.0).unwrap_or(0), u32::try_from(size.1).unwrap_or(0))
++            .map_err(|e| Asked::No(e.to_string()))?;
++        if name.is_empty() || name.len() > 255 || transform > 7 { return Err(Asked::No("invalid output metadata for freeze".into())); }
++        let wl = output.wl.clone();
++        let (pixels, width, height, copied_transform) = match (&self.state.sources, &self.state.copies) {
+             (Some(_), Some(_)) => self.copy_ext(&wl)?,
+             _ => {
+-                let frame = self.state.wlr.as_ref().unwrap().capture_output(0, &wl, &self.qh, ());
++                let wlr = self.state.wlr.as_ref().ok_or_else(|| Asked::No("no screen copy protocol".into()))?;
++                let frame = wlr.capture_output(0, &wl, &self.qh, ());
+                 self.copy_wlr(frame, &wl)?
+             }
+         };
++        self.settle()?;
++        let output = self.output(name)?;
++        if (output.at, output.size, output.transform, output.mode) != (at, size, transform, mode) || copied_transform > 7 {
++            return Err(Asked::No("output layout changed during freeze".into()));
++        }
+         let version = VERSION.fetch_add(1, Ordering::Relaxed) + 1;
+         let frame = Arc::new(Frame { version, width, height, pixels, opaque: true, card: None });
+-        FROZEN.lock().unwrap().get_or_insert_with(HashMap::new).insert(name.to_owned(), frame);
++        let mut held = FROZEN.lock().map_err(|_| Asked::No("frozen capture cache unavailable".into()))?;
++        let frozen = held.get_or_insert_with(HashMap::new);
++        let retained = frozen.iter().filter(|(output, _)| output.as_str() != name).map(|(_, record)| record.frame.pixels.len() as u64).sum::<u64>();
++        if (!frozen.contains_key(name) && frozen.len() >= 32) || retained + frame.pixels.len() as u64 > tohru_shell::capture::MAX_PIXELS * 4 {
++            return Err(Asked::No("frozen capture cache exceeds32 outputs /128 MiB".into()));
++        }
++        frozen.insert(name.to_owned(), Frozen { frame, layout: tohru_shell::capture::Layout { logical, pixels: (width, height) }, transform, mode });
+         Ok(format!("capture:{name}?{version}"))
+     }
+ 
+@@ -394,6 +435,11 @@
+         let Some(&(format, size, stride)) = self.state.shot.offers.iter().find(|(f, ..)| reads(*f)) else {
+             return Err(Asked::No("the compositor offers the screen in no layout of 8 bits a colour".into()));
+         };
++        let pixels = u64::from(size.0) * u64::from(size.1);
++        let bytes = u64::from(stride) * u64::from(size.1);
++        if pixels == 0 || pixels > tohru_shell::capture::MAX_PIXELS || u64::from(stride) < u64::from(size.0) * 4 || bytes > tohru_shell::capture::MAX_PIXELS * 4 {
++            return Err(Asked::No("capture buffer exceeds its pixel/stride byte budget".into()));
++        }
+         Shm::new(&shm, size, stride, format, &self.qh).ok_or_else(|| Asked::No("no memory for the copy".into()))
+     }
+ 
+@@ -915,9 +961,17 @@
+     #[test]
+     fn a_frozen_monitor_is_found_by_its_name() {
+         let f = Arc::new(Frame { version: 7, width: 1, height: 1, pixels: vec![0; 4], opaque: true, card: None });
+-        FROZEN.lock().unwrap().get_or_insert_with(HashMap::new).insert("TEST-9".into(), f);
++        FROZEN.lock().unwrap().get_or_insert_with(HashMap::new).insert("TEST-9".into(), Frozen { frame: f, layout: tohru_shell::capture::Layout { logical: tohru_shell::capture::Rect::new(0, 0, 1, 1).unwrap(), pixels: (1, 1) }, transform: 0, mode: Some((1, 1)) });
+         assert_eq!(frame("capture:TEST-9").map(|f| f.version), Some(7));
+         assert!(frame("capture:TEST-8").is_none());
+         assert!(frame("thumbnails:9").is_none());
+-    }
+-}
++        assert!(frame("capture:TEST-9?6").is_none());
++        let reference = frame("capture:TEST-9?7").unwrap();
++        export::release("capture:TEST-9?6").unwrap();
++        assert!(frame("capture:TEST-9?7").is_some());
++        export::release("capture:TEST-9?7").unwrap();
++        assert!(frame("capture:TEST-9").is_none());
++        assert_eq!(reference.version, 7); // Releasing map ownership cannot revoke an external Arc.
++        drop(reference);
++    }
++}
+diff --git a/src/logic_luau.rs b/src/logic_luau.rs
+--- a/src/logic_luau.rs
++++ b/src/logic_luau.rs
+@@ -319,6 +319,10 @@
+ 
+ /// The same for a service. **Listening is not commanding**: `services: "audio"` lets you know the
+ /// volume (`sys.watch`, `sys.ask`); changing it takes `"audio.volume"`, or `"audio.*"`.
++fn capture_query_mutates(name: &str) -> bool {
++    matches!(name, "capture.region" | "capture.release")
++}
++
+ fn check_service_permission(c: &Mutex<Shared>, name: &str, commands: bool) -> mlua::Result<()> {
+     let service = name.split(['.', ':']).next().unwrap_or(name);
+     let has = |what: &str| c.lock().unwrap().permissions.services.iter().any(|s| s == what);
+@@ -1319,7 +1323,7 @@
+         let unlock_render = self.tx.clone();
+         sys.set("ask", lua.create_function(move |lua, (name, args): (String, mlua::Variadic<Value>)| {
+             if !name.starts_with("terminal.") {
+-                check_service_permission(&c, &name, false)?;
++                check_service_permission(&c, &name, capture_query_mutates(&name))?;
+             }
+             let args: Vec<SysValue> = args.iter().map(|v| lua_to_value(v, 0)).collect();
+             // However long asking the system takes does NOT count against the

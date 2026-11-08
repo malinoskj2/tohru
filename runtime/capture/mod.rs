@@ -2,7 +2,7 @@
 mod files;
 mod geometry;
 
-pub use files::{SaveOutcome, save_png};
+pub use files::{SaveOutcome, save_png, save_region_png};
 pub use geometry::{Layout, MAX_PIXELS, Piece, Plan, Rect, plan};
 
 #[derive(Debug, thiserror::Error)]
@@ -15,6 +15,8 @@ pub enum Error {
     Outside,
     #[error("choose an absolute PNG destination without parent traversal, at most 4096 bytes")]
     Path,
+    #[error("capture PNG destination already exists")]
+    Exists,
     #[error("PNG data is empty or exceeds the capture byte budget")]
     Bytes,
     #[error("publishing capture PNG")]

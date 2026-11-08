@@ -30,6 +30,10 @@ impl Drop for Temporary {
 /// Rejects invalid PNG paths/size and any pre-publication I/O failure. A directory
 /// sync failure after publication returns `DurabilityUnconfirmed`, never a false rollback.
 pub fn save_png(path: &Path, png: &[u8]) -> Result<SaveOutcome, Error> {
+    save(path, png, false)
+}
+
+fn save(path: &Path, png: &[u8], numbered: bool) -> Result<SaveOutcome, Error> {
     if !path.is_absolute()
         || path
             .to_str()
@@ -85,15 +89,47 @@ pub fn save_png(path: &Path, png: &[u8]) -> Result<SaveOutcome, Error> {
     drop(file);
     // link creates the destination atomically and fails if it already exists,
     // including a symlink. No check-then-rename overwrite race.
-    fs::hard_link(&temporary.0, path)?;
+    let destination = publish(&temporary.0, path, numbered)?;
     drop(temporary);
     match File::open(parent).and_then(|directory| directory.sync_all()) {
-        Ok(()) => Ok(SaveOutcome::Saved(path.to_owned())),
+        Ok(()) => Ok(SaveOutcome::Saved(destination)),
         Err(source) => Ok(SaveOutcome::DurabilityUnconfirmed {
-            path: path.to_owned(),
+            path: destination,
             source,
         }),
     }
+}
+
+/// Publish a region capture, trying source-compatible numbered names on collision.
+///
+/// # Errors
+/// Returns path/byte/I/O errors unchanged and rejects after999 numbered collisions.
+/// Never replaces existing files or symlinks; the outcome carries the actual name.
+pub fn save_region_png(path: &Path, png: &[u8]) -> Result<SaveOutcome, Error> {
+    save(path, png, true)
+}
+
+fn publish(temporary: &Path, path: &Path, numbered: bool) -> Result<PathBuf, Error> {
+    let stem = path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .ok_or(Error::Path)?;
+    let parent = path.parent().ok_or(Error::Path)?;
+    for suffix in 0..=if numbered { 999 } else { 0 } {
+        let candidate = if suffix == 0 {
+            path.to_owned()
+        } else if let Some(stem) = stem.strip_suffix("-region") {
+            parent.join(format!("{stem}-{suffix}-region.png"))
+        } else {
+            parent.join(format!("{stem}-{suffix}.png"))
+        };
+        match fs::hard_link(temporary, &candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Err(Error::Exists)
 }
 
 #[cfg(test)]

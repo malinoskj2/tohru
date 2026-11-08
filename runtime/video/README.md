@@ -1,4 +1,4 @@
-# Integrated video boundary investigation (no runtime implementation yet)
+# Integrated video renderer source
 
 The approved scope is an in-process renderer using an established decoder/playback
 backend, integrated with the shell's assignment/output/settings/lifetime owners.
@@ -73,3 +73,66 @@ only video surfaces/contexts/callbacks, and root teardown joins/stops that owner
 This is a proposed boundary, not permission to launch a separate daemon/player
 or a tested implementation. Check codec/plugin availability, library ABI and
 license packaging before committing concrete backend bindings.
+
+## Approved concrete boundary and initial policy
+
+Coordinator approved in-process libmpv0.41 render API on video-only Wayland/EGL
+per-output surfaces. Reuse native EGL6/SCTK0.21/wayland-client0.31; the safe
+wayland-egl0.32.11 window wrapper is the one requested additional dependency.
+The earlier GStreamer discussion records rejected investigation, not the chosen
+implementation. No mpvpaper/player process, custom decoder, screenshot loop or
+second general shell renderer.
+
+`mod.rs` is the root foundation's std/thiserror-only video policy. S exposes
+`#[path = "../runtime/video/mod.rs"] pub mod video;` and copies its owning tests
+under tests/wallpaper/video.rs during preparation. `Snapshot` bounds32 video
+assignments/occupancy observations, validates literal output names/video paths,
+and keeps actual root revision. Backend native code validates a whole snapshot
+before publication. Disabled/disconnected/unassigned outputs stop their owner;
+unknown/protected logind or dedicated-locker observations pause, as does unknown
+or occupied visible workspace. Both observations Clear and occupancy Empty are
+required for Playing. Dedicated locker state must describe its actual protected
+role, never a different process-local lock.held. Missing observations are Unknown.
+
+Root supplies accepted video projection and verified observations. Native owner
+must coalesce updates, recheck revision before unpause, create paused/muted/looping
+cover players, retire removed/reassigned/disconnected players and drop render
+contexts before backend cores and EGL/Wayland objects. Failures back off100ms up
+to10s. Policy tests execute27 protection/occupancy combinations, assignment
+lifecycle/bounds and retry saturation; these do not instantiate a decoder.
+`python3 tests/wallpaper/check_cpu.py` includes these4 tests (17 total at this
+checkpoint), Clippy and existing scoped metadata/probe checks. No full native
+build or GL/decoder role has been allocated or started.
+
+## libmpv FFI source checkpoint (outer native owner still pending)
+
+`mpv.rs` is a private thread-affine owning client/render wrapper. Constructor's
+unsafe contract requires the outer video-only EGL owner to keep the same context
+current during render/drop and retain its display/resolver. The wrapper creates
+no external process or IPC server. It sets paused/no audio/no subtitles/loop/cover
+and automatic hardware decode, disables config/scripts/input/reference loading,
+uses async file/pause commands, observes actual pause, bounds one pending pause
+request and requires500ms acknowledgment. A superseded pending unpause retires
+instead of accumulating commands. Startup/file end/overflow/errors remain errors.
+Frame timing comes from the SDK; default-framebuffer rendering supplies physical
+size, flip and nonblocking target-time/skip parameters. Callbacks only wake the
+owner. Render context is freed before core termination; its stable callback box
+outlives the final core thread termination. Outer EGL failure/teardown handling
+must uphold this contract before runtime integration can be claimed.
+
+S native-package dependency: direct thiserror2.0.20 (already selected by the root
+foundation), in addition to the requested safe wayland-egl0.32.11 and libmpv0.41.
+No backend dependency enters the Rust1.85 foundation module. FFI structs have
+compile-time size/offset assertions for this64-bit Linux target; C compile-only
+checks verify selected SDK layouts/constants/function signatures and ABI2.5.
+
+```
+python3 tests/wallpaper/check_video.py --headers /absolute/mpv0.41/include
+```
+
+Five actual wrapper tests use explicit fake SDK symbols: paused/local startup,
+render-before-core drop/error cleanup, bounded/acknowledged/superseded pause,
+frame geometry/timing/skip and coalesced wake. C header compile/5tests/Clippy all
+exit0. Fake symbols do not load libmpv, connect Wayland, decode video or create GL;
+actual linked backend/codec/license/driver/rendering/cleanup remain allocated
+runtime gates. The wrapper is not yet a complete video owner or advertised player.
