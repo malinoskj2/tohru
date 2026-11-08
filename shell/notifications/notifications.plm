@@ -5,6 +5,9 @@ scene TohruNotifications {
     // Protocol bookkeeping only; no unread/history state or visible counter.
     fact last_id = 0
     fact power_level = 0
+    // Single native submit event; latest validated transient survives VM reload.
+    text capture_result = ""
+    text capture_notice = ""
     event power_warning_clear ->
     event power_warning_low ->
     event power_warning_critical ->
