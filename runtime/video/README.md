@@ -103,3 +103,36 @@ lifecycle/bounds and retry saturation; these do not instantiate a decoder.
 `python3 tests/wallpaper/check_cpu.py` includes these4 tests (17 total at this
 checkpoint), Clippy and existing scoped metadata/probe checks. No full native
 build or GL/decoder role has been allocated or started.
+
+## libmpv FFI source checkpoint (outer native owner still pending)
+
+`mpv.rs` is a private thread-affine owning client/render wrapper. Constructor's
+unsafe contract requires the outer video-only EGL owner to keep the same context
+current during render/drop and retain its display/resolver. The wrapper creates
+no external process or IPC server. It sets paused/no audio/no subtitles/loop/cover
+and automatic hardware decode, disables config/scripts/input/reference loading,
+uses async file/pause commands, observes actual pause, bounds one pending pause
+request and requires500ms acknowledgment. A superseded pending unpause retires
+instead of accumulating commands. Startup/file end/overflow/errors remain errors.
+Frame timing comes from the SDK; default-framebuffer rendering supplies physical
+size, flip and nonblocking target-time/skip parameters. Callbacks only wake the
+owner. Render context is freed before core termination; its stable callback box
+outlives the final core thread termination. Outer EGL failure/teardown handling
+must uphold this contract before runtime integration can be claimed.
+
+S native-package dependency: direct thiserror2.0.20 (already selected by the root
+foundation), in addition to the requested safe wayland-egl0.32.11 and libmpv0.41.
+No backend dependency enters the Rust1.85 foundation module. FFI structs have
+compile-time size/offset assertions for this64-bit Linux target; C compile-only
+checks verify selected SDK layouts/constants/function signatures and ABI2.5.
+
+```
+python3 tests/wallpaper/check_video.py --headers /absolute/mpv0.41/include
+```
+
+Five actual wrapper tests use explicit fake SDK symbols: paused/local startup,
+render-before-core drop/error cleanup, bounded/acknowledged/superseded pause,
+frame geometry/timing/skip and coalesced wake. C header compile/5tests/Clippy all
+exit0. Fake symbols do not load libmpv, connect Wayland, decode video or create GL;
+actual linked backend/codec/license/driver/rendering/cleanup remain allocated
+runtime gates. The wrapper is not yet a complete video owner or advertised player.
