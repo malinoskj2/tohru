@@ -31,8 +31,8 @@ separate source deliveries and are not advertised by this inclusion.
 ```sh
 ./runtime/prepare.sh
 source runtime/dev-env.sh # only needed for native headers in the supplied sandbox
-cargo test --release --locked --manifest-path .tmp/pleamar-runtime/Cargo.toml --lib tohru_settings:: --jobs 4
-cargo build --release --locked --manifest-path .tmp/pleamar-runtime/Cargo.toml --bin pleamar --jobs 4
+cargo test --release --locked --manifest-path .tmp/pleamar-runtime/Cargo.toml --lib tohru_settings:: --jobs 1
+cargo build --release --locked --manifest-path .tmp/pleamar-runtime/Cargo.toml --bin pleamar --jobs 1
 .tmp/pleamar-runtime/target/release/pleamar --check shell/bar.plm
 TOHRU_RUNTIME="$PWD/.tmp/pleamar-runtime/target/release/pleamar" ./bin/tohru-run
 ./bin/tohru status --json # set TOHRU_RUNTIME to the same binary for local use
@@ -41,10 +41,12 @@ TOHRU_RUNTIME="$PWD/.tmp/pleamar-runtime/target/release/pleamar" ./bin/tohru-run
 Run only in an explicitly selected private display/bus during development.
 Pleamar normally refreshes editor skills in HOME on launch; use a private HOME
 and XDG directories in tests. Do not point test commands at a live desktop.
-The initial scene is a settings-backed first-output bar, not visual parity or a
-workspace feature. `bar.preferred_output` and `appearance.corners` currently store
-and report settings only; output fallback/reconnect and corner overlays are pending.
-`bar.mooncoil` immediately shows/hides the bar mark.
+The ordinary root uses native bars on every output with same-process sound,
+calendar, Settings and corner parts. `bar.preferred_output` is preserved but inert;
+`appearance.corners`, its bounded size and `bar.mooncoil` control actual parts.
+Exact native lifecycle/input/driver evidence is recorded by candidate in S.md;
+source/compiler checks do not imply physical-display or visual/performance parity.
+No authentication/notification singleton is started by the root bar.
 
 Nix: import `default.nix { pkgs = <explicit pinned nixpkgs>; }`; optional reusable
 Home Manager module `nix/home-manager.nix` supplies the package and managed TOML
