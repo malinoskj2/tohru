@@ -30,6 +30,9 @@ return function(applied, wallpaper)
             {page=2, key="wallpaper.enabled", title="Wallpaper enabled", detail="Native static backgrounds; video integration pending",
              value=snapshot["wallpaper.enabled"].value, editable=true, managed=snapshot["wallpaper.enabled"].managed,
              temporary=snapshot["wallpaper.enabled"].runtime_override},
+            {page=2, key="wallpaper.fit", title="Wallpaper fit", choice=true,
+             detail=snapshot["wallpaper.fit"].value .. " · Activate to cycle Fill, Fit, Centre, Tile (static images)",
+             editable=true, managed=snapshot["wallpaper.fit"].managed, temporary=snapshot["wallpaper.fit"].runtime_override},
             {page=5,key="capture.save",title="Save screenshots",detail="Native PNG export after a completed region selection",
              value=snapshot["capture.save"].value,editable=true,managed=snapshot["capture.save"].managed,temporary=snapshot["capture.save"].runtime_override},
             {page=5,key="capture.copy",title="Copy screenshots",detail="Native image/png clipboard after a completed selection",
@@ -66,7 +69,14 @@ return function(applied, wallpaper)
         if type(index)~="number" or index~=math.floor(index) then return end
         local row=rows[index+1]
         if not row or not row.editable then return end
-        local ok, settings, warning=pcall(tohru_settings.set,row.key,not snapshot[row.key].value)
+        local value
+        if row.key == "wallpaper.fit" then
+            local next_mode = {fill="fit", fit="centre", centre="tile", tile="fill"}
+            value = next_mode[snapshot[row.key].value]
+        else
+            value = not snapshot[row.key].value
+        end
+        local ok, settings, warning=pcall(tohru_settings.set,row.key,value)
         if ok then
             text.settings_ui_error=warning or ""
             refresh(settings)

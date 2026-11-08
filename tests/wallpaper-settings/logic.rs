@@ -8,7 +8,7 @@ fn picker_commits_once_through_owner_and_preserves_failure_and_provenance() {
         fact,text,model,handlers,modules={},{wallpaper_request_output=''}, {}, {}, {}
         function on(name, fn) handlers[name]=fn end
         function require(name) return modules[name] end
-        local settings={['wallpaper.enabled']={value=false},
+        local settings={['wallpaper.fit']={value='fill'}, ['wallpaper.enabled']={value=false},
             ['wallpaper.folder']={value='/chosen',managed=true},
             ['wallpaper.assignments']={value={OFFLINE='/chosen/old.png'},managed=true}}
         accepted=0

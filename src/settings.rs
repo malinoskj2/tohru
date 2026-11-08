@@ -18,6 +18,7 @@ pub enum Key {
     WallpaperEnabled,
     WallpaperAssignments,
     WallpaperFolder,
+    WallpaperFit,
     CaptureSave,
     CaptureCopy,
     CaptureDirectory,
@@ -31,7 +32,7 @@ pub enum Key {
 }
 
 impl Key {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::Corners,
@@ -39,6 +40,7 @@ impl Key {
         Self::WallpaperEnabled,
         Self::WallpaperAssignments,
         Self::WallpaperFolder,
+        Self::WallpaperFit,
         Self::CaptureSave,
         Self::CaptureCopy,
         Self::CaptureDirectory,
@@ -61,6 +63,7 @@ impl Key {
             Self::WallpaperEnabled => "wallpaper.enabled",
             Self::WallpaperAssignments => "wallpaper.assignments",
             Self::WallpaperFolder => "wallpaper.folder",
+            Self::WallpaperFit => "wallpaper.fit",
             Self::CaptureSave => "capture.save",
             Self::CaptureCopy => "capture.copy",
             Self::CaptureDirectory => "capture.directory",
@@ -94,6 +97,7 @@ impl Key {
             Self::WallpaperEnabled => ("wallpaper", "enabled"),
             Self::WallpaperAssignments => ("wallpaper", "assignments"),
             Self::WallpaperFolder => ("wallpaper", "folder"),
+            Self::WallpaperFit => ("wallpaper", "fit"),
             Self::CaptureSave => ("capture", "save"),
             Self::CaptureCopy => ("capture", "copy"),
             Self::CaptureDirectory => ("capture", "directory"),
@@ -131,6 +135,7 @@ impl Key {
             Self::Corners | Self::CaptureSave | Self::CaptureCopy => Value::Bool(true),
             Self::CornerSize => Value::Integer(32),
             Self::WallpaperAssignments => Value::Assignments(BTreeMap::new()),
+            Self::WallpaperFit => Value::Text("fill".to_owned()),
             Self::IdleLockSeconds => Value::Integer(1800),
             Self::IdleScreenOffUnlockedSeconds => Value::Integer(0),
             Self::IdleScreenOffLockedSeconds => Value::Integer(60),
@@ -157,6 +162,11 @@ impl Key {
             ) => Ok(()),
             (Self::WallpaperFolder, Value::Text(text))
                 if text.len() <= 4096 && !text.contains('\0') =>
+            {
+                Ok(())
+            }
+            (Self::WallpaperFit, Value::Text(text))
+                if matches!(text.as_str(), "fill" | "fit" | "centre" | "tile") =>
             {
                 Ok(())
             }

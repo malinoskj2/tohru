@@ -16,7 +16,8 @@ part SettingsState {
  text settings_notice = ""
  text settings_ui_error = ""
  model settings_categories max 5 { id: number; title: text; selected: bool }
- model settings_rows max 15 { title: text; detail: text; value: bool; editable: bool; managed: bool; temporary: bool }
+ model settings_rows max 15 { title: text; detail: text; value: bool; choice: bool; editable: bool; managed: bool; temporary: bool }
+ event setting_wallpaper_fit ->
  event setting_capture_save ->
  event setting_capture_copy ->
  event setting_idle_lock_seconds ->

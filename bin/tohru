@@ -17,6 +17,7 @@ Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru audio status --json
        tohru status --json
        tohru config reload
+       tohru config set wallpaper.fit fill|fit|centre|tile
        tohru config set bar.mooncoil|appearance.corners|wallpaper.enabled|capture.save|capture.copy true|false
        tohru config set appearance.corner_size 1..100
        tohru config set idle.KEY INTEGER (seconds 0..4294967; fade_milliseconds 0..120000)
@@ -152,6 +153,10 @@ case ${1:-help} in
                         case $4 in true) number=1 ;; false) number=0 ;; *) fail 'Value must be true or false' ;; esac
                         case $3 in bar.mooncoil) event=setting_mooncoil ;; appearance.corners) event=setting_corners ;; wallpaper.enabled) event=setting_wallpaper_enabled ;; capture.save) event=setting_capture_save ;; capture.copy) event=setting_capture_copy ;; esac
                         exec "$pleamar" --say tohru "emit $event $number"
+                        ;;
+                    wallpaper.fit)
+                        case $4 in fill) number=0 ;; fit) number=1 ;; centre) number=2 ;; tile) number=3 ;; *) fail 'Wallpaper fit must be fill, fit, centre or tile' ;; esac
+                        exec "$pleamar" --say tohru "emit setting_wallpaper_fit $number"
                         ;;
                     bar.preferred_output)
                         fail 'bar.preferred_output is deprecated and ignored: bars use every output'

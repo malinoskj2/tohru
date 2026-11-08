@@ -512,3 +512,65 @@ fn serialized_size_limit_rejects_growth_without_changing_disk_or_memory() {
     let restarted = Owner::load(files.user(), None).unwrap();
     assert_eq!(restarted.get(Key::Mooncoil).value, Value::Bool(true));
 }
+
+#[test]
+fn wallpaper_fit_validates_atomically_and_retains_layer_lifetimes() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    fs::write(files.user(), "# retain me\n[wallpaper]\nfuture='kept'\n").unwrap();
+    let mut owner = files.owner();
+    assert_eq!(
+        owner.get(Key::WallpaperFit).value,
+        Value::Text("fill".into())
+    );
+    for mode in ["fill", "fit", "centre", "tile"] {
+        owner
+            .set(Key::WallpaperFit, Value::Text(mode.into()))
+            .unwrap();
+        assert_eq!(
+            files.owner().get(Key::WallpaperFit).value,
+            Value::Text(mode.into())
+        );
+    }
+    let before = owner.get(Key::WallpaperFit);
+    let disk = fs::read(files.user()).unwrap();
+    for invalid in [
+        Value::Text("cover".into()),
+        Value::Text("contain".into()),
+        Value::Text("center".into()),
+        Value::Text("Fill".into()),
+        Value::Text("tile ".into()),
+        Value::Text(String::new()),
+        Value::Bool(true),
+        Value::Integer(1),
+    ] {
+        assert!(owner.set(Key::WallpaperFit, invalid).is_err());
+        assert_eq!(owner.get(Key::WallpaperFit), before);
+        assert_eq!(fs::read(files.user()).unwrap(), disk);
+    }
+    let persisted = fs::read_to_string(files.user()).unwrap();
+    assert!(persisted.contains("# retain me") && persisted.contains("future='kept'"));
+    fs::write(files.user(), "[wallpaper]\nfit='bad'\nenabled=true\n").unwrap();
+    assert!(owner.reload().is_err());
+    assert_eq!(owner.get(Key::WallpaperFit), before);
+    assert_eq!(owner.get(Key::WallpaperEnabled).value, Value::Bool(false));
+    fs::write(files.user(), persisted).unwrap();
+    fs::write(files.managed(), "[wallpaper]\nfit='fit'\n").unwrap();
+    owner.reload().unwrap();
+    assert!(owner.get(Key::WallpaperFit).managed);
+    let disk = fs::read(files.user()).unwrap();
+    owner
+        .set(Key::WallpaperFit, Value::Text("centre".into()))
+        .unwrap();
+    owner.reload().unwrap();
+    assert_eq!(
+        owner.get(Key::WallpaperFit).value,
+        Value::Text("centre".into())
+    );
+    assert!(owner.get(Key::WallpaperFit).runtime_override);
+    assert_eq!(fs::read(files.user()).unwrap(), disk);
+    assert_eq!(
+        files.owner().get(Key::WallpaperFit).value,
+        Value::Text("fit".into())
+    );
+}

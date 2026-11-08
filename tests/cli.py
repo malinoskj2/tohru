@@ -23,6 +23,16 @@ class Cli(unittest.TestCase):
     def invoke(self, *args, **env):
         return subprocess.run([str(ROOT / "bin/tohru"), *args], env={**self.env, **env}, text=True, capture_output=True)
 
+    def test_wallpaper_fit_canonical_enum_is_mapped_before_native_ipc(self):
+        for index, mode in enumerate(['fill', 'fit', 'centre', 'tile']):
+            result = self.invoke('config', 'set', 'wallpaper.fit', mode)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), ['--say', 'tohru', 'emit setting_wallpaper_fit '+str(index)])
+        for mode in ['cover', 'contain', 'center', 'Fill', 'tile ', '', '0', 'fit;quit', 'fit\nemit quit']:
+            result = self.invoke('config', 'set', 'wallpaper.fit', mode)
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(result.stdout, '')
+
     def test_session_menu_routes_never_start_a_role(self):
         for action in ['open','close','toggle']:
             result=self.invoke('session',action)

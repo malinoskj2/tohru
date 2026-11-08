@@ -10,7 +10,7 @@ local function publish(settings)
     fact.corner_size = settings["appearance.corner_size"].value
     settings["bar.preferred_output"].deprecated = true
     settings["bar.preferred_output"].effective = false
-    text.settings_status = json.encode({schema = 5, settings = settings})
+    text.settings_status = json.encode({schema = 6, settings = settings})
     if refresh_settings then refresh_settings(settings) end
     if configure_idle then configure_idle(settings) end
     if wallpaper then wallpaper.publish(settings) end
@@ -33,6 +33,12 @@ on("setting_mooncoil", function(n)
 end)
 on("setting_wallpaper_enabled", function(n)
     change(function() return tohru_settings.set("wallpaper.enabled", n ~= 0) end)
+end)
+on("setting_wallpaper_fit", function(index)
+    local modes = {[0]="fill", "fit", "centre", "tile"}
+    local mode = modes[index]
+    if not mode then text.settings_error = "Wallpaper fit must be fill, fit, centre or tile"; return end
+    change(function() return tohru_settings.set("wallpaper.fit", mode) end)
 end)
 on("setting_corners", function(n)
     change(function() return tohru_settings.set("appearance.corners", n ~= 0) end)

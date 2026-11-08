@@ -27,8 +27,9 @@ return function(publish)
         publish = function(settings)
             local assignments = settings["wallpaper.assignments"]
             local folder = settings["wallpaper.folder"]
-            local videos = wallpaper.publish(settings["wallpaper.enabled"].value, assignments.value)
-            local managed = assignments.managed or folder.managed or settings["wallpaper.enabled"].managed
+            local fit = settings["wallpaper.fit"]
+            local videos = wallpaper.publish(settings["wallpaper.enabled"].value, assignments.value, fit.value)
+            local managed = assignments.managed or folder.managed or fit.managed or settings["wallpaper.enabled"].managed
             text.wallpaper_settings_notice = managed and "Nix-managed wallpaper edits are temporary until the shell exits." or "Wallpaper edits are saved in config.toml."
             if next(videos) then
                 text.wallpaper_settings_notice = text.wallpaper_settings_notice .. " Video renderer integration is pending."
