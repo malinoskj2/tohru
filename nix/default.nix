@@ -13,9 +13,9 @@ let
       ../runtime/capture/mod.rs ../runtime/capture/files.rs ../runtime/capture/geometry.rs
       ../runtime/capture/native.rs ../runtime/capture/clipboard.rs ../runtime/capture/clipboard_owner.rs
       ../tests/wallpaper/catalog.rs ../tests/capture
-      ../runtime/idle/mod.rs ../runtime/idle/cookies.rs ../runtime/idle/delay.rs ../runtime/idle/input.rs ../runtime/idle/logind_state.rs
+      ../runtime/idle/mod.rs ../runtime/idle/cookies.rs ../runtime/idle/delay.rs ../runtime/idle/input.rs ../runtime/idle/logind_state.rs ../runtime/idle/configuration.rs ../runtime/idle/teardown.rs
       ../runtime/idle/native.rs ../runtime/idle/observer.rs ../runtime/idle/screensaver.rs ../runtime/idle/logind.rs ../runtime/idle/sleep_guard.rs
-      ../tests/session/idle.rs ../tests/session/idle_cookies.rs ../tests/session/idle_delay.rs ../tests/session/idle_input.rs ../tests/session/idle_logind.rs ../LICENSE ];
+      ../tests/session/idle.rs ../tests/session/idle_cookies.rs ../tests/session/idle_delay.rs ../tests/session/idle_input.rs ../tests/session/idle_logind.rs ../tests/session/idle_configuration.rs ../tests/session/idle_teardown.rs ../LICENSE ];
   };
   lockSource = lib.fileset.toSource {
     root = ../.;
@@ -50,7 +50,7 @@ let
       cp -r ${foundationSource}/src foundation/
       mkdir -p foundation/runtime foundation/tests/session
       mkdir -p foundation/runtime/idle
-      cp ${foundationSource}/runtime/idle/mod.rs ${foundationSource}/runtime/idle/cookies.rs ${foundationSource}/runtime/idle/delay.rs ${foundationSource}/runtime/idle/input.rs ${foundationSource}/runtime/idle/logind_state.rs foundation/runtime/idle/
+      cp ${foundationSource}/runtime/idle/mod.rs ${foundationSource}/runtime/idle/cookies.rs ${foundationSource}/runtime/idle/delay.rs ${foundationSource}/runtime/idle/input.rs ${foundationSource}/runtime/idle/logind_state.rs ${foundationSource}/runtime/idle/configuration.rs ${foundationSource}/runtime/idle/teardown.rs foundation/runtime/idle/
       cp -r ${foundationSource}/runtime/workspace foundation/runtime/
       mkdir -p foundation/runtime/capture
       cp ${foundationSource}/runtime/capture/mod.rs ${foundationSource}/runtime/capture/files.rs ${foundationSource}/runtime/capture/geometry.rs foundation/runtime/capture/
@@ -63,7 +63,7 @@ let
       cp ${foundationSource}/tests/wallpaper/catalog.rs foundation/tests/wallpaper/
       cp ${foundationSource}/tests/capture/*.rs foundation/tests/capture/
       cp ${foundationSource}/tests/session/idle.rs foundation/tests/session/
-      cp ${foundationSource}/tests/session/idle_cookies.rs ${foundationSource}/tests/session/idle_delay.rs ${foundationSource}/tests/session/idle_input.rs ${foundationSource}/tests/session/idle_logind.rs foundation/tests/session/
+      cp ${foundationSource}/tests/session/idle_cookies.rs ${foundationSource}/tests/session/idle_delay.rs ${foundationSource}/tests/session/idle_input.rs ${foundationSource}/tests/session/idle_logind.rs ${foundationSource}/tests/session/idle_configuration.rs ${foundationSource}/tests/session/idle_teardown.rs foundation/tests/session/
       cp ${foundationSource}/runtime/settings_luau.rs src/tohru_settings.rs
       cp ${foundationSource}/runtime/workspace_luau.rs src/tohru_workspace.rs
       cp ${foundationSource}/runtime/wallpaper/native.rs src/tohru_wallpaper.rs

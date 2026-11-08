@@ -19,3 +19,14 @@
          }
 
          // The sandbox, last of all: from here on the globals are not touched.
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -661,5 +661,7 @@
+     }
+     #[cfg(feature = "luau")]
+     logic_luau::stop_children();
++    #[cfg(feature = "luau")]
++    crate::tohru_idle::shutdown();
+     platform::shutdown_capture();
+     std::process::exit(0)
+ }
