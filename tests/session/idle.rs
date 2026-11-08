@@ -55,7 +55,7 @@ fn default_timers_preserve_unlocked_and_locked_reference_values() {
     assert_eq!(
         timeouts,
         [
-            Some(Duration::from_secs(1800)),
+            None,
             Some(Duration::from_secs(60)),
             Some(Duration::from_secs(5400))
         ]
@@ -252,4 +252,59 @@ fn late_held_acknowledgment_cannot_win_a_race_against_timeout_callback() {
             .session(true, now + Duration::from_millis(4999))
             .contains(&Effect::RequestSuspend)
     );
+}
+
+#[test]
+fn configuration_retains_owner_generation_and_rejects_invalid_changes_atomically() {
+    let (mut policy, effects) = armed(Config::default(), false);
+    let old = subscription(&effects, Action::Suspend);
+    let now = Instant::now();
+    policy.idled(old, now).unwrap();
+    let invalid = Config {
+        fade: Duration::from_secs(121),
+        ..Config::default()
+    };
+    assert_eq!(policy.configure(invalid), Err(Error::InvalidFade));
+    assert!(policy.fading());
+    let updated = policy.configure(no_fade()).unwrap();
+    assert!(updated.contains(&Effect::ClearFade));
+    assert!(!policy.fading());
+    assert!(policy.idled(old, now).unwrap().is_empty());
+    assert_eq!(
+        policy
+            .idled(subscription(&updated, Action::Suspend), now)
+            .unwrap(),
+        [Effect::RequestLock]
+    );
+}
+
+#[test]
+fn visible_fade_follows_retained_cubic_then_handoff_and_input_clears_it() {
+    let (mut policy, effects) = armed(Config::default(), false);
+    let now = Instant::now();
+    assert_eq!(policy.opacity(now), None);
+    policy
+        .idled(subscription(&effects, Action::Lock), now)
+        .unwrap();
+    assert_eq!(policy.opacity(now), Some(0.0));
+    assert_eq!(policy.opacity(now + Duration::from_secs(1)), Some(0.5));
+    policy.step(now + Duration::from_secs(2)).unwrap();
+    assert_eq!(policy.opacity(now + Duration::from_secs(2)), Some(1.0));
+    assert!(!policy.fading());
+    policy.resumed();
+    assert_eq!(policy.opacity(now), None);
+}
+
+#[test]
+fn explicitly_disabled_locked_timeout_never_inherits_unlocked_suspend() {
+    let config = Config {
+        suspend: Timeouts {
+            unlocked: Some(Duration::from_secs(10)),
+            locked: None,
+        },
+        ..Config::default()
+    };
+    let (mut policy, effects) = armed(config, true);
+    let timer = subscription(&effects, Action::Suspend);
+    assert!(policy.idled(timer, Instant::now()).unwrap().is_empty());
 }
