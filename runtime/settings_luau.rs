@@ -4,7 +4,7 @@ use std::sync::{Mutex, OnceLock};
 
 use anyhow::{Context, Result};
 use mlua::{Lua, Table, Value as LuaValue};
-use tohru_shell::settings::{Key, Origin, Owner, Value};
+use tohru_shell::settings::{Key, Origin, Owner, SetOutcome, Value};
 
 static SETTINGS: OnceLock<Mutex<Owner>> = OnceLock::new();
 
@@ -55,6 +55,16 @@ fn report(error: impl Into<anyhow::Error>) -> mlua::Error {
     mlua::Error::runtime(format!("{:#}", error.into()))
 }
 
+fn applied(lua: &Lua, owner: &Owner, outcome: SetOutcome) -> mlua::Result<(Table, Option<String>)> {
+    let warning = match outcome {
+        SetOutcome::RuntimeOverride | SetOutcome::Persisted => None,
+        SetOutcome::CommittedDurabilityUnconfirmed(warning) => {
+            Some(format!("{:#}", anyhow::Error::new(warning)))
+        }
+    };
+    Ok((snapshot(lua, owner)?, warning))
+}
+
 pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
     let owner = owner().map_err(report)?;
     let api = lua.create_table()?;
@@ -93,8 +103,8 @@ pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
             let mut owner = owner
                 .lock()
                 .map_err(|_| mlua::Error::runtime("settings owner mutex poisoned"))?;
-            owner.set(key, value).map_err(report)?;
-            snapshot(lua, &owner)
+            let outcome = owner.set(key, value).map_err(report)?;
+            applied(lua, &owner, outcome)
         })?,
     )?;
     lua.globals().set("tohru_settings", api)
@@ -124,6 +134,34 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(managed).unwrap(),
             "[bar]\nmooncoil = false\n"
+        );
+        let warning =
+            SetOutcome::CommittedDurabilityUnconfirmed(tohru_shell::settings::DurabilityWarning {
+                path: root.join("tohru/config.toml"),
+                source: std::io::Error::other("injected directory fsync failure"),
+            });
+        let (snapshot, warning) = applied(
+            &replacement,
+            &SETTINGS.get().unwrap().lock().unwrap(),
+            warning,
+        )
+        .unwrap();
+        replacement
+            .globals()
+            .set("applied_snapshot", snapshot)
+            .unwrap();
+        replacement
+            .globals()
+            .set("applied_warning", warning)
+            .unwrap();
+        replacement.load("assert(applied_snapshot['bar.mooncoil'].value); assert(string.find(applied_warning, 'settings committed')); assert(string.find(applied_warning, 'crash durability is unconfirmed'))").exec().unwrap();
+        let warning = replacement
+            .globals()
+            .get::<String>("applied_warning")
+            .unwrap();
+        assert_eq!(
+            warning.matches("injected directory fsync failure").count(),
+            1
         );
         std::fs::remove_dir_all(root).unwrap();
     }

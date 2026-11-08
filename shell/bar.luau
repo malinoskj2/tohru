@@ -5,9 +5,9 @@ local function publish(settings)
     text.settings_status = json.encode({schema = 1, settings = settings})
 end
 local function change(operation)
-    local ok, result = pcall(operation)
+    local ok, result, warning = pcall(operation)
     if ok then
-        text.settings_error = ""
+        text.settings_error = warning or ""
         publish(result)
     else
         text.settings_error = tostring(result)

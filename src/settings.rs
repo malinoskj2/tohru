@@ -123,6 +123,24 @@ pub enum Error {
     Symlink(PathBuf),
 }
 
+/// A successful mutation distinguishes temporary state from disk commitment.
+#[derive(Debug)]
+pub enum SetOutcome {
+    RuntimeOverride,
+    Persisted,
+    CommittedDurabilityUnconfirmed(DurabilityWarning),
+}
+
+#[derive(Debug, Error)]
+#[error(
+    "settings committed at {path}, but directory synchronization failed; crash durability is unconfirmed"
+)]
+pub struct DurabilityWarning {
+    pub path: PathBuf,
+    #[source]
+    pub source: std::io::Error,
+}
+
 struct Layer {
     document: DocumentMut,
     values: BTreeMap<Key, Value>,
@@ -255,12 +273,24 @@ impl Owner {
     /// Apply a setting, persisting only an unmanaged edit.
     ///
     /// # Errors
-    /// Rejects invalid values and preserves state if persistence fails.
-    pub fn set(&mut self, key: Key, candidate: Value) -> Result<(), Error> {
+    /// Rejects invalid values and pre-commit write failures without changing state.
+    /// A post-rename sync failure returns a committed outcome and updates the cache.
+    pub fn set(&mut self, key: Key, candidate: Value) -> Result<SetOutcome, Error> {
+        self.set_with_sync(key, candidate, |directory| {
+            File::open(directory)?.sync_all()
+        })
+    }
+
+    fn set_with_sync(
+        &mut self,
+        key: Key,
+        candidate: Value,
+        sync_directory: impl FnOnce(&Path) -> std::io::Result<()>,
+    ) -> Result<SetOutcome, Error> {
         key.validate(&candidate)?;
         if self.managed.contains_key(&key) || self.overrides.contains_key(&key) {
             self.overrides.insert(key, candidate);
-            return Ok(());
+            return Ok(SetOutcome::RuntimeOverride);
         }
         // Read anew so external edits and unknown keys are not overwritten.
         let mut next = Layer::read(&self.user_path, true)?;
@@ -284,14 +314,19 @@ impl Owner {
         if serialized.len() as u64 > MAX_CONFIG_BYTES {
             return Err(Error::TooLarge(self.user_path.clone()));
         }
-        persist(&self.user_path, serialized.as_bytes())?;
+        let outcome = persist(&self.user_path, serialized.as_bytes(), sync_directory)?;
+        // Returning from persist means rename committed, even if durability is unknown.
         next.values.insert(key, candidate);
         self.user = next;
-        Ok(())
+        Ok(outcome)
     }
 }
 
-fn persist(path: &Path, bytes: &[u8]) -> Result<(), Error> {
+fn persist(
+    path: &Path,
+    bytes: &[u8],
+    sync_directory: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> Result<SetOutcome, Error> {
     if fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
         return Err(Error::Symlink(path.to_owned()));
     }
@@ -314,8 +349,8 @@ fn persist(path: &Path, bytes: &[u8]) -> Result<(), Error> {
         let result = (|| {
             file.write_all(bytes)?;
             file.sync_all()?;
-            fs::rename(&temporary, path)?;
-            File::open(directory)?.sync_all()
+            // Commit point: later failures cannot roll back the new destination.
+            fs::rename(&temporary, path)
         })();
         if result.is_err() {
             let _ = fs::remove_file(&temporary);
@@ -325,5 +360,64 @@ fn persist(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     write().map_err(|source| Error::Write {
         path: path.to_owned(),
         source,
+    })?;
+    Ok(match sync_directory(directory) {
+        Ok(()) => SetOutcome::Persisted,
+        Err(source) => SetOutcome::CommittedDurabilityUnconfirmed(DurabilityWarning {
+            path: path.to_owned(),
+            source,
+        }),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn postcommit_sync_failure_updates_memory_and_reports_uncertain_durability() {
+        let directory =
+            std::env::temp_dir().join(format!("tohru-postcommit-{}", std::process::id()));
+        fs::create_dir(&directory).unwrap();
+        let path = directory.join("config.toml");
+        fs::write(&path, "# preserved\n[future]\nvalue = 42\n").unwrap();
+        let mut owner = Owner::load(path.clone(), None).unwrap();
+        let outcome = owner
+            .set_with_sync(Key::Mooncoil, Value::Bool(true), |parent| {
+                assert_eq!(parent, directory);
+                // Fault occurs after the real file sync/rename, without replacing those effects.
+                assert!(
+                    fs::read_to_string(&path)
+                        .unwrap()
+                        .contains("mooncoil = true")
+                );
+                Err(std::io::Error::other("injected directory fsync failure"))
+            })
+            .unwrap();
+        let SetOutcome::CommittedDurabilityUnconfirmed(warning) = outcome else {
+            panic!("committed write must report uncertain crash durability");
+        };
+        assert_eq!(warning.path, path);
+        assert!(warning.to_string().contains("settings committed"));
+        assert!(
+            warning
+                .to_string()
+                .contains("crash durability is unconfirmed")
+        );
+        assert_eq!(
+            std::error::Error::source(&warning).unwrap().to_string(),
+            "injected directory fsync failure"
+        );
+        assert_eq!(owner.get(Key::Mooncoil).value, Value::Bool(true));
+        assert_eq!(owner.get(Key::Mooncoil).origin, Origin::User);
+        let restarted = Owner::load(path.clone(), None).unwrap();
+        assert_eq!(owner.get(Key::Mooncoil), restarted.get(Key::Mooncoil));
+        assert!(fs::read_to_string(path).unwrap().contains("# preserved"));
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
+        assert!(matches!(
+            owner.set(Key::Mooncoil, Value::Bool(false)).unwrap(),
+            SetOutcome::Persisted
+        ));
+        fs::remove_dir_all(directory).unwrap();
+    }
 }
