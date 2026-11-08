@@ -1,4 +1,6 @@
 part BluetoothState {
+    // Root measured button center; negative uses the native screen-relative default.
+    prop bt_button_x = -1 ~0ms
     fact bt_open = false
     fact bt_scan_owned = false
     fact bt_has_target = false
