@@ -42,6 +42,17 @@ return function(options, notify)
         end
         return value
     end
+    local function same_layout(previous, current)
+        if #current ~= #previous then return false end
+        local by_name = {}
+        for _, output in ipairs(current) do by_name[output.name] = output end
+        for _, old in ipairs(previous) do
+            local now = by_name[old.name]
+            if not now or now.x ~= old.x or now.y ~= old.y or now.width ~= old.width or now.height ~= old.height
+                or now.scale ~= old.scale or now.transform ~= old.transform then return false end
+        end
+        return true
+    end
     local function start()
         if phase ~= "idle" then status("A region selection is already active; finish it or press Escape"); return false end
         phase, last_result = "freezing", nil
@@ -60,6 +71,8 @@ return function(options, notify)
                 if type(token) ~= "string" or token:sub(1, 8) ~= "capture:" then error("Native capture returned an invalid freeze token") end
                 tokens[#tokens + 1] = token
             end
+            local settled = layout(sys.ask("capture.outputs"))
+            if not same_layout(outputs, settled) then error("Output layout changed while freezing; capture cancelled") end
             -- Routes stay empty until all frames exist; never freeze our own overlay.
             for index, output in ipairs(outputs) do
                 local i = index - 1
@@ -119,14 +132,7 @@ return function(options, notify)
         if phase ~= "selecting" then return end
         local ok, current = pcall(function() return layout(sys.ask("capture.outputs")) end)
         if not ok then cancel("Output layout became unavailable; capture cancelled"); return end
-        local by_name = {}
-        for _, output in ipairs(current) do by_name[output.name] = output end
-        if #current ~= #outputs then cancel("Output layout changed; capture cancelled"); return end
-        for _, previous in ipairs(outputs) do
-            local now = by_name[previous.name]
-            if not now or now.x ~= previous.x or now.y ~= previous.y or now.width ~= previous.width or now.height ~= previous.height
-                or now.scale ~= previous.scale or now.transform ~= previous.transform then cancel("Output layout changed; capture cancelled"); return end
-        end
+        if not same_layout(outputs, current) then cancel("Output layout changed; capture cancelled") end
     end
     -- Retire any preserved text tokens when logic reloads; shared native state survives Lua.
     for i = 0, 31 do

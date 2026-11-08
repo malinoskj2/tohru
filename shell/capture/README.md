@@ -9,7 +9,9 @@ The options callback returns `{save, copy, directory, filename_pattern}` from th
 existing settings owner. Save/copy default true; directory/pattern default empty.
 The transaction snapshots these options, queries native layout/destination, then
 freezes every output **before** publishing any overlay route or opening it.
-Partial freeze failure releases all tokens already obtained. Up to32 outputs are
+Partial freeze failure releases all tokens already obtained. A second native layout
+query must still match the initial snapshot before any overlay routes publish;
+changes during the freeze batch cancel/release without exposing stale coordinates. Up to32 outputs are
 supported; names that cannot pass literal native screen selectors fail explicitly.
 Global logical coordinates preserve cross-output selection, negative origins and
 mixed scale/rotation. Native export validates actual frozen geometry again.
@@ -54,7 +56,7 @@ python3 tests/capture/check_ui.py --pleamar /absolute/pleamar --lua /absolute/lu
 python3 tests/capture/native-source.py --source /absolute/pinned/runtime/source
 ```
 
-`--check` accepts322 properties/544 instructions/129 rules/32 zones. Ten production
+`--check` accepts322 properties/544 instructions/129 rules/32 zones. Eleven production
 Lua transaction cases pass with explicit native transport fixtures. Type generation
 confirms the scene's exposed names, not a separate Luau static analysis. These
 commands do not create a display, capture a desktop or claim clipboard/GPU results.

@@ -25,6 +25,7 @@ local function harness(configure)
             assert(not fact.capture_open, "overlay must stay closed until every frame exists")
             assert(text.capture_output_0 == "" and text.capture_output_1 == "", "routes must remain empty during freeze")
             state.freezes=state.freezes+1
+            if state.during_freeze then state.during_freeze(state) end
             if state.freeze_failure == state.freezes then error("freeze failed") end
             return "capture:" .. args[1] .. "?" .. state.freezes
         end
@@ -142,5 +143,16 @@ check("lost output metadata cancels and reload releases preserved tokens", funct
     state.layouts={}
     state.handlers.capture_output_changed()
     assert(not fact.capture_open and #state.released == 3 and text.capture_error:find("unavailable"))
+end)
+check("layout changing during freeze releases all frames before any overlay opens", function()
+    local state=harness(function(s)
+        s.during_freeze=function(current)
+            if current.freezes == 1 then
+                current.layouts={output("LEFT", -90, 100), output("RIGHT", 10, 200)}
+            end
+        end
+    end)
+    assert(not state.controller.open() and state.freezes == 2 and #state.released == 2)
+    assert(not fact.capture_open and text.capture_output_0 == "" and text.capture_error:find("changed while freezing"))
 end)
 print("capture production controller: " .. count .. " cases passed")
