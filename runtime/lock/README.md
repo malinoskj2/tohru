@@ -40,16 +40,31 @@ No new generic service framework, daemon, dependency or PAM implementation.
 S-owned shared wiring request:
 1. Apply `runtime/patches/0002-lock-boundary.patch` after existing settings patch.
 2. Copy `runtime/lock/native.rs` to upstream `src/tohru_lock.rs` and
-   `runtime/lock/authority.rs` to `src/tohru_lock/authority.rs`.
-3. Copy `tests/session/lock_authority.rs`, `native_security.rs`, `native_binding.rs`
+   `runtime/lock/authority.rs` to `src/tohru_lock/authority.rs`, and
+   `runtime/lock/publication.rs` to `src/tohru_lock/publication.rs`.
+3. Copy `tests/session/lock_authority.rs`, `lock_publication.rs`, `native_security.rs`, `native_binding.rs`
    and `security-*` fixtures to upstream `tests/session/` for focused native tests.
 4. Include these owned files in Nix sources/prepare; no new dependencies.
 
 CPU core: `rustc --edition 2024 --test runtime/lock/authority.rs -o .tmp/lock-authority-test`
-then `.tmp/lock-authority-test` (6 tests). Feature script:
+then `.tmp/lock-authority-test` (7 authority tests; publication has its own deterministic ordering test). Feature script:
 `lua tests/session/logic.lua`. Patched native focused tests:
 `cargo test --release --locked --lib tohru_lock:: --jobs 1` and
 `cargo test --release --locked --lib auth_unlock_uses_immutable_root --jobs 1`.
 Heavy build and GPU/private native checks require coordinator allocations.
 Successful controlled native PAM, secret native read/export checks and stale/
 retirement/reload/native timing coverage remain required before safety acceptance.
+
+
+Configure/commit correction: the existing SCTK Dispatch2 forwarding expansion now
+acquires the lock-publication guard BEFORE automatic ACK for lock-surface events.
+Matching viewport/state and cover commits finish in that section. Actual native
+OwnFrames commits, direct lock commits and the fallback WGPU presentation entry
+use the same guard; GPU fence waits and final target/texture destruction remain
+outside. Failed configure sends defer target destruction until after dispatch
+guard exit. Normal nonlock surfaces keep their native default path. Surviving
+lock resize publishes native SheetSize and uses the same centering formula for
+renderer view and native pointer mapping. The deterministic request-order test
+pauses between ACK and viewport publication and proves a racing commit cannot
+cross that boundary. Actual driver/fractional-scale behavior still needs native
+runtime evidence; no added per-frame round trip or backend/dependency fork.
