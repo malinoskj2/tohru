@@ -1,0 +1,5 @@
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -16 +16,2 @@
++mod tohru_wallpaper;
+ pub mod scene;

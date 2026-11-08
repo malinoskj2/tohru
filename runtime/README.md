@@ -8,11 +8,24 @@ The shell's own initial settings implementation is MIT.
 
 `0001-shell-settings.patch` adds the focused `tohru-shell` path dependency and
 one binding installation hook, gated by TOHRU_SHELL=1 and excluding plugins.
-`settings_luau.rs` owns the process singleton and Luau boundary. No native service,
-renderer, frame listener, notification or layer namespace behavior is patched.
+`settings_luau.rs` owns the process singleton and Luau boundary. Additional narrow
+patches cover approved lock/secret safety, workspace shader scalars/API and
+wallpaper catalog/image identity. Ordinary window lifecycle is a separately
+reviewed patch; exact applied lists live in prepare.sh and nix/default.nix.
 `Cargo.lock` starts from the pinned upstream lock and adds only anyhow, the local
 library, and toml_writer (needed for comment-preserving TOML writes). The library
-uses upstream's already selected toml_edit 0.25.15, not a second parser version.
+uses upstream's already selected toml_edit 0.25.15 and serde_json 1.0.151.
+The same package's `tohru-wallpaper-probe` binary must be installed beside the
+actual native Pleamar executable, including behind the launch wrapper. Catalog
+dispatch locates that fixed sibling through current_exe, never a PATH override.
+Nix builds the helper from foundation/Cargo.toml into the shared target directory
+and installs it in the native runtime output. Local native builds must also build
+`--manifest-path PREPARED/foundation/Cargo.toml --bin tohru-wallpaper-probe
+--release --locked --jobs 1 --target-dir PREPARED/target` before catalog calls.
+The catalog requires explicit `wallpaper.catalog` scene permission; accepting an
+assignment does not prove image decoding/presentation. Capture's bounded geometry
+and file-publication domain is included; native capture adapters/helpers remain
+separate source deliveries and are not advertised by this inclusion.
 
 ```sh
 ./runtime/prepare.sh
