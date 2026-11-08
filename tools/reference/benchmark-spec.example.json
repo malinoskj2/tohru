@@ -1,0 +1,16 @@
+{
+  "reference": {
+    "command": ["/absolute/path/to/reference-workload-wrapper"],
+    "adapter": "NVIDIA GeForce RTX 5090",
+    "compositor_pid": 0,
+    "compositor_log": "/absolute/path/to/private-reference-compositor.log",
+    "helper_pids": {}
+  },
+  "candidate": {
+    "command": ["/absolute/path/to/candidate-workload-wrapper"],
+    "adapter": "NVIDIA GeForce RTX 5090",
+    "compositor_pid": 0,
+    "compositor_log": "/absolute/path/to/private-candidate-compositor.log",
+    "helper_pids": {}
+  }
+}
