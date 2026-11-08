@@ -27,6 +27,7 @@
 #undef private
 
 #include "globals.hpp"
+#include "Restoration.hpp"
 
 #include <hyprutils/string/VarList.hpp>
 #include <hyprutils/animation/BezierCurve.hpp>
@@ -55,11 +56,25 @@ APICALL EXPORT std::string j2barFocusApiVersion() {
 //    doesn't relayout (Firefox visibly rescales its page otherwise), and
 //  - set m_animatingIn, which makes the renderer scale the buffer into the smaller box instead of
 //    cropping it (same path Hyprland uses for popin).
-struct SHeldWindow {
+struct SFocusEffect : Focus::SRestoration<Vector2D, SP<SAnimationPropertyConfig>> {
     PHLWINDOWREF window;
-    bool         setAnimatingIn = false;
+    bool holdingSize = false;
+    bool setAnimatingIn = false;
 };
-static std::vector<SHeldWindow> heldWindows;
+static std::vector<SP<SFocusEffect>> focusEffects;
+
+static SP<SFocusEffect> effectFor(PHLWINDOW window) {
+    std::erase_if(focusEffects, [](const auto& effect) {
+        return !effect->window || (!effect->geometry && !effect->opacity && !effect->holdingSize);
+    });
+    const auto it = std::ranges::find_if(focusEffects, [&](const auto& e) { return e->window.get() == window.get(); });
+    if (it != focusEffects.end())
+        return *it;
+    auto effect = makeShared<SFocusEffect>();
+    effect->window = window;
+    focusEffects.emplace_back(effect);
+    return effect;
+}
 static CFunctionHook*           g_pSendWindowSizeHook = nullptr;
 
 // Held globally and dropped in PLUGIN_EXIT: dlclose can't actually unload this .so (it has
@@ -68,7 +83,7 @@ static CFunctionHook*           g_pSendWindowSizeHook = nullptr;
 static Hyprutils::Signal::CHyprSignalListener g_focusListener;
 
 static bool isHeld(const Desktop::View::CWindow* w) {
-    return std::ranges::any_of(heldWindows, [w](const auto& e) { return e.window.get() == w; });
+    return std::ranges::any_of(focusEffects, [w](const auto& e) { return e->holdingSize && e->window.get() == w; });
 }
 
 typedef void (*origSendWindowSize)(Desktop::View::CWindow*, bool);
@@ -79,28 +94,39 @@ static void hkSendWindowSize(Desktop::View::CWindow* thisptr, bool force) {
     (*(origSendWindowSize)g_pSendWindowSizeHook->m_original)(thisptr, force);
 }
 
-static void holdClientResize(PHLWINDOW w) {
-    std::erase_if(heldWindows, [](const auto& e) { return !e.window; });
-
-    if (isHeld(w.get()))
+static void holdClientResize(PHLWINDOW w, const SP<SFocusEffect>& effect) {
+    if (effect->holdingSize)
         return;
-
-    heldWindows.emplace_back(SHeldWindow{w, !w->m_animatingIn});
+    effect->holdingSize = true;
+    effect->setAnimatingIn = !w->m_animatingIn;
     w->m_animatingIn = true;
 }
 
 static void releaseClientResize(PHLWINDOW w) {
-    const auto it = std::ranges::find_if(heldWindows, [&w](const auto& e) { return e.window.get() == w.get(); });
-    if (it == heldWindows.end())
+    const auto it = std::ranges::find_if(focusEffects, [&w](const auto& e) { return e->holdingSize && e->window.get() == w.get(); });
+    if (it == focusEffects.end())
         return;
-
-    if (it->setAnimatingIn)
+    const auto& effect = *it;
+    if (effect->setAnimatingIn)
         w->m_animatingIn = false;
-    heldWindows.erase(it);
-
-    // no-op unless the layout changed the size while sends were held
+    effect->holdingSize = false;
     if (w->m_isMapped)
         w->sendWindowSize();
+}
+
+static void finishGeometry(const SP<SFocusEffect>& effect, PHLWINDOW window) {
+    if (!effect->geometry)
+        return;
+    const auto& geometry = *effect->geometry;
+    if (geometry.shrink)
+        window->sizeAnimation()->setCallbackOnEnd(nullptr);
+    else
+        window->positionAnimation()->setCallbackOnEnd(nullptr);
+    window->positionAnimation()->setConfig(geometry.positionConfig);
+    if (geometry.shrink)
+        window->sizeAnimation()->setConfig(geometry.sizeConfig);
+    releaseClientResize(window);
+    effect->geometry.reset();
 }
 
 static bool isMouseReason(Desktop::eFocusReason r) {
@@ -152,76 +178,96 @@ static void onFocusChange(PHLWINDOW window, Desktop::eFocusReason reason) {
     const auto PIN  = Config::animationTree()->getAnimationPropertyConfig("hyprfocusIn");
     const auto POUT = Config::animationTree()->getAnimationPropertyConfig("hyprfocusOut");
 
+    const auto effect = effectFor(window);
+    const auto weak = WP<SFocusEffect>{effect};
     if (has("flash")) {
-        const auto ORIGINAL = window->alpha(Desktop::View::WINDOW_ALPHA_ACTIVE)->goal();
+        auto& restore = effect->opacity;
+        if (!restore || !restore->callback.ownsCallback())
+            restore.emplace(SFocusEffect::SOpacity{window->alpha(Desktop::View::WINDOW_ALPHA_ACTIVE)->goal(),
+                                                  window->alpha(Desktop::View::WINDOW_ALPHA_ACTIVE)->getConfig().lock()});
+        const auto ORIGINAL = restore->value;
         window->alpha(Desktop::View::WINDOW_ALPHA_ACTIVE)->setConfig(PIN);
         *window->alpha(Desktop::View::WINDOW_ALPHA_ACTIVE) = configValues.fadeOpacity->value();
 
-        window->alpha(Desktop::View::WINDOW_ALPHA_ACTIVE)->setCallbackOnEnd([w = PHLWINDOWREF{window}, POUT, ORIGINAL](WP<CBaseAnimatedVariable> pav) {
+        window->alpha(Desktop::View::WINDOW_ALPHA_ACTIVE)->setCallbackOnEnd(restore->callback.wrap([weak, POUT, ORIGINAL](WP<CBaseAnimatedVariable>) {
+            const auto effect = weak.lock();
+            const auto w = effect ? effect->window.lock() : nullptr;
             if (!w)
                 return;
             w->alpha(Desktop::View::WINDOW_ALPHA_ACTIVE)->setConfig(POUT);
             *w->alpha(Desktop::View::WINDOW_ALPHA_ACTIVE) = ORIGINAL;
-
-            w->alpha(Desktop::View::WINDOW_ALPHA_ACTIVE)->setCallbackOnEnd(nullptr);
-        });
+            w->alpha(Desktop::View::WINDOW_ALPHA_ACTIVE)->setCallbackOnEnd(effect->opacity->callback.wrap([weak](WP<CBaseAnimatedVariable>) {
+                const auto effect = weak.lock();
+                const auto w = effect ? effect->window.lock() : nullptr;
+                if (!w)
+                    return;
+                w->alpha(Desktop::View::WINDOW_ALPHA_ACTIVE)->setCallbackOnEnd(nullptr);
+                w->alpha(Desktop::View::WINDOW_ALPHA_ACTIVE)->setConfig(effect->opacity->config);
+                effect->opacity.reset();
+            }));
+        }));
     }
 
     if (has("shrink") && g_pSendWindowSizeHook) {
         const auto ORIGINAL = CBox{window->positionAnimation()->goal(), window->sizeAnimation()->goal()};
-
-        holdClientResize(window);
-
+        effect->geometry.emplace(SFocusEffect::SGeometry{ORIGINAL.pos(), ORIGINAL.size(),
+            window->positionAnimation()->getConfig().lock(), window->sizeAnimation()->getConfig().lock(), true});
+        holdClientResize(window, effect);
         window->positionAnimation()->setConfig(PIN);
         window->sizeAnimation()->setConfig(PIN);
-
         auto box = ORIGINAL.copy().scaleFromCenter(configValues.shrinkPercentage->value());
-
         *window->positionAnimation() = box.pos();
         *window->sizeAnimation()     = box.size();
 
-        window->sizeAnimation()->setCallbackOnEnd([w = PHLWINDOWREF{window}, POUT, ORIGINAL](WP<CBaseAnimatedVariable> pav) {
+        window->sizeAnimation()->setCallbackOnEnd(effect->geometry->callback.wrap([weak, POUT, ORIGINAL](WP<CBaseAnimatedVariable>) {
+            const auto effect = weak.lock();
+            const auto w = effect ? effect->window.lock() : nullptr;
             if (!w)
                 return;
             w->sizeAnimation()->setConfig(POUT);
             w->positionAnimation()->setConfig(POUT);
-
-            if (w->m_isFloating || Fullscreen::controller()->isFullscreen(w.lock())) {
+            if (w->m_isFloating || Fullscreen::controller()->isFullscreen(w)) {
                 *w->positionAnimation() = ORIGINAL.pos();
                 *w->sizeAnimation()     = ORIGINAL.size();
-            } else
+            } else if (w->m_isMapped && w->layoutTarget())
                 w->layoutTarget()->recalc();
-
-            // keep the render-only scaling through the grow-back as well
-            if (w->sizeAnimation()->isBeingAnimated())
-                w->sizeAnimation()->setCallbackOnEnd([w](WP<CBaseAnimatedVariable> pav) {
-                    if (w)
-                        releaseClientResize(w.lock());
-                });
             else {
-                w->sizeAnimation()->setCallbackOnEnd(nullptr);
-                releaseClientResize(w.lock());
+                *w->positionAnimation() = ORIGINAL.pos();
+                *w->sizeAnimation() = ORIGINAL.size();
             }
-        });
+            if (w->sizeAnimation()->isBeingAnimated())
+                w->sizeAnimation()->setCallbackOnEnd(effect->geometry->callback.wrap([weak](WP<CBaseAnimatedVariable>) {
+                    const auto effect = weak.lock();
+                    if (effect && effect->window)
+                        finishGeometry(effect, effect->window.lock());
+                }));
+            else
+                finishGeometry(effect, w);
+        }));
     } else if (has("slide")) {
         const auto ORIGINAL = window->positionAnimation()->goal();
-
+        effect->geometry.emplace(SFocusEffect::SGeometry{ORIGINAL, window->sizeAnimation()->goal(),
+            window->positionAnimation()->getConfig().lock(), window->sizeAnimation()->getConfig().lock(), false});
         window->positionAnimation()->setConfig(PIN);
-
         *window->positionAnimation() = ORIGINAL - Vector2D{0.F, configValues.slideHeight->value()};
-
-        window->positionAnimation()->setCallbackOnEnd([w = PHLWINDOWREF{window}, POUT, ORIGINAL](WP<CBaseAnimatedVariable> pav) {
+        window->positionAnimation()->setCallbackOnEnd(effect->geometry->callback.wrap([weak, POUT, ORIGINAL](WP<CBaseAnimatedVariable>) {
+            const auto effect = weak.lock();
+            const auto w = effect ? effect->window.lock() : nullptr;
             if (!w)
                 return;
             w->positionAnimation()->setConfig(POUT);
-
-            if (w->m_isFloating || Fullscreen::controller()->isFullscreen(w.lock()))
+            if (w->m_isFloating || Fullscreen::controller()->isFullscreen(w))
                 *w->positionAnimation() = ORIGINAL;
-            else
+            else if (w->m_isMapped && w->layoutTarget())
                 w->layoutTarget()->recalc();
-
-            w->positionAnimation()->setCallbackOnEnd(nullptr);
-        });
+            else
+                *w->positionAnimation() = ORIGINAL;
+            w->positionAnimation()->setCallbackOnEnd(effect->geometry->callback.wrap([weak](WP<CBaseAnimatedVariable>) {
+                const auto effect = weak.lock();
+                if (effect && effect->window)
+                    finishGeometry(effect, effect->window.lock());
+            }));
+        }));
     }
 }
 
@@ -285,20 +331,17 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO j2barFocusInit(HANDLE handle) {
 APICALL EXPORT void j2barFocusExit() {
     g_focusListener.reset();
 
-    // reset the callbacks to avoid crashes; unmapped windows too, since one heading into a fadeout
-    // still animates its geometry and would call into unloaded memory when its animation ends
-    for (const auto& w : Desktop::windowState()->windows()) {
-        if (!w)
+    // Include unmapped windows retained by an active effect, not only mapped clients.
+    for (const auto& effect : focusEffects) {
+        const auto window = effect->window.lock();
+        if (!window)
             continue;
-
-        w->sizeAnimation()->setCallbackOnEnd(nullptr);
-        w->positionAnimation()->setCallbackOnEnd(nullptr);
-        w->alpha(Desktop::View::WINDOW_ALPHA_ACTIVE)->setCallbackOnEnd(nullptr);
+        const bool tiled = !window->m_isFloating && !Fullscreen::controller()->isFullscreen(window);
+        effect->unload(*window->positionAnimation(), *window->sizeAnimation(),
+            *window->alpha(Desktop::View::WINDOW_ALPHA_ACTIVE), window->m_isMapped,
+            tiled && bool(window->layoutTarget()),
+            [&] { window->layoutTarget()->recalc(); },
+            [&] { releaseClientResize(window); });
     }
-
-    // hooks are removed after this returns, so let the held sends through now
-    for (const auto& w : Desktop::windowState()->windows()) {
-        if (isHeld(w.get()))
-            releaseClientResize(w);
-    }
+    focusEffects.clear();
 }

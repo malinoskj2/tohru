@@ -16,5 +16,15 @@
     "bars/main.cpp": "5820e3cb8f34b91326740564bf2e12544a1e3d000bdad266105eec159f8bfab6",
     "LICENSE": "3d6d4f03b1bfe2d251202416dad893b2d3dd1c2d620980182b1d4d0b452c8741",
     "UPSTREAM-LICENSE": "3a1d080d85ce1d722b3bd84d87b74dd2332ba7b68a40a28a7126a86cfca6502a"
+  },
+  "extraction_changes": {
+    "bars/main.cpp": {
+      "sha256": "b651c5b2c70e1e1158bed1806014590cd22c302d90bb9df51b2e300c5d3667c6",
+      "reason": "Null-state guard in teardown after partial initialization."
+    },
+    "focus/main.cpp": {
+      "sha256": "b2d084da1362635b7184f52d3ff2656cd9f136e91b9904ecddbb5ce8b6556999",
+      "reason": "Accepted Q-E-1: retain active restoration state through both legs; restore geometry/opacity/config before releasing client sizing; remove only owned callbacks."
+    }
   }
 }

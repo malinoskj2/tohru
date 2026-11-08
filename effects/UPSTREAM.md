@@ -14,8 +14,15 @@ code and local modifications retain the root MIT `LICENSE`. Preserve both notice
 in source and binary distributions. No hyprglass source or GLASS-LICENSE is
 included because no code from that component is extracted.
 
-Component files remain byte-for-byte source copies except `bars/main.cpp` gains a
-null-state guard in teardown for failed initialization. Component symbols,
+Component files remain byte-for-byte source copies except the intentional
+changes recorded with original and extracted SHA-256 in source-manifest.json:
+`bars/main.cpp` gains a null-state guard for failed initialization; `focus/main.cpp`
+fixes accepted Q-E-1 by retaining active geometry, opacity and animation config
+through both focus animation legs and restoring them before releasing client
+sizing on unload. Only owned end callbacks are removed; foreign replacements and
+unaffected windows are preserved. Mapped tiled windows use current layout targets,
+while floating/fullscreen and unmapped clients restore saved geometry. Selected
+modes, target values, curves and speeds remain unchanged. Component symbols,
 internal diagnostics and the special `j2bar:maximize` config token are retained
 for easy algorithm/settings comparison. They do not depend on j2bar's process.
 The new main.cpp combines only the four selected components, checks the private

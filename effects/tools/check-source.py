@@ -8,8 +8,10 @@ root = Path(__file__).resolve().parents[1]
 manifest = json.loads((root / "source-manifest.json").read_text())
 for name, expected in manifest["files_sha256"].items():
     data = (root / name).read_bytes()
-    if name == "bars/main.cpp":
-        data = data.replace(b"    if (!g_pGlobalState)\n        return;\n", b"", 1)
+    change = manifest.get("extraction_changes", {}).get(name)
+    if change:
+        assert change["reason"], f"missing deviation reason: {name}"
+        expected = change["sha256"]
     assert hashlib.sha256(data).hexdigest() == expected, f"unrecorded source change: {name}"
 
 sources = ["main.cpp", "focus/main.cpp", "bars/main.cpp", "bars/barDeco.cpp",
@@ -21,4 +23,4 @@ for name in sources:
 assert not (root / "glass").exists()
 assert not (root / "panels.cpp").exists()
 assert not (root / "effects.cpp").exists()
-print("PASS: copied-source hashes, declared extraction adjustment, selected build sources and exclusions")
+print("PASS: copied-source hashes, declared extraction adjustments, selected build sources and exclusions")
