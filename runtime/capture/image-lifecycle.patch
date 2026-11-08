@@ -13,8 +13,9 @@ diff --git a/src/text.rs b/src/text.rs
              return self.load_frame(name, size, self.live_px(size), into);
          }
          let path = if std::path::Path::new(name).is_absolute() { Some(std::path::PathBuf::from(name)) } else { crate::platform::icon(name) }?;
-@@ -557,6 +560,14 @@
+@@ -557,7 +560,17 @@
          };
+         slot.source_size = source_size;
          self.upload(slot, rgba);
          Some(slot)
 +    }
@@ -24,7 +25,9 @@ diff --git a/src/text.rs b/src/text.rs
 +    fn capture_picture(&mut self, name: &str, into: Option<AtlasSlot>) -> Option<AtlasSlot> {
 +        let frame = crate::platform::thumbnail_frame(name)?;
 +        let px = fit_within((frame.width, frame.height), self.shelves.most);
-+        Some(self.picture(px, fit_frame(&frame, px), into))
++        let mut slot = self.picture(px, fit_frame(&frame, px), into);
++        slot.source_size = (frame.width, frame.height);
++        Some(slot)
      }
  
      /// A live window's frame (`thumbnails.live`) or a frozen monitor
@@ -109,7 +112,7 @@ diff --git a/src/text.rs b/src/text.rs
 +        let mut texts = Texts::new(send);
 +        let name = "capture:RELEASE-TEST?5";
 +        let key = (name.to_owned(), (0, 0));
-+        let slot = AtlasSlot { x: 0, y: 0, width: 2, height: 1, page: 7 };
++        let slot = AtlasSlot { x: 0, y: 0, width: 2, height: 1, page: 7, source_size: (2, 1) };
 +        texts.live.insert(key.clone(), Some(slot));
 +        texts.last_live.insert(0, (key.clone(), slot));
 +        texts.live_requested.insert(key.clone());
