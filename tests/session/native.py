@@ -29,6 +29,7 @@ def main():
     evidence.mkdir()
     run = ROOT / '.tmp' / ('l' + str(os.getpid()))
     run.mkdir(mode=0o700)
+    (run/'ipc').mkdir(mode=0o700)
     scenes = evidence / 'shell'
     shutil.copytree(ROOT / 'shell', scenes)
     home = evidence / 'home'; home.mkdir()
@@ -37,6 +38,7 @@ def main():
            'XDG_CONFIG_HOME':str(evidence/'config'), 'XDG_CACHE_HOME':str(evidence/'cache'),
            'XDG_DATA_HOME':str(evidence/'data'), 'XDG_STATE_HOME':str(evidence/'state'),
            'DBUS_SYSTEM_BUS_ADDRESS':os.environ['DBUS_SESSION_BUS_ADDRESS'],
+           'PLEAMAR_SOCKETS':str(run/'ipc'),
            'WLR_BACKENDS':'headless', 'WLR_HEADLESS_OUTPUTS':'1', 'WLR_RENDERER':'gles2',
            'WLR_LIBINPUT_NO_DEVICES':'1', 'WLR_RENDER_DRM_DEVICE':'/dev/dri/renderD128',
            'VK_DRIVER_FILES':'/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json',
