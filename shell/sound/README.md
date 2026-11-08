@@ -57,3 +57,11 @@ private compositor/GPU slot and private PulseAudio null sink, never live audio.
 B clock/calendar parts are integrated in the same root scene; no standalone
 calendar process is started, so a real clock click retains root popup serial.
 Root panel-close closes both panels and opening either closes the other.
+
+Follow-up: native false-open transitions and toggle/explicit closes flush/cancel
+pending writes and reset dragging idempotently. Logic reload cancels unissued
+pending drag work and clears presentation drag state. Command failures now render
+in a growing error area, separately from awaiting native observations.
+User accepted the pinned synchronous Pulse I/O limitation: a stalled accepting
+server can block root logic indefinitely. The50ms timer bounds coalescing only;
+no command deadline/cancellation, backend replacement or workaround was added.
