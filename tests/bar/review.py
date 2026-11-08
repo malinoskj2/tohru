@@ -11,7 +11,13 @@ def verify(root, runtime, evidence, env, start, say, expect, wait_for, icons_onl
     scene_dir = evidence / 'scene'
     shutil.copytree(root / 'shell', scene_dir)
     scene = scene_dir / 'composed.plm'
-    scene.write_text('''scene ComposedBar {
+    if icons_only:
+        # Three affected bar-only SVG captures do not need calendar/scalar patch.
+        scene.write_text('scene BarIcons { surface { size: full, 31; anchor: top; screens: all } permissions { services: "window", "apps", "media", "clock" } include "bar/state.plm" box { from: 100, 0; size: screen.width - 200, 31; corner: 10; color: #160e14; opacity: 70% } include "bar/contents.plm" }')
+        logic = scene_dir / 'composed.luau'
+        logic.write_text('require("bar/controller")()\n')
+    else:
+        scene.write_text('''scene ComposedBar {
     surface { size: full, 31; anchor: top; screens: all; reserve: 31; keyboard: exclusive while cal_open }
     permissions { services: "window", "apps", "media", "clock" }
     include "bar/state.plm"
@@ -20,11 +26,12 @@ def verify(root, runtime, evidence, env, start, say, expect, wait_for, icons_onl
     include "bar/contents.plm"
     include "calendar/popup.plm"
 }''')
-    logic = scene_dir / 'composed.luau'
-    logic.write_text('require("bar/controller")()\nrequire("calendar/controller")()\n')
+        logic = scene_dir / 'composed.luau'
+        logic.write_text('require("bar/controller")()\nlocal rail = require("calendar/rail-publisher")(tohru_workspace,"calendar","cal_rail_")\nrequire("calendar/controller")(rail)\n')
     app = start([runtime, '--scene', str(scene), '--answer-as', 'review', '--stall', '0', '--no-hud'], 'review', {'WAYLAND_DEBUG': '1'})
     wait_for(lambda: say('review', 'get bar_date'), 'composed native clock')
-    expect('review', 'cal_open', 'false')
+    if not icons_only:
+        expect('review', 'cal_open', 'false')
     apps = Path(env['XDG_DATA_HOME']) / 'applications'
     apps.mkdir(parents=True)
     (apps / 'org.example.Review.desktop').write_text(f'[Desktop Entry]\nType=Application\nName=Review\nExec=true\nIcon={scene_dir / "bar/mooncoil.svg"}\n')

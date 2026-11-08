@@ -49,3 +49,12 @@ CPU: lua tests/info/controllers.lua and tests/info/power.lua; pinned compiler
 --check shell/info/entry.plm. Actual native binding/private scene input, visuals
 and L cross-role warning evidence await coordinator slot; no real power/radio
 mutation is needed/authorized for these development checks.
+
+Native availability ambiguity: pinned platform/system.rs212–221 uses0.0 when
+capacity and energy/charge counters cannot be read, while present stays true.
+The native numeric0 cannot distinguish actually empty from missing measurement.
+power_known means a native-reported value passed range/type checks, not an
+independently verified kernel measurement. Missing/invalid Lua payload Unknown
+fixtures do not prove native missing-counter distinction. Keep native report/
+warning semantics; no extra sysfs poll/backend/patch, invented0 suppression or
+automatic power action.

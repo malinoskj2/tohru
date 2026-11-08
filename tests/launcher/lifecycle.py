@@ -50,7 +50,7 @@ def verify(root,runtime,evidence,env,start,say,expect,wait_for):
     log_path=evidence/'launcher-lifecycle.log'
     app=start([runtime,'--scene',str(scene/'entry.plm'),'--answer-as','launcher','--no-hud','--stall','0'],'launcher-lifecycle',{'WAYLAND_DEBUG':'1'})
     wait_for(lambda:say('launcher','get screen.0.name')=='HEADLESS-1','native bootstrap output name')
-    wait_for(lambda:'NVIDIA GeForce RTX 5090' in log_path.read_text(),'app hardware adapter')
+    wait_for(lambda:'render · NVIDIA GeForce RTX 5090 (Vulkan)' in log_path.read_text(),'app hardware adapter')
     expect('launcher','launcher_visible','false')
     expect('launcher','launcher_outputs','')
 
