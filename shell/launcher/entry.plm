@@ -114,10 +114,18 @@ scene TohruLauncher {
     on key Up while launcher_menu { emit launcher_menu_move(-1) }
     on key Down while launcher_menu { emit launcher_menu_move(1) }
     on key Return while launcher_menu { emit launcher_choice(launcher_menu_selected) }
-    on key PageDown while not launcher_menu { emit launcher_page(1) }
-    on key PageUp while not launcher_menu { emit launcher_page(-1) }
+    on key Next while not launcher_menu { emit launcher_page(1) }
+    on key Prior while not launcher_menu { emit launcher_page(-1) }
     on key Menu while not launcher_menu { launcher_menu_x = card_x + 52 + launcher_selected_x; launcher_menu_y = card_y + 132 + launcher_selected_y - tile_scroll; emit launcher_context(max(0, launcher_selected)) }
     on key Shift+F10 while not launcher_menu { launcher_menu_x = card_x + 52 + launcher_selected_x; launcher_menu_y = card_y + 132 + launcher_selected_y - tile_scroll; emit launcher_context(max(0, launcher_selected)) }
     on key Tab { emit launcher_tab(launcher_tab + 1) }
     on key Shift+Tab { emit launcher_tab(launcher_tab - 1) }
+    on key Shift+ISO_Left_Tab { emit launcher_tab(launcher_tab - 1) }
+    on key ISO_Left_Tab { emit launcher_tab(launcher_tab - 1) }
+    on key KP_Up while not launcher_menu { emit launcher_vertical(-1) }
+    on key KP_Down while not launcher_menu { emit launcher_vertical(1) }
+    on key KP_Left while not launcher_menu { emit launcher_move(-1) }
+    on key KP_Right while not launcher_menu { emit launcher_move(1) }
+    on key KP_Next while not launcher_menu { emit launcher_page(1) }
+    on key KP_Prior while not launcher_menu { emit launcher_page(-1) }
 }

@@ -41,7 +41,10 @@ match. This is explicit simple behavior, not an exact source-scorer claim.
 
 The search field focuses on open, arrows navigate results, Enter launches,
 Escape clears a nonempty query before closing, Tab/Shift+Tab choose categories
-and clear search, PageUp/Down scroll and clear tile selection. Up/Down use the
+and clear search, PageUp/Down (actual XKB Prior/Next) scroll and clear tile selection.
+The active native text field consumes Left/Right for caret movement before scene
+rules; source grid-first horizontal behavior is a separately reported pending
+decision. No custom editor/key-priority patch is used or horizontal parity claimed. Up/Down use the
 retained nearest visual row across pin sections rather than adding the column
 count. Native Menu/Shift+F10 open actions on the selected tile. A fresh empty
 query starts with no selected highlight, as in the source.
