@@ -36,3 +36,33 @@ Nix: import `default.nix { pkgs = <explicit pinned nixpkgs>; }`; optional reusab
 Home Manager module `nix/home-manager.nix` supplies the package and managed TOML
 path, with no service/autostart activation. It never writes into /home/jesse/nix.
 A Nix build and NixOS/system integration remain separate verification gates.
+
+## Verified initial checkpoint
+
+The real settings entry point was tested on private NVIDIA RTX 5090 Sway/GLES2
+with the app on Vulkan: native CLI writes, managed overrides, config reload,
+actual Luau logic reload, invalid reload rejection, unknown/comment preservation,
+unmanaged persistence, and process restart reset. Test runner owns and stops its
+app/compositor; the wrapper owns the private bus. It writes raw logs and one PNG
+under the worktree-root `.tmp/` with absolute paths printed on completion.
+
+After obtaining the exclusive GPU slot, run:
+
+```sh
+./tests/native-settings.sh --runtime "$PWD/.tmp/pleamar-runtime/target/release/pleamar"
+```
+
+This wrapper reproduces the explicit private bus configuration needed in the
+sandbox (the default /etc/dbus-1/session.conf is absent). It uses short runtime
+paths under `.tmp/` to respect Unix socket limits. The wrapper was syntax-checked;
+the equivalent explicit private-bus command was used for the recorded passing run.
+CPU-only CLI checks: `python3 tests/cli.py`.
+
+Remaining gates: Nix package build, Home Manager evaluation with a real consumer,
+Hyprland runtime validation, preferred/focused/first-output fallback and reconnect,
+hotplug/scaling/rotation, exact 240Hz workspace motion and stop-at-rest frame
+integration (native API decision pending), full retained bar contents and 1:1
+visuals, native glass review, and all performance/presentation/soak gates.
+No notifications, authentication, idle, wallpaper or other singleton services
+are activated by this foundation. Native frame/namespace/notification gaps stay
+unpatched until the user's decisions. Independent review follows integration.

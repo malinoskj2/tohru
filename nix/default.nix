@@ -25,6 +25,11 @@ let
     buildInputs = [ fontconfig wayland libxkbcommon linux-pam libffi ];
     # Upstream's broader tests include desktop services; run our narrow binding test.
     cargoTestFlags = [ "--lib" "tohru_settings::" ];
+    postInstall = ''
+      mkdir -p $out/share/licenses/pleamar-tohru
+      cp LICENSE THIRD-PARTY.md $out/share/licenses/pleamar-tohru/
+      cp ${source}/LICENSE $out/share/licenses/pleamar-tohru/TOHRU-LICENSE
+    '';
     postFixup = ''
       wrapProgram $out/bin/pleamar --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ vulkan-loader libglvnd ]}
     '';
@@ -40,6 +45,7 @@ in stdenvNoCC.mkDerivation {
     runHook preInstall
     mkdir -p $out/bin $out/share/tohru
     cp -r shell $out/share/tohru/
+    cp LICENSE $out/share/tohru/LICENSE
     cp bin/tohru bin/tohru-run $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar
     wrapProgram $out/bin/tohru-run \
