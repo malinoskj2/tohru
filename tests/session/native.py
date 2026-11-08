@@ -99,7 +99,7 @@ def main():
            'WLR_BACKENDS':'headless', 'WLR_HEADLESS_OUTPUTS':'1', 'WLR_RENDERER':'gles2',
            'WLR_LIBINPUT_NO_DEVICES':'1', 'WLR_RENDER_DRM_DEVICE':'/dev/dri/renderD128',
            'VK_DRIVER_FILES':'/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json',
-           'WGPU_BACKEND':'vulkan', 'PLEAMAR_BACKEND':'vulkan'}
+           'WGPU_BACKEND':'vulkan', 'PLEAMAR_BACKEND':'vulkan', 'WAYLAND_DEBUG':'client'}
     for key in ['WAYLAND_DISPLAY','SWAYSOCK','DISPLAY','HYPRLAND_INSTANCE_SIGNATURE','TOHRU_SHELL']:
         env.pop(key, None)
     # Last-resort denial: no systemctl/loginctl implementation can act on host.
@@ -174,6 +174,21 @@ def main():
         subprocess.run(['swaymsg','output','HEADLESS-1','disable'],env=env,check=True,capture_output=True,timeout=6)
         value('tohru-lock','lock.held','1')
         checks.append('native lock output arrival and first-output removal')
+        # Changed-size configure must ACK/update viewport before any lock commit.
+        for width,height in [(1600,900),(1024,768),(1920,1080),(1280,800)]:
+            subprocess.run(['swaymsg','output','HEADLESS-2','mode',f'{width}x{height}@60Hz'],
+                           env=env,check=True,capture_output=True,timeout=6)
+            def resized():
+                outputs=json.loads(subprocess.run(['swaymsg','-t','get_outputs','-r'],
+                    env=env,check=True,capture_output=True,text=True,timeout=6).stdout)
+                return any(output['name']=='HEADLESS-2' and
+                    output['current_mode']['width']==width and
+                    output['current_mode']['height']==height for output in outputs)
+            wait(resized,'private output resize')
+            value('tohru-lock','lock.held','1')
+            time.sleep(.15)
+            assert lock.poll() is None and 'Protocol error' not in (evidence/'tohru-lock.log').read_text()
+        checks.append('four actual surviving-lock output resizes retain held faces; raw ACK/viewport/commit trace recorded')
         # These are synthetic sentinels, never real credentials and never submitted.
         marker='synthetic-lock-secret-7c9d'
         cli('tohru-lock','text password '+marker)
