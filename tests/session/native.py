@@ -75,7 +75,13 @@ def cleanup(processes, files, run, evidence, events):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--runtime', type=Path, required=True)
+    p.add_argument('--wtype', type=Path)
+    p.add_argument('--pam-mode', choices=['permit','deny','account-deny'])
+    p.add_argument('--bwrap', type=Path)
+    p.add_argument('--pam-modules', type=Path)
     a = p.parse_args()
+    if a.pam_mode and (not a.bwrap or not a.pam_modules):
+        p.error('controlled PAM requires explicit --bwrap and --pam-modules; no host fallback')
     evidence = ROOT / '.tmp' / ('native-session-' + str(time.time_ns()))
     evidence.mkdir()
     run = ROOT / '.tmp' / ('l' + str(os.getpid()))
@@ -121,6 +127,10 @@ def main():
         path=scenes/role
         arguments=[str(a.runtime),'--scene',str(path),'--answer-as',name,'--no-hud']
         if name=='tohru-lock': arguments += ['--record','password']
+        if name=='tohru-lock' and a.pam_mode:
+            from pam_fixture import command
+            arguments,digest=command(arguments,a.bwrap,a.pam_modules,evidence,run,a.pam_mode)
+            (evidence/'pam-fixture.sha256').write_text(digest+'\n')
         proc=start(arguments,name+'.log')
         wait(lambda: cli(name,'get '+('open' if name=='tohru-session' else 'auth.ready' if name=='tohru-polkit' else 'engaged'),False) is not None,name+' ready')
         wait(lambda:'NVIDIA GeForce RTX 5090' in (evidence/(name+'.log')).read_text(),name+' hardware')
@@ -178,9 +188,44 @@ def main():
         definition.write_text(definition.read_text()+'\n// definition freeze probe\n')
         wait(lambda:'scene definition is frozen' in (evidence/'tohru-lock.log').read_text(),'native locked definition freeze')
         cli('tohru-lock','fact engaged false');value('tohru-lock','lock.held','1')
+        if a.wtype:
+            import select
+            cli('tohru-lock','focus password')
+            observer=subprocess.Popen([str(a.runtime),'--say','tohru-lock','watch 0 --now password'],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            processes.append(observer)
+            def next_line():
+                ready,_,_=select.select([observer.stdout],[],[],3)
+                if not ready: raise AssertionError('secret change observer did not respond')
+                return observer.stdout.readline()
+            assert next_line().startswith('hidden password')
+            subprocess.run([str(a.wtype),'synthetic-editable-field'],env=env,check=True,capture_output=True,timeout=8)
+            assert next_line().startswith('hidden password')
+            observer.terminate();observer.communicate(timeout=5)
+            cli('tohru-lock','text password ')
+            checks.append('actual private virtual keyboard edits drawn secret input while public open=false')
+
         cli('tohru-lock','fact lock.held false');value('tohru-lock','lock.held','1')
         cli('tohru-lock','emit lock_request');value('tohru-lock','engaged','1')
         checks.append('public open/held fact writes and definition reload cannot release native lock')
+        if a.pam_mode:
+            digest=(evidence/'pam-fixture.sha256').read_text().strip()
+            wait(lambda:('PRIVATE_PAM_FIXTURE_VERIFIED '+digest) in (evidence/'tohru-lock.log').read_text(),'verified private PAM mount')
+            cli('tohru-lock','submit password synthetic-fixture-credential')
+            if a.pam_mode=='permit':
+                wait(lambda:(evidence/'pam-started').exists(),'native PAM fixture entered')
+                # Queue a new lock behind blocking PAM, while outputs configure.
+                cli('tohru-lock','emit lock_request')
+                subprocess.run(['swaymsg','create_output'],env=env,check=True,capture_output=True,timeout=6)
+                (evidence/'pam-continue').write_text('continue')
+                wait(lambda:'lock   · authenticated release' in (evidence/'tohru-lock.log').read_text(),'controlled PAM native release')
+                wait(lambda:(evidence/'tohru-lock.log').read_text().count('lock   · the session is locked')>=2,'fresh lock cycle after queued request')
+                value('tohru-lock','lock.held','1')
+                checks.append('controlled PAM success with queued new lock and hotplug produces authenticated release and fresh held cycle')
+            else:
+                wait(lambda:'Password not accepted' in (cli('tohru-lock','get status',False) or ''),'controlled PAM denial')
+                value('tohru-lock','lock.held','1')
+                assert 'lock   · authenticated release' not in (evidence/'tohru-lock.log').read_text()
+                checks.append('controlled native '+a.pam_mode+' retains held lock without release')
         polkit=launch('polkit/polkit.plm','tohru-polkit')
         value('tohru-polkit','auth.ready','0')
         marker='synthetic-polkit-secret-183a'
@@ -197,7 +242,7 @@ def main():
         wait(lambda:'session lock abandoned' in (evidence/'sway.log').read_text(),'compositor abandoned-lock fallback')
         checks.append('locker SIGKILL emits no unlock; compositor reports session lock abandoned')
         (evidence/'summary.json').write_text(json.dumps({'checks':checks,'runtime':str(a.runtime),
-            'hardware':'NVIDIA RTX 5090 app Vulkan/compositor GLES2','auth_power_tested':False,
+            'hardware':'NVIDIA RTX 5090 app Vulkan/compositor GLES2','auth_power_tested':False,'controlled_pam_fixture':a.pam_mode,
             'security_acceptance':False,'visual_acceptance':False},indent=2)+'\n')
     finally:
         original_failure = sys.exc_info()[0] is not None
