@@ -31,9 +31,5 @@ return function(snapshot, more)
         local ok,result=pcall(more or function()error("Information page unavailable")end,0)
         if ok and result~=false then close() else text.about_error=ok and "Information page unavailable" or tostring(result) end
     end)
-    on("about_repository",function()
-        local ok,err=pcall(sys.call,"apps.launch","xdg-open https://github.com/malinoskj2/nix")
-        text.about_error=ok and "Open request sent" or tostring(err)
-    end)
     return {open=open,close=close,toggle=toggle,refresh=refresh}
 end

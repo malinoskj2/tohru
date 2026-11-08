@@ -38,9 +38,5 @@ about.open();assert(text.about_name=="Unknown" and text.about_error:find("Read u
 events.about_more();assert(fact.about_visible and text.about_error:find("Role unavailable",1,true))
 print("Production information/About open-only reads, cached reload, unknowns, full account paging and direct lifecycle fixtures passed")
 
-local command
-_G.sys={call=function(name,exec)assert(name=="apps.launch");command=exec end}
-events.about_repository();assert(command=="xdg-open https://github.com/malinoskj2/nix" and text.about_error=="Open request sent")
-_G.sys.call=function()error("Browser unavailable")end
-events.about_repository();assert(text.about_error:find("Browser unavailable",1,true))
-print("About fixed literal repository request/failure fixture passed without launching")
+assert(events.about_repository == nil)
+print("About repository remains selectable text without an unsupported launch command")

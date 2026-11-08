@@ -10,5 +10,4 @@ part AboutState {
     event about_toggle ->
     event about_refresh ->
     event about_more ->
-    event about_repository ->
 }
