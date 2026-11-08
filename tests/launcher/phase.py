@@ -26,7 +26,8 @@ assert 'e.next = Some(Instant::now() + Duration::from_secs_f32(rng.between(betwe
 assert render.index('// ── 5. is anything still moving?') > render.index('a.step(dt)') > render.index('Trigger::Every { between, during } =>')
 scene=(root/'shell/launcher/entry.plm').read_text()
 assert 'every 16.666667ms while launcher_closing while launcher_seen == 0 and vel(launcher_seen) == 0' in scene
-assert 'launcher_closing = false\n            emit launcher_unmap' in scene
+assert 'emit launcher_unmap(launcher_close_token)' in scene
+assert 'launcher_closing = false\n            emit launcher_unmap' not in scene
 fixture=r'''
 use std::time::{Duration, Instant};
 struct During(bool);
