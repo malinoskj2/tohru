@@ -5,7 +5,9 @@ let
   # Keep documentation/flake/test changes from rebuilding the full runtime.
   foundationSource = lib.fileset.toSource {
     root = ../.;
-    fileset = lib.fileset.unions [ ../Cargo.toml ../src ../runtime/settings_luau.rs ../runtime/idle ../tests/session/idle.rs ../LICENSE ];
+    fileset = lib.fileset.unions [ ../Cargo.toml ../src ../runtime/settings_luau.rs ../runtime/workspace_luau.rs
+      ../runtime/workspace/mod.rs ../runtime/workspace/workspace_motion.rs ../runtime/workspace/workspace_track.rs
+      ../runtime/idle ../tests/session/idle.rs ../LICENSE ];
   };
   lockSource = lib.fileset.toSource {
     root = ../.;
@@ -25,15 +27,18 @@ let
     version = pin.version;
     src = fetchurl { url = pin.archive; hash = pin.hash; };
     cargoLock.lockFile = ../runtime/Cargo.lock;
-    patches = [ ../runtime/patches/0001-shell-settings.patch ../runtime/patches/0002-lock-boundary.patch ];
+    patches = [ ../runtime/patches/0001-shell-settings.patch ../runtime/patches/0002-lock-boundary.patch
+      ../runtime/workspace/shader-inputs.patch ../runtime/patches/0004-workspace-binding.patch ];
     postPatch = ''
       mkdir foundation
       cp ${foundationSource}/Cargo.toml foundation/
       cp -r ${foundationSource}/src foundation/
       mkdir -p foundation/runtime foundation/tests/session
       cp -r ${foundationSource}/runtime/idle foundation/runtime/
+      cp -r ${foundationSource}/runtime/workspace foundation/runtime/
       cp ${foundationSource}/tests/session/idle.rs foundation/tests/session/
       cp ${foundationSource}/runtime/settings_luau.rs src/tohru_settings.rs
+      cp ${foundationSource}/runtime/workspace_luau.rs src/tohru_workspace.rs
       mkdir -p src/tohru_lock tests/session
       cp ${lockSource}/runtime/lock/native.rs src/tohru_lock.rs
       cp ${lockSource}/runtime/lock/authority.rs src/tohru_lock/authority.rs
