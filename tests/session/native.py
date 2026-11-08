@@ -119,8 +119,10 @@ def main():
         return wait(lambda:cli(scene,'get '+name,False) in ({'true','1'} if expected=='1' else {'false','0'} if expected=='0' else {expected}),scene+'.'+name+'='+expected)
     def launch(role, name):
         path=scenes/role
-        proc=start([str(a.runtime),'--scene',str(path),'--answer-as',name,'--no-hud'],name+'.log')
-        wait(lambda: cli(name,'get '+('open' if name=='tohru-session' else 'engaged'),False) is not None,name+' ready')
+        arguments=[str(a.runtime),'--scene',str(path),'--answer-as',name,'--no-hud']
+        if name=='tohru-lock': arguments += ['--record','password']
+        proc=start(arguments,name+'.log')
+        wait(lambda: cli(name,'get '+('open' if name=='tohru-session' else 'auth.ready' if name=='tohru-polkit' else 'engaged'),False) is not None,name+' ready')
         wait(lambda:'NVIDIA GeForce RTX 5090' in (evidence/(name+'.log')).read_text(),name+' hardware')
         return proc
     try:
@@ -162,13 +164,36 @@ def main():
         subprocess.run(['swaymsg','output','HEADLESS-1','disable'],env=env,check=True,capture_output=True,timeout=6)
         value('tohru-lock','lock.held','1')
         checks.append('native lock output arrival and first-output removal')
-        # Demonstrate known unpatched bypass on private compositor; no security acceptance.
-        cli('tohru-lock','fact engaged false');value('tohru-lock','lock.held','0')
-        checks.append('known unpatched native IPC bypass reproduced privately')
-        cli('tohru-lock','emit lock_request');value('tohru-lock','lock.held','1')
-        before=(evidence/'tohru-lock.log').read_text().count('lock   · unlocked')
+        # These are synthetic sentinels, never real credentials and never submitted.
+        marker='synthetic-lock-secret-7c9d'
+        cli('tohru-lock','text password '+marker)
+        assert 'secret input cannot be read' in cli('tohru-lock','get password')
+        assert 'secret input cannot be read' in cli('tohru-lock','wait password == "'+marker+'" 1ms')
+        assert marker not in cli('tohru-lock','describe json')
+        assert marker not in cli('tohru-lock','watch 0.1 --now password')
+        assert marker not in (evidence/'tohru-lock.log').read_text()
+        cli('tohru-lock','text password ')
+        checks.append('native secret get/wait predicate/describe/watch/record hide synthetic lock input')
+        definition=scenes/'lock/lock.plm'
+        definition.write_text(definition.read_text()+'\n// definition freeze probe\n')
+        wait(lambda:'scene definition is frozen' in (evidence/'tohru-lock.log').read_text(),'native locked definition freeze')
+        cli('tohru-lock','fact engaged false');value('tohru-lock','lock.held','1')
+        cli('tohru-lock','fact lock.held false');value('tohru-lock','lock.held','1')
+        cli('tohru-lock','emit lock_request');value('tohru-lock','engaged','1')
+        checks.append('public open/held fact writes and definition reload cannot release native lock')
+        polkit=launch('polkit/polkit.plm','tohru-polkit')
+        value('tohru-polkit','auth.ready','0')
+        marker='synthetic-polkit-secret-183a'
+        cli('tohru-polkit','text answer '+marker)
+        assert 'secret input cannot be read' in cli('tohru-polkit','get answer')
+        assert 'secret input cannot be read' in cli('tohru-polkit','wait answer has "probe" 1ms')
+        assert marker not in cli('tohru-polkit','describe json')
+        cli('tohru-polkit','text answer ')
+        polkit.terminate();polkit.wait(timeout=8)
+        checks.append('private native polkit absent-authority state and secret get/wait/describe protection')
+        before=(evidence/'tohru-lock.log').read_text().count('lock   · authenticated release')
         lock.kill();lock.wait(timeout=8)
-        assert (evidence/'tohru-lock.log').read_text().count('lock   · unlocked')==before
+        assert (evidence/'tohru-lock.log').read_text().count('lock   · authenticated release')==before
         wait(lambda:'session lock abandoned' in (evidence/'sway.log').read_text(),'compositor abandoned-lock fallback')
         checks.append('locker SIGKILL emits no unlock; compositor reports session lock abandoned')
         (evidence/'summary.json').write_text(json.dumps({'checks':checks,'runtime':str(a.runtime),

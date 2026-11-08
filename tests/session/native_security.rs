@@ -62,3 +62,36 @@ fn queued_public_wait_is_rejected_when_current_metadata_becomes_secret() {
     scene.texts.clear();
     assert!(cond.reads_secret(&scene));
 }
+
+#[test]
+fn human_watch_and_action_diff_cannot_reveal_old_secret_after_text_reordering() {
+    let (mut scene, _) = crate::language::read_file(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/session/security-secret.plm"
+    ))
+    .unwrap();
+    let props: Vec<Animated> = scene
+        .props
+        .iter()
+        .map(|(_, v, spring)| Animated::at(*v, *spring))
+        .collect();
+    let facts: Vec<f32> = scene.facts.iter().map(|(_, v)| *v).collect();
+    let mut texts: Vec<String> = scene.texts.iter().map(|(_, value)| value.clone()).collect();
+    let k = scene
+        .texts
+        .iter()
+        .position(|(name, _)| *name == "security_password")
+        .unwrap();
+    texts[k] = "synthetic-old-secret".into();
+    let ctx = Ctx {
+        props: &props,
+        facts: &facts,
+        seen: None,
+    };
+    let before = crate::agent::before(&scene, ctx, &texts, Vec::new());
+    scene.texts[k].0 = "security_rebound_public";
+    texts[k] = "public text".into();
+    let diff = crate::agent::what_happened(&scene, &before, ctx, &texts, &[], &[]);
+    assert!(!diff.contains("synthetic-old-secret"), "{diff}");
+    assert!(diff.contains("changed (hidden)"), "{diff}");
+}
