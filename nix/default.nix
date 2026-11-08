@@ -13,8 +13,9 @@ let
       ../runtime/capture/mod.rs ../runtime/capture/files.rs ../runtime/capture/geometry.rs
       ../runtime/capture/native.rs ../runtime/capture/clipboard.rs ../runtime/capture/clipboard_owner.rs
       ../tests/wallpaper/catalog.rs ../tests/capture
-      ../runtime/idle/mod.rs ../runtime/idle/cookies.rs ../runtime/idle/delay.rs ../runtime/idle/input.rs
-      ../tests/session/idle.rs ../tests/session/idle_cookies.rs ../tests/session/idle_delay.rs ../tests/session/idle_input.rs ../LICENSE ];
+      ../runtime/idle/mod.rs ../runtime/idle/cookies.rs ../runtime/idle/delay.rs ../runtime/idle/input.rs ../runtime/idle/logind_state.rs
+      ../runtime/idle/native.rs ../runtime/idle/observer.rs ../runtime/idle/screensaver.rs ../runtime/idle/logind.rs ../runtime/idle/sleep_guard.rs
+      ../tests/session/idle.rs ../tests/session/idle_cookies.rs ../tests/session/idle_delay.rs ../tests/session/idle_input.rs ../tests/session/idle_logind.rs ../LICENSE ];
   };
   lockSource = lib.fileset.toSource {
     root = ../.;
@@ -40,14 +41,16 @@ let
       ../runtime/launcher/namespace.patch ../runtime/patches/0003-window-lifecycle.patch ../runtime/patches/0006-info-binding.patch
       ../runtime/capture/native.patch ../runtime/capture/layout-link.patch
       ../runtime/capture/image-lifecycle.patch ../runtime/capture/output-events.patch
-      ../runtime/patches/0007-capture-assembly.patch ];
+      ../runtime/patches/0007-capture-assembly.patch
+      ../runtime/idle/0004-idle-native.patch ../runtime/patches/0008-idle-binding.patch ];
     postPatch = ''
       mkdir foundation
       cp ${foundationSource}/Cargo.toml foundation/
       cp ${foundationSource}/Cargo.lock foundation/
       cp -r ${foundationSource}/src foundation/
       mkdir -p foundation/runtime foundation/tests/session
-      cp -r ${foundationSource}/runtime/idle foundation/runtime/
+      mkdir -p foundation/runtime/idle
+      cp ${foundationSource}/runtime/idle/mod.rs ${foundationSource}/runtime/idle/cookies.rs ${foundationSource}/runtime/idle/delay.rs ${foundationSource}/runtime/idle/input.rs ${foundationSource}/runtime/idle/logind_state.rs foundation/runtime/idle/
       cp -r ${foundationSource}/runtime/workspace foundation/runtime/
       mkdir -p foundation/runtime/capture
       cp ${foundationSource}/runtime/capture/mod.rs ${foundationSource}/runtime/capture/files.rs ${foundationSource}/runtime/capture/geometry.rs foundation/runtime/capture/
@@ -60,12 +63,15 @@ let
       cp ${foundationSource}/tests/wallpaper/catalog.rs foundation/tests/wallpaper/
       cp ${foundationSource}/tests/capture/*.rs foundation/tests/capture/
       cp ${foundationSource}/tests/session/idle.rs foundation/tests/session/
-      cp ${foundationSource}/tests/session/idle_cookies.rs ${foundationSource}/tests/session/idle_delay.rs ${foundationSource}/tests/session/idle_input.rs foundation/tests/session/
+      cp ${foundationSource}/tests/session/idle_cookies.rs ${foundationSource}/tests/session/idle_delay.rs ${foundationSource}/tests/session/idle_input.rs ${foundationSource}/tests/session/idle_logind.rs foundation/tests/session/
       cp ${foundationSource}/runtime/settings_luau.rs src/tohru_settings.rs
       cp ${foundationSource}/runtime/workspace_luau.rs src/tohru_workspace.rs
       cp ${foundationSource}/runtime/wallpaper/native.rs src/tohru_wallpaper.rs
       cp ${foundationSource}/runtime/window/visibility.rs src/tohru_window.rs
       cp ${foundationSource}/runtime/info_luau.rs src/tohru_info.rs
+      mkdir -p src/tohru_idle
+      cp ${foundationSource}/runtime/idle/native.rs src/tohru_idle.rs
+      cp ${foundationSource}/runtime/idle/observer.rs ${foundationSource}/runtime/idle/screensaver.rs ${foundationSource}/runtime/idle/logind.rs ${foundationSource}/runtime/idle/sleep_guard.rs src/tohru_idle/
       mkdir -p src/platform/tohru_capture
       cp ${foundationSource}/runtime/capture/native.rs ${foundationSource}/runtime/capture/clipboard_owner.rs src/platform/tohru_capture/
       cp ${foundationSource}/runtime/capture/clipboard.rs src/tohru_capture_clipboard.rs

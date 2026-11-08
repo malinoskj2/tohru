@@ -4,6 +4,9 @@ use mlua::Lua;
 #[path = "../osd/logic.rs"]
 mod osd;
 
+#[path = "../idle-settings/logic.rs"]
+mod idle_settings;
+
 #[path = "../../runtime/workspace_luau.rs"]
 mod actual_workspace_binding;
 
@@ -178,9 +181,18 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
                 return true
              end}
         json={encode=function(value) return 'snapshot' end}
+        tohru_idle={start=function(config)
+            assert(config.lock_seconds==1800 and config.screen_off_unlocked_seconds==0)
+            assert(config.screen_off_locked_seconds==60 and config.suspend_unlocked_seconds==7200)
+            assert(config.suspend_locked_seconds==5400 and config.fade_milliseconds==2000)
+            idle_configured=true; idle_configure_count=(idle_configure_count or 0)+1
+        end}
         tohru_settings={snapshot=function() return {
             ['bar.mooncoil']={value=false},['appearance.corners']={value=true},['appearance.corner_size']={value=32},
-            ['bar.preferred_output']={value='legacy'}
+            ['bar.preferred_output']={value='legacy'},
+            ['idle.lock_seconds']={value=1800}, ['idle.screen_off_unlocked_seconds']={value=0},
+            ['idle.screen_off_locked_seconds']={value=60}, ['idle.suspend_unlocked_seconds']={value=7200},
+            ['idle.suspend_locked_seconds']={value=5400}, ['idle.fade_milliseconds']={value=2000}
         } end}
     "#).exec().unwrap();
     let modules: mlua::Table = lua.globals().get("modules").unwrap();
@@ -188,6 +200,14 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         (
             "osd/controller",
             include_str!("../../shell/osd/controller.luau"),
+        ),
+        (
+            "settings/idle",
+            include_str!("../../shell/settings/idle.luau"),
+        ),
+        (
+            "session/idle",
+            include_str!("../../shell/session/idle.luau"),
         ),
         (
             "sound/controller",
@@ -215,7 +235,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         ),
     ] {
         modules
-            .set(name, lua.load(source).eval::<mlua::Function>().unwrap())
+            .set(name, lua.load(source).eval::<mlua::Value>().unwrap())
             .unwrap();
     }
     lua.load(include_str!("../../shell/bar.luau"))
@@ -223,7 +243,8 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         .unwrap();
     lua.load(
         r#"
-        assert(fact.corners and fact.corner_size==32)
+        assert(fact.corners and fact.corner_size==32 and idle_configured)
+        dispatch('config_reload'); assert(idle_configure_count==1, 'unchanged projection cannot resume idle')
         dispatch('audio_report'); assert(not fact.osd_open)
         dispatch('audio_step',1); assert(not fact.osd_open, 'ack is not an observation')
         fact['audio.volume']=0.4; dispatch('audio_report')

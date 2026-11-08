@@ -1,5 +1,6 @@
 -- Settings ownership is in Rust, outside this reloadable VM.
 local refresh_settings
+local configure_idle
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
@@ -7,8 +8,9 @@ local function publish(settings)
     fact.corner_size = settings["appearance.corner_size"].value
     settings["bar.preferred_output"].deprecated = true
     settings["bar.preferred_output"].effective = false
-    text.settings_status = json.encode({schema = 4, settings = settings})
+    text.settings_status = json.encode({schema = 5, settings = settings})
     if refresh_settings then refresh_settings(settings) end
+    if configure_idle then configure_idle(settings) end
 end
 local function change(operation)
     local ok, result, warning = pcall(operation)
@@ -55,3 +57,6 @@ refresh_settings = require("settings/controller")(function(settings, warning)
     publish(settings)
 end)
 on("settings_open_request", function() sound.close(); calendar.close() end)
+
+configure_idle = require("settings/idle")(require("session/idle"))
+configure_idle(tohru_settings.snapshot())

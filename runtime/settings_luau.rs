@@ -117,14 +117,17 @@ pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
                     Value::Assignments(assignments)
                 }
                 LuaValue::Number(value)
-                    if key == Key::CornerSize
-                        && value.fract() == 0.0
-                        && (1.0..=100.0).contains(&value) =>
+                    if value.fract() == 0.0
+                        && key.integer_bounds().is_some_and(|(min, max)| {
+                            // All schema bounds fit exactly in f64 (currently <=4294967).
+                            #[expect(clippy::cast_precision_loss, reason = "schema integer bounds fit exactly in f64")]
+                            { (min as f64..=max as f64).contains(&value) }
+                        }) =>
                 {
-                    // Finite integral value in 1..100, validated before conversion.
+                    // Finite integral value in the schema range, validated before conversion.
                     #[expect(
                         clippy::cast_possible_truncation,
-                        reason = "validated integral range 1..100"
+                        reason = "validated finite integral schema range fits i64"
                     )]
                     let integer = value as i64;
                     Value::Integer(integer)
@@ -185,6 +188,7 @@ mod tests {
             std::fs::read_to_string(managed).unwrap(),
             "[bar]\nmooncoil = false\n"
         );
+        replacement.load("tohru_settings.set('idle.lock_seconds', 0.0); tohru_settings.set('idle.fade_milliseconds', 120000.0); assert(tohru_settings.snapshot()['idle.lock_seconds'].value==0); for _, v in {-1,120001,0.5,math.huge,0/0} do assert(not pcall(tohru_settings.set,'idle.fade_milliseconds',v)) end; assert(tohru_settings.snapshot()['idle.fade_milliseconds'].value==120000)").exec().unwrap();
         let warning =
             SetOutcome::CommittedDurabilityUnconfirmed(tohru_shell::settings::DurabilityWarning {
                 path: root.join("tohru/config.toml"),

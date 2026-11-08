@@ -1,0 +1,21 @@
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -8,6 +8,8 @@
+ //! monitor, their scale and the mouse); the logic one, which decides; and the render one, which is the
+ //! only one that animates.
+
++#[cfg(feature = "luau")]
++mod tohru_idle;
+ #[cfg(feature = "luau")]
+ mod tohru_info;
+ #[cfg(feature = "luau")]
+--- a/src/logic_luau.rs
++++ b/src/logic_luau.rs
+@@ -1415,6 +1415,7 @@
+             crate::tohru_settings::install(&lua)?;
+             crate::tohru_workspace::install(&lua)?;
+             crate::tohru_info::install(&lua)?;
++            crate::tohru_idle::install(&lua, self.tx.clone(), self.to_logic.clone())?;
+         }
+
+         // The sandbox, last of all: from here on the globals are not touched.
