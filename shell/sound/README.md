@@ -53,3 +53,7 @@ implementation is substituted. The frame API gap remains independent.
 CPU tests in tests/sound/logic.rs execute the real controller using mlua at the
 native-call/timer boundary; GUI/native service/input tests require an exclusive
 private compositor/GPU slot and private PulseAudio null sink, never live audio.
+
+B clock/calendar parts are integrated in the same root scene; no standalone
+calendar process is started, so a real clock click retains root popup serial.
+Root panel-close closes both panels and opening either closes the other.

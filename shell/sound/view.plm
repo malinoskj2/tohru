@@ -1,5 +1,5 @@
 part SoundView {
- let sound_button_x = screen.width - 166
+ let sound_button_x = screen.width - 324
  box sound_button { at: sound_button_x, 15.5; size: 28, 27; corner: 13.5; color: #89dceb; opacity: sound_open * 18%; cursor: pointer }
  image sound_speaker { at: sound_button_x - 8, 7.5; size: 16, 16; tint: #cdd6f4; show: not audio.muted }
  image sound_muted { at: sound_button_x - 8, 7.5; size: 16, 16; tint: #cdd6f4; show: audio.muted }
