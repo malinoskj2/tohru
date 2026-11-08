@@ -66,3 +66,53 @@ visuals, native glass review, and all performance/presentation/soak gates.
 No notifications, authentication, idle, wallpaper or other singleton services
 are activated by this foundation. Native frame/namespace/notification gaps stay
 unpatched until the user's decisions. Independent review follows integration.
+
+## Root flake interface
+
+The root `flake.nix` locks nixpkgs revision
+`4fe25e12eb9f4c744966dd3de5a05246cf098601`. It exports only `x86_64-linux`;
+no ARM/macOS build or support is claimed. Pleamar keeps its separate runtime pin.
+
+```sh
+nix build .#tohru            # also packages.x86_64-linux.default
+nix build .#pleamar-runtime  # pinned upstream with approved shell settings hook
+nix run .#shell             # also nix run . ; starts only the initial shell bar
+nix run .#tohru -- status --json
+```
+
+The command runner still follows native display warning/fallback behavior,
+explicitly accepted by the user; zero running instances fail. The initial bar
+is a foundation slice, not workspace/output/visual parity.
+
+A consuming flake may follow its own pinned nixpkgs and import the module:
+
+```nix
+inputs.tohru.url = "path:/path/to/tohru";
+inputs.tohru.inputs.nixpkgs.follows = "nixpkgs";
+# In a Home Manager configuration's modules:
+{
+  imports = [ inputs.tohru.homeManagerModules.tohru ]; # .default is an alias
+  programs.tohru = {
+    enable = true;
+    settings.bar.mooncoil = false;
+    settings.bar.preferred_output = "DP-1";
+  };
+}
+```
+
+The module uses its consumer's `pkgs`; `programs.tohru.package` remains
+replaceable. It installs a package and managed TOML environment path only, without
+activating services or autostart. `nix/tests/home-manager.nix` accepts actual
+Home Manager, nixpkgs and Tohru flake values for enabled/disabled consumer checks.
+No NixOS module is exported because this slice supplies no NixOS-specific behavior.
+
+When the independent E-owned `effects/package.nix` is present after integration,
+`packages.x86_64-linux.desktop-effects` calls it separately; it is never a shell
+dependency and never loaded automatically. E's source is absent from this F-only
+checkout, so that optional output is not declared/tested here. The package's
+reviewed candidate requires Hyprland **0.56.2**, exact matching compositor headers
+and runtime ABI including any local compositor patches; the version string alone
+does not prove compatibility. With a custom candidate, use the effect package's
+`override { hyprland = candidate; }` before building, and keep loading an explicit
+integration step. A changed nixpkgs/compositor requires those compatibility checks
+again. No plugin loading/configuration or existing Nix repository is modified.

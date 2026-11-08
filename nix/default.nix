@@ -2,11 +2,14 @@
 , fontconfig, wayland, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd }:
 let
   pin = builtins.fromJSON (builtins.readFile ../runtime/pin.json);
-  source = builtins.path {
-    path = ../.;
-    name = "tohru-shell-source";
-    filter = path: _type: !(builtins.elem (baseNameOf path)
-      [ ".git" ".tmp" "target" "prototypes" "effects" "docs" "tools" ]);
+  # Keep documentation/flake/test changes from rebuilding the full runtime.
+  foundationSource = lib.fileset.toSource {
+    root = ../.;
+    fileset = lib.fileset.unions [ ../Cargo.toml ../src ../runtime/settings_luau.rs ../LICENSE ];
+  };
+  source = lib.fileset.toSource {
+    root = ../.;
+    fileset = lib.fileset.unions [ ../bin ../shell ../LICENSE ];
   };
   runtime = rustPlatform.buildRustPackage {
     pname = "pleamar-tohru";
@@ -16,10 +19,10 @@ let
     patches = [ ../runtime/patches/0001-shell-settings.patch ];
     postPatch = ''
       mkdir foundation
-      cp ${source}/Cargo.toml foundation/
-      cp -r ${source}/src foundation/
-      cp ${source}/runtime/settings_luau.rs src/tohru_settings.rs
-      cp ${source}/runtime/Cargo.lock Cargo.lock
+      cp ${foundationSource}/Cargo.toml foundation/
+      cp -r ${foundationSource}/src foundation/
+      cp ${foundationSource}/runtime/settings_luau.rs src/tohru_settings.rs
+      cp ${../runtime/Cargo.lock} Cargo.lock
     '';
     nativeBuildInputs = [ pkg-config makeWrapper ];
     buildInputs = [ fontconfig wayland libxkbcommon linux-pam libffi ];
@@ -28,7 +31,7 @@ let
     postInstall = ''
       mkdir -p $out/share/licenses/pleamar-tohru
       cp LICENSE THIRD-PARTY.md $out/share/licenses/pleamar-tohru/
-      cp ${source}/LICENSE $out/share/licenses/pleamar-tohru/TOHRU-LICENSE
+      cp ${foundationSource}/LICENSE $out/share/licenses/pleamar-tohru/TOHRU-LICENSE
     '';
     postFixup = ''
       wrapProgram $out/bin/pleamar --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ vulkan-loader libglvnd ]}
