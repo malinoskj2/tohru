@@ -77,6 +77,9 @@ mod native_capture_parent {
     pub(super) fn query(name: &str, args: &[SysValue]) -> Result<SysValue, String> {
         match (name, args) {
             ("capture.outputs", []) => with_link(export::outputs),
+            ("capture.destination", [SysValue::Text(directory), SysValue::Text(pattern)]) => {
+                export::destination(directory, pattern)
+            }
             ("capture.release", [SysValue::Text(token)]) => export::release(token),
             ("capture.region", _) => export::region(args),
             _ => Err("unsupported capture fixture request".into()),

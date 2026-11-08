@@ -25,6 +25,13 @@ fn map(fields: Vec<(&str, SysValue)>) -> SysValue {
     )
 }
 
+fn routable(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 255
+        && name.trim() == name
+        && !name.contains([',', '\r', '\n', '\0'])
+}
+
 pub(super) fn outputs(link: &mut Link) -> Result<SysValue, Asked> {
     link.settle()?;
     if link.state.outputs.len() > 32 {
@@ -49,6 +56,7 @@ pub(super) fn outputs(link: &mut Link) -> Result<SysValue, Asked> {
         }
         records.push(map(vec![
             ("name", SysValue::Text(output.name.clone())),
+            ("routable", SysValue::Bool(routable(&output.name))),
             ("x", SysValue::Num(f64::from(rect.x))),
             ("y", SysValue::Num(f64::from(rect.y))),
             ("width", SysValue::Num(f64::from(rect.width))),
@@ -58,6 +66,124 @@ pub(super) fn outputs(link: &mut Link) -> Result<SysValue, Asked> {
         ]));
     }
     Ok(SysValue::List(records))
+}
+
+fn expand_home(value: &str, home: Option<&Path>) -> std::path::PathBuf {
+    let tail = value
+        .strip_prefix("~/")
+        .or_else(|| value.strip_prefix("$HOME/"));
+    match (tail, home) {
+        (Some(tail), Some(home)) => home.join(tail),
+        _ if value == "~" => home.map_or_else(|| value.into(), Path::to_path_buf),
+        _ => value.into(),
+    }
+}
+
+fn pictures_setting(settings: &str, home: &Path) -> Option<std::path::PathBuf> {
+    settings
+        .lines()
+        .filter_map(|line| line.trim_start().strip_prefix("XDG_PICTURES_DIR="))
+        .filter_map(|value| value.trim().strip_prefix('"')?.strip_suffix('"'))
+        .map(|value| expand_home(value, Some(home)))
+        .find(|path| path.is_absolute())
+}
+
+fn pictures_dir(home: Option<&Path>) -> std::path::PathBuf {
+    if let Some(path) = std::env::var("XDG_PICTURES_DIR")
+        .ok()
+        .map(|value| expand_home(&value, home))
+        .filter(|path| path.is_absolute())
+    {
+        return path;
+    }
+    let Some(home) = home else {
+        return "/tmp".into();
+    };
+    let config = std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .unwrap_or_else(|| home.join(".config"));
+    let preference = (|| -> Result<Option<std::path::PathBuf>, io::Error> {
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        std::fs::File::open(config.join("user-dirs.dirs"))?
+            .take(65537)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() > 65536 {
+            return Err(io::Error::other(
+                "picture directory preferences exceed64KiB",
+            ));
+        }
+        let value = std::str::from_utf8(&bytes)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        Ok(pictures_setting(value, home))
+    })();
+    match preference {
+        Ok(Some(path)) => path,
+        Ok(None) => home.join("Pictures"),
+        Err(error) => {
+            if error.kind() != io::ErrorKind::NotFound {
+                eprintln!(
+                    "tohru: capture: reading picture directory preferences: {error}; using ~/Pictures"
+                );
+            }
+            home.join("Pictures")
+        }
+    }
+}
+
+pub(super) fn destination(directory: &str, pattern: &str) -> Result<SysValue, String> {
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_absolute());
+    let directory = if directory.is_empty() {
+        pictures_dir(home.as_deref())
+    } else {
+        expand_home(directory, home.as_deref())
+    };
+    if !directory.is_absolute()
+        || directory
+            .to_str()
+            .is_none_or(|value| value.len() > 4096 || value.contains('\0'))
+        || directory
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
+    {
+        return Err(
+            "capture directory must be an absolute UTF-8 path without parent traversal".into(),
+        );
+    }
+    let pattern = if pattern.is_empty() {
+        "screenshot_%Y%m%d_%H%M%S"
+    } else {
+        pattern
+    };
+    if pattern.len() > 1024 {
+        return Err("capture filename pattern exceeds1024 bytes".into());
+    }
+    let items = chrono::format::StrftimeItems::new(pattern)
+        .parse()
+        .map_err(|error| format!("invalid capture filename pattern: {error}"))?;
+    let mut stem = String::new();
+    std::fmt::write(
+        &mut stem,
+        format_args!("{}", chrono::Local::now().format_with_items(items.iter())),
+    )
+    .map_err(|_| "invalid capture filename pattern")?;
+    if stem.is_empty() || stem.len() > 200 || stem.contains(['/', '\\', '\0']) {
+        return Err(
+            "capture filename must be a nonempty name of at most200 bytes without separators"
+                .into(),
+        );
+    }
+    let path = directory.join(format!("{stem}-region.png"));
+    let path = path
+        .to_str()
+        .ok_or("capture destination encoding unavailable")?;
+    if path.len() > 4096 {
+        return Err("capture destination exceeds4096 bytes".into());
+    }
+    Ok(SysValue::Text(path.to_owned()))
 }
 
 fn token(token: &str) -> Result<(&str, u64), String> {
@@ -223,6 +349,30 @@ impl Write for Png {
     }
 }
 
+fn verify_topology(records: &[(String, Frozen)]) -> Result<(), String> {
+    with_link(|link| {
+        link.settle()?;
+        for (name, record) in records {
+            let now = link.output(name)?;
+            let old = record.layout.logical;
+            let old_size = (
+                i32::try_from(old.width).map_err(|_| Asked::No("invalid frozen width".into()))?,
+                i32::try_from(old.height).map_err(|_| Asked::No("invalid frozen height".into()))?,
+            );
+            if now.at != (old.x, old.y)
+                || now.size != old_size
+                || now.transform != record.transform
+                || now.mode != record.mode
+            {
+                return Err(Asked::No(
+                    "output layout changed after freeze; start a new region capture".into(),
+                ));
+            }
+        }
+        Ok(())
+    })
+}
+
 pub(super) fn region(args: &[SysValue]) -> Result<SysValue, String> {
     let [
         SysValue::List(tokens),
@@ -244,27 +394,7 @@ pub(super) fn region(args: &[SysValue]) -> Result<SysValue, String> {
     let rectangle =
         Rect::new(coordinate(*x)?, coordinate(*y)?, width, height).map_err(|e| e.to_string())?;
     let records = snapshots(tokens)?;
-    with_link(|link| {
-        link.settle()?;
-        for (name, record) in &records {
-            let now = link.output(name)?;
-            let old = record.layout.logical;
-            let old_size = (
-                i32::try_from(old.width).map_err(|_| Asked::No("invalid frozen width".into()))?,
-                i32::try_from(old.height).map_err(|_| Asked::No("invalid frozen height".into()))?,
-            );
-            if now.at != (old.x, old.y)
-                || now.size != old_size
-                || now.transform != record.transform
-                || now.mode != record.mode
-            {
-                return Err(Asked::No(
-                    "output layout changed after freeze; start a new region capture".into(),
-                ));
-            }
-        }
-        Ok(())
-    })?;
+    verify_topology(&records)?;
     let image = image(rectangle, &records)?;
     let mut png = Png(Vec::new());
     image::codecs::png::PngEncoder::new(&mut png)
@@ -276,13 +406,25 @@ pub(super) fn region(args: &[SysValue]) -> Result<SysValue, String> {
         )
         .map_err(|e| format!("encoding capture PNG: {e}"))?;
     let (mut saved, mut durable, mut save_error) = (false, false, String::new());
+    let mut saved_path = String::new();
     if !path.is_empty() {
-        match tohru_shell::capture::save_png(Path::new(path), &png.0) {
-            Ok(SaveOutcome::Saved(_)) => {
+        match tohru_shell::capture::save_region_png(Path::new(path), &png.0) {
+            Ok(SaveOutcome::Saved(destination)) => {
+                destination
+                    .to_str()
+                    .ok_or("PNG saved but destination encoding unavailable")?
+                    .clone_into(&mut saved_path);
                 saved = true;
                 durable = true;
             }
-            Ok(SaveOutcome::DurabilityUnconfirmed { source, .. }) => {
+            Ok(SaveOutcome::DurabilityUnconfirmed {
+                path: destination,
+                source,
+            }) => {
+                destination
+                    .to_str()
+                    .ok_or("PNG saved but destination encoding unavailable")?
+                    .clone_into(&mut saved_path);
                 saved = true;
                 save_error = format!("PNG saved, crash durability unconfirmed: {source}");
             }
@@ -305,10 +447,7 @@ pub(super) fn region(args: &[SysValue]) -> Result<SysValue, String> {
     };
     Ok(map(vec![
         ("saved", SysValue::Bool(saved)),
-        (
-            "path",
-            SysValue::Text(if saved { path.clone() } else { String::new() }),
-        ),
+        ("path", SysValue::Text(saved_path)),
         ("durable", SysValue::Bool(durable)),
         ("copied", SysValue::Bool(copied)),
         ("save_error", SysValue::Text(save_error)),
@@ -340,6 +479,51 @@ mod tests {
             mode: Some((2, 2)),
         }
     }
+    #[test]
+    fn picture_preferences_keep_source_home_expansion_without_shell_execution() {
+        let home = Path::new("/chosen/home");
+        assert_eq!(
+            pictures_setting("# ignored\nXDG_PICTURES_DIR=\"$HOME/Photos\"\n", home),
+            Some(home.join("Photos"))
+        );
+        assert_eq!(
+            pictures_setting("XDG_PICTURES_DIR=\"/absolute photos\"", home),
+            Some("/absolute photos".into())
+        );
+        assert_eq!(
+            pictures_setting("XDG_PICTURES_DIR=\"relative\"", home),
+            None
+        );
+        assert_eq!(expand_home("~/Screens", Some(home)), home.join("Screens"));
+        assert_eq!(expand_home("~", Some(home)), home);
+        assert_eq!(expand_home("$(bad)", Some(home)), Path::new("$(bad)"));
+    }
+
+    #[test]
+    fn output_routing_does_not_alias_native_selectors() {
+        for name in ["DP-1", "日本語", "space inside", "\u{200b}DP-1"] {
+            assert!(routable(name));
+        }
+        for name in ["", " DP-1", "DP-1\u{a0}", "A,B", "A\nB", "A\rB", "A\0B"] {
+            assert!(!routable(name));
+        }
+        assert!(!routable(&"x".repeat(256)));
+    }
+
+    #[test]
+    fn filename_query_is_bounded_and_rejects_invalid_patterns_without_panics() {
+        let SysValue::Text(path) = destination("/chosen/pictures", "fixed").unwrap() else {
+            panic!("expected PNG destination");
+        };
+        assert_eq!(path, "/chosen/pictures/fixed-region.png");
+        for pattern in ["%Q", "%D", "../escape", "/escape"] {
+            assert!(destination("/chosen/pictures", pattern).is_err());
+        }
+        assert!(destination("relative", "fixed").is_err());
+        assert!(destination("/chosen/../escape", "fixed").is_err());
+        assert!(destination("/chosen/pictures", &"x".repeat(1025)).is_err());
+    }
+
     #[test]
     fn native_bgra_crop_and_png_round_trip_preserve_upright_colors() {
         let records = vec![("PIXELS".into(), frozen(1))];

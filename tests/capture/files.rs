@@ -79,3 +79,18 @@ fn invalid_path_and_encoding_fail_without_creating_destination() {
     assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn region_numbering_preserves_collision_files_and_reports_actual_name() {
+    let dir = folder();
+    let path = dir.join("shot-region.png");
+    fs::write(&path, b"existing capture").unwrap();
+    let result = save_region_png(&path, PNG).unwrap();
+    let SaveOutcome::Saved(actual) = result else {
+        panic!("local fixture should sync")
+    };
+    assert_eq!(actual, dir.join("shot-1-region.png"));
+    assert_eq!(fs::read(&path).unwrap(), b"existing capture");
+    assert_eq!(fs::read(actual).unwrap(), PNG);
+    fs::remove_dir_all(dir).unwrap();
+}

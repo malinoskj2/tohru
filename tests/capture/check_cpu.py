@@ -29,6 +29,7 @@ name="tohru_shell"
 [dependencies]
 thiserror="=2.0.20"
 anyhow="=1.0.103"
+chrono={version="=0.4.45",default-features=false,features=["clock"]}
 libc="=0.2.189"
 image={version="=0.25.10",default-features=false,features=["png"]}
 wl-clipboard-rs="=0.9.3"

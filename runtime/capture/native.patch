@@ -23,7 +23,7 @@ diff --git a/src/platform/capture.rs b/src/platform/capture.rs
  /// Each freeze's version: one counter for all, so a name is never reused.
  static VERSION: AtomicU64 = AtomicU64::new(0);
  /// The connection, made the first time it is asked, and again if it ends.
-@@ -66,12 +79,22 @@
+@@ -66,12 +79,23 @@
  /// The frame a `capture:DP-1` names (without its version), if it was frozen.
  pub fn frame(name: &str) -> Option<Arc<Frame>> {
      let output = name.strip_prefix("capture:")?;
@@ -42,12 +42,13 @@ diff --git a/src/platform/capture.rs b/src/platform/capture.rs
  pub fn query(name: &str, args: &[SysValue]) -> Result<SysValue, String> {
      match (name, args) {
 +        ("capture.outputs", []) => with_link(export::outputs),
++        ("capture.destination", [SysValue::Text(directory), SysValue::Text(pattern)]) => export::destination(directory, pattern),
 +        ("capture.release", [SysValue::Text(token)]) => export::release(token),
 +        ("capture.region", _) => export::region(args),
          ("capture.pixel", [SysValue::Num(x), SysValue::Num(y)]) => with_link(|l| l.pixel(*x, *y, None)).map(SysValue::Text),
          ("capture.pixel", [SysValue::Num(x), SysValue::Num(y), SysValue::Text(o)]) => with_link(|l| l.pixel(*x, *y, Some(o))).map(SysValue::Text),
          ("capture.pixel", _) => Err("`capture.pixel` takes a point, and a monitor if the point is inside it: sys.ask(\"capture.pixel\", x, y[, screen.name])".into()),
-@@ -305,17 +328,34 @@
+@@ -305,17 +329,34 @@
  
      fn freeze(&mut self, name: &str) -> Result<String, Asked> {
          self.settle()?;
@@ -86,7 +87,7 @@ diff --git a/src/platform/capture.rs b/src/platform/capture.rs
          Ok(format!("capture:{name}?{version}"))
      }
  
-@@ -394,6 +434,11 @@
+@@ -394,6 +435,11 @@
          let Some(&(format, size, stride)) = self.state.shot.offers.iter().find(|(f, ..)| reads(*f)) else {
              return Err(Asked::No("the compositor offers the screen in no layout of 8 bits a colour".into()));
          };
@@ -98,7 +99,7 @@ diff --git a/src/platform/capture.rs b/src/platform/capture.rs
          Shm::new(&shm, size, stride, format, &self.qh).ok_or_else(|| Asked::No("no memory for the copy".into()))
      }
  
-@@ -915,9 +960,17 @@
+@@ -915,9 +961,17 @@
      #[test]
      fn a_frozen_monitor_is_found_by_its_name() {
          let f = Arc::new(Frame { version: 7, width: 1, height: 1, pixels: vec![0; 4], opaque: true, card: None });

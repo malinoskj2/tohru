@@ -269,6 +269,10 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
+    // Fixtures write executable scripts while other cases fork. Serialize the
+    // fixtures so a concurrent fork cannot inherit a temporary writer and cause
+    // Linux ETXTBSY; packaged production executables are immutable.
+    static EXECUTABLE_FIXTURES: std::sync::Mutex<()> = std::sync::Mutex::new(());
     struct Helper(PathBuf);
     impl Helper {
         fn new(body: &str) -> Self {
@@ -302,6 +306,7 @@ mod tests {
     }
     #[test]
     fn owned_replacement_and_drop_stop_and_reap_old_server() {
+        let _fixture = EXECUTABLE_FIXTURES.lock().unwrap();
         let first =
             Helper::new("sys.stdin.buffer.read(); print('READY',flush=True); time.sleep(10)");
         let second =
@@ -319,6 +324,7 @@ mod tests {
     }
     #[test]
     fn missing_readiness_and_malformed_helper_are_not_success() {
+        let _fixture = EXECUTABLE_FIXTURES.lock().unwrap();
         let helper = Helper::new("sys.stdin.buffer.read(); time.sleep(10)");
         assert!(start(&helper.program(), b"PNG", Duration::from_millis(150)).is_err());
         assert!(gone(&helper.pid()));
@@ -329,6 +335,7 @@ mod tests {
     }
     #[test]
     fn ownership_loss_is_reaped_without_polling_or_next_copy() {
+        let _fixture = EXECUTABLE_FIXTURES.lock().unwrap();
         let helper =
             Helper::new("sys.stdin.buffer.read(); print('READY',flush=True); time.sleep(0.1)");
         let owner = start(&helper.program(), b"PNG", Duration::from_secs(1)).unwrap();
@@ -339,6 +346,7 @@ mod tests {
     }
     #[test]
     fn requester_thread_reload_does_not_end_process_owned_clipboard() {
+        let _fixture = EXECUTABLE_FIXTURES.lock().unwrap();
         let helper =
             Helper::new("sys.stdin.buffer.read(); print('READY',flush=True); time.sleep(10)");
         let executable = helper.program();
@@ -361,6 +369,7 @@ mod tests {
 
     #[test]
     fn parent_exit_race_refuses_exec_and_png_validation_spawns_nothing() {
+        let _fixture = EXECUTABLE_FIXTURES.lock().unwrap();
         // SAFETY: getpid has no arguments or side effects.
         let wrong = unsafe { libc::getpid() } + 1;
         let mut command = Command::new("/does-not-run");
