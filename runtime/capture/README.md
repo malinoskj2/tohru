@@ -10,7 +10,7 @@ custom decoder, screenshot command wrapper or daemon is introduced. Full native 
   preserving paths during preparation. This domain uses existing thiserror/std;
   foundation dependencies and declared Rust1.85 MSRV remain unchanged.
 - Apply patches in this order: wallpaper/image-reset.patch, capture/native.patch,
-  capture/image-lifecycle.patch, then capture/output-events.patch. Install native.rs as
+  capture/image-lifecycle.patch, then capture/output-events.patch and capture/layout-link.patch. Install native.rs as
   `src/platform/tohru_capture/native.rs`, and clipboard_owner.rs alongside it.
   No root/common file is edited concurrently by W.
 - Add `tohru-capture-clipboard` as a bin in the **existing patched native runtime**,
@@ -107,3 +107,11 @@ closed, and cache tests use synthetic frame storage. These are not real freeze,
 clipboard selection, topology events or GPU tests. All subprocess statuses are
 recorded independently and propagated on failure. Evidence lives in tree-root
 `.tmp/check-results/`; no desktop endpoints are supplied to parser tests.
+
+The layout-link patch moves the existing copy-protocol guard from connection
+setup to pixel/freeze entry points. Readonly output layout therefore works on a
+Wayland compositor without screenshot protocols, as needed for static wallpaper
+output selection. Actual pixel/freeze still reject missing shared-memory/copy
+protocols before any protocol use; the16-combination capability matrix executes
+the real guard in CPU fixtures. No capture permission is broadened and no second
+Wayland connection implementation is added.

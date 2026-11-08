@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory(prefix="capture-native-source-", dir=root / ".t
     (temp / "src/platform").mkdir(parents=True)
     for relative in ["src/text.rs", "src/scene.rs", "src/render.rs", "src/logic_luau.rs", "src/platform/capture.rs", "src/platform/wayland.rs"]:
         shutil.copyfile(args.source / relative, temp / relative)
-    for patch in ["runtime/wallpaper/image-reset.patch", "runtime/capture/native.patch", "runtime/capture/image-lifecycle.patch", "runtime/capture/output-events.patch"]:
+    for patch in ["runtime/wallpaper/image-reset.patch", "runtime/capture/native.patch", "runtime/capture/image-lifecycle.patch", "runtime/capture/output-events.patch", "runtime/capture/layout-link.patch"]:
         subprocess.run(["git", "apply", "--unsafe-paths", f"--directory={temp}", str(root / patch)], check=True)
     wayland = (temp / "src/platform/wayland.rs").read_text()
     handlers = wayland[wayland.index("impl OutputHandler for State"):]
@@ -37,6 +37,12 @@ with tempfile.TemporaryDirectory(prefix="capture-native-source-", dir=root / ".t
     renderer = (temp / "src/render.rs").read_text()
     assert 'scene.signals.iter().any(|&(name, outgoing)| name == "capture_output_changed" && outgoing)' in renderer
     print("Native topology hooks cover add/update/remove before early returns; scene subscription guarded", flush=True)
+    capture = (temp / "src/platform/capture.rs").read_text()
+    assert "require_copy" not in function(capture, "fn connect(")
+    for method in ["pixel", "freeze"]:
+        body = function(capture, "fn " + method + "(")
+        assert "self.require_copy()?;" in body and body.index("self.require_copy()?;") < body.index("self.output(")
+    print("Readonly topology connects without capture protocol; pixel/freeze require copy before protocol use", flush=True)
     logic = (temp / "src/logic_luau.rs").read_text()
     assert 'check_service_permission(&c, &name, capture_query_mutates(&name))?' in logic
     permission = r'''
@@ -45,6 +51,18 @@ mod mlua {pub type Result<T> = std::result::Result<T,String>;}
 struct Permissions {services:Vec<String>}
 struct Shared {permissions:Permissions}
 fn denied(_: &Mutex<Shared>,_:&str,_:&str)->String{"denied".into()}
+'''
+    permission += "\nstruct CaptureState{shm:Option<()>,wlr:Option<()>,sources:Option<()>,copies:Option<()>}\nstruct Link{state:CaptureState}\nenum Asked{No(String)}\nimpl Link{\n"
+    permission += function(capture, "fn require_copy(") + "\n}\n"
+    permission += r'''
+#[test]fn copy_protocol_guard_rejects_missing_shm_or_both_copy_backends(){
+ for bits in 0..16 {
+  let yes=|bit| if bits & bit != 0 {Some(())}else{None};
+  let link=Link{state:CaptureState{shm:yes(1),wlr:yes(2),sources:yes(4),copies:yes(8)}};
+  let expected=bits&1!=0&&(bits&2!=0||(bits&4!=0&&bits&8!=0));
+  match link.require_copy(){Ok(())=>assert!(expected),Err(Asked::No(why))=>{assert!(!expected);assert!(why.contains("copy the screen"));}}
+ }
+}
 '''
     permission += function(logic, "fn capture_query_mutates(") + "\n" + function(logic, "fn check_service_permission(")
     permission += r'''

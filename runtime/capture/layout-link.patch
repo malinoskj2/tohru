@@ -1,0 +1,39 @@
+diff --git a/src/platform/capture.rs b/src/platform/capture.rs
+--- a/src/platform/capture.rs
++++ b/src/platform/capture.rs
+@@ -211,11 +211,15 @@
+         let mut link = Link { connection, queue, qh, state: State::default() };
+         // Bounded like every other wait: a compositor that never answers is an error, not a hang.
+         link.settle().map_err(|(Asked::No(why) | Asked::Lost(why))| why)?;
+-        let s = &link.state;
++        Ok(link)
++    }
++
++    fn require_copy(&self) -> Result<(), Asked> {
++        let s = &self.state;
+         if s.shm.is_none() || (s.wlr.is_none() && (s.sources.is_none() || s.copies.is_none())) {
+-            return Err("this compositor does not let a program copy the screen (neither wlr-screencopy nor ext-image-copy-capture)".into());
+-        }
+-        Ok(link)
++            return Err(Asked::No("this compositor does not let a program copy the screen (neither wlr-screencopy nor ext-image-copy-capture)".into()));
++        }
++        Ok(())
+     }
+ 
+     /// Answers until `done` says so, or `within` passes.
+@@ -289,6 +293,7 @@
+ 
+     fn pixel(&mut self, x: f64, y: f64, output: Option<&str>) -> Result<String, Asked> {
+         self.settle()?;
++        self.require_copy()?;
+         // The point inside its monitor, in logical units, fraction kept: on a
+         // scaled monitor one unit is several pixels, and they can differ.
+         let (o, fx, fy) = match output {
+@@ -329,6 +334,7 @@
+ 
+     fn freeze(&mut self, name: &str) -> Result<String, Asked> {
+         self.settle()?;
++        self.require_copy()?;
+         let output = self.output(name)?;
+         let (at, size, transform, mode) = (output.at, output.size, output.transform, output.mode);
+         let logical = tohru_shell::capture::Rect::new(at.0, at.1, u32::try_from(size.0).unwrap_or(0), u32::try_from(size.1).unwrap_or(0))
