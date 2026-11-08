@@ -1,6 +1,35 @@
 --- a/src/agent.rs
 +++ b/src/agent.rs
-@@ -894,7 +894,18 @@
+@@ -585,6 +585,7 @@
+ pub struct Before {
+     facts: Vec<f32>,
+     texts: Vec<String>,
++    protected_texts: Vec<bool>,
+     open: Vec<String>,
+     /// Where each list was scrolled to.
+     scrolled: Vec<f32>,
+@@ -603,7 +604,10 @@
+ }
+ 
+ pub fn before(scene: &Scene, c: Ctx, texts: &[String], open: Vec<String>) -> Before {
+-    Before { facts: c.facts.to_vec(), texts: texts.to_vec(), open, scrolled: scrolled(scene, c) }
++    let protected_texts = scene.texts.iter().map(|(name, _)| {
++        crate::tohru_lock::secret(name) || scene.zones.iter().any(|zone| zone.id == *name && zone.reach != Reach::Any)
++    }).collect();
++    Before { facts: c.facts.to_vec(), texts: texts.to_vec(), protected_texts, open, scrolled: scrolled(scene, c) }
+ }
+ 
+ /// What changed since `b`: the events heard, the facts and texts that are
+@@ -632,7 +636,7 @@
+     for (k, (n, _)) in scene.texts.iter().enumerate() {
+         let (was, is) = (b.texts.get(k).map_or("", String::as_str), texts.get(k).map_or("", String::as_str));
+         if was != is {
+-            if secrets.contains(n) || kept.contains(n) {
++            if b.protected_texts.get(k).copied().unwrap_or(true) || secrets.contains(n) || kept.contains(n) {
+                 let _ = writeln!(out, "  text   {n}: changed (hidden)");
+             } else {
+                 let _ = writeln!(out, "  text   {n}: \"{was}\" → \"{is}\"");
+@@ -894,7 +898,18 @@
          Ok((c, timeout))
      }
  
@@ -19,7 +48,7 @@
          match self {
              Cond::Or(a, b) => a.holds(scene, c, texts) || b.holds(scene, c, texts),
              Cond::And(a, b) => a.holds(scene, c, texts) && b.holds(scene, c, texts),
-@@ -948,6 +959,7 @@
+@@ -948,6 +963,7 @@
  
      /// What the names it reads are worth now: what is said when it did not come.
      pub fn now(&self, scene: &Scene, c: Ctx, texts: &[String]) -> String {
@@ -27,7 +56,7 @@
          let mut seen: Vec<String> = Vec::new();
          self.names(&mut |o| {
              let s = match o {
-@@ -1124,6 +1136,7 @@
+@@ -1124,6 +1140,7 @@
              return Ok(Operand::Fact(k));
          }
          if let Some(k) = s.texts.iter().position(|f| f.0 == t) {
