@@ -69,5 +69,61 @@ return function(assign)
     end
     on("wallpaper_assign", function() request(false) end)
     on("wallpaper_clear", function() request(true) end)
-    return {publish = publish, validate = validate}
+    local function randomize(assignments, outputs, files, canonical)
+        -- The catalog boundary supplies already-shuffled files and canonical identity.
+        -- Keep the retained preference order without doing filesystem I/O in Luau.
+        if type(assignments) ~= "table" or type(outputs) ~= "table" or type(files) ~= "table"
+            or type(canonical) ~= "function" then error("Randomization requires assignments, outputs, a shuffled catalog and canonical identities") end
+        if #files > 4096 then error("Wallpaper catalog exceeds 4096 files") end
+        local next, catalog, used, selected, seen, identities = {}, {}, {}, {}, {}, {}
+        local function identity(path)
+            if identities[path] then return identities[path] end
+            local key = canonical(path)
+            if type(key) ~= "string" or #key == 0 then error("Wallpaper canonical identity unavailable") end
+            identities[path] = key
+            return key
+        end
+        for output, path in pairs(assignments) do validate(output, path); next[output] = path end
+        for _, path in ipairs(files) do
+            validate("catalog", path)
+            catalog[path] = true
+            identity(path)
+        end
+        if #outputs == 0 then
+            for output, path in pairs(assignments) do
+                if validate(output, path) == "video" or catalog[path] then selected[#selected + 1] = output end
+            end
+            table.sort(selected)
+        else
+            for _, output in ipairs(outputs) do
+                validate(output, "/validation.png")
+                if not seen[output] then selected[#selected + 1], seen[output] = output, true end
+            end
+        end
+        if #selected == 0 or #files == 0 then return next end
+        local rerolled = {}
+        for _, output in ipairs(selected) do rerolled[output] = true end
+        for output, path in pairs(assignments) do
+            if not rerolled[output] then used[identity(path)] = true end
+        end
+        for _, output in ipairs(selected) do
+            local previous = assignments[output] and identity(assignments[output])
+            local chosen
+            for _, path in ipairs(files) do
+                local key = identity(path)
+                if key ~= previous and not used[key] then chosen = path; break end
+            end
+            if not chosen then
+                for _, path in ipairs(files) do if identity(path) ~= previous then chosen = path; break end end
+            end
+            chosen = chosen or files[1]
+            used[identity(chosen)] = true
+            next[output] = chosen
+        end
+        local count = 0
+        for _ in pairs(next) do count = count + 1 end
+        if count > 32 then error("Wallpaper assignment capacity is 32 outputs; nothing was changed") end
+        return next
+    end
+    return {publish = publish, validate = validate, randomize = randomize}
 end
