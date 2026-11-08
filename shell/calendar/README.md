@@ -7,6 +7,10 @@ This entry is test-only. Click Calendar; Escape closes it. Its native events are
 Production composition (S): include `bar/state.plm`, `calendar/state.plm`,
 `bar/contents.plm` and `calendar/popup.plm` in the SAME root scene; initialize
 `require("bar/controller")()` and `require("calendar/controller")()` once.
+The calendar initializer returns `{open, close, toggle}` callables: use these
+from root Lua panel coordination, because native Lua `emit` reaches render
+rules and does not redispatch Lua event handlers. Native calendar_* events
+remain the UI/IPC entry points.
 Give the root `keyboard: exclusive while cal_open`, permissions
 `window`, `apps`, `media`, `clock`, and native `screens: all` as accepted.
 The popup receives the root clock-button's real press serial directly; do not
