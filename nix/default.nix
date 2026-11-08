@@ -10,7 +10,9 @@ let
       ../runtime/wallpaper/mod.rs ../runtime/wallpaper/probe.rs ../runtime/wallpaper/native.rs
       ../runtime/window/visibility.rs
       ../runtime/info_luau.rs ../runtime/info/mod.rs ../runtime/info/read.rs ../runtime/info/storage.rs ../runtime/info/system.rs ../tests/info/snapshot.rs ../tests/info.rs
-      ../runtime/capture ../tests/wallpaper/catalog.rs ../tests/capture
+      ../runtime/capture/mod.rs ../runtime/capture/files.rs ../runtime/capture/geometry.rs
+      ../runtime/capture/native.rs ../runtime/capture/clipboard.rs ../runtime/capture/clipboard_owner.rs
+      ../tests/wallpaper/catalog.rs ../tests/capture
       ../runtime/idle/mod.rs ../runtime/idle/cookies.rs ../runtime/idle/delay.rs ../runtime/idle/input.rs
       ../tests/session/idle.rs ../tests/session/idle_cookies.rs ../tests/session/idle_delay.rs ../tests/session/idle_input.rs ../LICENSE ];
   };
@@ -35,7 +37,10 @@ let
     patches = [ ../runtime/patches/0001-shell-settings.patch ../runtime/patches/0002-lock-boundary.patch
       ../runtime/workspace/shader-inputs.patch ../runtime/patches/0004-workspace-binding.patch
       ../runtime/wallpaper/catalog.patch ../runtime/wallpaper/image-reset.patch ../runtime/patches/0005-wallpaper-module.patch
-      ../runtime/patches/0003-window-lifecycle.patch ../runtime/patches/0006-info-binding.patch ];
+      ../runtime/launcher/namespace.patch ../runtime/patches/0003-window-lifecycle.patch ../runtime/patches/0006-info-binding.patch
+      ../runtime/capture/native.patch ../runtime/capture/layout-link.patch
+      ../runtime/capture/image-lifecycle.patch ../runtime/capture/output-events.patch
+      ../runtime/patches/0007-capture-assembly.patch ];
     postPatch = ''
       mkdir foundation
       cp ${foundationSource}/Cargo.toml foundation/
@@ -44,7 +49,8 @@ let
       mkdir -p foundation/runtime foundation/tests/session
       cp -r ${foundationSource}/runtime/idle foundation/runtime/
       cp -r ${foundationSource}/runtime/workspace foundation/runtime/
-      cp -r ${foundationSource}/runtime/capture foundation/runtime/
+      mkdir -p foundation/runtime/capture
+      cp ${foundationSource}/runtime/capture/mod.rs ${foundationSource}/runtime/capture/files.rs ${foundationSource}/runtime/capture/geometry.rs foundation/runtime/capture/
       cp -r ${foundationSource}/runtime/info foundation/runtime/
       mkdir -p foundation/tests/info
       cp ${foundationSource}/tests/info/snapshot.rs foundation/tests/info/
@@ -60,6 +66,9 @@ let
       cp ${foundationSource}/runtime/wallpaper/native.rs src/tohru_wallpaper.rs
       cp ${foundationSource}/runtime/window/visibility.rs src/tohru_window.rs
       cp ${foundationSource}/runtime/info_luau.rs src/tohru_info.rs
+      mkdir -p src/platform/tohru_capture
+      cp ${foundationSource}/runtime/capture/native.rs ${foundationSource}/runtime/capture/clipboard_owner.rs src/platform/tohru_capture/
+      cp ${foundationSource}/runtime/capture/clipboard.rs src/tohru_capture_clipboard.rs
       mkdir -p src/tohru_lock tests/session
       cp ${lockSource}/runtime/lock/native.rs src/tohru_lock.rs
       cp ${lockSource}/runtime/lock/authority.rs src/tohru_lock/authority.rs
@@ -73,6 +82,8 @@ let
     cargoTestFlags = [ "--lib" "tohru_settings::" ];
     postBuild = ''
       cargo build --offline --locked --release --jobs 1 \
+        --bin tohru-capture-clipboard --target ${stdenvNoCC.hostPlatform.rust.rustcTarget}
+      cargo build --offline --locked --release --jobs 1 \
         --manifest-path foundation/Cargo.toml --bin tohru-wallpaper-probe \
         --target ${stdenvNoCC.hostPlatform.rust.rustcTarget} --target-dir target
     '';
@@ -81,6 +92,7 @@ let
       cp LICENSE THIRD-PARTY.md $out/share/licenses/pleamar-tohru/
       cp ${foundationSource}/LICENSE $out/share/licenses/pleamar-tohru/TOHRU-LICENSE
       install -m755 target/${stdenvNoCC.hostPlatform.rust.rustcTarget}/release/tohru-wallpaper-probe $out/bin/tohru-wallpaper-probe
+      install -m755 target/${stdenvNoCC.hostPlatform.rust.rustcTarget}/release/tohru-capture-clipboard $out/bin/tohru-capture-clipboard
     '';
     postFixup = ''
       wrapProgram $out/bin/pleamar --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ vulkan-loader libglvnd ]}
