@@ -116,6 +116,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime', type=Path, required=True)
     parser.add_argument('--review-only', action='store_true')
+    parser.add_argument('--launcher-only', action='store_true')
     parser.add_argument('--bus-child', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--bus-token', help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -167,6 +168,13 @@ def main():
         display = wait_for(lambda: next((p for p in runtime_dir.glob('wayland-*') if not p.name.endswith('.lock')), None), 'private display')
         env.update(SWAYSOCK=str(socket), WAYLAND_DISPLAY=display.name)
         assert 'NVIDIA GeForce RTX 5090' in (evidence / 'sway.log').read_text(), 'compositor GPU unverified'
+        if args.launcher_only:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location('launcher_check', ROOT / 'tests/launcher/native.py')
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            module.verify(ROOT, runtime, evidence, env, start, say, expect, wait_for)
+            return
         if args.review_only:
             from review import verify
             verify(ROOT, runtime, evidence, env, start, say, expect, wait_for)
