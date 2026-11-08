@@ -4,6 +4,7 @@ use super::*;
 fn only_confirmed_cycle_can_begin_authentication() {
     let cycle = Cycle::requested(1);
     assert!(cycle.active() && !cycle.held() && cycle.snapshot().is_none());
+    assert!(cycle.publishable());
     cycle.confirm();
     assert!(cycle.held() && cycle.snapshot().is_some());
     cycle.finish();
@@ -64,6 +65,7 @@ fn reservation_is_one_shot_and_revoked_by_finish() {
     let release = cycle.reserve(first).unwrap();
     assert!(cycle.reserve(second).is_none());
     assert!(cycle.active() && !cycle.held());
+    assert!(!cycle.publishable());
     cycle.finish();
     assert!(!cycle.accepts_release(&release));
 }

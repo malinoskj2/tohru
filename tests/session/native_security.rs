@@ -104,3 +104,91 @@ fn active_native_owner_remains_open_for_culling_input_and_pacing() {
     assert!(surface_open(2, true, &[1]));
     assert!(!surface_open(1, false, &[]));
 }
+
+#[test]
+fn queued_retired_target_keeps_native_owner_until_gpu_target_is_destroyed() {
+    use std::sync::{Arc, Mutex, Weak};
+    struct Owner(Arc<Mutex<Vec<&'static str>>>);
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            self.0.lock().unwrap().push("native owner");
+        }
+    }
+    struct Target {
+        native: Weak<Owner>,
+        events: Arc<Mutex<Vec<&'static str>>>,
+    }
+    impl Drop for Target {
+        fn drop(&mut self) {
+            assert!(
+                self.native.upgrade().is_some(),
+                "GPU target outlived native surface owner"
+            );
+            self.events.lock().unwrap().push("gpu target");
+        }
+    }
+    impl crate::gpu::Frames for Target {
+        fn acquire(&mut self, _: &wgpu::Device, _: &[u64]) -> Option<(usize, wgpu::Texture)> {
+            unreachable!()
+        }
+        fn present(
+            &mut self,
+            _: usize,
+            _: wgpu::SubmissionIndex,
+            _: &wgpu::Device,
+            _: &wgpu::Queue,
+            _: Option<[u32; 4]>,
+        ) {
+            unreachable!()
+        }
+    }
+    struct Window {
+        _native: Arc<Owner>,
+        cycle: authority::Cycle,
+    }
+    impl crate::platform::PlatformWindow for Window {
+        fn is_current(&self) -> bool {
+            self.cycle.publishable()
+        }
+        fn update_input_region(&self, _: &[[i32; 4]]) {}
+        fn cursor(&self, _: crate::scene::Cursor) {}
+        fn keyboard(&self, _: crate::scene::Keyboard) {}
+    }
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let native = Arc::new(Owner(events.clone()));
+    let cycle = authority::Cycle::requested(1);
+    cycle.confirm();
+    let (send, receive) = std::sync::mpsc::channel();
+    send.send(crate::gpu::NewSheet {
+        id: 1,
+        target: crate::gpu::Target::Frames(Box::new(Target {
+            native: Arc::downgrade(&native),
+            events: events.clone(),
+        })),
+        window: Box::new(Window {
+            _native: native.clone(),
+            cycle: cycle.clone(),
+        }),
+        scale: 1.0,
+        size: (100, 100),
+        mhz: 60000,
+        name: "queued-lock-face".into(),
+        view: crate::gpu::View {
+            surface: 1,
+            popup: None,
+            origin: (0.0, 0.0),
+            size: (100.0, 100.0),
+        },
+    })
+    .unwrap();
+    let permit = cycle.snapshot().unwrap().verified(true).unwrap();
+    let _release = cycle.reserve(permit).unwrap();
+    drop(native); // Engaged's owner reference can leave while the target is queued.
+    let queued = receive.recv().unwrap();
+    assert!(
+        !queued.window.is_current(),
+        "releasing targets must not install"
+    );
+    drop(queued); // Actual native NewSheet field order: target before window owner.
+    assert_eq!(*events.lock().unwrap(), ["gpu target", "native owner"]);
+}
