@@ -4,6 +4,7 @@
 
 pub mod cookies;
 pub mod delay;
+pub mod input;
 
 use std::time::{Duration, Instant};
 

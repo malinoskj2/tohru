@@ -16,11 +16,12 @@ use mlua::{Lua, Table};
 use observer::{Observer, Sink};
 use std::sync::{
     Arc, Mutex, OnceLock,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, Ordering},
     mpsc::{self, Sender, SyncSender},
 };
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
+use tohru_shell::idle::input::Cancellation;
 use tohru_shell::idle::{Config, Timeouts};
 
 static OWNER: OnceLock<Mutex<Option<Owner>>> = OnceLock::new();
@@ -30,6 +31,7 @@ struct Owner {
     observer: Option<Arc<Observer>>,
     _worker: Worker,
 }
+
 impl Drop for Owner {
     fn drop(&mut self) {
         self.logind.take();
@@ -44,26 +46,30 @@ enum Request {
     Suspend,
     State,
 }
+
 struct Task {
     generation: u64,
     request: Request,
 }
+
 struct Worker {
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
     sender: SyncSender<Task>,
 }
+
 struct NativeSink {
     render: Sender<ToRender>,
     sender: SyncSender<Task>,
-    generation: Arc<AtomicU64>,
+    generation: Cancellation,
 }
+
 impl NativeSink {
-    fn enqueue(&self, request: Request) {
+    fn enqueue(&self, request: Request, stamp: u64) {
         if self
             .sender
             .try_send(Task {
-                generation: self.generation.load(Ordering::Acquire),
+                generation: stamp,
                 request,
             })
             .is_err()
@@ -72,6 +78,7 @@ impl NativeSink {
         }
     }
 }
+
 impl Sink for NativeSink {
     fn opacity(&self, alpha: f32) {
         let _ = self.render.send(ToRender::Fact("idle_alpha", alpha));
@@ -82,23 +89,26 @@ impl Sink for NativeSink {
             .send(ToRender::Text("idle_status", status.to_owned()));
     }
     fn rearmed(&self) {
-        self.generation.fetch_add(1, Ordering::AcqRel);
+        self.generation.invalidate();
     }
-    fn lock(&self) {
-        self.enqueue(Request::Lock);
+    fn lock(&self, stamp: u64) {
+        self.enqueue(Request::Lock, stamp);
     }
-    fn suspend(&self) {
-        self.enqueue(Request::Suspend);
+    fn suspend(&self, stamp: u64) {
+        self.enqueue(Request::Suspend, stamp);
     }
 
-    fn state(&self) {
-        self.enqueue(Request::State);
+    fn state(&self, stamp: u64) {
+        self.enqueue(Request::State, stamp);
     }
 }
+
 impl Worker {
-    fn start(render: Sender<ToRender>) -> Result<(Self, Arc<NativeSink>)> {
+    fn start(
+        render: Sender<ToRender>,
+        generation: Cancellation,
+    ) -> Result<(Self, Arc<NativeSink>)> {
         let (sender, receiver) = mpsc::sync_channel::<Task>(4);
-        let generation = Arc::new(AtomicU64::new(0));
         let stop = Arc::new(AtomicBool::new(false));
         let (worker_generation, worker_stop) = (generation.clone(), stop.clone());
         let worker_render = render.clone();
@@ -109,7 +119,9 @@ impl Worker {
                     if worker_stop.load(Ordering::Acquire) {
                         break;
                     }
-                    if task.generation != worker_generation.load(Ordering::Acquire) {
+                    if !matches!(task.request, Request::State)
+                        && !worker_generation.current(task.generation)
+                    {
                         continue;
                     }
                     let event = match task.request {
@@ -141,6 +153,7 @@ impl Worker {
         ))
     }
 }
+
 impl Drop for Worker {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
@@ -153,6 +166,7 @@ impl Drop for Worker {
         }
     }
 }
+
 fn config(table: &Table) -> mlua::Result<Config> {
     let duration = |key, default| -> mlua::Result<Option<Duration>> {
         let value = table.get::<Option<u64>>(key)?.unwrap_or(default);
@@ -182,9 +196,11 @@ fn config(table: &Table) -> mlua::Result<Config> {
         ),
     })
 }
+
 fn report(error: impl Into<anyhow::Error>) -> mlua::Error {
     mlua::Error::runtime(format!("{:#}", error.into()))
 }
+
 fn owner() -> mlua::Result<std::sync::MutexGuard<'static, Option<Owner>>> {
     OWNER
         .get_or_init(|| Mutex::new(None))
@@ -241,8 +257,11 @@ pub(crate) fn install(
                     .configure(config)
                     .map_err(report);
             }
-            let (worker, sink) = Worker::start(render.clone()).map_err(report)?;
-            let observer = Arc::new(Observer::spawn(config, sink.clone()).map_err(report)?);
+            let cancellation = Cancellation::default();
+            let (worker, sink) =
+                Worker::start(render.clone(), cancellation.clone()).map_err(report)?;
+            let observer =
+                Arc::new(Observer::spawn(config, sink.clone(), cancellation).map_err(report)?);
             let service = screensaver::Service::start(&observer).map_err(report)?;
             let logind = logind::Watch::start(&observer).map_err(report)?;
             // Query on each root-process start; hints affect timeouts only. Dedicated
