@@ -1,5 +1,6 @@
 scene Tohru {
- surface { size: full, 42; anchor: top; margin: 0; reserve: 31; screens: each max 1 }
+ surface { size: full, 42; anchor: top; margin: 0; reserve: 31; screens: all; keyboard: exclusive while sound_open }
+ include "sound/declarations.plm"
  fact mooncoil = false
  fact corners = true
  text settings_status = "{}"
@@ -12,4 +13,11 @@ scene Tohru {
  box { from: 100, 0; size: screen.width - 200, 31; corner: 10; color: #160e14; opacity: 70% }
  text "Tohru" { at: 124, 15.5; color: #f5cddd; size: 14 }
  text "☾" { at: screen.width - 124, 15.5; color: #f5cddd; size: 16; show: mooncoil }
+ include "sound/view.plm"
+ popup sound_panel {
+  at: clamp(sound_button_x - 150, 8, screen.width - 308), 37
+  size: 300, 116
+  open: sound_open
+  include "sound/panel.plm"
+ }
 }

@@ -2,6 +2,8 @@
 local function publish(settings)
     fact.mooncoil = settings["bar.mooncoil"].value
     fact.corners = settings["appearance.corners"].value
+    settings["bar.preferred_output"].deprecated = true
+    settings["bar.preferred_output"].effective = false
     text.settings_status = json.encode({schema = 1, settings = settings})
 end
 local function change(operation)
@@ -22,5 +24,7 @@ on("setting_corners", function(n)
     change(function() return tohru_settings.set("appearance.corners", n ~= 0) end)
 end)
 on("setting_output", function()
-    change(function() return tohru_settings.set("bar.preferred_output", text.output_request) end)
+    text.settings_error = "bar.preferred_output is deprecated and ignored: bars use every output"
 end)
+
+require("sound/controller")()

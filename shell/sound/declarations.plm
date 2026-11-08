@@ -1,0 +1,21 @@
+part SoundState {
+ permissions { services: "audio", "audio.step", "audio.volume", "audio.mute" }
+ model sound_outputs max 32 { id: number; name: text; default: bool }
+ service audio as audio { volume: number = -1; muted: bool; outputs: sound_outputs }
+ fact sound_open = false
+ fact sound_focus = 1
+ fact sound_dragging = false
+ fact sound_requested = 0
+ text audio_status = "{}"
+ text audio_error = ""
+ event sound_toggle ->
+ event sound_open_request ->
+ event panel_close ->
+ event audio_step ->
+ event audio_set ->
+ event audio_flush ->
+ event audio_mute ->
+ event audio_report ->
+ image sound_speaker = file "speaker.svg", 16, 16
+ image sound_muted = file "muted.svg", 16, 16
+}

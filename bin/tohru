@@ -2,14 +2,19 @@
 set -euo pipefail
 usage() {
     cat <<'HELP'
-Usage: tohru status --json
+Usage: tohru panel toggle|open sound
+       tohru panel close
+       tohru audio volume up|down
+       tohru audio mute toggle
+       tohru audio status --json
+       tohru status --json
        tohru config reload
        tohru config set bar.mooncoil|appearance.corners true|false
-       tohru config set bar.preferred_output OUTPUT
        tohru settings-error
        tohru help
 
-Settings commands report native request acceptance, not completion.
+Commands report native request acceptance, not completion.
+Audio status reports the last native observation and command errors.
 Inspect status and settings-error for the resulting settings or failure.
 HELP
 }
@@ -20,8 +25,45 @@ case ${1:-help} in
         [[ $# -le 1 ]] || fail 'help takes no arguments'
         usage
         ;;
+    panel)
+        case ${2:-} in
+            open|toggle)
+                [[ $# == 3 && $3 == sound ]] || fail 'Usage: tohru panel open|toggle sound'
+                case $2 in open) event=sound_open_request ;; toggle) event=sound_toggle ;; esac
+                exec "$pleamar" --say tohru "emit $event"
+                ;;
+            close)
+                [[ $# == 2 ]] || fail 'Usage: tohru panel close'
+                exec "$pleamar" --say tohru 'emit panel_close'
+                ;;
+            *) fail 'Usage: tohru panel open|toggle sound | close' ;;
+        esac
+        ;;
+    audio)
+        case ${2:-} in
+            volume)
+                [[ $# == 3 ]] || fail 'Usage: tohru audio volume up|down'
+                case $3 in up) step=1 ;; down) step=-1 ;; *) fail 'Usage: tohru audio volume up|down' ;; esac
+                exec "$pleamar" --say tohru "emit audio_step $step"
+                ;;
+            mute)
+                [[ $# == 3 && $3 == toggle ]] || fail 'Usage: tohru audio mute toggle'
+                exec "$pleamar" --say tohru 'emit audio_mute'
+                ;;
+            status)
+                [[ $# == 3 && $3 == --json ]] || fail 'Usage: tohru audio status --json'
+                exec "$pleamar" --say tohru 'get audio_status'
+                ;;
+            *) fail 'Usage: tohru audio volume up|down | mute toggle | status --json' ;;
+        esac
+        ;;
     status)
-        [[ $# == 2 && $2 == --json ]] || fail 'Usage: tohru status --json'
+        [[ $# == 2 && $2 == --json ]] || fail 'Usage: tohru panel toggle|open sound
+       tohru panel close
+       tohru audio volume up|down
+       tohru audio mute toggle
+       tohru audio status --json
+       tohru status --json'
         exec "$pleamar" --say tohru 'get settings_status'
         ;;
     config)
@@ -39,8 +81,7 @@ case ${1:-help} in
                         exec "$pleamar" --say tohru "emit $event $number"
                         ;;
                     bar.preferred_output)
-                        [[ $4 != *$'\n'* && $4 != *$'\r'* && ${#4} -le 256 ]] || fail 'Invalid output name'
-                        exec "$pleamar" --say tohru "text output_request $4" 'emit setting_output'
+                        fail 'bar.preferred_output is deprecated and ignored: bars use every output'
                         ;;
                     *) fail 'Unknown setting key' ;;
                 esac

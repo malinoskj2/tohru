@@ -35,7 +35,7 @@ def main():
     config = evidence / "config"
     (config / "tohru").mkdir(parents=True)
     user = config / "tohru/config.toml"
-    user.write_text("# preserve me\n[future]\nvalue = 42\n[appearance]\ncorners = false\n")
+    user.write_text("# preserve me\n[future]\nvalue = 42\n[bar]\npreferred_output = 'DP-LEGACY'\n[appearance]\ncorners = false\n")
     managed = evidence / "managed.toml"
     managed.write_text("[bar]\nmooncoil = false\n")
     scene = evidence / "scene"
@@ -121,8 +121,8 @@ def main():
         cli("config", "set", "appearance.corners", "true")
         expect("appearance.corners", True, "user")
         assert "# preserve me" in user.read_text() and "value = 42" in user.read_text()
-        cli("config", "set", "bar.preferred_output", "DP-TEST")
-        expect("bar.preferred_output", "DP-TEST", "user")
+        assert cli("config", "set", "bar.preferred_output", "DP-TEST", check=False).returncode == 2
+        expect("bar.preferred_output", "DP-LEGACY", "user")
         managed.write_text("[bar]\nmooncoil = 'invalid'\n")
         cli("config", "reload")
         wait_for(lambda: cli("settings-error").stdout.strip(), "invalid reload error")
@@ -138,7 +138,7 @@ def main():
         app = None
         launch("restart")
         settings = expect("appearance.corners", True, "user")
-        expect("bar.preferred_output", "DP-TEST", "user")
+        expect("bar.preferred_output", "DP-LEGACY", "user")
         assert not settings["bar.mooncoil"]["runtime_override"]
         summary = {"result": "passed", "runtime": str(args.runtime.resolve()), "app_adapter": "NVIDIA GeForce RTX 5090 / Vulkan", "compositor_adapter": "NVIDIA GeForce RTX 5090 / GLES2", "screenshot": str(screenshot), "checks": ["native CLI", "managed override", "config reload", "actual logic VM reload", "unmanaged persistence", "unknown/comment preservation", "invalid reload atomicity", "process restart reset"], "performance_acceptance": False}
         (evidence / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")

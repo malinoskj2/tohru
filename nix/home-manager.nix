@@ -17,6 +17,8 @@ in {
     };
   };
   config = lib.mkIf cfg.enable {
+    warnings = lib.optional (cfg.settings ? bar && cfg.settings.bar ? preferred_output)
+      "Tohru bar.preferred_output is deprecated and ignored; native bars use every output.";
     home.packages = [ cfg.package ];
     home.sessionVariables.TOHRU_MANAGED_CONFIG = toString managed;
   };
