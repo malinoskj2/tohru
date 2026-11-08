@@ -118,6 +118,21 @@ def windows_for_app(tree, app_id):
     return result
 
 
+def focused_search_submit(native, keyboard, query, timeout=10):
+    """Typing must reach the focused input; IPC cannot seed a passing query."""
+    assert native("get settings_search") == "", "search fixture must start empty"
+    keyboard("-M", "ctrl", "-k", "f", "-m", "ctrl")
+    keyboard(query)
+    wait_for(lambda: native("get settings_search") == query, "Ctrl+F focused native search received typing", timeout)
+    wait_for(lambda: native("get settings_rows.count") == "1", "typed native Settings search result", timeout)
+    keyboard("-k", "Return")
+
+
+def clean_exit(process, label):
+    status = process.wait(timeout=10)
+    assert status == 0, f"{label} exited {status}; inspect retained app log"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime", type=Path, required=True)
@@ -257,7 +272,7 @@ def main():
                 wait_for(lambda: len(views("dev.tohru.WindowLifecycle")) == 1, "reopen one conditional role")
             subprocess.run(["grim", "-o", "HEADLESS-1", str(evidence / "window-lifecycle.png")], env=env, check=True, timeout=10)
             window("quit")
-            app.wait(timeout=10)
+            clean_exit(app, "window-only intentional quit")
             app_log.close()
             app = None
 
@@ -341,12 +356,10 @@ def main():
             cli("settings", "open")
             wait_for(lambda: native("get settings_open") == "true" and native("get sound_open") == "false", "same-process Settings open")
             if args.wtype:
-                keyboard("-M", "ctrl", "-k", "f", "-m", "ctrl")
-            native("text settings_search mooncoil")
-            wait_for(lambda: native("get settings_rows.count") == "1", "native Settings search")
-            if args.wtype:
-                keyboard("-k", "Return")
+                focused_search_submit(native, keyboard, "mooncoil")
             else:
+                native("text settings_search mooncoil")
+                wait_for(lambda: native("get settings_rows.count") == "1", "native Settings search")
                 native("emit settings_row 0")
             expect("bar.mooncoil", True, "runtime")
             native("emit settings_category 2")
@@ -407,7 +420,7 @@ def main():
         screenshot = evidence / "foundation-bar.png"
         subprocess.run(["grim", "-o", "HEADLESS-1", str(screenshot)], env=env, check=True, timeout=10)
         subprocess.run([str(args.runtime.resolve()), "--say", "tohru", "quit"], env=env, check=True, timeout=10)
-        app.wait(timeout=10)
+        clean_exit(app, "first root intentional quit")
         app_log.close()
         app = None
         launch("restart")
