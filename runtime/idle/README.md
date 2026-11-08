@@ -59,3 +59,44 @@ it does not own or stop locker guard.
 Native adapters are parse-checked only at this checkpoint. Core23CPU tests,
 Clippy and actual Lua/private scene parser checks cover their respective scopes;
 no native observer/logind/fade/screen-power/PAM/security acceptance inferred.
+
+## Exact recovery and copy inputs
+
+The composable part was committed at
+`3c8beb7705778c8d41547f76ef7acb7dc18f812e`, owner-loss module/export/test fixes at
+`9da8c41891bc42d30a03a52ebcae752ce8de1bf1`, and private probe at
+`f7d56dddbee4879adfcf98e6e1bc72c6354b401f`. They are all present in this branch's
+current source tree; relaying their hashes did not integrate them into main.
+The native guard request also retains the separate synchronization correction
+`56cd60d145f56ce976cae18a6317cd63364104e7` (ExternalFact, not Fact), and the actual
+root all-target test initializer correction
+`406c819d6b0dcbeb50f3b306cba92c625a119555`.
+
+S owns shared prepare/root/schema edits. The complete idle copy portion of its
+future preparation recipe is below, after the existing foundation/native source
+layout exists; these commands do not install or activate anything:
+
+```sh
+mkdir -p "$destination/foundation/runtime/idle" \
+    "$destination/foundation/tests/session" "$destination/src/tohru_idle"
+cp "$root/runtime/idle/mod.rs" "$root/runtime/idle/cookies.rs" \
+    "$root/runtime/idle/delay.rs" "$root/runtime/idle/input.rs" \
+    "$root/runtime/idle/logind_state.rs" "$destination/foundation/runtime/idle/"
+cp "$root/tests/session/idle.rs" "$root/tests/session/idle_cookies.rs" \
+    "$root/tests/session/idle_delay.rs" "$root/tests/session/idle_input.rs" \
+    "$root/tests/session/idle_logind.rs" "$destination/foundation/tests/session/"
+cp "$root/runtime/idle/native.rs" "$destination/src/tohru_idle.rs"
+cp "$root/runtime/idle/observer.rs" "$root/runtime/idle/screensaver.rs" \
+    "$root/runtime/idle/logind.rs" "$root/runtime/idle/sleep_guard.rs" \
+    "$destination/src/tohru_idle/"
+```
+
+The foundation library's existing `pub mod idle` must still resolve to the copied
+mod.rs, which exports cookies/delay/input/**logind_state**. Its test path must
+resolve idle_logind.rs from the copied tests/session directory. Native module
+registration/install and the full-path `runtime/idle/0004-idle-native.patch`
+remain separate shared wiring, as above; copying files alone does not compile or
+connect those hooks. Include `session/idle.part.plm` **inside** the ordinary root
+scene; do not import the standalone idle.plm. The standalone idle.plm and
+idle_probe.plm both include the same owned part, and root logic requires
+`session/idle` and calls its configure function. Native adapters remain uncompiled.
