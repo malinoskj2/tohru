@@ -6,3 +6,9 @@ pub mod idle;
 
 #[path = "../runtime/workspace/mod.rs"]
 pub mod workspace;
+
+#[path = "../runtime/wallpaper/mod.rs"]
+pub mod wallpaper;
+
+#[path = "../runtime/capture/mod.rs"]
+pub mod capture;
