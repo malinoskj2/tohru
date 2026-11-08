@@ -1,4 +1,5 @@
 part SettingsWindow {
+ let settings_keys = settings_open and not sound_open and not cal_open and not net_open and not bt_open and not info_visible and not about_visible
  box { from: 0, 0; size: 800, 560; color: #181825 }
  box { from: 0, 0; size: 220, 560; color: #11111b }
  text "Settings" { at: 18, 30; anchor: left center; size: 20; weight: 600; color: #cdd6f4 }
@@ -36,13 +37,13 @@ part SettingsWindow {
  text settings_ui_error { at: 244, 522; anchor: left top; size: 11; width: 528; lines: 2; color: #f38ba8 }
  on press settings_back_button { emit settings_back }
  on press settings_forward_button { emit settings_forward }
- on key Escape while settings_open and not sound_open and not cal_open { emit settings_close }
- on key Ctrl+f while settings_open and not sound_open and not cal_open { focus settings_search }
- on key Alt+Left while settings_open and not sound_open and not cal_open { emit settings_back }
- on key Alt+Right while settings_open and not sound_open and not cal_open { emit settings_forward }
- on key Tab while settings_open and not sound_open and not cal_open { settings_sidebar = not settings_sidebar; blur }
- on key Down while settings_open and not sound_open and not cal_open { emit settings_move(1) }
- on key Up while settings_open and not sound_open and not cal_open { emit settings_move(-1) }
- on key Return while settings_open and not sound_open and not cal_open { emit settings_activate }
- on key space while settings_open and not settings_sidebar and not sound_open and not cal_open { emit settings_activate }
+ on key Escape while settings_keys { emit settings_close }
+ on key Ctrl+f while settings_keys { focus settings_search }
+ on key Alt+Left while settings_keys { emit settings_back }
+ on key Alt+Right while settings_keys { emit settings_forward }
+ on key Tab while settings_keys { settings_sidebar = not settings_sidebar; blur }
+ on key Down while settings_keys { emit settings_move(1) }
+ on key Up while settings_keys { emit settings_move(-1) }
+ on key Return while settings_keys { emit settings_activate }
+ on key space while settings_keys and not settings_sidebar { emit settings_activate }
 }

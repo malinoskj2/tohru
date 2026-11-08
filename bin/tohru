@@ -2,7 +2,7 @@
 set -euo pipefail
 usage() {
     cat <<'HELP'
-Usage: tohru panel toggle|open sound|calendar
+Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru panel close
        tohru settings open|close
        tohru audio volume up|down
@@ -35,10 +35,14 @@ case ${1:-help} in
     panel)
         case ${2:-} in
             open|toggle)
-                [[ $# == 3 && ( $3 == sound || $3 == calendar ) ]] || fail 'Usage: tohru panel open|toggle sound|calendar'
+                [[ $# == 3 && ( $3 == sound || $3 == calendar || $3 == network || $3 == bluetooth || $3 == about || $3 == info ) ]] || fail 'Usage: tohru panel open|toggle sound|calendar|network|bluetooth|about|info'
                 case "$3:$2" in
                     sound:open) event=sound_open_request ;; sound:toggle) event=sound_toggle ;;
                     calendar:open) event=calendar_open ;; calendar:toggle) event=calendar_toggle ;;
+                    network:open) event=network_open ;; network:toggle) event=network_toggle ;;
+                    bluetooth:open) event=bluetooth_open ;; bluetooth:toggle) event=bluetooth_toggle ;;
+                    about:open) event=about_open ;; about:toggle) event=about_toggle ;;
+                    info:open) event=info_open ;; info:toggle) event=info_toggle ;;
                 esac
                 exec "$pleamar" --say tohru "emit $event"
                 ;;
@@ -46,7 +50,7 @@ case ${1:-help} in
                 [[ $# == 2 ]] || fail 'Usage: tohru panel close'
                 exec "$pleamar" --say tohru 'emit panel_close'
                 ;;
-            *) fail 'Usage: tohru panel open|toggle sound|calendar | close' ;;
+            *) fail 'Usage: tohru panel open|toggle sound|calendar|network|bluetooth|about|info | close' ;;
         esac
         ;;
     audio)

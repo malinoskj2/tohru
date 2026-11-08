@@ -1,10 +1,14 @@
 scene Tohru {
- surface { size: full, 42; anchor: top; margin: 0; reserve: 31; screens: all; keyboard: exclusive while sound_open or cal_open }
- permissions { services: "window", "apps", "media", "clock", "workspaces" }
+ surface { size: full, 42; anchor: top; margin: 0; reserve: 31; screens: all; keyboard: exclusive while sound_open or cal_open or net_open or bt_open or info_visible or about_visible }
+ permissions { services: "window", "apps", "media", "clock", "workspaces", "network.*", "bluetooth.*", "battery", "capture", "say:tohru-notifications" }
  include "bar/state.plm"
  include "bar/rail-state.plm"
  include "calendar/state.plm"
  include "settings/state.plm"
+ include "network/state.plm"
+ include "bluetooth/state.plm"
+ include "info/state.plm"
+ include "about/state.plm"
  include "sound/declarations.plm"
  include "osd/state.plm"
  include "session/idle.part.plm"
@@ -22,6 +26,7 @@ scene Tohru {
  box { from: 100, 0; size: screen.width - 200, 31; corner: 10; color: #160e14; opacity: 70% }
  include "bar/contents.plm"
  include "bar/workspace.plm"
+ include "services.plm"
  include "sound/view.plm"
  popup sound_panel {
   at: clamp(sound_button_x - 150, 8, screen.width - 308), 37
@@ -30,6 +35,10 @@ scene Tohru {
   include "sound/panel.plm"
  }
  include "calendar/popup.plm"
+ include "network/popup.plm"
+ include "bluetooth/popup.plm"
+ include "info/popup.plm"
+ include "about/popup.plm"
  surface settings {
   kind: window; title: "Tohru Settings"; app_id: "dev.tohru.Settings"
   size: 800, 560; open: settings_open; keyboard: exclusive

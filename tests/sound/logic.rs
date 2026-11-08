@@ -175,12 +175,21 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         function emit(name) table.insert(calls,{render_only=name}) end
         function require(name) return modules[name] end
         sys={call=function(name,value) table.insert(calls,{name=name,value=value}) end,
+             ask=function(name)
+                assert(name=='capture.outputs'); output_queries=(output_queries or 0)+1
+                return {{name='PRIVATE-1',width=1280,height=720}}
+             end,
              watch=function(name,callback)
                 if name=='clock' then callback({year=2026,month=11,day=7,weekday=6,hour=12,minute=0})
                 else callback({}) end
                 return true
              end}
         json={encode=function(value) return 'snapshot' end}
+        info_reads=0
+        tohru_info={snapshot=function()
+            info_reads=info_reads+1
+            return {system={os_name='Fixture Linux'},accounts={},disks={},mounts={},generations={},issues={}}
+        end}
         tohru_idle={start=function(config)
             assert(config.lock_seconds==1800 and config.screen_off_unlocked_seconds==0)
             assert(config.screen_off_locked_seconds==60 and config.suspend_unlocked_seconds==7200)
@@ -197,6 +206,23 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
     "#).exec().unwrap();
     let modules: mlua::Table = lua.globals().get("modules").unwrap();
     for (name, source) in [
+        (
+            "network/controller",
+            include_str!("../../shell/network/controller.luau"),
+        ),
+        (
+            "bluetooth/controller",
+            include_str!("../../shell/bluetooth/controller.luau"),
+        ),
+        (
+            "info/controller",
+            include_str!("../../shell/info/controller.luau"),
+        ),
+        (
+            "about/controller",
+            include_str!("../../shell/about/controller.luau"),
+        ),
+        ("info/power", include_str!("../../shell/info/power.luau")),
         (
             "osd/controller",
             include_str!("../../shell/osd/controller.luau"),
@@ -270,6 +296,27 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         dispatch('audio_set',0.6); fact.sound_open=false
         dispatch('fact:sound_open',false)
         assert(not fact.sound_dragging and timers[1]==nil)
+        assert(info_reads==0, 'closed information pages cannot read snapshots')
+        dispatch('network_open'); assert(fact.net_open and not fact.sound_open and not fact.cal_open)
+        fact.net_joining=true; text.net_password='fixture secret'
+        dispatch('bluetooth_open')
+        assert(fact.bt_open and not fact.net_open and text.net_password=='')
+        fact['bt.pairing_id']=7; fact['bt.pairing']='pin'
+        dispatch('bluetooth_question'); assert(fact.bt_open)
+        fact.bt_scan_owned=true; text.bt_answer='private answer'
+        dispatch('info_open',5)
+        assert(fact.info_visible and not fact.bt_open and not fact.bt_scan_owned and text.bt_answer=='')
+        assert(info_reads==1)
+        dispatch('info_open',1)
+        assert(info_reads==1 and output_queries==1 and model.info_rows[1].value=='PRIVATE-1')
+        assert(model.info_rows[2].value=='1280 × 720' and model.info_rows[3].value=='Unknown')
+        fact['bt.pairing_id']=0; fact['bt.pairing']='none'
+        dispatch('about_open'); assert(fact.about_visible and not fact.info_visible and info_reads==2)
+        dispatch('about_more')
+        assert(fact.info_visible and not fact.about_visible and fact.info_page==0 and info_reads==3)
+        dispatch('network_open'); dispatch('settings_open_request')
+        assert(fact.settings_open and not fact.net_open and not fact.info_visible and not fact.bt_open)
+        dispatch('panel_close'); assert(info_reads==3)
     "#,
     )
     .exec()

@@ -23,6 +23,16 @@ class Cli(unittest.TestCase):
     def invoke(self, *args, **env):
         return subprocess.run([str(ROOT / "bin/tohru"), *args], env={**self.env, **env}, text=True, capture_output=True)
 
+    def test_service_panel_routes_are_fixed_native_events(self):
+        for panel in ['network', 'bluetooth', 'about', 'info']:
+            for action in ['open', 'toggle']:
+                with self.subTest(panel=panel, action=action):
+                    result = self.invoke('panel', action, panel)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(json.loads(result.stdout), ['--say', 'tohru', 'emit '+panel+'_'+action])
+        for panel in ['network;quit', 'bluetooth\nemit quit', 'unknown']:
+            self.assertEqual(self.invoke('panel', 'open', panel).returncode, 2)
+
     def test_native_arguments(self):
         for args, expected in [
             (("settings", "open"), ["--say", "tohru", "emit settings_open_request"]),

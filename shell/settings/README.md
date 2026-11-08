@@ -22,7 +22,8 @@ forward routes when navigating after Back. Ctrl+F focuses native search; Tab
 switches sidebar/results; Up/Down navigates; Enter/Space activates selected
 editable results; Alt+Left/Right navigates history; Escape closes. Opening Settings
 closes root dropdowns through direct feature lifecycle calls. Keyboard rules are
-inactive while a sound/calendar popup owns the root keyboard.
+inactive while any sound/calendar/network/Bluetooth/info/About popup owns the
+root keyboard.
 
 Root settings reload republishes the same owner snapshot to this window. Native
 persistence warnings/errors remain distinct from observation; this window does
@@ -32,6 +33,9 @@ Native window focus/WM close/reopen, physical keyboard, native controls and
 rendered sizing still require private runtime validation. No acceptance inferred
 from scene compiler or mocked native boundary.
 
-Native Wi-Fi/Bluetooth/About and information pages, input/per-app/device sound
-controls and full retained category coverage remain subsequent implementation.
+Native Wi-Fi/Bluetooth/About and information popups are now composed in the same
+root and reachable through measured bar controls or fixed public CLI panel routes.
+They do not add another Settings owner/window. Native protocol/input/rendering
+acceptance, embedded Settings category coverage and input/per-app/device sound
+controls remain subsequent gates.
 No omitted gaming/Assistant/DND/admin controls are reintroduced.

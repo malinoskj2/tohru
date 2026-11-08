@@ -46,17 +46,46 @@ local make_rail = require("calendar/rail-publisher")
 require("bar/workspace")(make_rail, tohru_workspace)
 local calendar_rail = make_rail(tohru_workspace, "calendar", "cal_rail_")
 local calendar = require("calendar/controller")(calendar_rail)
-on("calendar_toggle", sound.close)
-on("calendar_open", sound.close)
-on("sound_toggle", calendar.close)
-on("sound_open_request", calendar.close)
-on("panel_close", calendar.close)
+local network = require("network/controller")()
+local bluetooth = require("bluetooth/controller")()
+local info = require("info/controller")(tohru_info.snapshot, function() return sys.ask("capture.outputs") end)
+local about
+local function close_panels(keep)
+    if keep ~= "sound" then sound.close() end
+    if keep ~= "calendar" then calendar.close() end
+    if keep ~= "network" then network.close() end
+    if keep ~= "bluetooth" then bluetooth.close() end
+    if keep ~= "info" then info.close() end
+    if about and keep ~= "about" then about.close() end
+end
+about = require("about/controller")(tohru_info.snapshot, function(page)
+    close_panels("info")
+    info.open(page)
+end)
+require("info/power")()
+-- Real native handlers run first; callbacks close other controllers directly.
+-- Lua emit/fact writes are never assumed to dispatch another Lua handler.
+on("calendar_open", function() close_panels("calendar") end)
+on("calendar_toggle", function() if fact.cal_open then close_panels("calendar") end end)
+on("sound_open_request", function() close_panels("sound") end)
+on("sound_toggle", function() if fact.sound_open then close_panels("sound") end end)
+on("network_open", function() close_panels("network") end)
+on("network_toggle", function() if fact.net_open then close_panels("network") end end)
+on("bluetooth_open", function() close_panels("bluetooth") end)
+on("bluetooth_toggle", function() if fact.bt_open then close_panels("bluetooth") end end)
+on("bluetooth_question", function() if fact.bt_open then close_panels("bluetooth") end end)
+on("info_open", function() close_panels("info") end)
+on("info_toggle", function() if fact.info_visible then close_panels("info") end end)
+on("about_open", function() close_panels("about") end)
+on("about_toggle", function() if fact.about_visible then close_panels("about") end end)
+on("panel_close", function() close_panels() end)
+if fact.bt_open then close_panels("bluetooth") end
 
 refresh_settings = require("settings/controller")(function(settings, warning)
     text.settings_error = warning or ""
     publish(settings)
 end)
-on("settings_open_request", function() sound.close(); calendar.close() end)
+on("settings_open_request", function() close_panels() end)
 
 configure_idle = require("settings/idle")(require("session/idle"))
 configure_idle(tohru_settings.snapshot())
