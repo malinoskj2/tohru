@@ -35,6 +35,9 @@ fn snapshot(lua: &Lua, owner: &Owner) -> mlua::Result<Table> {
             Value::Bool(value) => row.set("value", value)?,
             Value::Text(value) => row.set("value", value)?,
             Value::Integer(value) => row.set("value", value)?,
+            Value::Assignments(assignments) => {
+                row.set("value", lua.create_table_from(assignments)?)?
+            }
         }
         row.set(
             "origin",
@@ -96,6 +99,23 @@ pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
                 LuaValue::Boolean(value) => Value::Bool(value),
                 LuaValue::String(value) => Value::Text(value.to_str()?.to_owned()),
                 LuaValue::Integer(value) => Value::Integer(value),
+                LuaValue::Table(table) if key == Key::WallpaperAssignments => {
+                    let mut assignments = std::collections::BTreeMap::new();
+                    for pair in table.pairs::<LuaValue, LuaValue>() {
+                        if assignments.len() == 32 {
+                            return Err(mlua::Error::runtime(
+                                "wallpaper assignments exceed 32 outputs",
+                            ));
+                        }
+                        let (LuaValue::String(output), LuaValue::String(path)) = pair? else {
+                            return Err(mlua::Error::runtime(
+                                "wallpaper assignments require string output/path pairs",
+                            ));
+                        };
+                        assignments.insert(output.to_str()?.to_owned(), path.to_str()?.to_owned());
+                    }
+                    Value::Assignments(assignments)
+                }
                 LuaValue::Number(value)
                     if key == Key::CornerSize
                         && value.fract() == 0.0
@@ -119,6 +139,18 @@ pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
                 .lock()
                 .map_err(|_| mlua::Error::runtime("settings owner mutex poisoned"))?;
             let outcome = owner.set(key, value).map_err(report)?;
+            applied(lua, &owner, outcome)
+        })?,
+    )?;
+    api.set(
+        "wallpaper_assign",
+        lua.create_function(move |lua, (output, path): (String, Option<String>)| {
+            let mut owner = owner
+                .lock()
+                .map_err(|_| mlua::Error::runtime("settings owner mutex poisoned"))?;
+            let outcome = owner
+                .assign_wallpaper(&output, path.as_deref())
+                .map_err(report)?;
             applied(lua, &owner, outcome)
         })?,
     )?;
@@ -147,6 +179,7 @@ mod tests {
         install(&replacement).unwrap();
         replacement.load("local s = tohru_settings.reload()['bar.mooncoil']; assert(s.value and s.managed and s.runtime_override and s.origin == 'runtime')").exec().unwrap();
         replacement.load("tohru_settings.set('appearance.corner_size', 100); assert(tohru_settings.reload()['appearance.corner_size'].value == 100); for _, n in {0, 101, 32.5, math.huge, 0/0} do assert(not pcall(tohru_settings.set, 'appearance.corner_size', n)) end; assert(tohru_settings.snapshot()['appearance.corner_size'].value == 100)").exec().unwrap();
+        replacement.load("tohru_settings.set('wallpaper.assignments', {OFFLINE='/offline.png'}); tohru_settings.wallpaper_assign('DP-1', '/new.webp'); local s=tohru_settings.reload()['wallpaper.assignments']; assert(s.value.OFFLINE=='/offline.png' and s.value['DP-1']=='/new.webp'); assert(not pcall(tohru_settings.set, 'wallpaper.assignments', {[1]='/bad.png'})); assert(not pcall(tohru_settings.set, 'wallpaper.assignments', {BAD=false})); assert(not pcall(tohru_settings.wallpaper_assign, ' DP-1', '/bad.png')); tohru_settings.wallpaper_assign('DP-1', nil); assert(tohru_settings.snapshot()['wallpaper.assignments'].value['DP-1']==nil)").exec().unwrap();
         assert_eq!(
             std::fs::read_to_string(managed).unwrap(),
             "[bar]\nmooncoil = false\n"

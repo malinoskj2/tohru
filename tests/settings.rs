@@ -79,6 +79,98 @@ fn corner_size_bounds_atomic_reload_and_restart() {
 }
 
 #[test]
+fn wallpaper_map_atomic_bounds_unicode_selectors_and_restart() {
+    let files = Fixture::new();
+    fs::write(
+        files.user(),
+        "# retained\n[wallpaper]\nfuture = 'unknown'\n",
+    )
+    .unwrap();
+    let mut owner = Owner::load(files.user(), None).unwrap();
+    assert_eq!(owner.get(Key::WallpaperEnabled).value, Value::Bool(false));
+    owner
+        .assign_wallpaper("OFFLINE-1", Some("/offline/space image.PNG"))
+        .unwrap();
+    for output in [
+        "",
+        " DP-1",
+        "DP-1\u{a0}",
+        "\u{2003}DP-1",
+        "DP-1,DP-2",
+        "DP-1\n",
+    ] {
+        let before = fs::read(files.user()).unwrap();
+        assert!(owner.assign_wallpaper(output, Some("/image.png")).is_err());
+        assert!(owner.assign_wallpaper(output, None).is_err());
+        assert_eq!(fs::read(files.user()).unwrap(), before);
+    }
+    for path in ["relative.png", "/unsupported.txt", "/bad\0.png"] {
+        assert!(owner.assign_wallpaper("OFFLINE-1", Some(path)).is_err());
+    }
+    for number in 1..32 {
+        owner
+            .assign_wallpaper(&format!("DP-{number}"), Some("/image.webp"))
+            .unwrap();
+    }
+    let before = fs::read(files.user()).unwrap();
+    assert!(
+        owner
+            .assign_wallpaper("OVERFLOW", Some("/image.png"))
+            .is_err()
+    );
+    assert_eq!(fs::read(files.user()).unwrap(), before);
+    let restarted = Owner::load(files.user(), None).unwrap();
+    assert_eq!(
+        owner.get(Key::WallpaperAssignments),
+        restarted.get(Key::WallpaperAssignments)
+    );
+    assert!(
+        String::from_utf8(before)
+            .unwrap()
+            .contains("future = 'unknown'")
+    );
+    owner.assign_wallpaper("DP-1", None).unwrap();
+    owner
+        .assign_wallpaper("OVERFLOW", Some("/video.mp4"))
+        .unwrap();
+    let before = owner.get(Key::WallpaperAssignments);
+    fs::write(
+        files.user(),
+        "[wallpaper.assignments]\n'\u{a0}DP-1' = '/bad.png'\n",
+    )
+    .unwrap();
+    assert!(owner.reload().is_err());
+    assert_eq!(owner.get(Key::WallpaperAssignments), before);
+}
+
+#[test]
+fn managed_wallpaper_assignment_edits_retain_offline_and_reset_on_restart() {
+    let files = Fixture::new();
+    fs::write(
+        files.managed(),
+        "[wallpaper]\nenabled = false\n[wallpaper.assignments]\nOFFLINE = '/offline.png'\n",
+    )
+    .unwrap();
+    let mut owner = files.owner();
+    owner.assign_wallpaper("DP-1", Some("/new.png")).unwrap();
+    owner.reload().unwrap();
+    let setting = owner.get(Key::WallpaperAssignments);
+    assert!(setting.managed && setting.runtime_override);
+    let Value::Assignments(map) = setting.value else {
+        panic!("expected assignments")
+    };
+    assert_eq!(map.len(), 2);
+    assert_eq!(map["OFFLINE"], "/offline.png");
+    assert!(!files.user().exists());
+    let restarted = files.owner();
+    let Value::Assignments(map) = restarted.get(Key::WallpaperAssignments).value else {
+        panic!("expected assignments")
+    };
+    assert_eq!(map.len(), 1);
+    assert_eq!(map["OFFLINE"], "/offline.png");
+}
+
+#[test]
 fn precedence_reload_and_restart() {
     let files = Fixture::new();
     fs::write(
