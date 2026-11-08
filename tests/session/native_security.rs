@@ -95,3 +95,12 @@ fn human_watch_and_action_diff_cannot_reveal_old_secret_after_text_reordering() 
     assert!(!diff.contains("synthetic-old-secret"), "{diff}");
     assert!(diff.contains("changed (hidden)"), "{diff}");
 }
+
+#[test]
+fn active_native_owner_remains_open_for_culling_input_and_pacing() {
+    assert!(surface_open(1, false, &[1]));
+    assert!(surface_open(1, true, &[1]));
+    assert!(!surface_open(2, false, &[1]));
+    assert!(surface_open(2, true, &[1]));
+    assert!(!surface_open(1, false, &[]));
+}
