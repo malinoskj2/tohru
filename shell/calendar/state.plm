@@ -1,0 +1,19 @@
+part CalendarState {
+    fact cal_open = false
+    fact cal_month = 1
+    fact cal_weeks = 5
+    fact cal_current = true
+    text cal_title = ""
+    text cal_footer = ""
+    text cal_week = ""
+    text cal_error = ""
+    model cal_days max 42 { day: text; year: number; month: number; number: number; row: number; col: number; outside: bool; today: bool; selected: bool }
+    event calendar_toggle ->
+    event calendar_open ->
+    event calendar_close ->
+    event calendar_previous ->
+    event calendar_next ->
+    event calendar_today ->
+    event calendar_month ->
+    event calendar_day ->
+}

@@ -1,0 +1,9 @@
+scene TohruCalendar {
+    surface { size: full, 31; anchor: top; reserve: 0; keyboard: exclusive while cal_open }
+    permissions { services: "clock" }
+    include "state.plm"
+    zone box calendar_button { from: screen.width - 296, 0; size: 186, 31; cursor: pointer }
+    text "Calendar" { at: screen.width - 110, 16; anchor: right center; size: 13; color: #cdd6f4 }
+    on press calendar_button { emit calendar_toggle }
+    include "popup.plm"
+}

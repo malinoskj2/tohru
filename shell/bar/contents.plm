@@ -1,0 +1,23 @@
+part BarContents {
+    // Workspace geometry is reserved for the exact motion slice; never a generic spring.
+    zone box bar_mark_hit { from: 107, 4.5; size: 24, 22; active: bar_mooncoil; cursor: pointer }
+    image bar_mark { at: 111, 8; size: 15, 15; opacity: 30%; show: bar_mooncoil }
+    on press bar_mark_hit { emit session_toggle }
+
+    let bar_title_width = min(360, bar_title_measure.width + if(bar_has_icon, 20, 0))
+    group {
+        move: (screen.width - bar_title_width) / 2, 0
+        image bar_app_icon { at: 0, 8.5; size: 14, 14; show: bar_has_icon }
+        text bar_title { at: if(bar_has_icon, 20, 0), 16.5; anchor: left center; width: if(bar_has_icon, 340, 360); lines: 1; size: 13; weight: 500; color: #cdd6f4; measure: bar_title_measure }
+    }
+    // Native-selected MPRIS is display-only, present only during playback.
+    text bar_media { at: screen.width - 408, 16.5; anchor: right center; width: 180; lines: 1; size: 13; color: #cdd6f4; show: bar_playing }
+    zone box bar_clock_hit { from: screen.width - 296, 4.5; size: 186, 22; cursor: pointer }
+    prop bar_clock_hover = 0 ~140ms
+    box { from: screen.width - 296, 4.5; size: 186, 22; corner: 7; color: #cdd6f4; opacity: bar_clock_hover * 8% }
+    text bar_date { at: screen.width - 294, 16.5; anchor: left center; size: 13; color: #cdd6f4 }
+    text bar_time { at: screen.width - 112, 16.5; anchor: right center; size: 13; color: #cdd6f4 }
+    on enter bar_clock_hit { bar_clock_hover: 1 ~140ms }
+    on leave bar_clock_hit { bar_clock_hover: 0 ~140ms }
+    on press bar_clock_hit { emit calendar_toggle }
+}
