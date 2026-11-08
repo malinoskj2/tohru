@@ -1,7 +1,8 @@
-# Native output sound checkpoint
+# Native sound controls
 
 Root scene `tohru` uses pinned Pleamar declarative `service audio` and direct
-`audio.step`, `audio.volume`, `audio.mute` commands. The declarative service keeps
+`audio.step`, `audio.volume`, `audio.mute` and the supported input/app/default
+commands. The declarative service keeps
 one subscription through scene/logic reload; this avoids creating another raw
 `sys.watch` thread every VM replacement. It observes ordinary audio events for
 the bar; no high-rate `audio.level`/microphone meter or closed-panel stream starts.
@@ -12,7 +13,8 @@ constraints keep it onscreen. Sound header uses j2bar15px/600 type,6px padding,
 40px header and30px row; SVG speaker paths are from j2bar's OSD speaker with its
 MIT notice retained. Mocha text/sky palette follows the source. This is a native
 glass/interaction candidate, not accepted1:1 graphics/motion or glass parity.
-Per-app/input/device controls remain subsequent sound scope.
+The More control exposes native output selection, microphone level/mute and
+per-stream application level/mute in a paged view.
 
 Public CLI, reaching only an already running root scene:
 
@@ -46,9 +48,9 @@ policy. Root now uses screens:all, which also permits native root popup compilat
 no singleton-each compiler fix. bar.preferred_output is deprecated/inert legacy
 configuration; preserve old TOML instead of deleting it. No fallback selector.
 
-Exact OSD liquid/slosh (44x200,1600ms hold) and panel liquid-meter visual parity
-remain separate verification/decision work. No simplified OSD or custom Slosh
-implementation is substituted. The frame API gap remains independent.
+The accepted native OSD approximation uses44×200 glass/spring/velocity/fill and
+1600ms hold. It reports output/microphone levels, mute and native device names;
+custom randomized Slosh and pixel parity are not claimed.
 
 CPU tests in tests/sound/logic.rs execute the real controller using mlua at the
 native-call/timer boundary; GUI/native service/input tests require an exclusive
@@ -65,3 +67,49 @@ in a growing error area, separately from awaiting native observations.
 User accepted the pinned synchronous Pulse I/O limitation: a stalled accepting
 server can block root logic indefinitely. The50ms timer bounds coalescing only;
 no command deadline/cancellation, backend replacement or workaround was added.
+
+
+## Expanded native controls
+
+Output devices are actionable using the observed native sink ID. Microphone
+level/mute use the actual native default input. Input devices are deliberately
+read-only: pinned `audio.default(id)` checks sink IDs before source IDs, and common
+IDs collide. The accepted choice is an honest unavailable input selector, with no
+name guessing, custom observer/backend or Pleamar patch. No native default input
+report disables microphone commands rather than targeting a fallback implicitly.
+
+Applications remain native per-stream reports, capped64 (devices32 each), four
+rows per page. Names/titles, level, mute and playing come from the native service;
+there is no aggregate app model or alternate process/audio catalog. UI events
+carry native IDs, which must still exist in the current bounded report before a
+command is issued. Closed/replaced stream IDs fail visibly. Native request
+acceptance remains distinct from subsequent state observation. Device/app status
+is included in schema2 `audio status --json` for CLI ID discovery, with text fields
+bounded256 UTF-8 bytes and explicit capacities/selection limitation.
+
+Default output and microphone sliders share one50ms coalescing slot; switching
+kind flushes the previous value, close/release flushes the final value, and VM
+replacement cancels unissued work and clears both drag flags. App buttons change
+5% and toggle mute using explicit native commands; all writes clamp0..1. No peak
+meter, overdrive, balance or game policy is added. The existing native audio
+backend already reports input/app data even while closed; this view does not add
+an `audio.level` observer or a recurring query/poll.
+
+Expanded keyboard: Tab cycles Outputs/Input/Apps, Up/Down selects rows (or changes
+microphone level), Left/Right adjusts the default output/input or selected app,
+Enter/Space selects an output or toggles microphone/app mute, PageUp/PageDown
+pages the bounded list, Escape closes. Model changes invalidate stale ID actions.
+
+```sh
+tohru audio input volume up
+tohru audio input mute toggle
+tohru audio output select 0
+tohru audio app 7 volume down
+tohru audio app 7 mute toggle
+```
+
+These are fixed, validated native requests. Input selection is rejected before
+IPC; output/app IDs must be canonical unsigned32-bit integers. Mic SVGs retain
+Lucide's license under LICENSE.LUCIDE. Controller/CLI/compiler checks cover source
+and API mappings only; private Pulse input/apps/hotplug/input/visual evidence
+remains pending an exclusive native workload allocation.

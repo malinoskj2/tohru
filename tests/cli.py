@@ -23,6 +23,30 @@ class Cli(unittest.TestCase):
     def invoke(self, *args, **env):
         return subprocess.run([str(ROOT / "bin/tohru"), *args], env={**self.env, **env}, text=True, capture_output=True)
 
+    def test_native_input_app_and_output_commands_reject_ambiguous_or_invalid_ids(self):
+        for arguments, event in [
+            (('audio','input','volume','up'),'audio_input_up'),
+            (('audio','input','volume','down'),'audio_input_down'),
+            (('audio','input','mute','toggle'),'audio_input_mute'),
+            (('audio','output','select','0'),'audio_output_select 0'),
+            (('audio','output','select','4294967295'),'audio_output_select 4294967295'),
+            (('audio','app','7','volume','up'),'audio_app_up 7'),
+            (('audio','app','7','volume','down'),'audio_app_down 7'),
+            (('audio','app','7','mute','toggle'),'audio_app_mute 7'),
+        ]:
+            result=self.invoke(*arguments)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(json.loads(result.stdout),['--say','tohru','emit '+event])
+        result=self.invoke('audio','input','select','0')
+        self.assertEqual(result.returncode,2)
+        self.assertIn('unavailable',result.stderr)
+        self.assertEqual(result.stdout,'')
+        for value in ['-1','01','1.5','4294967296','1e2','99999999999999999999','0\nemit quit']:
+            for arguments in [('audio','output','select',value),('audio','app',value,'mute','toggle')]:
+                result=self.invoke(*arguments)
+                self.assertEqual(result.returncode,2)
+                self.assertEqual(result.stdout,'')
+
     def test_idle_and_capture_settings_are_bounded_before_native_ipc(self):
         fields=['lock_seconds','screen_off_unlocked_seconds','screen_off_locked_seconds',
                 'suspend_unlocked_seconds','suspend_locked_seconds','fade_milliseconds']

@@ -34,7 +34,7 @@ scene Tohru {
  include "sound/view.plm"
  popup sound_panel {
   at: clamp(sound_button_x - 150, 8, screen.width - 308), 37
-  size: 300, 116 + audio_failed * 62
+  size: 300, 116 + sound_details * 316 + audio_failed * 62
   open: sound_open
   include "sound/panel.plm"
  }

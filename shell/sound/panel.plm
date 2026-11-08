@@ -1,6 +1,6 @@
 part SoundPanel {
   body { color: #181825; glass: 100%; border: 1, #45475a
-   box { from: 0, 0; size: 300, 116 + audio_failed * 62; corner: 20 }
+   box { from: 0, 0; size: 300, 116 + sound_details * 316 + audio_failed * 62; corner: 20 }
   }
   text "Sound" { at: 18, 26; anchor: left center; size: 15; weight: 600; color: #cdd6f4 }
   text "{round(audio.volume * 100)}%" { at: 282, 26; anchor: right center; size: 11; color: #bac2de; show: audio.volume >= 0 and not audio.muted }
@@ -17,11 +17,15 @@ part SoundPanel {
   zone box sound_track { from: 46, 46; size: 236, 30; cursor: pointer; active: sound_outputs.count > 0 }
   box { from: 44, 46; size: 240, 30; corner: 15; stroke: if(sound_focus == 1, 1, 0); color: #89dceb; opacity: 40% }
   for output in sound_outputs {
-   text output.name { at: 18, 91; anchor: left center; size: 11; width: 264; lines: 1; color: #a6adc8; show: output.default }
+   text output.name { at: 18, 91; anchor: left center; size: 11; width: 226; lines: 1; color: #a6adc8; show: output.default }
   }
   text "No output reported" { at: 18, 91; anchor: left center; size: 11; color: #a6adc8; show: sound_outputs.count == 0 }
-  text "Could not change volume" { at: 18, 115; anchor: left center; size: 12; weight: 600; color: #f38ba8; show: audio_failed }
-  text audio_error { at: 18, 134; anchor: left top; size: 11; width: 264; lines: 2; color: #cdd6f4; show: audio_failed }
+  zone box sound_more { from: 252, 79; size: 34, 26; cursor: pointer; label: "Input devices and application sound controls" }
+  text "⋯" { at: 269, 91; anchor: center; size: 22; color: #cdd6f4 }
+  on press sound_more { emit sound_details_toggle }
+  include "details.plm"
+  text "Audio request failed" { at: 18, 115 + sound_details * 316; anchor: left center; size: 12; weight: 600; color: #f38ba8; show: audio_failed }
+  text audio_error { at: 18, 134 + sound_details * 316; anchor: left top; size: 11; width: 264; lines: 2; color: #cdd6f4; show: audio_failed }
   on press sound_mute_hit { sound_focus = 0; emit audio_mute }
   on press sound_track { sound_focus = 1; sound_dragging = true; sound_requested = clamp(local.x / 236, 0, 1); emit audio_set(sound_requested) }
   on drag sound_track { sound_requested = clamp(local.x / 236, 0, 1); emit audio_set(sound_requested) }

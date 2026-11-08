@@ -24,9 +24,9 @@ fn controller() -> Lua {
         function on(name, callback) handlers[name]=callback end
         function after(ms, callback) assert(ms==50); timers[1]=callback; return 1 end
         function cancel(id) timers[id]=nil end
-        sys = {call=function(name, value)
+        sys = {call=function(name, value, extra)
             if denied then error('sound server refused') end
-            table.insert(calls, {name=name, value=value})
+            table.insert(calls, {name=name, value=value, extra=extra})
         end}
         json = {encode=function(status) last_status=status; return 'snapshot' end}
     "#).exec().unwrap();
@@ -36,6 +36,56 @@ fn controller() -> Lua {
         .call::<()>(())
         .unwrap();
     lua
+}
+
+#[test]
+fn native_input_apps_and_output_selection_use_typed_current_ids_only() {
+    let lua = controller();
+    lua.load(r#"
+        fact['audio.volume']=0.3;fact['sound_outputs.count']=1;fact['sound_outputs.0.id']=0
+        fact['audio.input']=0.5;fact['audio.input_muted']=false
+        fact['sound_inputs.count']=1;fact['sound_inputs.0.id']=0;fact['sound_inputs.0.default']=true
+        fact['sound_apps.count']=1;fact['sound_apps.0.id']=7;fact['sound_apps.0.volume']=0.98
+        text['sound_apps.0.name']=string.rep('界',200);handlers.audio_report()
+        assert(last_status.outputs[1].id==0 and last_status.inputs[1].id==0 and last_status.apps[1].id==7)
+        assert(#last_status.apps[1].name<=256 and utf8.len(last_status.apps[1].name))
+        assert(last_status.input_selection=='unavailable_native_id_collision')
+        assert(last_status.input_available and last_status.input_muted==false and last_status.input_volume==0.5)
+        handlers.audio_input_up();assert(calls[1].name=='audio.input' and calls[1].value==0.55)
+        handlers.audio_input_mute();assert(calls[2].name=='audio.input_mute' and calls[2].value==nil)
+        assert(handlers.audio_input_select==nil, 'colliding input IDs never route audio.default')
+        handlers.audio_output_select(0);assert(calls[3].name=='audio.default' and calls[3].value==0)
+        handlers.audio_app_up(7)
+        assert(calls[4].name=='audio.app_volume' and calls[4].value==7 and calls[4].extra==1)
+        handlers.audio_app_mute(7);assert(calls[5].name=='audio.app_mute' and calls[5].value==7)
+        assert(fact['sound_apps.0.volume']==0.98 and fact['audio.input']==0.5, 'ack does not overwrite observations')
+        fact['sound_apps.0.id']=8
+        handlers.audio_app_down(7);assert(#calls==5 and last_status.error~='')
+        for _,id in {-1,0.5,4294967296,0/0,math.huge} do handlers.audio_output_select(id);handlers.audio_app_mute(id) end
+        assert(#calls==5)
+        fact['sound_inputs.0.default']=false;handlers.audio_report()
+        handlers.audio_input_down();handlers.audio_input_mute()
+        assert(#calls==5 and not last_status.input_available and last_status.input_volume==nil)
+        handlers.sound_details_toggle();assert(fact.sound_details)
+        handlers.sound_tab(1);assert(fact.sound_tab==1 and fact.sound_list_page==0)
+        fact['sound_inputs.count']=5;handlers.sound_list_page(1);assert(fact.sound_list_page==1)
+        handlers.sound_list_page(1);assert(fact.sound_list_page==1)
+        handlers.sound_tab(2);assert(fact.sound_list_page==0 and fact.sound_row_id==8)
+        fact['sound_apps.0.id']=9;handlers.sound_details_step(1);assert(#calls==5, 'stale keyboard target cannot mutate replacement stream')
+        fact['sound_apps.0.id']=8
+        fact['sound_inputs.0.default']=true;handlers.audio_report()
+        handlers.audio_set(0.2);handlers.audio_input_set(0.7);handlers.audio_input_set(0.8)
+        assert(#calls==6 and calls[6].name=='audio.volume' and calls[6].value==0.2)
+        fact.sound_input_dragging=true;handlers.panel_close()
+        assert(#calls==7 and calls[7].name=='audio.input' and calls[7].value==0.8 and not fact.sound_input_dragging and timers[1]==nil)
+        handlers.sound_details_step(1);assert(calls[8].name=='audio.app_volume' and calls[8].value==8)
+        handlers.sound_details_activate();assert(calls[9].name=='audio.app_mute' and calls[9].value==8)
+        handlers.sound_tab(0);handlers.sound_details_activate();assert(calls[10].name=='audio.default' and calls[10].value==0)
+        handlers.sound_tab(1);handlers.sound_details_step(-1);assert(calls[11].name=='audio.input' and calls[11].value==0.45)
+        handlers.sound_details_activate();assert(calls[12].name=='audio.input_mute')
+        handlers.sound_tab(2);fact['sound_apps.count']=0;fact.sound_list_page=8;handlers.audio_report()
+        assert(fact.sound_list_page==0)
+    "#).exec().unwrap();
 }
 
 #[test]
@@ -150,10 +200,10 @@ fn command_error_has_a_visible_panel_boundary() {
     let view = include_str!("../../shell/sound/panel.plm");
     let root = include_str!("../../shell/bar.plm");
     assert!(view.contains("text audio_error"));
-    assert!(view.contains("Could not change volume"));
+    assert!(view.contains("Audio request failed"));
     assert!(view.contains("show: audio_failed"));
-    assert!(view.contains("116 + audio_failed * 62"));
-    assert!(root.contains("116 + audio_failed * 62"));
+    assert!(view.contains("116 + sound_details * 316 + audio_failed * 62"));
+    assert!(root.contains("116 + sound_details * 316 + audio_failed * 62"));
 }
 
 #[test]

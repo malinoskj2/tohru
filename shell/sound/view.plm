@@ -9,13 +9,30 @@ part SoundView {
 
  on change audio.volume { emit audio_report }
  on change audio.muted { emit audio_report }
+ on change audio.input { emit audio_report }
+ on change audio.input_muted { emit audio_report }
+ on change sound_inputs.count { emit audio_report }
+ on change sound_apps.count { emit audio_report }
+ for device in sound_inputs { on change device.default { emit audio_report } }
+ for device in sound_outputs { on change device.default { emit audio_report } }
  on change sound_outputs.count { emit audio_report }
+ on key Tab while sound_open and sound_details { emit sound_tab_next }
+ on key Left while sound_open and sound_details { emit sound_details_step(-1) }
+ on key Right while sound_open and sound_details { emit sound_details_step(1) }
+ on key Up while sound_open and sound_details and sound_tab != 1 { emit sound_row_move(-1) }
+ on key Down while sound_open and sound_details and sound_tab != 1 { emit sound_row_move(1) }
+ on key Up while sound_open and sound_details and sound_tab == 1 { emit sound_details_step(1) }
+ on key Down while sound_open and sound_details and sound_tab == 1 { emit sound_details_step(-1) }
+ on key Prior while sound_open and sound_details { emit sound_list_page(-1) }
+ on key Next while sound_open and sound_details { emit sound_list_page(1) }
+ on key Return while sound_open and sound_details { emit sound_details_activate }
+ on key space while sound_open and sound_details { emit sound_details_activate }
  on key Escape while sound_open { emit panel_close }
- on key Tab while sound_open { sound_focus = 1 - sound_focus }
- on key Left while sound_open { emit audio_step(-1) }
- on key Right while sound_open { emit audio_step(1) }
- on key Down while sound_open { emit audio_step(-1) }
- on key Up while sound_open { emit audio_step(1) }
- on key space while sound_open and sound_focus == 0 { emit audio_mute }
- on key Return while sound_open and sound_focus == 0 { emit audio_mute }
+ on key Tab while sound_open and not sound_details { sound_focus = 1 - sound_focus }
+ on key Left while sound_open and not sound_details { emit audio_step(-1) }
+ on key Right while sound_open and not sound_details { emit audio_step(1) }
+ on key Down while sound_open and not sound_details { emit audio_step(-1) }
+ on key Up while sound_open and not sound_details { emit audio_step(1) }
+ on key space while sound_open and not sound_details and sound_focus == 0 { emit audio_mute }
+ on key Return while sound_open and not sound_details and sound_focus == 0 { emit audio_mute }
 }

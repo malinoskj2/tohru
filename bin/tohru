@@ -9,6 +9,9 @@ Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru screenshot region|cancel|status --json
        tohru audio volume up|down
        tohru audio mute toggle
+       tohru audio input volume up|down | input mute toggle
+       tohru audio output select ID
+       tohru audio app ID volume up|down | app ID mute toggle
        tohru audio status --json
        tohru status --json
        tohru config reload
@@ -23,11 +26,15 @@ Audio status reports the last native observation and command errors.
 Idle keys: lock_seconds, screen_off_unlocked_seconds, screen_off_locked_seconds,
            suspend_unlocked_seconds, suspend_locked_seconds, fade_milliseconds.
 Zero idle seconds disables that action; fade uses milliseconds.
+Input device selection is unavailable: native input/output IDs collide; input devices are read-only.
 Inspect status and settings-error for settings results or failure.
 HELP
 }
 fail() { printf '%s\n' "$1" >&2; exit 2; }
 pleamar=${TOHRU_RUNTIME:-pleamar}
+audio_id() {
+    [[ $1 =~ ^(0|[1-9][0-9]{0,9})$ ]] && (( 10#$1 <= 4294967295 )) || fail 'Audio ID must be a canonical unsigned 32-bit integer'
+}
 case ${1:-help} in
     help|--help|-h)
         [[ $# -le 1 ]] || fail 'help takes no arguments'
@@ -80,6 +87,27 @@ case ${1:-help} in
         ;;
     audio)
         case ${2:-} in
+            input)
+                [[ $# == 4 ]] || fail 'Usage: tohru audio input volume up|down | input mute toggle'
+                case "$3:$4" in
+                    volume:up) event=audio_input_up ;; volume:down) event=audio_input_down ;;
+                    mute:toggle) event=audio_input_mute ;;
+                    select:*) fail 'Input device selection is unavailable: native input/output IDs collide' ;;
+                    *) fail 'Usage: tohru audio input volume up|down | input mute toggle' ;;
+                esac
+                exec "$pleamar" --say tohru "emit $event"
+                ;;
+            output)
+                [[ $# == 4 && $3 == select ]] || fail 'Usage: tohru audio output select ID'
+                audio_id "$4"
+                exec "$pleamar" --say tohru "emit audio_output_select $4"
+                ;;
+            app)
+                [[ $# == 5 ]] || fail 'Usage: tohru audio app ID volume up|down | app ID mute toggle'
+                audio_id "$3"
+                case "$4:$5" in volume:up) event=audio_app_up ;; volume:down) event=audio_app_down ;; mute:toggle) event=audio_app_mute ;; *) fail 'Usage: tohru audio app ID volume up|down | app ID mute toggle' ;; esac
+                exec "$pleamar" --say tohru "emit $event $3"
+                ;;
             volume)
                 [[ $# == 3 ]] || fail 'Usage: tohru audio volume up|down'
                 case $3 in up) step=1 ;; down) step=-1 ;; *) fail 'Usage: tohru audio volume up|down' ;; esac

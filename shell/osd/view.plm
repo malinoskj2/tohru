@@ -19,8 +19,11 @@ part VolumeOsdView {
             // Rounded native liquid fill remains within the glass vessel.
             box { from: 31, 227 - clamp(osd_fill, 0, 1) * 194; size: 38, clamp(osd_fill, 0, 1) * 194; corner: min(19, clamp(osd_fill, 0, 1) * 97); color: #89dceb; opacity: 80% }
             text osd_label { at: 50, 57; anchor: center; size: 12; weight: 600; color: #cdd6f4 }
-            image sound_speaker { at: 42, 194; size: 16, 16; tint: #cdd6f4; show: not osd_last_muted }
-            image sound_muted { at: 42, 194; size: 16, 16; tint: #cdd6f4; show: osd_last_muted }
+            image sound_speaker { at: 42, 194; size: 16, 16; tint: #cdd6f4; show: not osd_input and not osd_muted }
+            image sound_muted { at: 42, 194; size: 16, 16; tint: #cdd6f4; show: not osd_input and osd_muted }
+            image sound_mic { at: 42, 194; size: 16, 16; tint: #cdd6f4; show: osd_input and not osd_muted }
+            image sound_mic_off { at: 42, 194; size: 16, 16; tint: #cdd6f4; show: osd_input and osd_muted }
+            text osd_device { at: 50, 246; anchor: center; width: 96; lines: 1; size: 10; color: #cdd6f4 }
             zone box osd_vessel { from: 28, 30; size: 44, 200; active: osd_open }
             on enter osd_vessel { emit osd_enter }
             on leave osd_vessel { emit osd_leave }

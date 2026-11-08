@@ -1,4 +1,12 @@
 part VolumeOsdState {
+    fact osd_input = false
+    fact osd_muted = false
+    fact osd_input_known = false
+    fact osd_last_input_volume = 0
+    fact osd_last_input_muted = false
+    fact osd_last_output_id = -1
+    fact osd_last_input_id = -1
+    text osd_device = ""
     fact osd_open = false
     fact osd_hover = false
     fact osd_known = false
