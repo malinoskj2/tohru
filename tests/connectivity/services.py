@@ -36,7 +36,9 @@ saved={name:SETTINGS+'/'+str(index+1) for index,(name,_,_) in enumerate(networks
 def save(event,**details):
     state['calls'].append({'event':event,**details})
     assert len(state['calls'])<=256,'finite fixture call limit exceeded'
-    record.write_text(json.dumps({'calls':state['calls'],'wifi':state['wifi'],'active':state['active'],'paired':state['paired'],'connected':state['connected'],'discovering':state['discovering']},indent=2)+'\n')
+    temporary=record.with_suffix('.new')
+    temporary.write_text(json.dumps({'calls':state['calls'],'wifi':state['wifi'],'active':state['active'],'paired':state['paired'],'connected':state['connected'],'discovering':state['discovering']},indent=2)+'\n')
+    temporary.replace(record)
 
 
 def changed(path,interface,properties):

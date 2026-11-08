@@ -41,3 +41,14 @@ CPU protocol.py parses actual fixture introspection XML with GLib, constructs
 actual object-tree variants, NM property/settings branches WITHOUT executing any
 bus bootstrap/connection/owner/mainloop. PASS12 interface schemas; AST syntax
 also checked. This is schema validation, not a passing native backend workload.
+
+Protected input `get` must return the EXACT native denial
+`? secret input cannot be read` before and after submit. Empty/None/arbitrary
+errors/masked guesses or any disclosure/echo fail; transport exit0 with native
+question-mark denial is handled deliberately. CPU secret.py covers the actual
+assertion and hostile attempted disclosures, not a substitute secrecy check.
+
+Service records publish by same-directory atomic replacement, never truncate the
+reader's live JSON path. Actual extracted save helper concurrent-reader CPU
+regression validates complete snapshots. The reader stays strict: malformed
+persistent JSON is an error, not an unbounded retry or ignored observation.
