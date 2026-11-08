@@ -28,7 +28,7 @@ return function(assign, video_status)
         if video[ext] then return "video" end
         error("Unsupported wallpaper file type")
     end
-    local function publish(enabled, assignments)
+    local function publish(enabled, assignments, fit)
         if type(enabled) ~= "boolean" or type(assignments) ~= "table" then
             error("Wallpaper publication requires an enabled boolean and an assignment table")
         end
@@ -65,6 +65,10 @@ return function(assign, video_status)
             end
             text["wallpaper_output_" .. i] = output
         end
+        -- Accepted user names differ from native image fit names: Fill means Cover.
+        -- Private/older publishers default safely without changing video policy.
+        local fits = {fill = 0, fit = 1, centre = 2, tile = 3}
+        fact.wallpaper_fit = type(fit) == "string" and fits[fit] or 0
         fact.wallpaper_enabled = enabled
         -- Video projection goes to the approved integrated renderer, never the image decoder.
         return videos

@@ -1,0 +1,251 @@
+--- a/src/gpu.rs
++++ b/src/gpu.rs
+@@ -2756,8 +2756,10 @@
+                     let rgb = tint.as_ref().map(&color);
+                     // One picture of a sheet: its piece of what the image takes in the atlas.
+                     let mut uv = slot.uv();
++                    let mut source = (slot.source_size.0 as f32, slot.source_size.1 as f32);
+                     if let Some((which, columns, rows)) = cell {
+                         let (columns, rows) = (columns.eval(c).round().max(1.0), rows.eval(c).round().max(1.0));
++                        source = (source.0 / columns, source.1 / rows);
+                         let which = which.eval(c).floor().rem_euclid(columns * rows);
+                         let (x, y) = (which % columns, (which / columns).floor());
+                         let (w, h) = ((uv[2] - uv[0]) / columns, (uv[3] - uv[1]) / rows);
+@@ -2767,7 +2769,7 @@
+                     // (the box made smaller) or covering it (the picture cut).
+                     let mut d = d;
+                     let (pw, ph) = (uv[2] - uv[0], uv[3] - uv[1]);
+-                    if *fit > 0 && pw > 0.0 && ph > 0.0 && d[2] > 0.0 && d[3] > 0.0 {
++                    if matches!(*fit, 1 | 2) && pw > 0.0 && ph > 0.0 && d[2] > 0.0 && d[3] > 0.0 {
+                         let k = (pw / ph) / (d[2] / d[3]);
+                         match (*fit, k > 1.0) {
+                             (1, true) => (d[1], d[3]) = (d[1] + (d[3] - d[3] / k) * 0.5, d[3] / k),
+@@ -2780,6 +2782,13 @@
+                     let sharp = tip.is_pixel_art(image.0 as usize);
+                     let at = self.element_count();
+                     self.sprite(d, uv, a, rgb, false, sharp, affine, &clips);
++                    if matches!(*fit, 3 | 4) && self.element_count() > at {
++                        // Texture-only line fields: original physical raster size and fit tag.
++                        // Shader uses this surface's actual scale, not the shared atlas scale.
++                        self.elements[at * PER_ELEMENT + 16] = source.0;
++                        self.elements[at * PER_ELEMENT + 17] = source.1;
++                        self.elements[at * PER_ELEMENT + 18] = *fit as f32;
++                    }
+                     // A picture of its own: its number in the second slot, for the
+                     // shader and so a new one is a change, and drawn with it bound.
+                     if slot.page > 0 && self.element_count() > at {
+--- a/src/language/vocabulary.rs
++++ b/src/language/vocabulary.rs
+@@ -183,7 +183,7 @@
+ /// How a group with effects blends: covering, or adding light.
+ pub const GROUP_MODES: &[&str] = &["normal", "add", "screen", "multiply"];
+ /// How an image fills the box it is drawn in: stretched, whole inside it, or cut to cover it.
+-pub const IMAGE_FITS: &[&str] = &["fill", "contain", "cover"];
++pub const IMAGE_FITS: &[&str] = &["fill", "contain", "cover", "centre", "tile"];
+ /// What each particle looks like.
+ pub const PARTICLE_SHAPES: &[&str] = &["dot", "square", "spark"];
+ 
+--- a/src/scene.rs
++++ b/src/scene.rs
+@@ -1359,7 +1359,7 @@
+     /// `cell`: the image is a sheet of pictures in a grid, and only one is
+     /// drawn —which one (counted along the rows, from 0), and how many
+     /// columns and rows the sheet has—.
+-    /// `fit`: 0 stretched to its box, 1 whole inside it, 2 cut to cover it (`IMAGE_FITS`).
++    /// `fit`: 0 stretched to its box, 1 whole inside it, 2 cut to cover it, 3 centred source pixels, 4 tiled source pixels (`IMAGE_FITS`).
+     Image { image: ImageId, target: (Expr, Expr, Expr, Expr), alpha: Expr, tint: Option<Color>, cell: Option<(Expr, Expr, Expr)>, fit: u8 },
+     /// Another program's window, from the compositor inside the scene
+     /// (`windows`): what it last drew, stretched over `target` (x, y, width,
+--- a/src/shape.wgsl
++++ b/src/shape.wgsl
+@@ -490,8 +490,26 @@
+             if (el.header.z < -1.5) { return vec4<f32>(w.rgb, 1.0) * alpha; }
+             return w * alpha;
+         }
+-        var at = mix(el.uv.xy, el.uv.zw, uv01);
++        // Image-only Centre/Tile use the original source raster's physical size.
++        // line is otherwise unused by ordinary image sprites (letters return above).
++        var image_uv = uv01;
++        let source_fit = el.light.w < 0.5 && (el.line.z == 3.0 || el.line.z == 4.0);
++        if (source_fit) {
++            let source_size = max(el.line.xy / max(u.header.w, 0.001), vec2<f32>(0.000001));
++            if (el.line.z == 4.0) {
++                image_uv = fract((q - el.dest.xy) / source_size);
++            } else {
++                image_uv = (q - el.dest.xy - el.dest.zw * 0.5) / source_size + 0.5;
++                if (any(image_uv < vec2<f32>(0.0)) || any(image_uv > vec2<f32>(1.0))) { discard; }
++            }
++        }
++        var at = mix(el.uv.xy, el.uv.zw, image_uv);
+         if (el.color1.x > 0.5) { at = sharp_texel(el, at); }
++        if (source_fit) {
++            // Never sample another atlas image or sheet cell at a repeat edge.
++            let half_texel = min(vec2<f32>(0.5), (el.uv.zw - el.uv.xy) * 0.5);
++            at = clamp(at, el.uv.xy + half_texel, el.uv.zw - half_texel);
++        }
+         // Above 0 in the second slot: a picture of its own, not a piece of the atlas.
+         var t: vec4<f32>;
+         if (el.header.y > 0.5) {
+--- a/src/text.rs
++++ b/src/text.rs
+@@ -28,6 +28,8 @@
+     pub width: u32,
+     pub height: u32,
+     pub page: u32,
++    /// Original raster pixels, retained if texture storage was reduced.
++    pub source_size: (u32, u32),
+ }
+ 
+ impl AtlasSlot {
+@@ -219,7 +221,7 @@
+                 (y, 1)
+             }
+         };
+-        Some(AtlasSlot { x, y, width, height, page: 0 })
++        Some(AtlasSlot { x, y, width, height, page: 0, source_size: (width, height) })
+     }
+ }
+ 
+@@ -406,7 +408,7 @@
+     fn upload(&mut self, slot: AtlasSlot, rgba: Vec<u8>) {
+         // Reused atlas pixels need fresh transparent gutters too; otherwise
+         // linear filtering picks up ink from the previous generation.
+-        let padded = AtlasSlot { x: slot.x - 1, y: slot.y - 1, width: slot.width + 2, height: slot.height + 2, page: 0 };
++        let padded = AtlasSlot { x: slot.x - 1, y: slot.y - 1, width: slot.width + 2, height: slot.height + 2, page: 0, source_size: slot.source_size };
+         let stride = padded.width as usize * 4;
+         let mut pixels = vec![0; stride * padded.height as usize];
+         for (y, row) in rgba.chunks_exact(slot.width as usize * 4).enumerate() {
+@@ -427,20 +429,21 @@
+             }
+         };
+         self.pending_pictures.push((page, px, rgba));
+-        AtlasSlot { x: 0, y: 0, width: px.0, height: px.1, page }
++        AtlasSlot { x: 0, y: 0, width: px.0, height: px.1, page, source_size: px }
+     }
+ 
+     /// The real pixels an image asks for, and whether that is too big for the
+     /// atlas: then it is a picture of its own (`picture_px`). Declared `0, 0`,
+     /// the file's own: its pixels, or an SVG's size times the scale.
+-    fn image_px(&self, path: Option<&std::path::Path>, (w, h): (u32, u32), budget: u64) -> ((u32, u32), bool) {
++    fn image_px(&self, path: Option<&std::path::Path>, (w, h): (u32, u32), budget: u64) -> ((u32, u32), bool, (u32, u32)) {
++        let source = path.and_then(|p| self.own_px(p));
+         let px = if (w, h) == (0, 0) {
+-            fit_within(path.and_then(|p| self.own_px(p)).unwrap_or((1, 1)), self.shelves.most)
++            fit_within(source.unwrap_or((1, 1)), self.shelves.most)
+         } else {
+             (((w as f32) * self.scale).round().max(1.0) as u32, ((h as f32) * self.scale).round().max(1.0) as u32)
+         };
+         let big = px.0 > ATLAS_SIZE - 2 || px.1 > ATLAS_SIZE - 2 || px.0 as u64 * px.1 as u64 > budget;
+-        (px, big)
++        (px, big, source.unwrap_or(px))
+     }
+ 
+     fn own_px(&self, path: &std::path::Path) -> Option<(u32, u32)> {
+@@ -485,7 +488,7 @@
+                         return None;
+                     }
+                 };
+-                let (big_px, big) = self.image_px(path.as_deref(), *size, u64::MAX);
++                let (big_px, big, source_size) = self.image_px(path.as_deref(), *size, u64::MAX);
+                 let px = fit_side(big_px);
+                 // A file that moves —a GIF, an animated PNG or WebP—: each frame to
+                 // the atlas, with the moment it ends.
+@@ -495,7 +498,8 @@
+                     let mut ends = Vec::new();
+                     let mut t = 0.0;
+                     for (rgba, delay) in frames {
+-                        let Some(slot) = self.reserve(px.0, px.1) else { break };
++                        let Some(mut slot) = self.reserve(px.0, px.1) else { break };
++                        slot.source_size = source_size;
+                         self.upload(slot, rgba);
+                         t += delay;
+                         slots.push(slot);
+@@ -517,9 +521,12 @@
+                     return None;
+                 };
+                 if big {
+-                    return Some(self.picture(px, rgba, None));
+-                }
+-                let slot = self.reserve(px.0, px.1)?;
++                    let mut slot = self.picture(px, rgba, None);
++                    slot.source_size = source_size;
++                    return Some(slot);
++                }
++                let mut slot = self.reserve(px.0, px.1)?;
++                slot.source_size = source_size;
+                 self.upload(slot, rgba);
+                 Some(slot)
+             })
+@@ -545,16 +552,19 @@
+             return self.load_frame(name, size, self.live_px(size), into);
+         }
+         let path = if std::path::Path::new(name).is_absolute() { Some(std::path::PathBuf::from(name)) } else { crate::platform::icon(name) }?;
+-        let (px, big) = self.image_px(Some(&path), size, LIVE_BUDGET);
++        let (px, big, source_size) = self.image_px(Some(&path), size, LIVE_BUDGET);
+         let px = if big { self.picture_px(&path, px) } else { px };
+         let rgba = rasterize_image(&path, px, false)?;
+         if big {
+-            return Some(self.picture(px, rgba, into));
+-        }
+-        let slot = match into {
++            let mut slot = self.picture(px, rgba, into);
++            slot.source_size = source_size;
++            return Some(slot);
++        }
++        let mut slot = match into {
+             Some(s) if s.page == 0 && (s.width, s.height) == px => s,
+             _ => self.reserve(px.0, px.1)?,
+         };
++        slot.source_size = source_size;
+         self.upload(slot, rgba);
+         Some(slot)
+     }
+@@ -1178,8 +1188,8 @@
+         let (fw, fh) = (frame.width.max(1), frame.height.max(1));
+         let k = (px.0 as f32 / fw as f32).min(px.1 as f32 / fh as f32);
+         let (w, h) = (((fw as f32 * k).round() as u32).clamp(1, px.0), ((fh as f32 * k).round() as u32).clamp(1, px.1));
+-        let inner = AtlasSlot { x: slot.x + (px.0 - w) / 2, y: slot.y + (px.1 - h) / 2, width: w, height: h, page: 0 };
+-        Fit { padded: AtlasSlot { x: slot.x - 1, y: slot.y - 1, width: slot.width + 2, height: slot.height + 2, page: 0 }, inner, frame }
++        let inner = AtlasSlot { x: slot.x + (px.0 - w) / 2, y: slot.y + (px.1 - h) / 2, width: w, height: h, page: 0, source_size: (w, h) };
++        Fit { padded: AtlasSlot { x: slot.x - 1, y: slot.y - 1, width: slot.width + 2, height: slot.height + 2, page: 0, source_size: slot.source_size }, inner, frame }
+     }
+ }
+ 
+@@ -1589,7 +1599,12 @@
+         assert_eq!(t.picture_px(&photo, (4128, 1728)), (3840, 1607), "the box keeps its shape");
+         // Declared `0, 0`: the file's own size and shape, whatever the scale.
+         t.clear(1.5);
+-        assert_eq!(t.image_px(Some(&photo), (0, 0), LIVE_BUDGET), ((3840, 2160), true));
++        assert_eq!(t.image_px(Some(&photo), (0, 0), LIVE_BUDGET), ((3840, 2160), true, (3840, 2160)));
++        t.shelves.most = 1024;
++        assert_eq!(t.image_px(Some(&photo), (0, 0), LIVE_BUDGET).2, (3840, 2160), "reduced storage keeps physical source size");
++        let reduced = t.load_live(photo.to_str().unwrap(), (0, 0), None).unwrap();
++        assert!(reduced.width <= 1024 && reduced.height <= 1024);
++        assert_eq!(reduced.source_size, (3840, 2160));
+         std::fs::remove_dir_all(dir).unwrap();
+     }
+ 
+@@ -1636,7 +1651,7 @@
+         let mut texts = Texts::new(send);
+         let size = (64, 36);
+         texts.sources = vec![(ImageSource::Live(crate::scene::TextId(0)), size)];
+-        let slot = AtlasSlot { page: 0, x: 0, y: 0, width: 64, height: 36 };
++        let slot = AtlasSlot { page: 0, x: 0, y: 0, width: 64, height: 36, source_size: (64, 36) };
+         texts.live.insert(("/old.png".into(), size), Some(slot));
+         assert!(texts.image(0, &["/old.png".into()]).is_some());
+         // Simulates coalesced detach/new path/attach: image sees only the final text.
+--- /dev/null
++++ b/tests/image-fit-source-pixels.plm
+@@ -0,0 +1,12 @@
++// expect: ok
++scene SourcePixelFit {
++    text path = ""
++    image picture = from path, 0, 0
++    prop selected = 0
++    surface { size: 320, 200 }
++    image picture { at: 0, 0; size: 320, 200; fit: fill; show: selected == 4 }
++    image picture { at: 0, 0; size: 320, 200; fit: cover; show: selected == 0 }
++    image picture { at: 0, 0; size: 320, 200; fit: contain; show: selected == 1 }
++    image picture { at: 0, 0; size: 320, 200; fit: centre; show: selected == 2 }
++    image picture { at: 0, 0; size: 320, 200; fit: tile; show: selected == 3; cell: 0, 2, 2 }
++}

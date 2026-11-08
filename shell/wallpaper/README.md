@@ -119,3 +119,16 @@ controller fixtures also pass. Actual native `--check picker-entry.plm` accepts
 17properties/101instructions/21rules/18zones; `--luau-types` generates names only.
 Root persistence/provenance/native CLI/keyboard/modal/window/installed-probe/GPU
 and video rendering checks remain distinct gates.
+
+## Retained static fit projection
+
+`controller.publish(enabled, assignments, fit)` accepts the optional canonical
+user fit `fill|fit|centre|tile`; missing/invalid internal fit defaults to `fill`.
+Accepted Fill maps to native cover, Fit maps to contain. Four exclusive native
+image operations share one image handle per static output; video projection is
+unchanged. Native `runtime/wallpaper/fit.patch` must be applied **after
+image-reset.patch** before compiling this view. Centre/Tile do not exist in the
+old installed native compiler. Source checkpoint awaits independent review and
+allocated native compiler/pixel validation; Lua tests are not native proof.
+S owns accepted fit schema/default/settings control and third-argument publication.
+See runtime/wallpaper/FIT-CAPABILITIES.md for exact changes and remaining gates.

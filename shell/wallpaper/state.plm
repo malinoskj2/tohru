@@ -1,5 +1,6 @@
 part WallpaperState {
     fact wallpaper_enabled = false
+    fact wallpaper_fit = 0
     text wallpaper_error = ""
     text wallpaper_video_status = "{}"
     text wallpaper_video_error = ""

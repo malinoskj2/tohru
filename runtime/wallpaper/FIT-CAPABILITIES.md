@@ -106,3 +106,55 @@ storage; atlas page/standalone page and sheet-cell boundaries; image identity
 reset and replacement; private pixel checks for centred padding/crop/tile origin
 and seams. Existing decoder/image lifecycle and settled static-idle behavior must
 remain intact. Source/CPU evidence does not satisfy those native/GPU gates.
+
+## Authorized source implementation checkpoint
+
+Coordinator msg_d3481a554d5c authorized the native extension and
+msg_0a8fdb153294 fixed the interface: `publish(enabled, assignments, fit)`, canonical
+`fill|fit|centre|tile`, omitted/invalid internal fit safely defaults to `fill`.
+The implementation is now in `fit.patch`, applied **after image-reset.patch**.
+It edits five existing native source files and adds one compiler regression scene.
+Existing mode indices0/1/2, branch math, sampler and picture-page dispatch remain
+unchanged. W view declares four mutually exclusive draws of the same native image
+handle per output; hidden branches skip image resolution. At most one image draw
+per assigned static output, with no repeat-count-dependent allocations or loops.
+
+`AtlasSlot.source_size` carries raster size through existing worker/static/live
+cache paths, including reduced texture storage. Atlas allocation/glyph/frame
+constructors initialize it to their existing extent; image worker results replace
+it with source geometry. No second decoder is added and there is no render-loop
+file access. Existing source-dimension header reads are reused for original-size
+images; explicitly sized file declarations now also read dimensions on the worker
+so new source-pixel modes are accurate there. Native original-size SVG semantics
+remain the native scale-aware convention; retained wallpaper accepts raster types.
+
+Image sprites encode original physical source dimensions and the new fit tag in
+otherwise-unused ordinary texture element line fields. The shader excludes text
+with effects before reading those fields. It divides by **actual surface uniform
+scale**, not `Texts::scale()`: render.rs3999 uses one finest atlas scale across
+all outputs, while gpu.rs4875 writes each surface scale to `u.header.w`. This
+matters for mixed-DPI outputs and avoids changing cache/compose keys or adding a
+new scale uniform. Sheet-cell dimensions divide original extent by columns/rows.
+Centre maps around destination centre and discards transparent padding. Tile
+wraps inside the selected UV subrectangle, then clamps to its half-texel bounds
+after native sharp sampling, preventing reads from an adjacent atlas image/cell.
+Texture storage reduction retains period/centering geometry, but this does not
+recover detail the native storage limit discarded.
+
+Source-only evidence: `tests/wallpaper/fit-source.py --source PINNED_SOURCE`
+applies both patches to a private source copy, asserts old mode math/dispatch are
+unchanged, and runs five independent pure-math oracle cases including bounded
+mixed-scale/upright-rotation grid, padding/crop, origin/repeats, reduced storage,
+atlas and sheet cells. The oracle does **not** execute WGSL or native Rust.
+Actual production Lua covers all four canonical mappings, invalid/legacy defaults
+and existing assignment/randomization behavior. Native compiler regression scene
+and original-size/reduced-storage native test assertions are supplied in the
+patch but **not run**, pending independent source review and a compiler allocation.
+The installed unpatched compiler necessarily rejects the new view modes; do not
+assemble this view against that old backend or infer a native check from Lua.
+
+S integration after review: apply patch after image-reset, preserve all canonical
+user values/default, pass accepted snapshot fit as the optional third publication
+argument, and expose the fit choice through S's settings owner. The current
+factory's optional second argument remains the native video status getter and is
+unrelated to publication fit. Video snapshot/backend behavior stays unchanged.

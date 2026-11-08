@@ -105,3 +105,17 @@ video_controller.refresh_video()
 assert(text.wallpaper_video_error:find("exceeds32"))
 assert(text.wallpaper_video_status=="status-fixture")
 print("Wallpaper native video status callback/UTF-8/error isolation fixtures passed")
+
+-- Accepted settings use retained names; the view's four branches map these to
+-- cover/contain/centre/tile and reference the same per-output image handle.
+for value, expected in pairs({fill=0,fit=1,centre=2,tile=3}) do
+    controller.publish(true, {["DP-fit"]="/pictures/a.png"}, value)
+    assert(fact.wallpaper_fit==expected and text.wallpaper_output_0=="DP-fit")
+end
+for _, invalid in ipairs({"cover", "Fill", "invalid", false, 9, {}}) do
+    controller.publish(true, {}, invalid)
+    assert(fact.wallpaper_fit==0)
+end
+controller.publish(true,{})
+assert(fact.wallpaper_fit==0)
+print("Wallpaper retained fit publication: all four mappings and legacy/invalid defaults passed")
