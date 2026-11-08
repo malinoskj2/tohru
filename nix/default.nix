@@ -1,4 +1,4 @@
-{ lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper
+{ lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage
 , fontconfig, wayland, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd }:
 let
   pin = builtins.fromJSON (builtins.readFile ../runtime/pin.json);
@@ -20,7 +20,7 @@ let
     root = ../.;
     fileset = lib.fileset.unions [ ../bin ../shell ../LICENSE ];
   };
-  runtime = rustPlatform.buildRustPackage {
+  runtimeUnwrapped = rustPlatform.buildRustPackage {
     pname = "pleamar-tohru";
     version = pin.version;
     src = fetchurl { url = pin.archive; hash = pin.hash; };
@@ -54,6 +54,7 @@ let
     '';
     meta = { license = lib.licenses.bsd3; platforms = lib.platforms.linux; };
   };
+  runtime = callPackage ./runtime-wrapper.nix { runtime = runtimeUnwrapped; };
 in stdenvNoCC.mkDerivation {
   pname = "tohru-shell";
   version = "0.1.0";
