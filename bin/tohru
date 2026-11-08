@@ -6,6 +6,7 @@ Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru panel close
        tohru settings open|close
        tohru wallpaper open|randomize
+       tohru screenshot region|cancel|status --json
        tohru audio volume up|down
        tohru audio mute toggle
        tohru audio status --json
@@ -27,6 +28,20 @@ case ${1:-help} in
     help|--help|-h)
         [[ $# -le 1 ]] || fail 'help takes no arguments'
         usage
+        ;;
+    screenshot)
+        case ${2:-} in
+            region|cancel)
+                [[ $# == 2 ]] || fail 'Usage: tohru screenshot region|cancel'
+                case $2 in region) event=capture_open_request ;; cancel) event=capture_cancel ;; esac
+                exec "$pleamar" --say tohru "emit $event"
+                ;;
+            status)
+                [[ $# == 3 && $3 == --json ]] || fail 'Usage: tohru screenshot status --json'
+                exec "$pleamar" --say tohru 'get capture_status'
+                ;;
+            *) fail 'Usage: tohru screenshot region|cancel|status --json' ;;
+        esac
         ;;
     wallpaper)
         [[ $# == 2 ]] || fail 'Usage: tohru wallpaper open|randomize'

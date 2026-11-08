@@ -2,6 +2,7 @@
 local refresh_settings
 local configure_idle
 local wallpaper
+local capture
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
@@ -13,6 +14,7 @@ local function publish(settings)
     if refresh_settings then refresh_settings(settings) end
     if configure_idle then configure_idle(settings) end
     if wallpaper then wallpaper.publish(settings) end
+    if capture then capture.publish(settings) end
 end
 local function change(operation)
     local ok, result, warning = pcall(operation)
@@ -57,6 +59,10 @@ local bluetooth = require("bluetooth/controller")()
 local info = require("info/controller")(tohru_info.snapshot, function() return sys.ask("capture.outputs") end)
 local about
 local function close_panels(keep)
+    if fact.capture_open then
+        keep=nil
+        text.routing_error="Finish or cancel the region selection before opening another panel"
+    end
     if keep ~= "sound" then sound.close() end
     if keep ~= "calendar" then calendar.close() end
     if keep ~= "network" then network.close() end
@@ -91,8 +97,28 @@ refresh_settings = require("settings/controller")(function(settings, warning)
     text.settings_error = warning or ""
     publish(settings)
 end, wallpaper)
-on("settings_open_request", function() close_panels() end)
-on("settings_wallpaper_open", function() close_panels() end)
+on("settings_open_request", function() close_panels(); if fact.capture_open then fact.settings_open=false end end)
+on("settings_wallpaper_open", function() close_panels(); if fact.capture_open then fact.settings_open=false; wallpaper.close() end end)
 
 configure_idle = require("settings/idle")(require("session/idle"))
 configure_idle(tohru_settings.snapshot())
+
+capture = require("settings/capture")(publish)
+capture.publish(tohru_settings.snapshot())
+local function capture_keyboard()
+    fact.wallpaper_picker_keyboard = not fact.capture_open
+end
+on("capture_open_request", function()
+    if fact.capture_open then
+        close_panels()
+        osd.hide()
+        fact.settings_open=false
+        wallpaper.close()
+    end
+    capture_keyboard()
+end)
+on("capture_finish", capture_keyboard)
+on("capture_cancel", capture_keyboard)
+on("capture_output_changed", capture_keyboard)
+on("fact:capture_open", capture_keyboard)
+capture_keyboard()

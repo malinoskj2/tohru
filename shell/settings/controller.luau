@@ -1,6 +1,6 @@
 -- Navigation belongs to this window; all values belong to the existing process owner.
 return function(applied, wallpaper)
-    local pages = {"Bar", "Appearance", "System", "Wallpaper"}
+    local pages = {"Bar", "Appearance", "System", "Wallpaper", "Capture"}
     local history, position, rows = {1}, 1, {}
     local snapshot = tohru_settings.snapshot()
     local function refresh(settings)
@@ -11,6 +11,7 @@ return function(applied, wallpaper)
         fact.settings_can_forward = position < #history
         local query = string.sub(text.settings_search or "", 1, 256):lower()
         fact.settings_wallpaper_page = page==4 and query==""
+        fact.settings_capture_page = page==5 and query==""
         text.settings_heading = query ~= "" and "Search results" or pages[page]
         local categories = {}
         for id, title in ipairs(pages) do categories[id] = {id=id, title=title, selected=id==page} end
@@ -29,6 +30,10 @@ return function(applied, wallpaper)
             {page=2, key="wallpaper.enabled", title="Wallpaper enabled", detail="Native static backgrounds; video integration pending",
              value=snapshot["wallpaper.enabled"].value, editable=true, managed=snapshot["wallpaper.enabled"].managed,
              temporary=snapshot["wallpaper.enabled"].runtime_override},
+            {page=5,key="capture.save",title="Save screenshots",detail="Native PNG export after a completed region selection",
+             value=snapshot["capture.save"].value,editable=true,managed=snapshot["capture.save"].managed,temporary=snapshot["capture.save"].runtime_override},
+            {page=5,key="capture.copy",title="Copy screenshots",detail="Native image/png clipboard after a completed selection",
+             value=snapshot["capture.copy"].value,editable=true,managed=snapshot["capture.copy"].managed,temporary=snapshot["capture.copy"].runtime_override},
             {page=3, title="Shell", detail="Tohru · pinned native Pleamar 0.7.27", editable=false},
         }
         rows = {}

@@ -1,0 +1,11 @@
+part CapturePreferences {
+    group {
+        show: settings_capture_page
+        text "Save directory (empty uses native Pictures default)" { at: 244, 286; size: 12; color: #a6adc8 }
+        input capture_directory_edit { at: 244, 318; width: 528; size: 12; color: #cdd6f4; placeholder: "Native Pictures default"; label: "Screenshot save directory" }
+        text "Filename pattern (empty uses native date/time default)" { at: 244, 370; size: 12; color: #a6adc8 }
+        input capture_pattern_edit { at: 244, 402; width: 528; size: 12; color: #cdd6f4; placeholder: "screenshot_%Y%m%d_%H%M%S"; label: "Screenshot filename pattern" }
+        text "Press Enter to apply. Invalid patterns are reported by native capture before freezing." { at: 244, 446; width: 528; lines: 2; size: 11; color: #a6adc8 }
+        text capture_preferences_notice { at: 244, 490; width: 528; lines: 2; size: 11; color: #a6adc8 }
+    }
+}

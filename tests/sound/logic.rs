@@ -10,6 +10,9 @@ mod idle_settings;
 #[path = "../wallpaper-settings/logic.rs"]
 mod wallpaper_settings;
 
+#[path = "../capture-settings/logic.rs"]
+mod capture_settings;
+
 #[path = "../../runtime/workspace_luau.rs"]
 mod actual_workspace_binding;
 
@@ -179,8 +182,12 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         function require(name) return modules[name] end
         sys={call=function(name,value) table.insert(calls,{name=name,value=value}) end,
              ask=function(name)
+                if name=='capture.destination' then return '/private/result.png' end
+                if name=='capture.freeze' then return 'capture:PRIVATE-1?1' end
+                if name=='capture.release' then released=(released or 0)+1;return {} end
+                if name=='capture.region' then return {saved=true,copied=true,durable=true,path='/private/result.png'} end
                 assert(name=='capture.outputs'); output_queries=(output_queries or 0)+1
-                return {{name='PRIVATE-1',width=1280,height=720}}
+                return {{name='PRIVATE-1',x=0,y=0,width=1280,height=720,scale=1,transform=0,routable=true}}
              end,
              watch=function(name,callback)
                 if name=='clock' then callback({year=2026,month=11,day=7,weekday=6,hour=12,minute=0})
@@ -202,7 +209,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         tohru_settings={snapshot=function() return {
             ['bar.mooncoil']={value=false},['appearance.corners']={value=true},['appearance.corner_size']={value=32},
             ['bar.preferred_output']={value='legacy'},
-            ['wallpaper.enabled']={value=false}, ['wallpaper.folder']={value=''}, ['wallpaper.assignments']={value={}},
+            ['capture.save']={value=true}, ['capture.copy']={value=true}, ['capture.directory']={value=''}, ['capture.filename_pattern']={value=''}, ['wallpaper.enabled']={value=false}, ['wallpaper.folder']={value=''}, ['wallpaper.assignments']={value={}},
             ['idle.lock_seconds']={value=1800}, ['idle.screen_off_unlocked_seconds']={value=0},
             ['idle.screen_off_locked_seconds']={value=60}, ['idle.suspend_unlocked_seconds']={value=7200},
             ['idle.suspend_locked_seconds']={value=5400}, ['idle.fade_milliseconds']={value=2000}
@@ -210,6 +217,18 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
     "#).exec().unwrap();
     let modules: mlua::Table = lua.globals().get("modules").unwrap();
     for (name, source) in [
+        (
+            "settings/capture",
+            include_str!("../../shell/settings/capture.luau"),
+        ),
+        (
+            "settings/capture-result",
+            include_str!("../../shell/settings/capture-result.luau"),
+        ),
+        (
+            "capture/controller",
+            include_str!("../../shell/capture/controller.luau"),
+        ),
         (
             "settings/wallpaper",
             include_str!("../../shell/settings/wallpaper.luau"),
@@ -340,6 +359,16 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         assert(fact.settings_page==2 and not fact.settings_wallpaper_page and not fact.wallpaper_picker_open)
         dispatch('settings_wallpaper_open'); dispatch('settings_close')
         assert(not fact.settings_open and not fact.wallpaper_picker_open)
+        dispatch('settings_wallpaper_open')
+        dispatch('capture_open_request')
+        assert(fact.capture_open and not fact.settings_open and not fact.wallpaper_picker_open and not fact.wallpaper_picker_keyboard)
+        local token=text.capture_frame_0
+        dispatch('capture_open_request')
+        assert(fact.capture_open and text.capture_frame_0==token and released==nil, 'busy cannot replace/release selection')
+        dispatch('network_open'); assert(not fact.net_open and fact.capture_open)
+        dispatch('settings_open_request'); assert(not fact.settings_open)
+        dispatch('capture_cancel')
+        assert(not fact.capture_open and fact.wallpaper_picker_keyboard and released==1)
 
     "#,
     )

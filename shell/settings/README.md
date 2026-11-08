@@ -7,7 +7,7 @@ real root events `settings_open_request`/`settings_close`.
 
 Initial source-mapped dimensions: 800x700 window,220px sidebar,30px navigation
 rows, source15/13/11px typography. This is a native functional candidate, not
-accepted1:1 layout/glass/font/liquid motion. Current categories are Bar, Appearance, System and Wallpaper. Mooncoil, screen-corner and wallpaper-enabled toggles update root publication.
+accepted1:1 layout/glass/font/liquid motion. Current categories are Bar, Appearance, System, Wallpaper and Capture. Mooncoil, screen-corner and wallpaper-enabled toggles update root publication.
 Corner size is displayed, with edits available through `tohru config set
 appearance.corner_size 1..100`. Nix-managed rows explicitly describe temporary process
 edits; unmanaged edits persist through the existing writable TOML owner.
@@ -55,3 +55,19 @@ the existing flag. Mouse/category/history navigation remains in the same window;
 Ctrl+F targets picker search on this page, Up/Down belong to file selection, and
 Escape returns to Appearance. Closing the window hides the picker. Native input,
 geometry/hotplug and rendered catalog evidence remain runtime gates.
+
+
+Capture preferences use the same owner: Save/Copy toggles and native directory/
+filename fields submitted with Enter. Empty path/pattern follow native defaults.
+Unrelated settings publication preserves an in-progress path/pattern draft;
+accepted value changes/reload refresh that field. Invalid submission leaves the
+accepted configuration unchanged and shows its error. Disabling both flags is
+allowed, but a region request then fails before freezing.
+
+`tohru screenshot region|cancel` and `screenshot status --json` route to the one
+root capture controller. An active selection excludes root menus and Settings,
+and disables wallpaper picker keyboard handling. A second region request reports
+busy while preserving the frozen selection. Native export results drive the fixed
+notification role status; saving, copying and durability remain separate facts.
+Actual native clipboard/GPU/topology/input/close-to-recapture evidence remains
+pending the allocated private runtime gates.

@@ -23,6 +23,18 @@ class Cli(unittest.TestCase):
     def invoke(self, *args, **env):
         return subprocess.run([str(ROOT / "bin/tohru"), *args], env={**self.env, **env}, text=True, capture_output=True)
 
+    def test_capture_routes_are_fixed_native_requests(self):
+        for arguments, message in [
+            (('screenshot','region'), 'emit capture_open_request'),
+            (('screenshot','cancel'), 'emit capture_cancel'),
+            (('screenshot','status','--json'), 'get capture_status'),
+        ]:
+            result=self.invoke(*arguments)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(json.loads(result.stdout),['--say','tohru',message])
+        for arguments in [('screenshot','region','extra'),('screenshot','status'),('screenshot','region;quit')]:
+            self.assertEqual(self.invoke(*arguments).returncode,2)
+
     def test_wallpaper_routes_and_enable_are_fixed_native_requests(self):
         for arguments, event in [
             (('wallpaper', 'open'), 'settings_wallpaper_open'),

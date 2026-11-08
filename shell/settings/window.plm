@@ -1,5 +1,5 @@
 part SettingsWindow {
- let settings_keys = settings_open and not sound_open and not cal_open and not net_open and not bt_open and not info_visible and not about_visible
+ let settings_keys = settings_open and not sound_open and not cal_open and not net_open and not bt_open and not info_visible and not about_visible and not capture_open
  box { from: 0, 0; size: 800, 700; color: #181825 }
  box { from: 0, 0; size: 220, 700; color: #11111b }
  text "Settings" { at: 18, 30; anchor: left center; size: 20; weight: 600; color: #cdd6f4 }
@@ -36,6 +36,7 @@ part SettingsWindow {
  }
  }
  group { move: 244, 104; show: settings_wallpaper_page; include "../wallpaper/picker-view.plm" }
+ include "capture.plm"
  text wallpaper_settings_notice { at: 244, 640; anchor: left top; size: 11; width: 528; lines: 2; color: #a6adc8; show: settings_wallpaper_page }
  text settings_notice { at: 244, 640; anchor: left top; size: 11; width: 528; lines: 2; color: #a6adc8; show: not settings_wallpaper_page }
  text settings_ui_error { at: 244, 672; anchor: left top; size: 11; width: 528; lines: 2; color: #f38ba8 }

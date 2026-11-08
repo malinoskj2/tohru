@@ -1,12 +1,13 @@
 scene Tohru {
  surface { size: full, 42; anchor: top; margin: 0; reserve: 31; screens: all; keyboard: exclusive while sound_open or cal_open or net_open or bt_open or info_visible or about_visible }
- permissions { services: "window", "apps", "media", "clock", "workspaces", "network.*", "bluetooth.*", "battery", "capture", "wallpaper", "say:tohru-notifications" }
+ permissions { services: "window", "apps", "media", "clock", "workspaces", "network.*", "bluetooth.*", "battery", "capture", "capture.region", "capture.release", "wallpaper", "say:tohru-notifications" }
  include "bar/state.plm"
  include "bar/rail-state.plm"
  include "calendar/state.plm"
  include "settings/state.plm"
  include "wallpaper/state.plm"
  include "wallpaper/picker-state.plm"
+ include "capture/state.plm"
  include "network/state.plm"
  include "bluetooth/state.plm"
  include "info/state.plm"
@@ -49,5 +50,7 @@ scene Tohru {
  include "settings/window.plm"
  include "corners/view.plm"
  include "wallpaper/view.plm"
+ include "capture/presentation.plm"
+ include "capture/view.plm"
  include "osd/view.plm"
 }
