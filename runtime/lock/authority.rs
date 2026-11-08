@@ -9,6 +9,7 @@ const HELD: u8 = 1;
 const FINISHED: u8 = 2;
 const RELEASING: u8 = 3;
 
+#[derive(Clone)]
 pub(crate) struct Cycle {
     phase: Arc<AtomicU8>,
     owner: usize,
@@ -55,6 +56,10 @@ impl Cycle {
 
     pub(crate) fn held(&self) -> bool {
         self.phase.load(Ordering::Acquire) == HELD
+    }
+
+    pub(crate) fn publishable(&self) -> bool {
+        matches!(self.phase.load(Ordering::Acquire), REQUESTED | HELD)
     }
 
     /// Capture before blocking PAM. A requested but unconfirmed lock is not
