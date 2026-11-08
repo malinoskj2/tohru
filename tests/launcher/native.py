@@ -10,6 +10,11 @@ import time
 def verify(root, runtime, evidence, env, start, say, expect, wait_for):
     scene_dir = evidence / 'scene'
     shutil.copytree(root / 'shell/launcher', scene_dir)
+    # Native apps also scans XDG_DATA_DIRS; restrict this launch-capable fixture
+    # to its own catalog, never inherit host/system application entries.
+    native_data = evidence / 'data-dirs'
+    native_data.mkdir()
+    env['XDG_DATA_DIRS'] = str(native_data)
     apps = Path(env['XDG_DATA_HOME']) / 'applications'
     apps.mkdir(parents=True)
     icon = evidence / 'icon.svg'
