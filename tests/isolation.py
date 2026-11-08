@@ -32,6 +32,14 @@ class Isolation(unittest.TestCase):
         self.assertEqual(inherited["PLEAMAR_SOCKETS"], "/host/session/ipc")
 
 
+    def test_clean_checkout_bootstrap_creates_evidence_parent_before_roles(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            self.assertFalse((root / ".tmp").exists())
+            evidence = runner.create_evidence(root)
+            self.assertTrue(evidence.is_dir())
+            self.assertEqual(evidence.parent, root / ".tmp")
+
     def test_endpoint_containment_and_symlinks_rejected(self):
         with tempfile.TemporaryDirectory() as path:
             private = Path(path)

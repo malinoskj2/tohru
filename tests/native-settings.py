@@ -93,13 +93,19 @@ def finish_private_run(processes, handles, write_evidence):
     return errors
 
 
+def create_evidence(root):
+    (root / ".tmp").mkdir(parents=True, exist_ok=True)
+    evidence = root / ".tmp" / f"gpu-foundation-{time.time_ns()}"
+    evidence.mkdir()
+    return evidence
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--sound", action="store_true", help="also test root sound/Settings with owned private Pulse null sink")
     args = parser.parse_args()
-    evidence = ROOT / ".tmp" / f"gpu-foundation-{time.time_ns()}"
-    evidence.mkdir()
+    evidence = create_evidence(ROOT)
     # Unix socket paths must remain below sockaddr_un's 108-byte limit.
     runtime_dir = ROOT / ".tmp" / f"r{os.getpid()}"
     runtime_dir.mkdir(mode=0o700)
