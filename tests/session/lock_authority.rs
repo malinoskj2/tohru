@@ -69,3 +69,19 @@ fn reservation_is_one_shot_and_revoked_by_finish() {
     cycle.finish();
     assert!(!cycle.accepts_release(&release));
 }
+
+#[test]
+fn removed_output_retires_queued_frames_without_finishing_the_lock_cycle() {
+    let cycle = Cycle::requested(1);
+    cycle.confirm();
+    let face = Face::new(cycle.clone());
+    let queued = face.clone();
+    let remaining = Face::new(cycle.clone());
+    assert!(queued.current() && remaining.current());
+    face.retire();
+    assert!(!queued.current());
+    assert!(cycle.held() && remaining.current());
+    let permit = cycle.snapshot().unwrap().verified(true).unwrap();
+    let _release = cycle.reserve(permit).unwrap();
+    assert!(!remaining.current());
+}
