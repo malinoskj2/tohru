@@ -598,3 +598,185 @@ fn wallpaper_fit_validates_atomically_and_retains_layer_lifetimes() {
         Value::WallpaperFit(WallpaperFit::Fit)
     );
 }
+
+#[test]
+fn preset_palette_and_change_are_typed_canonical_and_restartable() {
+    use tohru_shell::settings::WallpaperChange;
+    use tohru_shell::wallpaper::preset::{Palette, Preset};
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    let mut owner = files.owner();
+    assert_eq!(
+        owner.get(Key::WallpaperPreset).value,
+        Value::WallpaperPreset(None)
+    );
+    assert_eq!(
+        owner.get(Key::Palette).value,
+        Value::Palette(Palette::Mocha)
+    );
+    assert_eq!(
+        owner.get(Key::WallpaperChange).value,
+        Value::WallpaperChange(WallpaperChange::Never)
+    );
+    for preset in Preset::ALL {
+        let parsed = Key::WallpaperPreset.parse_text(preset.name()).unwrap();
+        assert_eq!(parsed, Value::WallpaperPreset(Some(preset)));
+        owner.set(Key::WallpaperPreset, parsed.clone()).unwrap();
+        assert_eq!(files.owner().get(Key::WallpaperPreset).value, parsed);
+    }
+    for palette in Palette::ALL {
+        let parsed = Key::Palette.parse_text(palette.name()).unwrap();
+        assert_eq!(parsed, Value::Palette(palette));
+        owner.set(Key::Palette, parsed.clone()).unwrap();
+        assert_eq!(files.owner().get(Key::Palette).value, parsed);
+    }
+    for name in ["never", "hourly", "daily", "login"] {
+        let parsed = Key::WallpaperChange.parse_text(name).unwrap();
+        owner.set(Key::WallpaperChange, parsed.clone()).unwrap();
+        assert_eq!(files.owner().get(Key::WallpaperChange).value, parsed);
+    }
+    for (key, bad) in [
+        (Key::WallpaperPreset, "Solid"),
+        (Key::WallpaperPreset, ""),
+        (Key::Palette, "rose-pine"),
+        (Key::Palette, "Mocha"),
+        (Key::WallpaperChange, "weekly"),
+    ] {
+        assert!(key.parse_text(bad).is_err());
+    }
+    let disk = fs::read(files.user()).unwrap();
+    assert!(
+        owner
+            .set(Key::WallpaperPreset, Value::Text("solid".into()))
+            .is_err()
+    );
+    assert_eq!(fs::read(files.user()).unwrap(), disk);
+    owner
+        .set(Key::WallpaperPreset, Value::WallpaperPreset(None))
+        .unwrap();
+    assert_eq!(
+        files.owner().get(Key::WallpaperPreset).value,
+        Value::WallpaperPreset(None)
+    );
+    assert!(
+        !fs::read_to_string(files.user())
+            .unwrap()
+            .contains("preset =")
+    );
+}
+
+#[test]
+fn related_managed_wallpaper_proposals_never_half_persist() {
+    use std::collections::BTreeMap;
+    use tohru_shell::wallpaper::preset::{Palette, Preset};
+    for managed in [
+        "[appearance]\npalette='mocha'\n",
+        "[wallpaper.assignments]\nA='/declared.png'\n",
+    ] {
+        let files = Fixture::new();
+        fs::write(files.managed(), managed).unwrap();
+        fs::write(
+            files.user(),
+            "# retained\n[wallpaper]\npreset='spectrum'\n[wallpaper.assignments]\nA='/old.png'\n",
+        )
+        .unwrap();
+        let mut owner = files.owner();
+        let disk = fs::read(files.user()).unwrap();
+        let before = owner.get(Key::WallpaperAssignments);
+        let proposal = BTreeMap::from([
+            (
+                Key::WallpaperAssignments,
+                Value::Assignments(BTreeMap::from([("A".into(), "/solid-nord.png".into())])),
+            ),
+            (
+                Key::WallpaperPreset,
+                Value::WallpaperPreset(Some(Preset::Solid)),
+            ),
+            (Key::Palette, Value::Palette(Palette::Nord)),
+        ]);
+        let mut invalid = proposal.clone();
+        invalid.insert(Key::WallpaperFolder, Value::Text("x".repeat(4097)));
+        assert!(owner.set_many(invalid).is_err());
+        assert_eq!(owner.get(Key::WallpaperAssignments), before);
+        assert_eq!(owner.get(Key::WallpaperPreset).origin, Origin::User);
+        assert!(matches!(
+            owner.set_many(proposal.clone()).unwrap(),
+            tohru_shell::settings::SetOutcome::RuntimeOverride
+        ));
+        owner.reload().unwrap();
+        for (key, value) in proposal {
+            assert_eq!(owner.get(key).value, value);
+            assert!(owner.get(key).runtime_override);
+        }
+        assert_eq!(fs::read(files.user()).unwrap(), disk);
+        let restarted = files.owner();
+        assert_eq!(restarted.get(Key::WallpaperAssignments), before);
+        assert_eq!(
+            restarted.get(Key::WallpaperPreset).value,
+            Value::WallpaperPreset(Some(Preset::Spectrum))
+        );
+        assert_eq!(
+            restarted.get(Key::Palette).value,
+            Value::Palette(Palette::Mocha)
+        );
+        // An unrelated ordinary one-key setting retains its normal persistence.
+        owner.set(Key::Mooncoil, Value::Bool(true)).unwrap();
+        assert_eq!(files.owner().get(Key::Mooncoil).value, Value::Bool(true));
+        assert_eq!(
+            files.owner().get(Key::WallpaperPreset).value,
+            Value::WallpaperPreset(Some(Preset::Spectrum))
+        );
+    }
+}
+
+#[test]
+fn writable_wallpaper_batch_commits_together_and_rejects_partial_growth() {
+    use std::collections::BTreeMap;
+    use tohru_shell::wallpaper::preset::{Palette, Preset};
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    fs::write(files.user(), "# keep\n[wallpaper]\nfuture='kept'\n").unwrap();
+    let mut owner = files.owner();
+    let proposal = BTreeMap::from([
+        (
+            Key::WallpaperAssignments,
+            Value::Assignments(BTreeMap::from([
+                ("A".into(), "/new.png".into()),
+                ("OFFLINE".into(), "/offline.png".into()),
+            ])),
+        ),
+        (
+            Key::WallpaperPreset,
+            Value::WallpaperPreset(Some(Preset::Solid)),
+        ),
+        (Key::Palette, Value::Palette(Palette::Nord)),
+        (Key::WallpaperFolder, Value::Text("/folder".into())),
+    ]);
+    owner.set_many(proposal.clone()).unwrap();
+    let restarted = files.owner();
+    for (key, value) in &proposal {
+        assert_eq!(&restarted.get(*key).value, value);
+    }
+    let disk = fs::read_to_string(files.user()).unwrap();
+    assert!(disk.contains("# keep") && disk.contains("future='kept'"));
+    assert!(owner.set_many(BTreeMap::new()).is_err());
+    let original = format!("#{}\n", "x".repeat(1024 * 1024 - 2));
+    fs::write(files.user(), &original).unwrap();
+    let mut rejected = proposal.clone();
+    rejected.insert(Key::Palette, Value::Palette(Palette::Mocha));
+    rejected.insert(Key::WallpaperFolder, Value::Text("/rejected".into()));
+    assert!(matches!(
+        owner.set_many(rejected),
+        Err(tohru_shell::settings::Error::TooLarge(_))
+    ));
+    assert_eq!(fs::read_to_string(files.user()).unwrap(), original);
+    for (key, value) in &proposal {
+        assert_eq!(&owner.get(*key).value, value);
+    }
+    assert_eq!(fs::read_dir(&files.0).unwrap().count(), 2);
+    fs::write(files.user(), "[wallpaper]\npreset='invalid'\n").unwrap();
+    assert!(owner.reload().is_err());
+    for (key, value) in proposal {
+        assert_eq!(owner.get(key).value, value);
+    }
+}

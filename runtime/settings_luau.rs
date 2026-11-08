@@ -4,7 +4,7 @@ use std::sync::{Mutex, OnceLock};
 
 use anyhow::{Context, Result};
 use mlua::{Lua, Table, Value as LuaValue};
-use tohru_shell::settings::{Key, Origin, Owner, SetOutcome, Value, WallpaperFit};
+use tohru_shell::settings::{Key, Origin, Owner, SetOutcome, Value};
 
 static SETTINGS: OnceLock<Mutex<Owner>> = OnceLock::new();
 
@@ -35,6 +35,9 @@ fn snapshot(lua: &Lua, owner: &Owner) -> mlua::Result<Table> {
             Value::Bool(value) => row.set("value", value)?,
             Value::Text(value) => row.set("value", value)?,
             Value::WallpaperFit(value) => row.set("value", value.as_str())?,
+            Value::WallpaperPreset(value) => row.set("value", value.map(|preset| preset.name()))?,
+            Value::WallpaperChange(value) => row.set("value", value.name())?,
+            Value::Palette(value) => row.set("value", value.name())?,
             Value::Integer(value) => row.set("value", value)?,
             Value::Assignments(assignments) => {
                 row.set("value", lua.create_table_from(assignments)?)?
@@ -70,6 +73,58 @@ fn applied(lua: &Lua, owner: &Owner, outcome: SetOutcome) -> mlua::Result<(Table
     Ok((snapshot(lua, owner)?, warning))
 }
 
+fn input(key: Key, value: LuaValue) -> mlua::Result<Value> {
+    Ok(match value {
+        LuaValue::Boolean(value) => Value::Bool(value),
+        LuaValue::Nil if key == Key::WallpaperPreset => Value::WallpaperPreset(None),
+        LuaValue::String(value) => key.parse_text(value.to_str()?.as_ref()).map_err(report)?,
+        LuaValue::Integer(value) => Value::Integer(value),
+        LuaValue::Table(table) if key == Key::WallpaperAssignments => {
+            let mut assignments = std::collections::BTreeMap::new();
+            for pair in table.pairs::<LuaValue, LuaValue>() {
+                if assignments.len() == 32 {
+                    return Err(mlua::Error::runtime(
+                        "wallpaper assignments exceed 32 outputs",
+                    ));
+                }
+                let (LuaValue::String(output), LuaValue::String(path)) = pair? else {
+                    return Err(mlua::Error::runtime(
+                        "wallpaper assignments require string output/path pairs",
+                    ));
+                };
+                assignments.insert(output.to_str()?.to_owned(), path.to_str()?.to_owned());
+            }
+            Value::Assignments(assignments)
+        }
+        LuaValue::Number(value)
+            if value.fract() == 0.0
+                && key.integer_bounds().is_some_and(|(min, max)| {
+                    // All schema bounds fit exactly in f64 (currently <=4294967).
+                    #[expect(
+                        clippy::cast_precision_loss,
+                        reason = "schema integer bounds fit exactly in f64"
+                    )]
+                    {
+                        (min as f64..=max as f64).contains(&value)
+                    }
+                }) =>
+        {
+            // Finite integral value in the schema range, validated before conversion.
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "validated finite integral schema range fits i64"
+            )]
+            let integer = value as i64;
+            Value::Integer(integer)
+        }
+        _ => {
+            return Err(mlua::Error::runtime(
+                "setting value must be a supported boolean, string or bounded integer",
+            ));
+        }
+    })
+}
+
 pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
     let owner = owner().map_err(report)?;
     let api = lua.create_table()?;
@@ -96,61 +151,40 @@ pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
         "set",
         lua.create_function(move |lua, (name, value): (String, LuaValue)| {
             let key = Key::parse(&name).map_err(report)?;
-            let value = match value {
-                LuaValue::Boolean(value) => Value::Bool(value),
-                LuaValue::String(value) if key == Key::WallpaperFit => Value::WallpaperFit(
-                    WallpaperFit::parse(value.to_str()?.as_ref()).map_err(report)?,
-                ),
-                LuaValue::String(value) => Value::Text(value.to_str()?.to_owned()),
-                LuaValue::Integer(value) => Value::Integer(value),
-                LuaValue::Table(table) if key == Key::WallpaperAssignments => {
-                    let mut assignments = std::collections::BTreeMap::new();
-                    for pair in table.pairs::<LuaValue, LuaValue>() {
-                        if assignments.len() == 32 {
-                            return Err(mlua::Error::runtime(
-                                "wallpaper assignments exceed 32 outputs",
-                            ));
-                        }
-                        let (LuaValue::String(output), LuaValue::String(path)) = pair? else {
-                            return Err(mlua::Error::runtime(
-                                "wallpaper assignments require string output/path pairs",
-                            ));
-                        };
-                        assignments.insert(output.to_str()?.to_owned(), path.to_str()?.to_owned());
-                    }
-                    Value::Assignments(assignments)
-                }
-                LuaValue::Number(value)
-                    if value.fract() == 0.0
-                        && key.integer_bounds().is_some_and(|(min, max)| {
-                            // All schema bounds fit exactly in f64 (currently <=4294967).
-                            #[expect(
-                                clippy::cast_precision_loss,
-                                reason = "schema integer bounds fit exactly in f64"
-                            )]
-                            {
-                                (min as f64..=max as f64).contains(&value)
-                            }
-                        }) =>
-                {
-                    // Finite integral value in the schema range, validated before conversion.
-                    #[expect(
-                        clippy::cast_possible_truncation,
-                        reason = "validated finite integral schema range fits i64"
-                    )]
-                    let integer = value as i64;
-                    Value::Integer(integer)
-                }
-                _ => {
-                    return Err(mlua::Error::runtime(
-                        "setting value must be a supported boolean, string or bounded integer",
-                    ));
-                }
-            };
+            let value = input(key, value)?;
             let mut owner = owner
                 .lock()
                 .map_err(|_| mlua::Error::runtime("settings owner mutex poisoned"))?;
             let outcome = owner.set(key, value).map_err(report)?;
+            applied(lua, &owner, outcome)
+        })?,
+    )?;
+    api.set(
+        "wallpaper_update",
+        lua.create_function(move |lua, proposal: Table| {
+            let mut candidates = std::collections::BTreeMap::new();
+            for pair in proposal.pairs::<String, LuaValue>() {
+                let (name, value) = pair?;
+                let key = match name.as_str() {
+                    "assignments" => Key::WallpaperAssignments,
+                    "preset" => Key::WallpaperPreset,
+                    "folder" => Key::WallpaperFolder,
+                    "palette" => Key::Palette,
+                    _ => {
+                        return Err(mlua::Error::runtime(
+                            "unsupported wallpaper transaction field",
+                        ));
+                    }
+                };
+                candidates.insert(key, input(key, value)?);
+            }
+            let mut owner = owner
+                .lock()
+                .map_err(|_| mlua::Error::runtime("settings owner mutex poisoned"))?;
+            let outcome = owner.set_many(candidates).map_err(report)?;
+            if matches!(outcome, SetOutcome::RuntimeOverride) {
+                return Ok((snapshot(lua, &owner)?, Some("This related wallpaper change is temporary because a participating setting is Nix managed; none of it was saved.".to_owned())));
+            }
             applied(lua, &owner, outcome)
         })?,
     )?;
@@ -172,6 +206,7 @@ pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tohru_shell::settings::WallpaperFit;
 
     #[test]
     fn process_owner_survives_vm_replacement() {
@@ -263,6 +298,30 @@ mod tests {
             warning.matches("injected directory fsync failure").count(),
             1
         );
+        replacement.load(r#"
+            local s=tohru_settings.wallpaper_update({assignments={A='/solid.png'},preset='solid',palette='nord',folder='/chosen'})
+            assert(s['wallpaper.preset'].value=='solid' and s['appearance.palette'].value=='nord')
+            assert(s['wallpaper.assignments'].value.A=='/solid.png' and s['wallpaper.folder'].value=='/chosen')
+            for _,bad in ipairs({{palette='Nord'},{preset='unknown'},{assignments=false},{unrelated=true}})do
+                assert(not pcall(tohru_settings.wallpaper_update,bad))
+                assert(tohru_settings.snapshot()['wallpaper.assignments'].value.A=='/solid.png')
+            end
+        "#).exec().unwrap();
+        std::fs::write(
+            root.join("managed.toml"),
+            "[bar]\nmooncoil=false\n[appearance]\npalette='mocha'\n",
+        )
+        .unwrap();
+        replacement.load("tohru_settings.reload()").exec().unwrap();
+        let disk = std::fs::read(root.join("tohru/config.toml")).unwrap();
+        replacement.load(r#"
+            local s,warning=tohru_settings.wallpaper_update({assignments={A='/temporary.png'},preset='dusk',palette='nord'})
+            assert(warning:find('none of it was saved'))
+            assert(s['wallpaper.preset'].runtime_override and s['wallpaper.assignments'].runtime_override)
+            assert(not s['wallpaper.assignments'].managed and s['appearance.palette'].managed)
+            assert(tohru_settings.reload()['wallpaper.assignments'].value.A=='/temporary.png')
+        "#).exec().unwrap();
+        assert_eq!(std::fs::read(root.join("tohru/config.toml")).unwrap(), disk);
         std::fs::remove_dir_all(root).unwrap();
     }
 }
