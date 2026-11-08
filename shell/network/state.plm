@@ -1,4 +1,6 @@
 part NetworkState {
+    // Root measured button center; negative uses the native screen-relative default.
+    prop net_button_x = -1 ~0ms
     fact net_open = false
     fact net_page = 0
     fact net_selected = -1

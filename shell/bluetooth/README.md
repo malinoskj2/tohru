@@ -28,3 +28,12 @@ approximation accepted. Six-row pages, Up/Down/Return, real pairing buttons/fiel
 CPU: lua tests/bluetooth/controller.lua. Native compiler --check entry.plm passes.
 Private native BlueZ fixture/input/visual evidence pending allocated workload;
 never test against host radio or real devices without explicit authority.
+
+Root measured popup anchor: follow the instant native property `bt_button_x`
+with the bar button center in screen-local logical pixels. Its default `-1`
+selects `screen.width - 305` (native prop initializers require a numeric literal).
+Any nonnegative value, including zero, is an explicit root allocation. The390px
+panel opens at `clamp(button_x - 195, 8, max(8, screen.width - 398)), 36`;
+negative fallback preserves the prior default position away from output edges,
+and narrow outputs clamp to x8. Root owns the measured center/follow rule; no
+controller, timer or shared layout manager is involved.

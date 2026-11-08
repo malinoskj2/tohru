@@ -1,6 +1,6 @@
 part BluetoothPopup {
     popup bluetooth {
-        at: screen.width - 500, 36
+        at: clamp(if(bt_button_x < 0, screen.width - 305, bt_button_x) - 195, 8, max(8, screen.width - 398)), 36
         size: 390, 520
         open: bt_open
         body { color: #181825; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 25%
