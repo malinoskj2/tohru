@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exclusive GPU-slot integration check; private bus required (dbus-run-session)."""
+"""Exclusive GPU-slot integration check with runner-owned private transports."""
 import argparse
 import json
 import os
@@ -7,6 +7,9 @@ from pathlib import Path
 import shutil
 import subprocess
 import time
+import sys
+import stat
+from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -26,15 +29,74 @@ def isolated_transport(inherited, runtime_dir):
     env = {**inherited,
            "XDG_RUNTIME_DIR": str(runtime_dir),
            "PLEAMAR_SOCKETS": str(runtime_dir / "pleamar-sockets"),
-           "PULSE_SERVER": "unix:" + str(runtime_dir / "no-audio-socket")}
-    for key in ("WAYLAND_DISPLAY", "SWAYSOCK", "DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE"):
+           "PULSE_SERVER": "unix:" + str(runtime_dir / "no-audio-socket"),
+           "DBUS_SESSION_BUS_ADDRESS": "unix:path=" + str(runtime_dir / "bus"),
+           "DBUS_SYSTEM_BUS_ADDRESS": "unix:path=" + str(runtime_dir / "bus")}
+    for key in ("WAYLAND_DISPLAY", "SWAYSOCK", "WAYLAND_SOCKET", "CUA_INJECT_SOCKET", "DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE", "TOHRU_PRIVATE_TEST_BUS", "TOHRU_B_PRIVATE_BUS", "XDG_SESSION_ID", "DBUS_STARTER_ADDRESS", "DBUS_STARTER_BUS_TYPE", "LISTEN_FDS", "LISTEN_PID", "PULSE_COOKIE", "PIPEWIRE_REMOTE"):
         env.pop(key, None)
     return env
+
+
+def assert_private_transport(env, runtime_dir):
+    runtime_dir = runtime_dir.resolve()
+    assert Path(env["XDG_RUNTIME_DIR"]).resolve() == runtime_dir
+    assert stat.S_IMODE(runtime_dir.stat().st_mode) == 0o700
+    for key, prefix in (("PLEAMAR_SOCKETS", ""), ("PULSE_SERVER", "unix:"),
+                        ("DBUS_SESSION_BUS_ADDRESS", "unix:path="), ("DBUS_SYSTEM_BUS_ADDRESS", "unix:path=")):
+        value = env[key]
+        assert value.startswith(prefix)
+        path = Path(value[len(prefix):])
+        assert path.is_relative_to(runtime_dir) and path.resolve().is_relative_to(runtime_dir), key
+        assert not path.is_symlink(), key
+    for key in ("WAYLAND_SOCKET", "CUA_INJECT_SOCKET", "HYPRLAND_INSTANCE_SIGNATURE"):
+        assert key not in env
+    if "WAYLAND_DISPLAY" in env:
+        assert not Path(env["WAYLAND_DISPLAY"]).is_absolute()
+        assert (runtime_dir / env["WAYLAND_DISPLAY"]).resolve().is_relative_to(runtime_dir)
+    if "SWAYSOCK" in env:
+        assert Path(env["SWAYSOCK"]).resolve().is_relative_to(runtime_dir)
+
+
+def private_bus_config(runtime_dir):
+    return """<busconfig><type>session</type><listen>unix:path=""" + escape(str(runtime_dir / "bus")) + """</listen>
+<auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/>
+<allow receive_sender="*"/><allow own="*"/></policy></busconfig>"""
+
+
+def finish_private_run(processes, handles, write_evidence):
+    """Attempt every owned cleanup even if diagnostics/another owner fail."""
+    errors = []
+    try:
+        write_evidence()
+    except BaseException as error:
+        errors.append(error)
+    for process in processes:
+        if process is None:
+            continue
+        try:
+            if process.poll() is None:
+                process.terminate()
+            process.wait(timeout=10)
+        except BaseException as error:
+            errors.append(error)
+            try:
+                process.kill()
+                process.wait(timeout=5)
+            except BaseException as failure:
+                errors.append(failure)
+    for handle in handles:
+        if handle is not None:
+            try:
+                handle.close()
+            except BaseException as error:
+                errors.append(error)
+    return errors
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime", type=Path, required=True)
+    parser.add_argument("--sound", action="store_true", help="also test root sound/Settings with owned private Pulse null sink")
     args = parser.parse_args()
     evidence = ROOT / ".tmp" / f"gpu-foundation-{time.time_ns()}"
     evidence.mkdir()
@@ -68,15 +130,29 @@ def main():
            "TOHRU_RUNTIME": str(args.runtime.resolve()),
            "TOHRU_MANAGED_CONFIG": str(managed), "TOHRU_SCENE": str(scene / "bar.plm")}
     env = isolated_transport(env, runtime_dir)
-    # Refuse inherited live-session bus; launcher below must supply a new private bus.
-    if not env.get("DBUS_SESSION_BUS_ADDRESS") or not env.get("TOHRU_PRIVATE_TEST_BUS"):
-        raise RuntimeError("Run with TOHRU_PRIVATE_TEST_BUS=1 dbus-run-session -- python3 ...")
+    assert_private_transport(env, runtime_dir)
     events = []
-    app = None
+    app = sway = bus = pulse = None
     app_log = None
     sway_log = (evidence / "sway.log").open("w")
-    sway = subprocess.Popen(["sway", "--unsupported-gpu", "-d", "-c", str(sway_config)], env=env, stdout=sway_log, stderr=subprocess.STDOUT)
+    bus_log = (evidence / "bus.log").open("w")
+    pulse_log = (evidence / "pulse.log").open("w")
+    bus_config = runtime_dir / "bus.conf"
+    bus_config.write_text(private_bus_config(runtime_dir))
     try:
+        bus = subprocess.Popen(["dbus-daemon", "--nofork", "--config-file=" + str(bus_config)], env=env, stdout=bus_log, stderr=subprocess.STDOUT)
+        wait_for(lambda: (runtime_dir / "bus").is_socket(), "owned private bus socket")
+        if args.sound:
+            pulse_socket = runtime_dir / "pulse"
+            pulse_config = runtime_dir / "pulse.pa"
+            pulse_config.write_text("load-module module-native-protocol-unix socket=" + str(pulse_socket) + " auth-anonymous=1\nload-module module-null-sink sink_name=tohru_private sink_properties=device.description=Tohru-Private\nset-default-sink tohru_private\n")
+            env["PULSE_SERVER"] = "unix:" + str(pulse_socket)
+            assert_private_transport(env, runtime_dir)
+            pulse = subprocess.Popen(["pulseaudio", "--daemonize=no", "--use-pid-file=no", "--exit-idle-time=-1", "-n", "--file=" + str(pulse_config)], env=env, stdout=pulse_log, stderr=subprocess.STDOUT)
+            wait_for(pulse_socket.is_socket, "owned private Pulse socket")
+            subprocess.run(["pactl", "set-sink-volume", "tohru_private", "50%"], env=env, check=True, timeout=10)
+        assert_private_transport(env, runtime_dir)
+        sway = subprocess.Popen(["sway", "--unsupported-gpu", "-d", "-c", str(sway_config)], env=env, stdout=sway_log, stderr=subprocess.STDOUT)
         socket = wait_for(lambda: next(runtime_dir.glob("sway-ipc.*.sock"), None), "private Sway socket")
         display = wait_for(lambda: next((p for p in runtime_dir.glob("wayland-*") if not p.name.endswith(".lock")), None), "private Wayland socket")
         env["SWAYSOCK"] = str(socket)
@@ -87,6 +163,7 @@ def main():
         (evidence / "outputs.json").write_text(outputs)
 
         def cli(*arguments, check=True):
+            assert_private_transport(env, runtime_dir)
             result = subprocess.run([str(ROOT / "bin/tohru"), *arguments], env=env, capture_output=True, text=True, timeout=10)
             events.append({"args": arguments, "exit": result.returncode, "stdout": result.stdout, "stderr": result.stderr})
             if check:
@@ -110,12 +187,69 @@ def main():
 
         def launch(label):
             nonlocal app, app_log
+            assert_private_transport(env, runtime_dir)
             app_log = (evidence / f"app-{label}.log").open("w")
             app = subprocess.Popen([str(ROOT / "bin/tohru-run")], env=env, stdout=app_log, stderr=subprocess.STDOUT)
             expect("bar.mooncoil", False, "nix")
             assert "NVIDIA GeForce RTX 5090" in (evidence / f"app-{label}.log").read_text(), "app hardware adapter not verified"
 
         launch("first")
+        if args.sound:
+            def native(command):
+                assert_private_transport(env, runtime_dir)
+                result = subprocess.run([str(args.runtime.resolve()), "--say", "tohru", command], env=env, capture_output=True, text=True, timeout=10)
+                events.append({"native": command, "exit": result.returncode, "stdout": result.stdout, "stderr": result.stderr})
+                assert result.returncode == 0, events[-1]
+                return result.stdout.strip()
+            def audio_matches(volume, muted):
+                value = json.loads(cli("audio", "status", "--json").stdout)
+                return value if abs(value.get("volume", -10) - volume) < 0.015 and value.get("muted") == muted else None
+            wait_for(lambda: audio_matches(0.5, False), "private native audio report")
+            cli("audio", "volume", "up")
+            wait_for(lambda: audio_matches(0.55, False), "5 percent native step")
+            cli("audio", "mute", "toggle")
+            wait_for(lambda: audio_matches(0.55, True), "native mute")
+            cli("audio", "volume", "down")
+            wait_for(lambda: audio_matches(0.5, True), "step preserves mute")
+            cli("audio", "mute", "toggle")
+            wait_for(lambda: audio_matches(0.5, False), "native unmute")
+            cli("panel", "open", "sound")
+            wait_for(lambda: native("get sound_open") == "true", "root sound popup open")
+            native("emit audio_set 0.8")
+            wait_for(lambda: audio_matches(0.8, False), "native slider write")
+            cli("panel", "open", "calendar")
+            wait_for(lambda: native("get cal_open") == "true" and native("get sound_open") == "false", "root opposite close")
+            cli("panel", "open", "sound")
+            wait_for(lambda: native("get cal_open") == "false" and native("get sound_open") == "true", "reverse root opposite close")
+            # Refuse commands with an actual private server but no output.
+            assert_private_transport(env, runtime_dir)
+            subprocess.run(["pactl", "unload-module", "module-null-sink"], env=env, check=True, timeout=10)
+            wait_for(lambda: json.loads(cli("audio", "status", "--json").stdout).get("output_present") is False, "private output removal")
+            cli("audio", "mute", "toggle")
+            wait_for(lambda: native("get audio_failed") == "true", "visible native refusal")
+            time.sleep(0.2)
+            subprocess.run(["grim", "-o", "HEADLESS-1", str(evidence / "sound-error.png")], env=env, check=True, timeout=10)
+            subprocess.run(["pactl", "load-module", "module-null-sink", "sink_name=tohru_private", "sink_properties=device.description=Tohru-Private"], env=env, check=True, capture_output=True, timeout=10)
+            wait_for(lambda: json.loads(cli("audio", "status", "--json").stdout).get("output_present") is True, "private output restored")
+            cli("audio", "volume", "up")
+            wait_for(lambda: native("get audio_failed") == "false", "native error clear")
+            cli("settings", "open")
+            wait_for(lambda: native("get settings_open") == "true" and native("get sound_open") == "false", "same-process Settings open")
+            native("text settings_search mooncoil")
+            wait_for(lambda: native("get settings_rows.count") == "1", "native Settings search")
+            native("emit settings_row 0")
+            expect("bar.mooncoil", True, "runtime")
+            native("emit settings_category 2")
+            wait_for(lambda: native("get settings_page") == "2", "native Settings navigation")
+            native("emit settings_back")
+            wait_for(lambda: native("get settings_page") == "1", "native Settings back")
+            time.sleep(0.2)
+            subprocess.run(["grim", "-o", "HEADLESS-1", str(evidence / "settings-window.png")], env=env, check=True, timeout=10)
+            cli("settings", "close")
+            wait_for(lambda: native("get settings_open") == "false", "Settings close")
+            cli("settings", "open")
+            wait_for(lambda: native("get settings_open") == "true", "Settings reopen")
+            cli("settings", "close")
         expect("appearance.corners", False, "user")
         cli("config", "set", "bar.mooncoil", "true")
         settings = expect("bar.mooncoil", True, "runtime")
@@ -151,22 +285,22 @@ def main():
         settings = expect("appearance.corners", True, "user")
         expect("bar.preferred_output", "DP-LEGACY", "user")
         assert not settings["bar.mooncoil"]["runtime_override"]
-        summary = {"result": "passed", "runtime": str(args.runtime.resolve()), "app_adapter": "NVIDIA GeForce RTX 5090 / Vulkan", "compositor_adapter": "NVIDIA GeForce RTX 5090 / GLES2", "screenshot": str(screenshot), "checks": ["native CLI", "managed override", "config reload", "actual logic VM reload", "unmanaged persistence", "unknown/comment preservation", "invalid reload atomicity", "process restart reset"], "performance_acceptance": False}
+        summary = {"result": "passed", "runtime": str(args.runtime.resolve()), "app_adapter": "NVIDIA GeForce RTX 5090 / Vulkan", "compositor_adapter": "NVIDIA GeForce RTX 5090 / GLES2", "screenshot": str(screenshot), "checks": ["native CLI", "managed override", "config reload", "actual logic VM reload", "unmanaged persistence", "unknown/comment preservation", "invalid reload atomicity", "process restart reset"], "sound_settings_checks": args.sound, "performance_acceptance": False}
         (evidence / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     finally:
-        (evidence / "cli-events.json").write_text(json.dumps(events, indent=2) + "\n")
-        for process in (app, sway):
-            if process and process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
-        if app_log:
-            app_log.close()
-        sway_log.close()
-        print(evidence, flush=True)
+        original = sys.exc_info()[1]
+        errors = finish_private_run((app, sway, pulse, bus), (app_log, sway_log, pulse_log, bus_log),
+            lambda: (evidence / "cli-events.json").write_text(json.dumps(events, indent=2) + "\n"))
+        try:
+            print(evidence, flush=True)
+        except BaseException as failure:
+            errors.append(failure)
+        if errors:
+            if original is not None:
+                original.add_note("Cleanup/diagnostics failures: " + repr(errors))
+            else:
+                raise BaseExceptionGroup("Private run diagnostics/cleanup failed", errors)
+
 
 
 if __name__ == "__main__":

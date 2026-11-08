@@ -40,6 +40,8 @@ fn actual_settings_search_history_and_managed_edits_share_the_owner() {
         handlers.settings_category(1); assert(not fact.settings_can_forward)
         text.settings_search='mooncoil'; handlers['text:settings_search']()
         assert(#model.settings_rows==1 and model.settings_rows[1].editable)
+        handlers['submit:settings_search']()
+        assert(applied_count==2 and saves==0 and not config['bar.mooncoil'].value)
         text.settings_search='does-not-exist'; handlers['text:settings_search']()
         assert(#model.settings_rows==0)
         text.settings_search=''; handlers['text:settings_search']()

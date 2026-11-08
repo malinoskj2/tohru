@@ -65,6 +65,7 @@ return function(applied)
     on("settings_forward",function() if position<#history then position=position+1; text.settings_search=""; refresh() end end)
     on("text:settings_search",function() fact.settings_sidebar=false; fact.settings_selected=0; refresh() end)
     on("settings_row",activate)
+    on("submit:settings_search",function() activate(fact.settings_selected) end)
     on("settings_move",function(delta)
         if fact.settings_sidebar then navigate(math.clamp(history[position]+delta,1,#pages))
         else fact.settings_selected=math.clamp(fact.settings_selected+delta,0,math.max(#rows-1,0)) end
