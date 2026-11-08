@@ -23,6 +23,7 @@ return function(applied, wallpaper)
         local query = string.sub(text.settings_search or "", 1, 256):lower()
         fact.settings_wallpaper_page = page==4 and query==""
         fact.settings_capture_page = page==5 and query==""
+        fact.settings_appearance_page = page==2 and query==""
         text.settings_heading = query ~= "" and "Search results" or pages[page]
         local categories = {}
         for id, title in ipairs(pages) do categories[id] = {id=id, title=title, selected=id==page} end

@@ -126,12 +126,16 @@ def main():
         nonlocal app
         base.assert_private_transport(env, run)
         app = subprocess.Popen([str(ROOT / 'bin/tohru-run')], env=env, stdout=log('app-' + label + '.log'), stderr=subprocess.STDOUT, close_fds=True)
-        base.wait_for(lambda: command([str(args.runtime.resolve()), '--say', 'tohru', 'get settings_status'], False).startswith('{'), 'private root IPC', 20)
+        def ready():
+            assert app.poll() is None, 'root exited before IPC; inspect app log'
+            return command([str(args.runtime.resolve()), '--say', 'tohru', 'get settings_status'], False).startswith('{')
+        base.wait_for(ready, 'private root IPC', 20)
     def asset(settings, solid=None):
         path = Path(settings['wallpaper.assignments']['value']['HEADLESS-1'])
         assert path.resolve().is_relative_to((evidence / 'cache').resolve())
         assets.append(png_info(path, solid)); return path
     try:
+        command([str(args.runtime.resolve()), '--check', str(scene / 'bar.plm')])
         bus = subprocess.Popen(['dbus-daemon', '--nofork', '--config-file=' + str(run / 'bus.conf')], env=env, stdout=log('bus.log'), stderr=subprocess.STDOUT, close_fds=True)
         base.wait_for(lambda: (run / 'bus').is_socket(), 'owned private bus')
         sway = subprocess.Popen(['sway', '--unsupported-gpu', '-d', '-c', str(evidence / 'sway.conf')], env=env, stdout=log('sway.log'), stderr=subprocess.STDOUT, close_fds=True)

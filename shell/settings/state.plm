@@ -3,6 +3,7 @@ part SettingsState {
  fact settings_page = 1
  fact settings_wallpaper_page = false
  fact settings_capture_page = false
+ fact settings_appearance_page = false
  text capture_directory_edit = ""
  text capture_pattern_edit = ""
  text capture_preferences_notice = ""

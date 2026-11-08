@@ -28,8 +28,8 @@ local function search(key)
     return model.settings_rows[1]
 end
 handlers.settings_category(2)
-assert(#model.settings_rows==6,'Appearance must expose palette and wallpaper policy')
-local row=search('appearance.palette')
+assert(#model.settings_rows==6 and fact.settings_appearance_page,'Appearance must expose palette and wallpaper policy')
+local row=search('appearance.palette');assert(not fact.settings_appearance_page)
 assert(row.choice and row.editable and row.managed and row.detail:find('mocha')and row.detail:find('Nix managed'))
 for _,value in ipairs({'macchiato','rose_pine','nord','gruvbox','tokyo_night','dracula','everforest','mocha'})do
     handlers['submit:settings_search']()
