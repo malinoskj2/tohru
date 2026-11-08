@@ -3,6 +3,7 @@ scene TohruLauncher {
     surface { size: 1, 1; anchor: top_left; screens: each max 8; reserve: 0; keyboard: none; open: false }
     permissions { services: "apps", "apps.launch", "files", "files.write", "window" }
     fact launcher_visible = false
+    fact launcher_focus_armed = false
     fact launcher_closing = false
     fact launcher_close_token = 0
     fact launcher_output_count = 0
@@ -141,7 +142,6 @@ scene TohruLauncher {
             }
         }
         on key Escape { emit launcher_escape }
-        on blur { emit launcher_close }
         on key Left while not launcher_menu { emit launcher_move(-1) }
         on key Right while not launcher_menu { emit launcher_move(1) }
         on key Up while not launcher_menu { emit launcher_vertical(-1) }
