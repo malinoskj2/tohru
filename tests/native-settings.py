@@ -21,6 +21,17 @@ def wait_for(operation, label, timeout=10):
     raise AssertionError(f"Timed out: {label}")
 
 
+def isolated_transport(inherited, runtime_dir):
+    """Every app/CLI child must use these endpoints, overriding hostile inheritance."""
+    env = {**inherited,
+           "XDG_RUNTIME_DIR": str(runtime_dir),
+           "PLEAMAR_SOCKETS": str(runtime_dir / "pleamar-sockets"),
+           "PULSE_SERVER": "unix:" + str(runtime_dir / "no-audio-socket")}
+    for key in ("WAYLAND_DISPLAY", "SWAYSOCK", "DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE"):
+        env.pop(key, None)
+    return env
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime", type=Path, required=True)
@@ -56,8 +67,7 @@ def main():
            "PULSE_SERVER": "unix:" + str(runtime_dir / "no-audio-socket"),
            "TOHRU_RUNTIME": str(args.runtime.resolve()),
            "TOHRU_MANAGED_CONFIG": str(managed), "TOHRU_SCENE": str(scene / "bar.plm")}
-    for key in ("WAYLAND_DISPLAY", "SWAYSOCK", "DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE"):
-        env.pop(key, None)
+    env = isolated_transport(env, runtime_dir)
     # Refuse inherited live-session bus; launcher below must supply a new private bus.
     if not env.get("DBUS_SESSION_BUS_ADDRESS") or not env.get("TOHRU_PRIVATE_TEST_BUS"):
         raise RuntimeError("Run with TOHRU_PRIVATE_TEST_BUS=1 dbus-run-session -- python3 ...")
