@@ -1,1 +1,1 @@
-require("controller")(require("usage"))
+require("controller")(require("usage"), require("search"), require("geometry"))

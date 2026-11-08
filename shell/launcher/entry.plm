@@ -2,8 +2,12 @@ scene TohruLauncher {
     surface { size: full, full; anchor: top; level: overlay; keyboard: exclusive while launcher_visible; open: launcher_visible }
     permissions { services: "apps", "apps.launch", "files", "files.write" }
     fact launcher_visible = false
+    fact launcher_searching = false
+    text launcher_query = ""
     fact launcher_tab = 0
-    fact launcher_selected = 0
+    fact launcher_selected = -1
+    fact launcher_selected_x = 0
+    fact launcher_selected_y = 0
     fact launcher_total = 0
     fact launcher_pins = 0
     fact launcher_pin_rows = 0
@@ -26,12 +30,15 @@ scene TohruLauncher {
     event launcher_scroll ->
     event launcher_select ->
     event launcher_move ->
+    event launcher_vertical ->
+    event launcher_page ->
     event launcher_launch ->
     event launcher_context ->
     event launcher_choice ->
     event launcher_menu_close ->
     event launcher_menu_scroll ->
     event launcher_menu_move ->
+    event launcher_escape ->
     let cols = clamp(floor((screen.width - 94) / 72), 3, 8)
     let view_height = clamp(screen.height - 230, 72, 452)
     let card_width = cols * 72 + 32
@@ -40,8 +47,8 @@ scene TohruLauncher {
     let card_y = floor((screen.height + 37 - card_height) / 2)
     prop tile_scroll = 0 ~120ms
     follow tile_scroll = launcher_scroll
-    on launcher_open { emit launcher_layout(cols); emit launcher_viewport(view_height) }
-    on launcher_toggle { emit launcher_layout(cols); emit launcher_viewport(view_height) }
+    on launcher_open { focus launcher_query; emit launcher_layout(cols); emit launcher_viewport(view_height) }
+    on launcher_toggle { focus launcher_query; emit launcher_layout(cols); emit launcher_viewport(view_height) }
     on change cols { emit launcher_layout(cols) }
     on change view_height { emit launcher_viewport(view_height) }
     body {
@@ -50,7 +57,11 @@ scene TohruLauncher {
     }
     zone box launcher_card { from: card_x, card_y; size: card_width, card_height }
     text launcher_error { at: card_x + 22, card_y + 49; anchor: left center; width: card_width - 44; lines: 1; size: 10; color: #f38ba8 }
-    text "Applications" { at: card_x + 22, card_y + 30; anchor: left center; size: 15; color: #cdd6f4 }
+    input launcher_query { at: card_x + 22, card_y + 20; width: card_width - 64; size: 15; color: #cdd6f4; placeholder: "Search applications…"; selection: #2f5f52 }
+    zone box launcher_clear { from: card_x + card_width - 40, card_y + 12; size: 28, 28; active: launcher_searching; cursor: pointer }
+    text "×" { at: card_x + card_width - 26, card_y + 26; anchor: center; size: 18; color: #cdd6f4; show: launcher_searching }
+    on press launcher_clear { launcher_query = ""; focus launcher_query }
+    on submit launcher_query while not launcher_menu { emit launcher_launch(max(0, launcher_selected)) }
     repeat i in 0..7 {
         let tab_width = (card_width - 16) / 7
         box launcher_tab_hit.$i { from: card_x + 8 + i * tab_width, card_y + 62; size: tab_width - 2, 26; corner: 7; color: #89dceb; opacity: if(launcher_tab == i, 12%, 0%); cursor: pointer }
@@ -69,7 +80,7 @@ scene TohruLauncher {
                 box launcher_tile.$t.index { from: 0, 0; size: 72, 72; corner: 12; color: #89dceb; opacity: hover * 10% + if(launcher_selected == t.position, 8%, 0%); cursor: pointer }
                 image t.icon { at: 14, 10; size: 44, 44 }
                 text t.name { at: 36, 64; anchor: center; width: 68; lines: 1; size: 11; color: #cdd6f4 }
-                on enter launcher_tile.$t.index { hover: 1 ~140ms; emit launcher_select(t.position) }
+                on enter launcher_tile.$t.index while not launcher_menu { hover: 1 ~140ms; emit launcher_select(t.position) }
                 on leave launcher_tile.$t.index { hover: 0 ~140ms }
                 on press launcher_tile.$t.index while not launcher_menu { emit launcher_launch(t.position) }
                 on press launcher_tile.$t.index while launcher_menu { emit launcher_menu_close }
@@ -93,17 +104,20 @@ scene TohruLauncher {
             on press launcher_choice_hit.$c.index { emit launcher_choice(c.position) }
         }
     }
-    on key Escape while launcher_menu { emit launcher_menu_close }
-    on key Escape while not launcher_menu { emit launcher_close }
+    on key Escape { emit launcher_escape }
     on blur { emit launcher_close }
     on key Left while not launcher_menu { emit launcher_move(-1) }
     on key Right while not launcher_menu { emit launcher_move(1) }
-    on key Up while not launcher_menu { emit launcher_move(-cols) }
-    on key Down while not launcher_menu { emit launcher_move(cols) }
-    on key Return while not launcher_menu { emit launcher_launch(launcher_selected) }
+    on key Up while not launcher_menu { emit launcher_vertical(-1) }
+    on key Down while not launcher_menu { emit launcher_vertical(1) }
+    on key Return while not launcher_menu { emit launcher_launch(max(0, launcher_selected)) }
     on key Up while launcher_menu { emit launcher_menu_move(-1) }
     on key Down while launcher_menu { emit launcher_menu_move(1) }
     on key Return while launcher_menu { emit launcher_choice(launcher_menu_selected) }
+    on key PageDown while not launcher_menu { emit launcher_page(1) }
+    on key PageUp while not launcher_menu { emit launcher_page(-1) }
+    on key Menu while not launcher_menu { launcher_menu_x = card_x + 52 + launcher_selected_x; launcher_menu_y = card_y + 132 + launcher_selected_y - tile_scroll; emit launcher_context(max(0, launcher_selected)) }
+    on key Shift+F10 while not launcher_menu { launcher_menu_x = card_x + 52 + launcher_selected_x; launcher_menu_y = card_y + 132 + launcher_selected_y - tile_scroll; emit launcher_context(max(0, launcher_selected)) }
     on key Tab { emit launcher_tab(launcher_tab + 1) }
     on key Shift+Tab { emit launcher_tab(launcher_tab - 1) }
 }
