@@ -8,6 +8,7 @@ import time
 
 
 def verify(root, runtime, evidence, env, start, say, expect, wait_for):
+    assert shutil.which('setsid', path=env.get('PATH')), 'Native apps.launch requires setsid in runtime PATH'
     scene_dir = evidence / 'scene'
     shutil.copytree(root / 'shell/launcher', scene_dir)
     # Native apps also scans XDG_DATA_DIRS; restrict this launch-capable fixture
@@ -75,7 +76,9 @@ def verify(root, runtime, evidence, env, start, say, expect, wait_for):
     wait_for(lambda: marker.exists() and marker.read_text().strip() == 'dummy08', 'native launch execution')
     say('launcher', 'emit launcher_open')
     input_query('art')
-    expect('launcher', 'launcher_total', '1')
+    # Secondary Exec paths can also subsequence-match; the exact name prefix
+    # must lead the stable result list, not eliminate valid lower-rank hits.
+    expect('launcher', 'launcher_tiles.0.id', 'art')
     description = say('launcher', 'describe json')
     (evidence / 'launcher-description.json').write_text(description or '')
     say('launcher', 'key Menu')
