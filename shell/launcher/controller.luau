@@ -97,7 +97,8 @@ return function(make_usage, search, geometry, output)
     local function hide() fact.launcher_focus_armed = false; fact.launcher_visible = false; close_menu(); if output then output.close() end end
     -- Native focus events preserve arrival order. A removed layer can report
     -- its leave after the next open; it must not dismiss an as-yet unfocused
-    -- replacement. Reset ownership on every open/close, retain it on VM reload.
+    -- replacement. Reset on closed-to-open/hide; preserve repeated visible
+    -- open and VM reload ownership because neither promises a fresh enter.
     on("focus", function() if fact.launcher_visible then fact.launcher_focus_armed = true end end)
     on("blur", function()
         local owned = fact.launcher_focus_armed
