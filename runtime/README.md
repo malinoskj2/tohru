@@ -116,3 +116,10 @@ does not prove compatibility. With a custom candidate, use the effect package's
 `override { hyprland = candidate; }` before building, and keep loading an explicit
 integration step. A changed nixpkgs/compositor requires those compatibility checks
 again. No plugin loading/configuration or existing Nix repository is modified.
+
+The optional effect package uses the separately locked `effects-nixpkgs` input at
+E's reviewed revision `8ce4ef6cb6f871616146b9fe26d2a5ae594e94fe`; the shell's
+newer nixpkgs pin does not supply Hyprland 0.56.2. Keep this input independent of
+the shell nixpkgs follow unless the replacement package set has the exact reviewed
+candidate compositor. The native portable shell neither builds nor loads this
+plugin as a dependency.

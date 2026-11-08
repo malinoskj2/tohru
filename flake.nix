@@ -3,7 +3,10 @@
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601";
 
-  outputs = { self, nixpkgs }:
+  # Keep the optional plugin on E's reviewed Hyprland 0.56.2 package set.
+  inputs.effects-nixpkgs.url = "github:NixOS/nixpkgs/8ce4ef6cb6f871616146b9fe26d2a5ae594e94fe";
+
+  outputs = { self, nixpkgs, effects-nixpkgs }:
     let
       # Only the platform validated in this foundation checkpoint is exported.
       systems = [ "x86_64-linux" ];
@@ -19,7 +22,7 @@
           pleamar-runtime = tohru.runtime;
         } // nixpkgs.lib.optionalAttrs (builtins.pathExists ./effects/package.nix) {
           # This package must use the exact reviewed candidate compositor headers.
-          desktop-effects = pkgs.callPackage ./effects/package.nix { };
+          desktop-effects = (import effects-nixpkgs { inherit system; }).callPackage ./effects/package.nix { };
         });
       apps = eachSystem (system: {
         default = self.apps.${system}.shell;
