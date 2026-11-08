@@ -25,6 +25,10 @@
     "focus/main.cpp": {
       "sha256": "b2d084da1362635b7184f52d3ff2656cd9f136e91b9904ecddbb5ce8b6556999",
       "reason": "Accepted Q-E-1: retain active restoration state through both legs; restore geometry/opacity/config before releasing client sizing; remove only owned callbacks."
+    },
+    "sheet.cpp": {
+      "sha256": "9ee677f0d1c331b3ac54a80d902cdb2d9ecc6725d4522402467ccdf20fcc0f9b",
+      "reason": "Accepted Q-E-2: preserve the optional prior PRIORITY_SET_PROP noFocus value and respect observable intervening false/unset writes during parent restoration."
     }
   }
 }

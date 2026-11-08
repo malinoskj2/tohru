@@ -42,6 +42,7 @@
 #include <hyprland/src/plugins/PluginAPI.hpp>
 
 #include "LogicalFramebuffer.hpp"
+#include "sheet/NoFocusRestore.hpp"
 
 using Desktop::View::IGeometric;
 
@@ -89,6 +90,7 @@ struct SSheet {
     WP<Desktop::CWindowFadeout> chooserFadeout;
     ESheetPhase                 phase        = ESheetPhase::Opening;
     bool                        parentHidden = false;
+    Sheet::CNoFocusRestore<Desktop::Types::PRIORITY_SET_PROP> parentNoFocus;
     bool                        settling     = false;
     float                       lastProgress = 0.F;
     WP<SSheet>                  self;
@@ -307,7 +309,7 @@ void SSheet::hideParent() {
 
     detach(parent, parentTransformer);
     PARENT->alpha(Desktop::View::WINDOW_ALPHA_MOVE_FROM_WORKSPACE)->setValueAndWarp(0.F);
-    PARENT->m_ruleApplicator->noFocus().set(true, Desktop::Types::PRIORITY_SET_PROP);
+    parentNoFocus.hide(PARENT->m_ruleApplicator->noFocus());
     parentHidden = true;
 }
 
@@ -318,7 +320,7 @@ void SSheet::showParent() {
     parentHidden = false;
     if (const auto PARENT = parent.lock()) {
         PARENT->alpha(Desktop::View::WINDOW_ALPHA_MOVE_FROM_WORKSPACE)->setValueAndWarp(1.F);
-        PARENT->m_ruleApplicator->noFocus().unset(Desktop::Types::PRIORITY_SET_PROP);
+        parentNoFocus.restore(PARENT->m_ruleApplicator->noFocus());
     }
 }
 

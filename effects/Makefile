@@ -7,7 +7,7 @@ CPPFLAGS += $(shell $(PKG_CONFIG) --cflags $(PACKAGES))
 CXXFLAGS += -O2 -g -std=c++2b -fPIC -fno-gnu-unique -Wno-narrowing
 LDFLAGS += -shared -Wl,--build-id=sha1
 SOURCES = main.cpp focus/main.cpp bars/main.cpp bars/barDeco.cpp bars/BarPassElement.cpp sheet.cpp recede.cpp
-HEADERS = $(wildcard *.hpp focus/*.hpp bars/*.hpp)
+HEADERS = $(wildcard *.hpp focus/*.hpp bars/*.hpp sheet/*.hpp)
 TARGET = libdesktop-effects.so
 
 all: $(TARGET)
@@ -47,3 +47,12 @@ check-focus:
 .PHONY: check-focus
 
 check: check-focus
+
+check-sheet:
+	@dir=$$(mktemp -d); \
+	trap 'rm -rf "$$dir"' EXIT; \
+	$(CXX) -std=c++2b -Wall -Wextra tests/sheet-no-focus.cpp -o "$$dir/check" && "$$dir/check"
+
+check: check-sheet
+
+.PHONY: check-sheet

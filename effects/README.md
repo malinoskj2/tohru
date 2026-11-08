@@ -21,6 +21,7 @@ wayland-server, xkbcommon and Lua (reviewed headers use 5.5.0).
 cd effects
 make check
 make check-deps
+make check-abi
 make -j1
 make install PREFIX=/desired/staging/prefix
 ```
@@ -107,3 +108,11 @@ Do not infer active desktop settings from either set of defaults.
 Build compatibility and copied algorithms are checked; loading/unloading,
 visual parity, damage, orientation/scaling and performance are **unverified for
 the extracted package**. Follow VALIDATION.md before candidate acceptance.
+
+Accepted review fixes retain focus restoration state through both animation legs
+and restore geometry/opacity/config before releasing held client sizing on unload.
+Sheet cleanup preserves the parent's previous optional noFocus set-property slot
+and observable external false/unset writes. `make check` runs focused restoration
+checks plus provenance; Nix checkPhase runs those checks alongside ABI rejection.
+See UPSTREAM.md for intentional extraction changes and the pinned API's
+indistinguishable same-value override-write limitation.
