@@ -1,0 +1,15 @@
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -10,3 +10,5 @@
+
++#[cfg(feature = "luau")]
++mod tohru_info;
+ #[cfg(feature = "luau")]
+ mod tohru_workspace;
+--- a/src/logic_luau.rs
++++ b/src/logic_luau.rs
+@@ -1405,3 +1405,4 @@
+             crate::tohru_settings::install(&lua)?;
+             crate::tohru_workspace::install(&lua)?;
++            crate::tohru_info::install(&lua)?;
+         }

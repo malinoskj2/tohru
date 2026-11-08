@@ -9,8 +9,10 @@ let
       ../runtime/workspace/mod.rs ../runtime/workspace/workspace_motion.rs ../runtime/workspace/workspace_track.rs
       ../runtime/wallpaper/mod.rs ../runtime/wallpaper/probe.rs ../runtime/wallpaper/native.rs
       ../runtime/window/visibility.rs
+      ../runtime/info_luau.rs ../runtime/info/mod.rs ../runtime/info/read.rs ../runtime/info/storage.rs ../runtime/info/system.rs ../tests/info/snapshot.rs ../tests/info.rs
       ../runtime/capture ../tests/wallpaper/catalog.rs ../tests/capture
-      ../runtime/idle ../tests/session/idle.rs ../LICENSE ];
+      ../runtime/idle/mod.rs ../runtime/idle/cookies.rs ../runtime/idle/delay.rs ../runtime/idle/input.rs
+      ../tests/session/idle.rs ../tests/session/idle_cookies.rs ../tests/session/idle_delay.rs ../tests/session/idle_input.rs ../LICENSE ];
   };
   lockSource = lib.fileset.toSource {
     root = ../.;
@@ -33,7 +35,7 @@ let
     patches = [ ../runtime/patches/0001-shell-settings.patch ../runtime/patches/0002-lock-boundary.patch
       ../runtime/workspace/shader-inputs.patch ../runtime/patches/0004-workspace-binding.patch
       ../runtime/wallpaper/catalog.patch ../runtime/wallpaper/image-reset.patch ../runtime/patches/0005-wallpaper-module.patch
-      ../runtime/patches/0003-window-lifecycle.patch ];
+      ../runtime/patches/0003-window-lifecycle.patch ../runtime/patches/0006-info-binding.patch ];
     postPatch = ''
       mkdir foundation
       cp ${foundationSource}/Cargo.toml foundation/
@@ -43,15 +45,21 @@ let
       cp -r ${foundationSource}/runtime/idle foundation/runtime/
       cp -r ${foundationSource}/runtime/workspace foundation/runtime/
       cp -r ${foundationSource}/runtime/capture foundation/runtime/
+      cp -r ${foundationSource}/runtime/info foundation/runtime/
+      mkdir -p foundation/tests/info
+      cp ${foundationSource}/tests/info/snapshot.rs foundation/tests/info/
+      cp ${foundationSource}/tests/info.rs foundation/tests/
       mkdir -p foundation/runtime/wallpaper foundation/tests/wallpaper foundation/tests/capture
       cp ${foundationSource}/runtime/wallpaper/mod.rs ${foundationSource}/runtime/wallpaper/probe.rs foundation/runtime/wallpaper/
       cp ${foundationSource}/tests/wallpaper/catalog.rs foundation/tests/wallpaper/
       cp ${foundationSource}/tests/capture/*.rs foundation/tests/capture/
       cp ${foundationSource}/tests/session/idle.rs foundation/tests/session/
+      cp ${foundationSource}/tests/session/idle_cookies.rs ${foundationSource}/tests/session/idle_delay.rs ${foundationSource}/tests/session/idle_input.rs foundation/tests/session/
       cp ${foundationSource}/runtime/settings_luau.rs src/tohru_settings.rs
       cp ${foundationSource}/runtime/workspace_luau.rs src/tohru_workspace.rs
       cp ${foundationSource}/runtime/wallpaper/native.rs src/tohru_wallpaper.rs
       cp ${foundationSource}/runtime/window/visibility.rs src/tohru_window.rs
+      cp ${foundationSource}/runtime/info_luau.rs src/tohru_info.rs
       mkdir -p src/tohru_lock tests/session
       cp ${lockSource}/runtime/lock/native.rs src/tohru_lock.rs
       cp ${lockSource}/runtime/lock/authority.rs src/tohru_lock/authority.rs
