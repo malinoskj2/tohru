@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+"""Check the actual Bash frontend's argument boundary without a desktop session."""
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class Cli(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix="tohru-cli-")
+        self.addCleanup(self.directory.cleanup)
+        self.path = Path(self.directory.name)
+        self.runtime = self.path / "native runtime"
+        self.runtime.write_text("#!/usr/bin/env python3\nimport json,os,sys\nprint(json.dumps(sys.argv[1:]))\nsys.exit(int(os.environ.get('NATIVE_EXIT', '0')))\n")
+        self.runtime.chmod(0o755)
+        self.env = {**os.environ, "TOHRU_RUNTIME": str(self.runtime)}
+
+    def invoke(self, *args, **env):
+        return subprocess.run([str(ROOT / "bin/tohru"), *args], env={**self.env, **env}, text=True, capture_output=True)
+
+    def test_native_arguments(self):
+        for args, expected in [
+            (("status", "--json"), ["--say", "tohru", "get settings_status"]),
+            (("config", "reload"), ["--say", "tohru", "emit config_reload"]),
+            (("config", "set", "bar.mooncoil", "true"), ["--say", "tohru", "emit setting_mooncoil 1"]),
+            (("config", "set", "appearance.corners", "false"), ["--say", "tohru", "emit setting_corners 0"]),
+        ]:
+            with self.subTest(args=args):
+                result = self.invoke(*args)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout), expected)
+
+    def test_output_is_literal_and_cannot_inject_commands(self):
+        marker = self.path / "injected"
+        value = f"$(touch {marker}) ; emit quit"
+        result = self.invoke("config", "set", "bar.preferred_output", value)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), ["--say", "tohru", f"text output_request {value}", "emit setting_output"])
+        self.assertFalse(marker.exists())
+        self.assertEqual(self.invoke("config", "set", "bar.preferred_output", "DP-1\nemit quit").returncode, 2)
+
+    def test_grammar_and_dropped_features_fail(self):
+        for args in [
+            ("status",), ("status", "--json", "extra"), ("config",),
+            ("config", "reload", "extra"), ("config", "set", "bar.mooncoil", "yes"),
+            ("config", "set", "unknown.key", "true"), ("assistant",),
+            ("gaming",), ("dnd",), ("workspace", "select", "1"),
+            ("settings-error", "extra"), ("help", "extra"),
+        ]:
+            with self.subTest(args=args):
+                self.assertEqual(self.invoke(*args).returncode, 2)
+
+    def test_native_failure_is_preserved(self):
+        result = self.invoke("status", "--json", NATIVE_EXIT="1")
+        self.assertEqual(result.returncode, 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

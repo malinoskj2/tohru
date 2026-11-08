@@ -1,0 +1,41 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 97742f5..e9fffd6 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -7,6 +7,8 @@ description = "A desktop shell language and runtime where animation does not dep
+ repository = "https://github.com/k4ditano/pleamar"
+ 
+ [dependencies]
++anyhow = "=1.0.103"
++tohru-shell = { path = "foundation" }
+ arboard = { version = "3.6.1", default-features = false, features = ["wayland-data-control"] }
+ bytemuck = { version = "1.25.2", features = ["derive"] }
+ chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+diff --git a/src/lib.rs b/src/lib.rs
+index 501651c..375b823 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -8,6 +8,8 @@
+ //! monitor, their scale and the mouse); the logic one, which decides; and the render one, which is the
+ //! only one that animates.
+ 
++#[cfg(feature = "luau")]
++mod tohru_settings;
+ pub mod scene;
+ mod scenes;
+ mod skill;
+diff --git a/src/logic_luau.rs b/src/logic_luau.rs
+index 9390161..8accbb7 100644
+--- a/src/logic_luau.rs
++++ b/src/logic_luau.rs
+@@ -1390,6 +1390,10 @@ impl LuauScript {
+         json.set("encode", lua.create_function(|_, v: Value| Ok(crate::platform::json_encode(&lua_to_value(&v, 0))))?)?;
+         g.set("json", json)?;
+ 
++        if self.prefix.is_none() && std::env::var("TOHRU_SHELL").as_deref() == Ok("1") {
++            crate::tohru_settings::install(&lua)?;
++        }
++
+         // The sandbox, last of all: from here on the globals are not touched.
+         lua.sandbox(true)?;
+         Ok(lua)

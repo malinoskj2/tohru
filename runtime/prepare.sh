@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Prepare clean upstream with reviewed shell patches; no prototype vendor copy.
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+destination=${1:-$root/.tmp/pleamar-runtime}
+[[ ! -e $destination ]] || { printf 'Destination already exists: %s\n' "$destination" >&2; exit 2; }
+mkdir -p -- "$destination"
+archive=$(mktemp)
+trap 'rm -f -- "$archive"' EXIT
+curl --fail --location --silent --show-error \
+    https://github.com/k4ditano/pleamar/archive/dc902feb0ee9058b7db7c2bc2c9d59d9f655fd86.tar.gz -o "$archive"
+printf '%s  %s\n' '3b9e9320c4240ff0af7b43d5bba6bc8625f5f8d110c75eefd0d9904cbf1bafbf' "$archive" | sha256sum --check --status
+tar -xzf "$archive" -C "$destination" --strip-components=1
+git apply --unsafe-paths --directory="$destination" "$root/runtime/patches/0001-shell-settings.patch"
+mkdir "$destination/foundation"
+cp "$root/Cargo.toml" "$destination/foundation/"
+cp -r "$root/src" "$destination/foundation/"
+cp "$root/runtime/settings_luau.rs" "$destination/src/tohru_settings.rs"
+cp "$root/runtime/Cargo.lock" "$destination/Cargo.lock"
+printf 'Prepared %s\n' "$destination"

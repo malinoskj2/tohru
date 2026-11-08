@@ -1,0 +1,15 @@
+scene Tohru {
+ surface { size: full, 42; anchor: top; margin: 0; reserve: 31; screens: each max 1 }
+ fact mooncoil = false
+ fact corners = true
+ text settings_status = "{}"
+ text settings_error = ""
+ text output_request = ""
+ event config_reload ->
+ event setting_mooncoil ->
+ event setting_corners ->
+ event setting_output ->
+ box { from: 100, 0; size: screen.width - 200, 31; corner: 10; color: #160e14; opacity: 70% }
+ text "Tohru" { at: 124, 15.5; color: #f5cddd; size: 14 }
+ text "☾" { at: screen.width - 124, 15.5; color: #f5cddd; size: 16; show: mooncoil }
+}

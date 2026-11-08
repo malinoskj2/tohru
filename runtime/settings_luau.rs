@@ -1,0 +1,130 @@
+//! Narrow shell binding; process state survives replacement of the Luau VM.
+use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
+
+use anyhow::{Context, Result};
+use mlua::{Lua, Table, Value as LuaValue};
+use tohru_shell::settings::{Key, Origin, Owner, Value};
+
+static SETTINGS: OnceLock<Mutex<Owner>> = OnceLock::new();
+
+fn owner() -> Result<&'static Mutex<Owner>> {
+    if let Some(owner) = SETTINGS.get() {
+        return Ok(owner);
+    }
+    let user_dir = match std::env::var_os("XDG_CONFIG_HOME") {
+        Some(path) if !path.is_empty() => PathBuf::from(path),
+        _ => {
+            PathBuf::from(std::env::var_os("HOME").context("HOME or XDG_CONFIG_HOME must be set")?)
+                .join(".config")
+        }
+    };
+    let managed = std::env::var_os("TOHRU_MANAGED_CONFIG").map(PathBuf::from);
+    let owner =
+        Owner::load(user_dir.join("tohru/config.toml"), managed).context("load tohru settings")?;
+    let _ = SETTINGS.set(Mutex::new(owner));
+    SETTINGS.get().context("initialize process settings owner")
+}
+
+fn snapshot(lua: &Lua, owner: &Owner) -> mlua::Result<Table> {
+    let settings = lua.create_table()?;
+    for key in Key::ALL {
+        let setting = owner.get(key);
+        let row = lua.create_table()?;
+        match setting.value {
+            Value::Bool(value) => row.set("value", value)?,
+            Value::Text(value) => row.set("value", value)?,
+        }
+        row.set(
+            "origin",
+            match setting.origin {
+                Origin::Default => "default",
+                Origin::User => "user",
+                Origin::Nix => "nix",
+                Origin::Runtime => "runtime",
+            },
+        )?;
+        row.set("managed", setting.managed)?;
+        row.set("runtime_override", setting.runtime_override)?;
+        settings.set(key.name(), row)?;
+    }
+    Ok(settings)
+}
+
+fn report(error: impl Into<anyhow::Error>) -> mlua::Error {
+    mlua::Error::runtime(format!("{:#}", error.into()))
+}
+
+pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
+    let owner = owner().map_err(report)?;
+    let api = lua.create_table()?;
+    api.set(
+        "snapshot",
+        lua.create_function(move |lua, ()| {
+            let owner = owner
+                .lock()
+                .map_err(|_| mlua::Error::runtime("settings owner mutex poisoned"))?;
+            snapshot(lua, &owner)
+        })?,
+    )?;
+    api.set(
+        "reload",
+        lua.create_function(move |lua, ()| {
+            let mut owner = owner
+                .lock()
+                .map_err(|_| mlua::Error::runtime("settings owner mutex poisoned"))?;
+            owner.reload().map_err(report)?;
+            snapshot(lua, &owner)
+        })?,
+    )?;
+    api.set(
+        "set",
+        lua.create_function(move |lua, (name, value): (String, LuaValue)| {
+            let key = Key::parse(&name).map_err(report)?;
+            let value = match value {
+                LuaValue::Boolean(value) => Value::Bool(value),
+                LuaValue::String(value) => Value::Text(value.to_str()?.to_owned()),
+                _ => {
+                    return Err(mlua::Error::runtime(
+                        "setting value must be boolean or string",
+                    ));
+                }
+            };
+            let mut owner = owner
+                .lock()
+                .map_err(|_| mlua::Error::runtime("settings owner mutex poisoned"))?;
+            owner.set(key, value).map_err(report)?;
+            snapshot(lua, &owner)
+        })?,
+    )?;
+    lua.globals().set("tohru_settings", api)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn process_owner_survives_vm_replacement() {
+        let root = std::env::temp_dir().join(format!("tohru-vm-test-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("tohru")).unwrap();
+        let managed = root.join("managed.toml");
+        std::fs::write(&managed, "[bar]\nmooncoil = false\n").unwrap();
+        let owner = Owner::load(root.join("tohru/config.toml"), Some(managed.clone())).unwrap();
+        assert!(SETTINGS.set(Mutex::new(owner)).is_ok());
+        let lua = Lua::new();
+        install(&lua).unwrap();
+        lua.load("tohru_settings.set('bar.mooncoil', true)")
+            .exec()
+            .unwrap();
+        drop(lua);
+        let replacement = Lua::new();
+        install(&replacement).unwrap();
+        replacement.load("local s = tohru_settings.reload()['bar.mooncoil']; assert(s.value and s.managed and s.runtime_override and s.origin == 'runtime')").exec().unwrap();
+        assert_eq!(
+            std::fs::read_to_string(managed).unwrap(),
+            "[bar]\nmooncoil = false\n"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}

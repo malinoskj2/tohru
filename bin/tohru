@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+usage() {
+    cat <<'HELP'
+Usage: tohru status --json
+       tohru config reload
+       tohru config set bar.mooncoil|appearance.corners true|false
+       tohru config set bar.preferred_output OUTPUT
+       tohru settings-error
+       tohru help
+
+Settings commands report native request acceptance, not completion.
+Inspect status and settings-error for the resulting settings or failure.
+HELP
+}
+fail() { printf '%s\n' "$1" >&2; exit 2; }
+pleamar=${TOHRU_RUNTIME:-pleamar}
+case ${1:-help} in
+    help|--help|-h)
+        [[ $# -le 1 ]] || fail 'help takes no arguments'
+        usage
+        ;;
+    status)
+        [[ $# == 2 && $2 == --json ]] || fail 'Usage: tohru status --json'
+        exec "$pleamar" --say tohru 'get settings_status'
+        ;;
+    config)
+        case ${2:-} in
+            reload)
+                [[ $# == 2 ]] || fail 'Usage: tohru config reload'
+                exec "$pleamar" --say tohru 'emit config_reload'
+                ;;
+            set)
+                [[ $# == 4 ]] || fail 'Usage: tohru config set KEY VALUE'
+                case $3 in
+                    bar.mooncoil|appearance.corners)
+                        case $4 in true) number=1 ;; false) number=0 ;; *) fail 'Value must be true or false' ;; esac
+                        case $3 in bar.mooncoil) event=setting_mooncoil ;; appearance.corners) event=setting_corners ;; esac
+                        exec "$pleamar" --say tohru "emit $event $number"
+                        ;;
+                    bar.preferred_output)
+                        [[ $4 != *$'\n'* && $4 != *$'\r'* && ${#4} -le 256 ]] || fail 'Invalid output name'
+                        exec "$pleamar" --say tohru "text output_request $4" 'emit setting_output'
+                        ;;
+                    *) fail 'Unknown setting key' ;;
+                esac
+                ;;
+            *) fail 'Usage: tohru config reload|set KEY VALUE' ;;
+        esac
+        ;;
+    settings-error)
+        [[ $# == 1 ]] || fail 'Usage: tohru settings-error'
+        exec "$pleamar" --say tohru 'get settings_error'
+        ;;
+    *) fail 'Unknown command; run tohru help' ;;
+esac
