@@ -15,12 +15,14 @@ local rail = assert(loadfile("shell/calendar/rail-publisher.luau"))()(binding,"w
 rail.observe(5,1)
 assert(#timers == 0 and fact.ws_r == 255 and fact.ws_g == 127.5 and not fact.ws_moving)
 moving=true; rail.observe(5,5); rail.observe(5,2)
-assert(#timers == 1 and fact.ws_moving)
+assert(#timers == 1 and fact.ws_moving and rail.active())
 moving=false; timers[1]()
-assert(cancelled[1] and not fact.ws_moving)
+assert(cancelled[1] and not fact.ws_moving and not rail.active())
 moving=true; rail.observe(5,4)
 assert(#timers == 2)
-rail.stop(); assert(cancelled[2])
+rail.stop(); assert(cancelled[2] and not rail.active())
+-- A callback copied out of the native due list before cancel is now stale.
+timers[2]();assert(#timers==2 and not fact.ws_moving and not rail.active())
 moving=true; rail.observe(5,3)
 rail.reset(); assert(cancelled[3] and calls[#calls][2] == "reset")
 binding.tick = function() error("binding failed") end
@@ -30,3 +32,5 @@ print("Native60Hz publication has one timer, rest/error/close cancellation and e
 
 binding.reset = nil
 assert(rail.reset() == false and text.ws_error ~= "")
+
+print("Cancelled queued rail callback cannot republish/rearm after stop")

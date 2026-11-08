@@ -45,3 +45,8 @@ physical output/visual review remains coordinator scope.
 Visible logic reload retains cal_year/month/selected date facts and cal_rail_ready.
 It rearms the process-owned Indicator through observe without resetting date or
 physics; failed reset readiness remains false until explicit open succeeds.
+
+The publisher generation guard ignores a native callback copied before cancel
+if it arrives after stop/reset/rest/error. Cancellation cannot let stale motion
+rearm publication. Its optional active() method reports owned timer-handle state
+for private lifecycle evidence; production does not poll it.

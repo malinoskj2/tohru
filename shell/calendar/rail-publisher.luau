@@ -1,7 +1,9 @@
 -- One native timer per moving rail. Physics stays in the process-owned Rust binding.
 return function(binding, role, prefix)
     local timer
+    local generation = 0
     local function stop()
+        generation = generation + 1
         if timer then cancel(timer); timer = nil end
         fact[prefix .. "moving"] = false
     end
@@ -13,7 +15,12 @@ return function(binding, role, prefix)
         fact[prefix .. "width"] = sample.width
         fact[prefix .. "moving"] = sample.moving
         if sample.moving then
-            if not timer then timer = every(1000 / 60, function() tick() end) end
+            if not timer then
+                local owner = generation
+                timer = every(1000 / 60, function()
+                    if timer and owner == generation then tick() end
+                end)
+            end
         else stop() end
     end
     local function invoke(method, ...)
@@ -28,5 +35,6 @@ return function(binding, role, prefix)
         observe = function(highest, active) return invoke(binding.observe, role, highest, active) end,
         reset = function() stop(); return invoke(binding.reset, role) end,
         stop = stop,
+        active = function() return timer ~= nil end,
     }
 end
