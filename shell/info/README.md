@@ -32,7 +32,8 @@ Power integration: initialize require("info/power")(optional_notify, optional_lo
 once, permission battery + say:tohru-notifications. Default notify sends ONLY fixed
 native `emit power_warning_clear|low|critical|empty <finite normalized charge>`
 to exact tohru-notifications; L owns banners/tone and clear removes only power.
-Source thresholds low20% default (optional shared typed getter), critical5%,
+Native battery percent0..100 is normalized exactly once to internal0..1 for
+presentation/notification. Source thresholds low20% default (optional shared typed getter), critical5%,
 empty2%, recovery2% hysteresis; no DND/persistence policy or automatic action.
 Scene power_warning_level persists accepted transition across VM reload to prevent
 duplicate tone. Delivery errors retain the previous level and error; next native

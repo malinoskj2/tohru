@@ -22,8 +22,6 @@ part AboutPopup {
         box about_more_hit { from: 90, 310; size: 180, 28; corner: 8; color: #cdd6f4; opacity: 8%; cursor: pointer }
         text "More Info…" { at: 180, 324; anchor: center; size: 13; color: #cdd6f4 }
         on press about_more_hit { emit about_more }
-        zone box about_repository_hit { from: 60, 350; size: 240, 22; cursor: pointer; label: "Open source repository" }
-        on press about_repository_hit { emit about_repository }
         text "github.com/malinoskj2/nix" { at: 180, 363; anchor: center; size: 12; color: #89b4fa; selectable: true }
         text "System configuration" { at: 180, 383; anchor: center; size: 11; color: #a6adc8 }
         text about_error { at: 24, 408; width: 312; size: 10; color: #a6adc8 }

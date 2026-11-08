@@ -17,16 +17,14 @@ an observed block device, no arbitrary first-device guess. Public account/system
 storage limits and source issues are preserved by the shared typed info module.
 
 Coordinator approved internal read-only System page for MoreInfo instead of the
-source's alacritty/btop launch. Repository is explicit-click only, using existing
-native apps.launch with FIXED literal `xdg-open https://github.com/malinoskj2/nix`.
-No dynamic command/URL/user content interpolation. URL remains selectable and
-native failure is shown; accepted apps.launch spawn-only behavior means request
-sent does not prove browser loaded. S supplies apps.launch permission and
-xdg-utils+existing setsid/shell PATH packaging. No browser is launched in tests.
+source's alacritty/btop launch. Repository URL is selectable text only: actual native apps.launch accepts installed
+catalog Exec strings, not an arbitrary fixed xdg-open URL command. Coordinator
+revised prior approval after Q-UI3 native-contract evidence. No launcher action,
+new helper/binding/backend or xdg-utils dependency is added for this link.
 Missing source build date remains unavailable rather than invented activation
 mtime as build date. CLI-idle popup requires Escape; native click grab accepted.
 
 CPU production fixtures tests/info/controllers.lua cover six facts, missing data,
-open-only reads, direct MoreInfo and refused handoff, exact literal link request
-and native refusal without launching. Pinned --check entry.plm passes. Native
+open-only reads, direct MoreInfo and refused handoff, selectable URL with no unsupported launch
+action. Pinned --check entry.plm passes. Native
 actual snapshot/input/visual evidence remains allocated integration work.

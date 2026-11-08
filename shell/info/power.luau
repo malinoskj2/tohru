@@ -20,15 +20,15 @@ return function(notify, low_setting)
         if previous < 0 or previous > 3 or previous ~= math.floor(previous) then previous = 0 end
         local thresholds = {low, .05, .02}
         if level < previous and fact.power_present and fact.power_known and not fact.power_charging and charge <= thresholds[previous] + .02 then level = previous end
-        if level == previous then return end
+        if level == previous then text.power_error = ""; return end
         local ok, result = pcall(notify, level, valid(charge) and charge or 0)
         if ok and result ~= false then fact.power_warning_level = level; text.power_error = ""
         else text.power_error = ok and "Power warning delivery unavailable" or tostring(result) end
     end
     sys.watch("battery", function(value)
         fact.power_present = value.present == true
-        fact.power_known = valid(value.percent)
-        fact.power_percent = fact.power_known and value.percent or 0
+        fact.power_known = type(value.percent) == "number" and value.percent == value.percent and value.percent >= 0 and value.percent <= 100
+        fact.power_percent = fact.power_known and value.percent / 100 or 0
         fact.power_charging = value.charging == true
         publish_warning()
     end)
