@@ -80,8 +80,10 @@ fn held_transition_preserves_pending_sleep_instead_of_treating_it_as_input() {
     let now = Instant::now();
     let cancellation = Cancellation::default();
     let mut input = Input::new(cancellation);
-    let mut config = Config::default();
-    config.fade = Duration::ZERO;
+    let config = Config {
+        fade: Duration::ZERO,
+        ..Config::default()
+    };
     let mut policy = Policy::new(config, false).unwrap();
     input.update(|state| state.held = Some(false));
     let arms = input.drain(&mut policy, now);
