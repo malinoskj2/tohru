@@ -72,6 +72,16 @@ def cleanup(processes, files, run, evidence, events):
     except Exception as error: errors.append('runtime cleanup: '+str(error))
     return errors
 
+def validate_pam_tools(mode, wtype, bwrap, modules):
+    if not mode: return
+    if not bwrap or not modules:
+        raise ValueError('controlled PAM requires explicit --bwrap and --pam-modules; no host fallback')
+    for name, path in [('wtype',wtype),('bwrap',bwrap)]:
+        if not path or not path.is_file() or not os.access(path,os.X_OK):
+            raise ValueError('controlled PAM requires explicit executable --'+name+' before startup')
+    if not modules.is_dir():
+        raise ValueError('controlled PAM requires existing private fixture module directory')
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--runtime', type=Path, required=True)
@@ -80,8 +90,8 @@ def main():
     p.add_argument('--bwrap', type=Path)
     p.add_argument('--pam-modules', type=Path)
     a = p.parse_args()
-    if a.pam_mode and (not a.bwrap or not a.pam_modules):
-        p.error('controlled PAM requires explicit --bwrap and --pam-modules; no host fallback')
+    try: validate_pam_tools(a.pam_mode,a.wtype,a.bwrap,a.pam_modules)
+    except ValueError as error: p.error(str(error))
     evidence = ROOT / '.tmp' / ('native-session-' + str(time.time_ns()))
     evidence.mkdir()
     run = ROOT / '.tmp' / ('l' + str(os.getpid()))
