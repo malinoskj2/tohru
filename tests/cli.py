@@ -25,6 +25,10 @@ class Cli(unittest.TestCase):
 
     def test_native_arguments(self):
         for args, expected in [
+            (("audio", "volume", "up"), ["--say", "tohru", "emit audio_step 1"]),
+            (("audio", "volume", "down"), ["--say", "tohru", "emit audio_step -1"]),
+            (("audio", "mute", "toggle"), ["--say", "tohru", "emit audio_mute"]),
+            (("audio", "status", "--json"), ["--say", "tohru", "get audio_status"]),
             (("status", "--json"), ["--say", "tohru", "get settings_status"]),
             (("config", "reload"), ["--say", "tohru", "emit config_reload"]),
             (("config", "set", "bar.mooncoil", "true"), ["--say", "tohru", "emit setting_mooncoil 1"]),
@@ -35,17 +39,21 @@ class Cli(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(json.loads(result.stdout), expected)
 
-    def test_output_is_literal_and_cannot_inject_commands(self):
+    def test_deprecated_output_is_rejected_without_execution(self):
         marker = self.path / "injected"
         value = f"$(touch {marker}) ; emit quit"
         result = self.invoke("config", "set", "bar.preferred_output", value)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout), ["--say", "tohru", f"text output_request {value}", "emit setting_output"])
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("deprecated", result.stderr)
         self.assertFalse(marker.exists())
         self.assertEqual(self.invoke("config", "set", "bar.preferred_output", "DP-1\nemit quit").returncode, 2)
 
     def test_grammar_and_dropped_features_fail(self):
         for args in [
+            ("audio",), ("audio", "volume", "up", "extra"),
+            ("audio", "volume", "louder"), ("audio", "mute", "on"),
+            ("audio", "status"), ("audio", "status", "--json", "extra"),
             ("status",), ("status", "--json", "extra"), ("config",),
             ("config", "reload", "extra"), ("config", "set", "bar.mooncoil", "yes"),
             ("config", "set", "unknown.key", "true"), ("assistant",),

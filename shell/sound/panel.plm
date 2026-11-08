@@ -1,0 +1,28 @@
+part SoundPanel {
+  body { color: #181825; glass: 100%; border: 1, #45475a
+   box { from: 0, 0; size: 300, 116; corner: 20 }
+  }
+  text "Sound" { at: 18, 26; anchor: left center; size: 15; weight: 600; color: #cdd6f4 }
+  text "{round(audio.volume * 100)}%" { at: 282, 26; anchor: right center; size: 11; color: #bac2de; show: audio.volume >= 0 and not audio.muted }
+  text "Muted" { at: 282, 26; anchor: right center; size: 11; color: #bac2de; show: audio.volume >= 0 and audio.muted }
+  text "Waiting for audio" { at: 282, 26; anchor: right center; size: 11; color: #bac2de; show: audio.volume < 0 }
+  box sound_mute_hit { from: 12, 48; size: 26, 26; corner: 13; color: #89dceb; opacity: 10%; cursor: pointer; active: sound_outputs.count > 0 }
+  box { from: 12, 48; size: 26, 26; corner: 13; stroke: if(sound_focus == 0, 1, 0); color: #89dceb }
+  image sound_speaker { at: 17, 53; size: 16, 16; tint: #89dceb; show: not audio.muted }
+  image sound_muted { at: 17, 53; size: 16, 16; tint: #89dceb; show: audio.muted }
+  let sound_level = if(sound_dragging, sound_requested, clamp(audio.volume, 0, 1))
+  box { from: 46, 59; size: 236, 4; corner: 2; color: #45475a }
+  box { from: 46, 59; size: 236 * sound_level, 4; corner: 2; color: #89dceb; opacity: if(audio.muted, 38%, 100%) }
+  ellipse { at: 46 + 236 * sound_level, 61; radius: 4; color: #89dceb; show: sound_outputs.count > 0 }
+  zone box sound_track { from: 46, 46; size: 236, 30; cursor: pointer; active: sound_outputs.count > 0 }
+  box { from: 44, 46; size: 240, 30; corner: 15; stroke: if(sound_focus == 1, 1, 0); color: #89dceb; opacity: 40% }
+  for output in sound_outputs {
+   text output.name { at: 18, 91; anchor: left center; size: 11; width: 264; lines: 1; color: #a6adc8; show: output.default }
+  }
+  text "No output reported" { at: 18, 91; anchor: left center; size: 11; color: #a6adc8; show: sound_outputs.count == 0 }
+  on press sound_mute_hit { sound_focus = 0; emit audio_mute }
+  on press sound_track { sound_focus = 1; sound_dragging = true; sound_requested = clamp(local.x / 236, 0, 1); emit audio_set(sound_requested) }
+  on drag sound_track { sound_requested = clamp(local.x / 236, 0, 1); emit audio_set(sound_requested) }
+  on release sound_track { sound_dragging = false; emit audio_flush }
+  on scroll sound_track { emit audio_step(wheel) }
+}
