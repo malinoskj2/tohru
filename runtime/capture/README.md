@@ -9,8 +9,9 @@ custom decoder, screenshot command wrapper or daemon is introduced. Full native 
   Copy runtime/capture/{mod,files,geometry}.rs and tests/capture/{files,geometry}.rs
   preserving paths during preparation. This domain uses existing thiserror/std;
   foundation dependencies and declared Rust1.85 MSRV remain unchanged.
-- Apply patches in this order: wallpaper/image-reset.patch, capture/native.patch,
-  capture/image-lifecycle.patch, then capture/output-events.patch and capture/layout-link.patch. Install native.rs as
+- Apply patches in this order: wallpaper/image-reset.patch, wallpaper/fit.patch,
+  capture/native.patch, capture/layout-link.patch, capture/image-lifecycle.patch,
+  then capture/output-events.patch. Install native.rs as
   `src/platform/tohru_capture/native.rs`, and clipboard_owner.rs alongside it.
   No root/common file is edited concurrently by W.
 - Add `tohru-capture-clipboard` as a bin in the **existing patched native runtime**,
@@ -66,7 +67,9 @@ Native capture images use immutable full-token identities rather than a live-fil
 version fallback. Native picture textures use the frozen frame's upright shape,
 including `image … = from text,0,0`; they are not rendered as a1×1 thumbnail or
 packed into the glyph atlas. This reuses native picture allocation/upload and
-native frame fitting, bounded by the card's maximum dimension. Explicit release
+native frame fitting, bounded by the card's maximum dimension. The cached picture
+keeps original upright frame dimensions in source_size when storage is reduced,
+so source-pixel fit geometry does not become the reduced texture extent. Explicit release
 removes capture cache references and pending picture uploads, drops native GPU
 picture ownership even with closed surfaces, and rejects released late worker
 or rebuild deliveries. Regular images and live-file numeric versions retain
@@ -115,3 +118,21 @@ output selection. Actual pixel/freeze still reject missing shared-memory/copy
 protocols before any protocol use; the16-combination capability matrix executes
 the real guard in CPU fixtures. No capture permission is broadened and no second
 Wayland connection implementation is added.
+
+## Complete source patch composition
+
+`python3 tests/capture/patch-stack.py --source PINNED_SOURCE --integration-ref S_COMMIT`
+reads the exact ordered patches from that immutable integration prepare.sh, inserts
+fit immediately after image-reset if that integration has not added it yet, and
+uses current W-owned patch files with every source/patch hash recorded. It copies
+at most64 target paths /32MiB to a new retained .tmp directory. For the existing
+local SDK with its initial shell/lock patches, add `--preapplied-shell-lock` to
+reverse those exact patches **in the private copy only** before applying the
+complete stack. No fetch, compiler, decoder or runtime is invoked. The original
+24cce12 lifecycle collision is replayed check-only and must fail; the updated
+complete stack must then pass. Each run keeps all source and command/status logs.
+
+The focused `native-source.py` fixture now applies fit before capture lifecycle
+and includes the source_size carrier and reduced frozen-frame metadata assertion.
+That fixture compiles Rust and is an allocated-check gate, not part of the
+source-only composition check. Its new assertions await execution.
