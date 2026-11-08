@@ -21,7 +21,7 @@ There is no production launcher/CLI/Nix integration in this slice.
 
 | Native name | Request | Observable status |
 | --- | --- | --- |
-| tohru-session | `emit menu_open`, `emit menu_close` | `open`, `confirming`, `remaining`, `status`, `error` |
+| tohru-session | `emit menu_open`, `emit menu_close`, `emit menu_toggle` | `open`, `confirming`, `remaining`, `status`, `error` |
 | tohru-session | `emit choose N` (1 lock, 2 sleep, 3 restart, 4 shutdown, 5 logout) | 3–5 open confirmation; `emit accept_choice` or `emit cancel_choice` |
 | tohru-lock | `emit lock_request`, `emit lock_and_suspend` | `engaged` is requested state; `lock.held` is native compositor acknowledgment; `acknowledged` is the rule's mirrored fact; `checking`, `status` |
 | tohru-polkit | Native authority drives prompt, `emit cancel_request` | Native `auth.ready/pending/asking/error`, `status` |
@@ -70,3 +70,12 @@ Presentation is an initial native scene implementation with glass; source-matche
 layout/motion, wallpaper treatment, font/assets, authentication transitions and
 matched screenshots remain unfinished. No visual parity, native-glass acceptance,
 physical-session safety or performance gate is claimed.
+
+`menu_toggle` closes an open menu and cancels any confirmation; opening resets
+selection and errors. The root owns its visible menu control: this feature scene
+has only a 1px transparent anchor surface, without a duplicate visible button.
+
+After coordinator GPU allocation, `tests/session/native.sh --runtime /absolute/pleamar`
+runs only private menu/lock protocol checks; it never calls PAM or a power action.
+The current suite deliberately demonstrates the unpatched IPC release gap and
+must be updated to assert denial when the authorized native patch lands.

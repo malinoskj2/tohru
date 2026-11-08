@@ -48,7 +48,9 @@ local function choose(index)
 end
 -- Reload cancels an unfinished confirmation; never resumes destructive intent.
 clear()
-on("menu_open", function() clear(); text.error = ""; fact.selected = 1; fact.open = true end)
+local function open() clear(); text.error = ""; fact.selected = 1; fact.open = true end
+on("menu_open", open)
+on("menu_toggle", function() if fact.open then close() else open() end end)
 on("menu_close", close)
 on("choose", choose)
 on("cancel_choice", clear)

@@ -1,6 +1,6 @@
 language 0.4
 scene TohruSession {
-    surface { size: 320, 38; anchor: top_left; keyboard: exclusive while open }
+    surface { size: 1, 1; anchor: top_left; keyboard: exclusive while open }
     permissions { services: "say:tohru-lock", "session.reboot", "session.poweroff", "session.logout" }
     fact open = false
     fact selected = 1
@@ -11,13 +11,11 @@ scene TohruSession {
     text error = ""
     text status = ""
     event menu_open ->
+    event menu_toggle ->
     event menu_close ->
     event choose ->
     event cancel_choice ->
     event accept_choice ->
-    box menu_button { at: 42, 18; size: 72, 28; corner: 9; color: #201a21; glass: 100%; cursor: pointer }
-    text "Session" { at: 42, 18; anchor: center; size: 13; color: #f5f5f5 }
-    on press menu_button { emit menu_open }
     popup menu { at: 8, 38; size: 304, 292; open: open
         box { from: 0, 0; size: 304, 292; corner: 16; color: #201a21; glass: 100% }
         text "NixOS" { at: 16, 20; anchor: left center; size: 13; color: #f5f5f5 }
