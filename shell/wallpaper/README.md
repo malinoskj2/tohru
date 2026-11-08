@@ -132,3 +132,17 @@ old installed native compiler. Source checkpoint awaits independent review and
 allocated native compiler/pixel validation; Lua tests are not native proof.
 S owns accepted fit schema/default/settings control and third-argument publication.
 See runtime/wallpaper/FIT-CAPABILITIES.md for exact changes and remaining gates.
+
+## Retained change deadlines (source module, root hook pending)
+
+`require("rotation")(rotate, notify, initial_change)` delegates the actual rotate
+operation to the root settings owner, uses native monotonic after/cancel timers,
+and returns configure(change)/stop(). Accepted values are
+never|hourly|daily|login, default never. Login schedules once after1s on initial
+construction; accepted settings updates reset hourly/daily deadlines and cancel
+initial login without scheduling a new login deadline, matching retained source.
+Call configure only on accepted config updates, not occupancy/lock observations;
+stop before owner teardown. At most one deadline exists, stale/reentrant callbacks
+cannot revive it, and errors retry at the next configured interval. Root action,
+primary output selection, typed setting and preset fallback are not installed by
+this module; see runtime/wallpaper/RETAINED-COVERAGE.md for the exact open hooks.
