@@ -127,6 +127,9 @@ pub fn plan(region: Rect, outputs: &[Layout]) -> Result<Plan, Error> {
             }
         }
     }
+    if scale.0 == 0 {
+        return Err(Error::Outside);
+    }
     let pixels = (
         edge(region.width, scale.0, scale.1, true)?,
         edge(region.height, scale.0, scale.1, true)?,
