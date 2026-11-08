@@ -16,7 +16,7 @@ hyprlandPlugins.mkHyprlandPlugin {
   doCheck = true;
   checkPhase = ''
     runHook preCheck
-    make check-abi check-focus
+    make check-abi check-focus check-sheet
     runHook postCheck
   '';
   installPhase = ''

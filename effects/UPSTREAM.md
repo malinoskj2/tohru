@@ -22,7 +22,10 @@ through both focus animation legs and restoring them before releasing client
 sizing on unload. Only owned end callbacks are removed; foreign replacements and
 unaffected windows are preserved. Mapped tiled windows use current layout targets,
 while floating/fullscreen and unmapped clients restore saved geometry. Selected
-modes, target values, curves and speeds remain unchanged. Component symbols,
+modes, target values, curves and speeds remain unchanged. `sheet.cpp` fixes
+accepted Q-E-2 by preserving the parent's prior optional noFocus set-property
+slot, including explicit false, and restoring it through existing show/cleanup
+paths while preserving observable external false/unset writes. Component symbols,
 internal diagnostics and the special `j2bar:maximize` config token are retained
 for easy algorithm/settings comparison. They do not depend on j2bar's process.
 The new main.cpp combines only the four selected components, checks the private
@@ -62,3 +65,22 @@ CWindowFadeout::create (sheet close snapshot), transformer/render-pass behavior,
 window decoration/rules and animation state. Successful compilation does not
 prove hook installation, rendering parity or unload safety. Review and private
 compositor validation are required before widening this pin.
+
+## Cleanup ownership limits of the pinned API
+
+The animation API has no end-callback getter or owner/generation handle. Focus
+tracks the lifetime of a token captured by each installed end callback, including
+its outward leg, so teardown clears only callbacks it still owns. Pre-existing
+callback takeover on the variables being animated remains the original effect's
+behavior; unrelated windows and later replacement callbacks are not cleared.
+Restoration warps suppress end callbacks so a foreign replacement is preserved
+without being invoked during unload. Real callbacks/layout/damage behavior still
+needs the private-compositor checks.
+
+COverridableVar exposes optional priority values but has no write generation or
+owner. Sheet cleanup can observe another writer's false or unset and preserves
+those writes. An external write of true (or false/unset followed by true) is
+indistinguishable from the sheet's true: cleanup restores the saved slot in that
+case. This is a target-API limitation; no private slot access, interception of
+other setters or new protocol was added. A destroyed parent needs no restoration;
+all surviving-parent sheet removal paths continue through showParent.

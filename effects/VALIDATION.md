@@ -10,6 +10,13 @@
 - `make check-abi` uses the real candidate version macros and the actual
   private ABI helper with a fake host-hash boundary; exact matching passes and
   wrong source/dependency hashes fail. Nix runs this as its package check phase.
+- Focus restoration checks execute the production restoration helper across
+  inward/outward, slide/shrink/combined/flash, floating/tiled, mapped/unmapped,
+  changed tiled targets and foreign callback replacement, asserting restoration
+  before releasing client sizing. Sheet checks execute the production override
+  helper across original absent/false/true values, lower policy, repeated
+  cleanup/reuse and observable external false/unset writes. These controlled
+  state checks are not real compositor callback/layout/damage evidence.
 - Lua example syntax passes `luac -p` (does not establish compositor semantics).
 - Packaging expressions parsed with `nix-instantiate --parse`; standalone
   flake resolves offline at the recorded nixpkgs pin. Nix package derivation
@@ -47,13 +54,20 @@ all media under the active tree's `.tmp/` and report absolute host paths.
 2. Focus keyboard/mouse repeatedly, including interrupted dips, new-window
    mapping, floating/fullscreen, chooser exclusions and invalid class patterns.
    Confirm render-only shrink sends no smaller client configure and returns to
-   exact layout without extra settled frames.
+   exact layout without extra settled frames. Unload during both legs of
+   each focus mode, including flash alone/combined, with mapped and unmapped
+   windows; inspect restored current values/goals/config and the first client
+   configure after releasing shrink. Unrelated/replacement callbacks must survive.
 3. Show titlebars only on configured applications; double-click toggles
    maximized state while retaining client fullscreen semantics. Verify transformed
    nested-pass drawing, hidden/grouped windows and fresh config reload.
 4. Open/close/cancel/kill GTK portal choosers with and without resolvable parents,
    move either window between workspaces/outputs and destroy parent/chooser.
    Confirm parent restoration, close snapshots, damage and resize behavior.
+   Exercise prior noFocus set-property absent/false/true with lower no-focus
+   policy, observable external false/unset writes while hidden, normal close,
+   workspace changes, parent/chooser destruction and plugin unload. Same-value
+   external true writes remain unobservable in the pinned API (UPSTREAM.md).
 5. Map the verified optional launcher layer on each output, rapidly toggle,
    destroy the launcher client and remove outputs. Multiple matching layers on
    one output must restore only after the last closes. Other outputs remain
