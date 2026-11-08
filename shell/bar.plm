@@ -3,6 +3,7 @@ scene Tohru {
  permissions { services: "window", "apps", "media", "clock" }
  include "bar/state.plm"
  include "calendar/state.plm"
+ include "settings/state.plm"
  include "sound/declarations.plm"
  fact mooncoil = false
  fact corners = true
@@ -24,4 +25,9 @@ scene Tohru {
   include "sound/panel.plm"
  }
  include "calendar/popup.plm"
+ surface settings {
+  kind: window; title: "Tohru Settings"; app_id: "dev.tohru.Settings"
+  size: 800, 560; open: settings_open; keyboard: exclusive
+ }
+ include "settings/window.plm"
 }

@@ -185,6 +185,10 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
             "calendar/controller",
             include_str!("../../shell/calendar/controller.luau"),
         ),
+        (
+            "settings/controller",
+            include_str!("../../shell/settings/controller.luau"),
+        ),
     ] {
         modules
             .set(name, lua.load(source).eval::<mlua::Function>().unwrap())

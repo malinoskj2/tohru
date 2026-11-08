@@ -1,4 +1,5 @@
 -- Settings ownership is in Rust, outside this reloadable VM.
+local refresh_settings
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
@@ -6,6 +7,7 @@ local function publish(settings)
     settings["bar.preferred_output"].deprecated = true
     settings["bar.preferred_output"].effective = false
     text.settings_status = json.encode({schema = 1, settings = settings})
+    if refresh_settings then refresh_settings(settings) end
 end
 local function change(operation)
     local ok, result, warning = pcall(operation)
@@ -37,3 +39,9 @@ on("calendar_open", sound.close)
 on("sound_toggle", calendar.close)
 on("sound_open_request", calendar.close)
 on("panel_close", calendar.close)
+
+refresh_settings = require("settings/controller")(function(settings, warning)
+    text.settings_error = warning or ""
+    publish(settings)
+end)
+on("settings_open_request", function() sound.close(); calendar.close() end)

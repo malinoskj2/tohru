@@ -25,6 +25,8 @@ class Cli(unittest.TestCase):
 
     def test_native_arguments(self):
         for args, expected in [
+            (("settings", "open"), ["--say", "tohru", "emit settings_open_request"]),
+            (("settings", "close"), ["--say", "tohru", "emit settings_close"]),
             (("panel", "open", "sound"), ["--say", "tohru", "emit sound_open_request"]),
             (("panel", "toggle", "sound"), ["--say", "tohru", "emit sound_toggle"]),
             (("panel", "open", "calendar"), ["--say", "tohru", "emit calendar_open"]),
@@ -56,6 +58,7 @@ class Cli(unittest.TestCase):
 
     def test_grammar_and_dropped_features_fail(self):
         for args in [
+            ("settings",), ("settings", "toggle"), ("settings", "open", "extra"),
             ("audio",), ("audio", "volume", "up", "extra"),
             ("audio", "volume", "louder"), ("audio", "mute", "on"),
             ("audio", "status"), ("audio", "status", "--json", "extra"),
