@@ -8,6 +8,7 @@ let
     fileset = lib.fileset.unions [ ../Cargo.toml ../Cargo.lock ../src ../runtime/settings_luau.rs ../runtime/workspace_luau.rs
       ../runtime/workspace/mod.rs ../runtime/workspace/workspace_motion.rs ../runtime/workspace/workspace_track.rs
       ../runtime/wallpaper/mod.rs ../runtime/wallpaper/probe.rs ../runtime/wallpaper/native.rs
+      ../runtime/window/visibility.rs
       ../runtime/capture ../tests/wallpaper/catalog.rs ../tests/capture
       ../runtime/idle ../tests/session/idle.rs ../LICENSE ];
   };
@@ -31,7 +32,8 @@ let
     cargoLock.lockFile = ../runtime/Cargo.lock;
     patches = [ ../runtime/patches/0001-shell-settings.patch ../runtime/patches/0002-lock-boundary.patch
       ../runtime/workspace/shader-inputs.patch ../runtime/patches/0004-workspace-binding.patch
-      ../runtime/wallpaper/catalog.patch ../runtime/wallpaper/image-reset.patch ../runtime/patches/0005-wallpaper-module.patch ];
+      ../runtime/wallpaper/catalog.patch ../runtime/wallpaper/image-reset.patch ../runtime/patches/0005-wallpaper-module.patch
+      ../runtime/patches/0003-window-lifecycle.patch ];
     postPatch = ''
       mkdir foundation
       cp ${foundationSource}/Cargo.toml foundation/
@@ -49,6 +51,7 @@ let
       cp ${foundationSource}/runtime/settings_luau.rs src/tohru_settings.rs
       cp ${foundationSource}/runtime/workspace_luau.rs src/tohru_workspace.rs
       cp ${foundationSource}/runtime/wallpaper/native.rs src/tohru_wallpaper.rs
+      cp ${foundationSource}/runtime/window/visibility.rs src/tohru_window.rs
       mkdir -p src/tohru_lock tests/session
       cp ${lockSource}/runtime/lock/native.rs src/tohru_lock.rs
       cp ${lockSource}/runtime/lock/authority.rs src/tohru_lock/authority.rs

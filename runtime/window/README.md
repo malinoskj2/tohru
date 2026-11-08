@@ -2,9 +2,10 @@
 
 Authorized native Settings gap fix, separate from0002 native lock security.
 `0003-window-lifecycle.patch` is based on pinned upstream +0001 settings +current
-0002 including L90234c6/1c1a5a2 ownership and5cd249b per-face liveness fixes.
-It is not yet in shared prepare/Nix patch lists and is
-not compiled, GPU-tested or accepted. No new package/dependency/helper or owner.
+0002 including L32600b8 publication ordering, per-face liveness and owning leases.
+The composed patch follows workspace/catalog/image patches in shared prepare/Nix;
+its guard-overlap source delta is awaiting review. It is not yet natively compiled,
+GPU-tested or accepted. No new package/dependency/helper or owner.
 
 Proposed implementation:
 - Only ordinary `kind: window` with `open:` participates. Unconditional windows,
@@ -38,6 +39,12 @@ Proposed implementation:
   Queued old Frame/Commit/Run cannot publish after tombstoning. Reopen waits for
   both GPU acknowledgement and counted frame-worker completion, in either order.
   A worker releases its native owning clone before notifying the event loop.
+- NL3 composition preserves existing lock_publication on native Frame/Commit/Run,
+  direct commits and fallback WGPU present. The conditional gate surrounds it;
+  the concrete constructors set conditional leases only on ordinary conditional
+  windows and lock leases only on native lock faces. Both native guards cannot
+  be active on one constructed object. Pending fallback frame/texture destruction
+  remains outside either guard, and GPU fence waits stay outside both.
 
 Companion: copy `visibility.rs` to upstream `src/tohru_window.rs` after applying
 0003. Pure intent regressions (`rustc --edition2024 --test -Dwarnings`) cover

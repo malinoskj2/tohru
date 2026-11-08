@@ -41,6 +41,9 @@ def main():
     assert "window.life.retire();" in wayland
     assert "window.life.gpu_released();" in wayland
     assert "!window.life.ready()" in wayland
+    assert "conditional_commit(conditional_window, || lock_publication(lock_face.as_ref()," in wayland
+    assert "conditional_commit(self.conditional_window.as_ref(), || lock_publication(self.lock_face.as_ref()," in wayland
+    assert "drop(pending);\n        drop(keep_texture);" in wayland
     assert wayland.index("MOVABLE_LAYERS.set(") < wayland.index("send(ToRender::WindowsReady)")
     assert "ToRender::WindowsReady => { windows_ready = true; }" in render
     assert "mem::forget(window)" not in wayland, "ordinary owners must retire rather than accumulate"
