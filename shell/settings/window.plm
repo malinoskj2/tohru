@@ -24,8 +24,7 @@ part SettingsWindow {
   for setting in settings_rows {
    group {
     size: 556, 58
-    box hit { from: 0, 0; size: 556, 58; corner: 10; color: #313244; cursor: pointer; active: setting.editable }
-    box { from: 0, 0; size: 556, 58; corner: 10; stroke: if(setting.index == settings_selected and not settings_sidebar, 1, 0); color: #b4befe }
+    box hit { from: 0, 0; size: 556, 58; corner: 10; color: if(setting.index == settings_selected and not settings_sidebar, #3b3d53, #313244); cursor: pointer; active: setting.editable }
     text setting.title { at: 12, 17; anchor: left center; size: 13; color: #cdd6f4 }
     text setting.detail { at: 12, 39; anchor: left center; size: 11; width: 488; lines: 1; color: #a6adc8 }
     box { from: 508, 13; size: 32, 18; corner: 9; color: if(setting.value, #b4befe, #45475a); show: setting.editable and not setting.choice }
