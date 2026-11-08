@@ -1,0 +1,58 @@
+part NetworkPopup {
+    popup network {
+        at: screen.width - 500, 36
+        size: 390, 490
+        open: net_open
+        body { color: #181825; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 25%
+            box { from: 0, 0; size: 390, 490; corner: 22 }
+        }
+        text "Network" { at: 20, 27; size: 17; weight: 600; color: #cdd6f4 }
+        text "{net.name}" { at: 20, 56; width: 340; size: 13; color: #a6adc8; show: net.online }
+        text "Offline" { at: 20, 56; size: 13; color: #a6adc8; show: not net.online }
+        box net_power { from: 20, 76; size: 170, 30; corner: 8; color: #cdd6f4; opacity: 8%; cursor: pointer }
+        text "Wi-Fi On" { at: 105, 91; anchor: center; size: 13; color: #a6e3a1; show: net.wifi }
+        text "Wi-Fi Off" { at: 105, 91; anchor: center; size: 13; color: #cdd6f4; show: not net.wifi }
+        box net_scan { from: 200, 76; size: 170, 30; corner: 8; color: #cdd6f4; opacity: 8%; cursor: pointer }
+        text "Scan" { at: 285, 91; anchor: center; size: 13; color: #cdd6f4 }
+        on press net_power { emit network_power }
+        on press net_scan { emit network_scan }
+        for n in net_rows {
+            zone box net_row.$n.index { from: 16, 118 + (n.index - floor(n.index / 7) * 7) * 34; size: 358, 32; active: floor(n.index / 7) == net_page and not net_joining; cursor: pointer; label: "{n.ssid}" }
+            box { from: 18, 118 + (n.index - floor(n.index / 7) * 7) * 34; size: 354, 32; corner: 8; color: #cdd6f4; opacity: 8%; show: n.index == net_selected and floor(n.index / 7) == net_page and not net_joining }
+            text "•" { at: 282, 134 + (n.index - floor(n.index / 7) * 7) * 34; anchor: center; size: 13; color: #a6adc8; show: n.secure and floor(n.index / 7) == net_page and not net_joining }
+            text n.ssid { at: 24, 134 + (n.index - floor(n.index / 7) * 7) * 34; width: 260; anchor: left center; size: 13; color: if(n.active, #a6e3a1, #cdd6f4); show: floor(n.index / 7) == net_page and not net_joining }
+            text "{round(n.strength)}%" { at: 365, 134 + (n.index - floor(n.index / 7) * 7) * 34; anchor: right center; size: 11; color: #a6adc8; show: floor(n.index / 7) == net_page and not net_joining }
+            on press net_row.$n.index { emit network_select(n.index) }
+        }
+        text "No Wi-Fi networks reported" { at: 24, 140; size: 13; color: #a6adc8; show: net_rows.count == 0 and not net_joining }
+        text "Join {net_target}" { at: 24, 140; width: 340; size: 13; color: #cdd6f4; show: net_joining }
+        input net_password { at: 24, 172; width: 340; size: 14; color: #cdd6f4; placeholder: "Password"; secret: true; agent: no; show: net_joining; label: "Wi-Fi password" }
+        box net_join { from: 24, 210; size: 160, 32; corner: 8; color: #a6e3a1; opacity: 15%; show: net_joining; cursor: pointer }
+        text "Join" { at: 104, 226; anchor: center; size: 13; color: #cdd6f4; show: net_joining }
+        box net_cancel { from: 198, 210; size: 160, 32; corner: 8; color: #cdd6f4; opacity: 8%; show: net_joining; cursor: pointer }
+        text "Cancel" { at: 278, 226; anchor: center; size: 13; color: #cdd6f4; show: net_joining }
+        on press net_join { emit network_join }
+        on press net_cancel { emit network_cancel }
+        on change net_joining while net_joining { focus net_password }
+        zone box net_prev { from: 20, 360; size: 80, 28; active: net_page > 0; cursor: pointer }
+        zone box net_next { from: 290, 360; size: 80, 28; active: (net_page + 1) * 7 < net_rows.count; cursor: pointer }
+        text "Previous" { at: 24, 376; size: 12; color: #a6adc8; show: net_page > 0 }
+        text "Next" { at: 360, 376; anchor: right center; size: 12; color: #a6adc8; show: (net_page + 1) * 7 < net_rows.count }
+        on press net_prev { emit network_page(-1) }
+        on press net_next { emit network_page(1) }
+        text net_target { at: 20, 405; width: 210; size: 12; color: #a6adc8 }
+        zone box net_disconnect { from: 220, 390; size: 90, 28; active: net_target_active; cursor: pointer }
+        zone box net_forget { from: 310, 390; size: 60, 28; active: net_target_known; cursor: pointer }
+        text "Disconnect" { at: 220, 405; size: 12; color: #cdd6f4; show: net_target_active }
+        text "Forget" { at: 365, 405; anchor: right center; size: 12; color: #f38ba8; show: net_target_known }
+        on press net_disconnect { emit network_disconnect }
+        on press net_forget { emit network_forget }
+        text net_request { at: 20, 438; width: 350; size: 11; color: #a6adc8 }
+        text net.error { at: 20, 463; width: 350; size: 11; color: #f38ba8 }
+    }
+    on key Down while net_open and not net_joining { emit network_move(1) }
+    on key Up while net_open and not net_joining { emit network_move(-1) }
+    on key Return while net_open and not net_joining { emit network_activate }
+    on key Escape { net_open = false }
+    on blur { net_open = false }
+}

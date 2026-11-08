@@ -1,0 +1,26 @@
+part BluetoothState {
+    fact bt_open = false
+    fact bt_has_target = false
+    fact bt_page = 0
+    fact bt_selected = -1
+    text bt_target = ""
+    text bt_target_name = ""
+    text bt_request = ""
+    text bt_answer = ""
+    model bt_devices max 24 { name: text; address: text; paired: bool; connected: bool; battery: number = -1; icon: image 24, 24 }
+    service bluetooth as bt { present: bool; powered: bool; discovering: bool; devices: bt_devices; pairing: none | pin | passkey | confirm | display | authorize; pairing_id: number; pairing_address: text; pairing_name: text; pairing_code: text }
+    event bluetooth_open ->
+    event bluetooth_close ->
+    event bluetooth_toggle ->
+    event bluetooth_select ->
+    event bluetooth_activate ->
+    event bluetooth_connect ->
+    event bluetooth_forget ->
+    event bluetooth_power ->
+    event bluetooth_scan ->
+    event bluetooth_answer ->
+    event bluetooth_cancel ->
+    event bluetooth_question ->
+    event bluetooth_page ->
+    event bluetooth_move ->
+}

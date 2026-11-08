@@ -1,0 +1,9 @@
+scene TohruBluetooth {
+    surface { size: full, 31; anchor: top; screens: all; keyboard: exclusive while bt_open }
+    permissions { services: "bluetooth.*" }
+    include "state.plm"
+    zone box bluetooth_button { from: screen.width - 150, 0; size: 120, 31; cursor: pointer }
+    text "Bluetooth" { at: screen.width - 90, 16; anchor: center; size: 13; color: #cdd6f4 }
+    on press bluetooth_button { emit bluetooth_toggle }
+    include "popup.plm"
+}
