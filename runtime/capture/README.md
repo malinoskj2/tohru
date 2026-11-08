@@ -1,8 +1,7 @@
 # Frozen region capture boundary
 
 This extends the pinned native capture connection/cache. No second capture,
-custom decoder, screenshot command wrapper or daemon is introduced. UI wiring,
-full native compilation and private protocol/GPU validation remain gates.
+custom decoder, screenshot command wrapper or daemon is introduced. Full native compilation and private protocol/GPU validation remain gates.
 
 ## Shared installation hooks (S owns assembly)
 
@@ -29,9 +28,15 @@ full native compilation and private protocol/GPU validation remain gates.
 ## Query contract
 
 - `sys.ask("capture.outputs")` → ready output records: name,x,y,width,height in
-  global logical units, native scale and output transform. Refreshes the existing
+  global logical units, native scale and output transform; routable reports whether
+  the literal output name can be represented by the native screens selector. Refreshes the existing
   capture link, no compositor-specific polling/backend. Incomplete metadata fails
   honestly; maximum32 outputs.
+- `sys.ask("capture.destination", directory, filename_pattern)` computes an absolute
+  PNG path without creating it. Empty directory follows source XDG_PICTURES_DIR,
+  bounded64KiB user-dirs.dirs, ~/Pictures, /tmp preference; leading ~/$HOME
+  expands without shell execution. Empty pattern uses screenshot_%Y%m%d_%H%M%S.
+  Invalid chrono patterns, separators, traversal and oversized names fail.
 - Existing `capture.freeze(output_name)` → immutable versioned token. Stored
   record keeps upright pixels and freeze-time logical rectangle/mode/transform.
   Layout changes during freeze fail. Buffers are checked before shared-memory
@@ -46,8 +51,8 @@ full native compilation and private protocol/GPU validation remain gates.
 - Result reports `saved`, actual `path`, `durable`, `copied`, `save_error`,
   `clipboard_error`, `width`, `height`. Saving and copying are independent;
   partial success is explicit, never inferred from spawn. Current path contract
-  refuses overwrite of files/symlinks; final filename-pattern/numbering UI
-  integration remains to be delivered. Directory sync failure reports committed
+  refuses overwrite of files/symlinks; collisions try1..999 before -region.png,
+  reusing one complete private temporary PNG rather than repeating image writes. Directory sync failure reports committed
   save with durability warning rather than a false rollback.
 - `sys.ask("capture.release", token)` removes only that version's map ownership.
   Missing tokens are idempotent; a superseded token reports released=false,
@@ -94,7 +99,7 @@ clipboard manager/interoperability and codec/frame pacing remain measured gates.
 python3 tests/capture/check_cpu.py --source /absolute/pinned/runtime/source
 ```
 
-Runs15 actual domain/export/child-owner tests, builds and checks the actual helper,
+Runs19 actual domain/export/child-owner tests, builds and checks the actual helper,
 rejects invalid PNG/arguments before any Wayland operation, and checks2 actual
 native permission methods plus4 actual patched cache/reference methods. Native
 protocol types in the harness are explicit fixtures: with_link always fails
