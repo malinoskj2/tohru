@@ -24,3 +24,12 @@ status and native-capable actions; accepted native panel glass approximation.
 Checks: lua tests/network/controller.lua; pinned pleamar --check entry.plm.
 Private native system-bus fixtures/capture remain pending coordinator allocation;
 no host NetworkManager operation is part of development verification.
+
+Root measured popup anchor: follow the instant native property `net_button_x`
+with the bar button center in screen-local logical pixels. Its default `-1`
+selects `screen.width - 305` (native prop initializers require a numeric literal).
+Any nonnegative value, including zero, is an explicit root allocation. The390px
+panel opens at `clamp(button_x - 195, 8, max(8, screen.width - 398)), 36`;
+negative fallback preserves the prior default position away from output edges,
+and narrow outputs clamp to x8. Root owns the measured center/follow rule; no
+controller, timer or shared layout manager is involved.
