@@ -22,7 +22,8 @@ Nix builds the helper from foundation/Cargo.toml into the shared target director
 and installs it in the native runtime output. Local native builds must also build
 `--manifest-path PREPARED/foundation/Cargo.toml --bin tohru-wallpaper-probe
 --release --locked --jobs 1 --target-dir PREPARED/target` before catalog calls.
-The catalog requires explicit `wallpaper.catalog` scene permission; accepting an
+The catalog query `wallpaper.catalog` requires base service `wallpaper` in scene
+permissions (native sys.ask checks the base before the dot); accepting an
 assignment does not prove image decoding/presentation. Capture's bounded geometry
 and file-publication domain is included; native capture adapters/helpers remain
 separate source deliveries and are not advertised by this inclusion.
