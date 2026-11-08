@@ -76,7 +76,7 @@ on("fixture_about", function() network.close(); bluetooth.close(); info.close();
     app=start([runtime,'--scene',str(entry),'--answer-as','features','--no-hud','--stall','0'],'features',{'TOHRU_SHELL':'1','WAYLAND_DEBUG':'1'})
     wait_for(lambda:say('features','get net_rows.count')=='3','real native network catalog')
     expect('features','bt.present','true');expect('features','bt_devices.count','1')
-    wait_for(lambda:'NVIDIA GeForce RTX 5090' in (evidence/'features.log').read_text(),'app hardware adapter')
+    wait_for(lambda:'render · NVIDIA GeForce RTX 5090 (Vulkan)' in (evidence/'features.log').read_text(),'app hardware adapter')
     fixture_records=evidence/'service-record.json'
 
     def record():return json.loads(fixture_records.read_text())
