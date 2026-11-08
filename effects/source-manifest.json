@@ -1,0 +1,20 @@
+{
+  "source_repository": "/home/jesse/projects/j2bar",
+  "source_commit": "3a8daa5e077f4085b5262041ea4832373b8754ca",
+  "files_sha256": {
+    "Abi.hpp": "27342837b9e5ff15dd0eaf4378c37d39d739bd007f49ffe9f0e42025cd523f0d",
+    "LogicalFramebuffer.hpp": "b3895d8903f279f817f47129bd780f573ffd159af9c277d16d0f63cbc7074c9a",
+    "sheet.cpp": "7372775accb9377a49cea5279a6b215118ed22502cc7ae98248f29c914d370cf",
+    "recede.cpp": "375c0a6a634998c9c0b99eb131ad11f0f06903cba002519f54a4160e1ed57568",
+    "focus/globals.hpp": "9ab27d4ed121e9aaa21bd1488fb0868318c04c5881a9faa87f4c71ad7195b393",
+    "focus/main.cpp": "774d33b639871b2665e7a53aa028e3aefcb8509ba60d79682775dd7184819af3",
+    "bars/BarPassElement.cpp": "0e607597b130ec8277fb301b2b97b0fcde977a64e2163b53024907e4b4476fe7",
+    "bars/BarPassElement.hpp": "9a460848366edc61c55500f5577180d10f383b65022b3952648efe3b4e7208f8",
+    "bars/barDeco.cpp": "ef4607cf2e0af90e98fd918a4d303d63401f83f229025b82ad92aedc1f0d9546",
+    "bars/barDeco.hpp": "9e2c3e6829eeb6b24be69456ed97ea1fef99e4d45477cbb518ae925b07a3207f",
+    "bars/globals.hpp": "5519fbcb023a5463a0e3983f0fd3f823fd426e7d7fa0ba323adb8531e248f012",
+    "bars/main.cpp": "5820e3cb8f34b91326740564bf2e12544a1e3d000bdad266105eec159f8bfab6",
+    "LICENSE": "3d6d4f03b1bfe2d251202416dad893b2d3dd1c2d620980182b1d4d0b452c8741",
+    "UPSTREAM-LICENSE": "3a1d080d85ce1d722b3bd84d87b74dd2332ba7b68a40a28a7126a86cfca6502a"
+  }
+}
