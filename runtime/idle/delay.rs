@@ -39,6 +39,12 @@ impl<T> Delay<T> {
         self.sleeping = false;
     }
 
+    /// Orderly owner teardown closes its own delay without unlocking anything.
+    pub fn close(&mut self) {
+        self.sleeping = false;
+        self.inhibitor.take();
+    }
+
     #[must_use]
     pub const fn protected(&self) -> bool {
         self.inhibitor.is_some()

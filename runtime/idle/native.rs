@@ -21,23 +21,142 @@ use std::sync::{
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use tohru_shell::idle::input::Cancellation;
+use tohru_shell::idle::teardown::{self, Failure, Stage};
 use tohru_shell::idle::{Config, Timeouts};
 
 static GUARD: OnceLock<Mutex<Option<sleep_guard::Guard>>> = OnceLock::new();
 static OWNER: OnceLock<Mutex<Option<Owner>>> = OnceLock::new();
+static SHUTDOWN: Mutex<()> = Mutex::new(());
+static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 
 struct Owner {
     logind: Option<logind::Watch>,
     service: Option<screensaver::Service>,
     observer: Option<Arc<Observer>>,
-    _worker: Worker,
+    _worker: Option<Worker>,
+}
+
+impl Owner {
+    fn close_stage(&mut self, stage: Stage) -> Result<()> {
+        match stage {
+            Stage::CancelRequests => {
+                if let Some(worker) = &self._worker {
+                    worker.request_stop();
+                }
+                if let Some(observer) = &self.observer {
+                    observer.request_stop();
+                }
+            }
+            Stage::Logind => {
+                if let Some(mut watch) = self.logind.take() {
+                    watch.stop()?;
+                }
+            }
+            Stage::ScreenSaver => {
+                if let Some(mut service) = self.service.take() {
+                    service.stop()?;
+                }
+            }
+            Stage::Observer => {
+                if let Some(observer) = self.observer.take() {
+                    // Join the actual thread even if a closing bus callback
+                    // briefly retains an Arc to the observation mailbox.
+                    observer.stop()?;
+                }
+            }
+            Stage::Actions => {
+                if let Some(mut worker) = self._worker.take() {
+                    worker.stop()?;
+                }
+            }
+            Stage::Guard => {}
+        }
+        Ok(())
+    }
 }
 
 impl Drop for Owner {
     fn drop(&mut self) {
-        self.logind.take();
-        self.service.take();
-        self.observer.take();
+        for failure in teardown::run(|stage| self.close_stage(stage)) {
+            eprintln!("idle · cleanup {failure}");
+        }
+    }
+}
+
+fn close_owned(ordinary: bool, locker: bool) -> Vec<Failure> {
+    let mut failures = Vec::new();
+    let mut owner = if ordinary {
+        OWNER
+            .get()
+            .and_then(|slot| teardown::take_owned(slot, Stage::CancelRequests, &mut failures))
+    } else {
+        None
+    };
+    // Cancel this process's work before waiting on the independent guard slot.
+    if let Some(owner) = owner.as_mut() {
+        if let Err(error) = owner.close_stage(Stage::CancelRequests) {
+            failures.push(Failure {
+                stage: Stage::CancelRequests,
+                detail: format!("{error:#}"),
+            });
+        }
+    }
+    let mut guard = if locker {
+        GUARD
+            .get()
+            .and_then(|slot| teardown::take_owned(slot, Stage::Guard, &mut failures))
+    } else {
+        None
+    };
+    failures.extend(teardown::run(|stage| -> Result<()> {
+        if stage == Stage::Guard {
+            if let Some(mut guard) = guard.take() {
+                guard.stop()?;
+            }
+        } else if let Some(owner) = owner.as_mut() {
+            owner.close_stage(stage)?;
+        }
+        Ok(())
+    }));
+    failures
+}
+
+/// Orderly process teardown. This takes only this process's registered owners;
+/// it never sends a scene command, changes native lock authority or powers down.
+pub(crate) fn shutdown() {
+    let _serial = match SHUTDOWN.lock() {
+        Ok(serial) => serial,
+        Err(poisoned) => {
+            eprintln!("idle · shutdown serial mutex poisoned; recovered");
+            poisoned.into_inner()
+        }
+    };
+    if SHUTTING_DOWN.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    for failure in close_owned(true, true) {
+        eprintln!("idle · shutdown {failure}");
+    }
+}
+
+fn can_start() -> mlua::Result<()> {
+    if SHUTTING_DOWN.load(Ordering::Acquire) {
+        return Err(mlua::Error::runtime("idle process is shutting down"));
+    }
+    Ok(())
+}
+
+fn stopped(failures: Vec<Failure>) -> mlua::Result<()> {
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(mlua::Error::runtime(
+            failures
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; "),
+        ))
     }
 }
 
@@ -57,6 +176,7 @@ struct Worker {
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
     sender: SyncSender<Task>,
+    cancellation: Cancellation,
 }
 
 struct NativeSink {
@@ -117,12 +237,15 @@ impl Worker {
             .name("tohru-idle-actions".into())
             .spawn(move || {
                 while let Ok(task) = receiver.recv() {
-                    if worker_stop.load(Ordering::Acquire) {
-                        break;
-                    }
-                    if !matches!(task.request, Request::State)
-                        && !worker_generation.current(task.generation)
-                    {
+                    if !teardown::dispatch_allowed(
+                        &worker_stop,
+                        &worker_generation,
+                        task.generation,
+                        matches!(task.request, Request::State),
+                    ) {
+                        if worker_stop.load(Ordering::Acquire) {
+                            break;
+                        }
                         continue;
                     }
                     let event = match task.request {
@@ -142,29 +265,44 @@ impl Worker {
         let sink = Arc::new(NativeSink {
             render,
             sender: sender.clone(),
-            generation,
+            generation: generation.clone(),
         });
         Ok((
             Self {
                 stop,
                 thread: Some(thread),
                 sender,
+                cancellation: generation,
             },
             sink,
         ))
     }
 }
 
+impl Worker {
+    fn request_stop(&self) {
+        teardown::request_stop(&self.stop, &self.cancellation, || {
+            let _ = self.sender.try_send(Task {
+                generation: 0,
+                request: Request::State,
+            });
+        });
+    }
+
+    fn stop(&mut self) -> Result<()> {
+        self.request_stop();
+        if let Some(thread) = self.thread.take() {
+            thread
+                .join()
+                .map_err(|_| anyhow::anyhow!("idle action dispatcher panicked"))?;
+        }
+        Ok(())
+    }
+}
+
 impl Drop for Worker {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Release);
-        let _ = self.sender.try_send(Task {
-            generation: 0,
-            request: Request::State,
-        });
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
+        let _ = self.stop();
     }
 }
 
@@ -223,6 +361,7 @@ pub(crate) fn install(
                 .get_or_init(|| Mutex::new(None))
                 .lock()
                 .map_err(|_| mlua::Error::runtime("locker delay owner mutex poisoned"))?;
+            can_start()?;
             if guard.is_none() {
                 *guard = Some(
                     sleep_guard::Guard::start(guard_render.clone(), logic.clone())
@@ -234,15 +373,7 @@ pub(crate) fn install(
     )?;
     api.set(
         "stop_guard",
-        lua.create_function(|_, ()| {
-            if let Some(guard) = GUARD.get() {
-                guard
-                    .lock()
-                    .map_err(|_| mlua::Error::runtime("locker delay owner mutex poisoned"))?
-                    .take();
-            }
-            Ok(())
-        })?,
+        lua.create_function(|_, ()| stopped(close_owned(false, true)))?,
     )?;
 
     api.set(
@@ -250,6 +381,7 @@ pub(crate) fn install(
         lua.create_function(move |_, table: Table| {
             let config = config(&table)?;
             let mut owner = owner()?;
+            can_start()?;
             if let Some(owner) = owner.as_ref() {
                 return owner
                     .observer
@@ -272,7 +404,7 @@ pub(crate) fn install(
                 logind: Some(logind),
                 service: Some(service),
                 observer: Some(observer),
-                _worker: worker,
+                _worker: Some(worker),
             });
             Ok(())
         })?,
@@ -312,10 +444,7 @@ pub(crate) fn install(
     )?;
     api.set(
         "stop",
-        lua.create_function(|_, ()| {
-            owner()?.take();
-            Ok(())
-        })?,
+        lua.create_function(|_, ()| stopped(close_owned(true, false)))?,
     )?;
     lua.globals().set("tohru_idle", api)
 }
