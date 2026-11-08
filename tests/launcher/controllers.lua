@@ -1,4 +1,6 @@
 local make_usage = assert(loadfile("shell/launcher/usage.luau"))()
+local search = assert(loadfile("shell/launcher/search.luau"))()
+local geometry = assert(loadfile("shell/launcher/geometry.luau"))()
 local usage = make_usage({counts = {a = 2, bad = -1}, pins = {"", "a", "a", "b"}, recent = {"a", "a", "b"}})
 assert(usage.state.counts.a == 2 and not usage.state.counts.bad)
 assert(#usage.state.pins == 2 and #usage.state.recent == 2)
@@ -28,7 +30,7 @@ _G.sys = {
     end,
     watch = function(name, callback) watches[name] = callback; return true end,
 }
-assert(loadfile("shell/launcher/controller.luau"))()(make_usage)
+assert(loadfile("shell/launcher/controller.luau"))()(make_usage, search, geometry)
 local actions = {}
 for i = 1, 100 do actions[i] = {name = "Action " .. i, exec = "action" .. i} end
 watches.apps({
@@ -78,3 +80,39 @@ assert(model.launcher_choices[#model.launcher_choices].position == 100)
 handlers.launcher_choice(100)
 assert(calls[#calls - 1][1] == "apps.launch" and calls[#calls - 1][2] == "action100")
 print("Menu keyboard virtualization passed")
+-- Native input text callback rebuilds results; Escape clears before closing.
+handlers.launcher_open()
+handlers["text:launcher_query"]("many")
+assert(fact.launcher_searching and fact.launcher_total == 1 and fact.launcher_selected == 0)
+handlers["text:launcher_query"]("absent")
+assert(fact.launcher_total == 0)
+handlers.launcher_launch(0)
+assert(fact.launcher_visible)
+handlers.launcher_escape()
+assert(not fact.launcher_searching and text.launcher_query == "" and fact.launcher_visible)
+handlers.launcher_escape()
+assert(not fact.launcher_visible)
+handlers.launcher_open()
+handlers["text:launcher_query"]("many")
+handlers.launcher_tab(6)
+assert(not fact.launcher_searching and text.launcher_query == "")
+print("Native search-field callback/clear/tab/refusal lifecycle fixtures passed")
+
+-- Q-L1: native raw Categories may omit a final semicolon; precedence stays source order.
+watches.apps({
+    {id = "dev", name = "Developer", exec = "true", icon = "", categories = "Development"},
+    {id = "art", name = "Artist", exec = "true", icon = "", categories = "Development; Graphics"},
+})
+handlers.launcher_tab(1)
+assert(fact.launcher_total == 1 and model.launcher_tiles[1].id == "art")
+handlers.launcher_tab(2)
+assert(fact.launcher_total == 1 and model.launcher_tiles[1].id == "dev")
+handlers.launcher_tab(0)
+handlers.launcher_select(1)
+assert(fact.launcher_selected_x == 72 and fact.launcher_selected_y == 0)
+handlers.launcher_context(fact.launcher_selected)
+assert(fact.launcher_menu and model.launcher_choices[1].label == "Open")
+handlers.launcher_menu_move(1)
+handlers.launcher_choice(fact.launcher_menu_selected)
+assert(saved.pins[#saved.pins] == "art")
+print("Q-L1 token/precedence and Q-L2 selected context/keyboard pin fixtures passed")

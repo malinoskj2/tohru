@@ -1,11 +1,11 @@
-return function(make_usage)
+return function(make_usage, search, geometry)
     local ok, saved = pcall(sys.ask, "files.read", "launcher.json", "json")
     if not ok then text.launcher_error = tostring(saved) end
     local usage = make_usage(ok and saved or nil)
     local catalog, shown, context = {}, {}, nil
     local choices, menu_scroll, menu_selected = {}, 0, 0
     local columns, viewport, scroll = 8, 432, 0
-    local tab, selected = 0, 0
+    local tab, selected, query = 0, -1, ""
     local groups = {
         {"graphics", "photography", "2dgraphics", "3dgraphics"},
         {"development", "ide", "texteditor", "terminalemulator"},
@@ -14,9 +14,12 @@ return function(make_usage)
         {"office", "wordprocessor", "spreadsheet", "calendar"},
     }
     local function category(app)
-        local names = ";" .. (app.categories or ""):lower()
+        local names = {}
+        for name in ((app.categories or "") .. ";"):gmatch("([^;]+);") do
+            names[name:match("^%s*(.-)%s*$"):lower()] = true
+        end
         for index, group in ipairs(groups) do
-            for _, name in ipairs(group) do if names:find(";" .. name .. ";", 1, true) then return index end end
+            for _, name in ipairs(group) do if names[name] then return index end end
         end
         return 6
     end
@@ -44,34 +47,35 @@ return function(make_usage)
         for _, app in ipairs(catalog) do by_id[app.id] = app end
         shown = {}
         local pinned_count = 0
-        if tab == 0 then
+        local searching = query:find("%S") ~= nil
+        fact.launcher_searching = searching
+        if searching then
+            shown = search(query, catalog)
+        elseif tab == 0 then
             for _, id in ipairs(usage.state.pins) do
                 if by_id[id] then shown[#shown + 1] = by_id[id]; pinned_count = pinned_count + 1 end
             end
         end
-        for _, app in ipairs(catalog) do
-            if (tab == 0 and not usage.pinned(app.id)) or (tab ~= 0 and category(app) == tab) then shown[#shown + 1] = app end
+        if not searching then
+            for _, app in ipairs(catalog) do
+                if (tab == 0 and not usage.pinned(app.id)) or (tab ~= 0 and category(app) == tab) then shown[#shown + 1] = app end
+            end
         end
         -- Pins absent from the current catalog never consume visual space.
         fact.launcher_pins = pinned_count
         fact.launcher_tab = tab
         fact.launcher_total = #shown
-        selected = math.max(0, math.min(selected, #shown - 1))
+        selected = selected >= 0 and math.min(selected, #shown - 1) or -1
         fact.launcher_selected = selected
         local pin_rows = math.ceil(pinned_count / columns)
-        local has_sections = tab == 0 and pinned_count > 0
-        local function position(index)
-            if not has_sections then return index % columns, math.floor(index / columns) * 72 end
-            if index < pinned_count then return index % columns, 29 + math.floor(index / columns) * 72 end
-            local rest = index - pinned_count
-            return rest % columns, 58 + pin_rows * 72 + math.floor(rest / columns) * 72
-        end
-        local content = 12
-        if #shown > 0 then local _, y = position(#shown - 1); content = y + 84 end
+        local function position(index) return geometry.position(columns, pinned_count, index) end
+        local content = geometry.content(columns, pinned_count, #shown)
         scroll = math.max(0, math.min(scroll, content - viewport))
         fact.launcher_scroll = scroll
         fact.launcher_content = content
         fact.launcher_pin_rows = pin_rows
+        local sx, sy = position(math.max(0, selected))
+        fact.launcher_selected_x, fact.launcher_selected_y = sx * 72, sy
         local tiles = {}
         for index, app in ipairs(shown) do
             local x, y = position(index - 1)
@@ -83,7 +87,8 @@ return function(make_usage)
         model.launcher_tiles = tiles
     end
     local function show()
-        tab, selected, scroll = 0, 0, 0
+        tab, selected, scroll, query = 0, -1, 0, ""
+        text.launcher_query = ""
         close_menu(); rebuild(); fact.launcher_visible = true
     end
     local function hide() fact.launcher_visible = false; close_menu() end
@@ -92,8 +97,18 @@ return function(make_usage)
     on("launcher_toggle", function() if fact.launcher_visible then hide() else show() end end)
     on("launcher_tab", function(value)
         if value ~= math.floor(value) then return end
-        tab, selected, scroll = value % 7, 0, 0
+        tab, selected, scroll, query = value % 7, -1, 0, ""
+        text.launcher_query = ""
         close_menu(); rebuild()
+    end)
+    on("text:launcher_query", function(value)
+        query, selected, scroll = value, 0, 0
+        close_menu(); rebuild()
+    end)
+    on("launcher_escape", function()
+        if fact.launcher_menu then close_menu()
+        elseif query ~= "" then query = ""; text.launcher_query = ""; selected, scroll = -1, 0; rebuild()
+        else hide() end
     end)
     on("launcher_layout", function(value)
         if value ~= math.floor(value) or value < 3 or value > 8 then return end
@@ -102,19 +117,23 @@ return function(make_usage)
     on("launcher_viewport", function(value) viewport = math.max(72, math.min(value, 452)); rebuild() end)
     on("launcher_scroll", function(value) scroll = scroll - value * 72; close_menu(); rebuild() end)
     on("launcher_select", function(value)
-        if value == math.floor(value) and value >= 0 and value < #shown then selected = value; fact.launcher_selected = selected end
-    end)
-    on("launcher_move", function(value)
-        if #shown == 0 then return end
-        selected = math.max(0, math.min(selected + value, #shown - 1))
-        local pinned_count = fact.launcher_pins
-        local row = math.floor(selected / columns) * 72
-        if tab == 0 and pinned_count > 0 then
-            row = selected < pinned_count and (29 + row) or (58 + math.ceil(pinned_count / columns) * 72 + math.floor((selected - pinned_count) / columns) * 72)
+        if value == math.floor(value) and value >= 0 and value < #shown then
+            selected = value
+            fact.launcher_selected = selected
+            local x, y = geometry.position(columns, fact.launcher_pins, selected)
+            fact.launcher_selected_x, fact.launcher_selected_y = x * 72, y
         end
-        if row < scroll then scroll = row elseif row + 72 > scroll + viewport then scroll = row + 72 - viewport end
-        close_menu(); rebuild()
     end)
+    local function move(value, vertical)
+        if #shown == 0 then return end
+        local from = math.max(0, selected)
+        selected = vertical and geometry.neighbour(columns, fact.launcher_pins, from, #shown, value) or math.max(0, math.min(from + value, #shown - 1))
+        scroll = geometry.follow(columns, fact.launcher_pins, selected, scroll, viewport)
+        close_menu(); rebuild()
+    end
+    on("launcher_move", function(value) move(value, false) end)
+    on("launcher_vertical", function(value) if value == -1 or value == 1 then move(value, true) end end)
+    on("launcher_page", function(value) scroll = scroll + value * viewport; selected = -1; close_menu(); rebuild() end)
     local function launch(app, action)
         if not app then return end
         local exec = action and action.exec or app.exec

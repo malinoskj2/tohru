@@ -1,0 +1,13 @@
+local grid = assert(loadfile("shell/launcher/geometry.luau"))()
+-- One pin then applications: Down moves to first app directly below, not +8.
+assert(grid.neighbour(8, 1, 0, 20, 1) == 1)
+assert(grid.neighbour(8, 1, 1, 20, -1) == 0)
+assert(grid.neighbour(8, 3, 2, 20, 1) == 5)
+assert(grid.neighbour(8, 3, 5, 20, -1) == 2)
+assert(grid.neighbour(8, 0, 17, 20, 1) == 17)
+assert(grid.neighbour(8, 0, 7, 10, 1) == 9)
+assert(grid.content(8, 1, 1) == 142)
+assert(grid.content(8, 0, 9) == 156)
+assert(grid.follow(8, 1, 0, 200, 432) == 0)
+assert(grid.follow(8, 1, 17, 0, 200) == 156)
+print("Retained launcher visual-row/section-gap/follow fixtures passed")

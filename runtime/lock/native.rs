@@ -26,6 +26,12 @@ pub(crate) fn authenticate_unlock(
     Ok(true)
 }
 
+/// Active native owners override public presentation state consistently across
+/// culling, input exclusion and surface pacing. Requested state is not authority.
+pub(crate) fn surface_open(owner: usize, requested: bool, active: &[usize]) -> bool {
+    active.contains(&owner) || requested
+}
+
 /// Native secret metadata is process-retained by the compiler across reloads.
 /// A public binding that later becomes secret must not regain its old export path.
 pub(crate) fn secret(name: &str) -> bool {

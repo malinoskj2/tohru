@@ -12,7 +12,9 @@ categories/precedence, pin order and separate pinned/application sections,
 keyboard tile/category navigation, virtualized catalogs beyond1024 records,
 right-click Open/desktop-actions/Pin/Unpin menu with scroll and keyboard input,
 native launch error display,64 pins/2000 counts/six recent launches, and native
-atomic private scene-local persistence. Action menus are virtualized rather than
+atomic private scene-local persistence. Native files.read reads/parses the entire
+file before Lua can apply retained-state caps; bounded ingress is a reported
+native gap pending user decision, not a proven byte/read-work limit. Action menus are virtualized rather than
 dropping commands beyond the native model capacity. Data starts fresh; no j2bar
 state is read. Counts are recorded when native launch accepts the request; a
 new application window appearing is not promised by that acceptance.
@@ -29,20 +31,38 @@ scan/name dedup, visibility/TryExec/Path/D-Bus/activation/terminal/alias gaps we
 reported with exact source evidence, and await user decision. No alternate
 catalog/launcher backend or runtime extension is implemented.
 
-**Incomplete, not an accepted reduced launcher:** exact retained fuzzy search
-(frizbee exact/typo pass, weighted fields/aliases and history bonus), search field,
-liquid tile/reveal/ripple/menu visuals, exact keyboard geometric movement across
-pin sections, native glass/font pixel matching and final output/root lifecycle
-remain. This intermediate scene deliberately exposes the complete independent
-grid/category/pin/action path; it is not a search replacement or parity claim.
-CLI-open outside-click dismissal remains a separate native pending decision.
-No catcher workaround or plugin dependency is introduced.
+The user selected simple fuzzy search instead of exact frizbee scoring. The
+native input matches available catalog fields case-insensitively with Luau's
+ASCII string.lower, preserving whole UTF-8 codepoints during subsequence matching.
+Prefix outranks substring, which outranks in-order subsequence; ties preserve
+native catalog order and at most50 results are shown. Whitespace-only input
+returns Home/category arrangement. There is no typo correction, transposition,
+history ranking, weighted-field algorithm, dependency or native binding. Non-ASCII
+case folding is not provided by Luau's string.lower; exact UTF-8 characters still
+match. This is explicit simple behavior, not an exact source-scorer claim.
+
+The search field focuses on open, arrows navigate results, Enter launches,
+Escape clears a nonempty query before closing, Tab/Shift+Tab choose categories
+and clear search, PageUp/Down (actual XKB Prior/Next) scroll and clear tile selection.
+The active native text field consumes Left/Right for caret movement before scene
+rules; source grid-first horizontal behavior is a separately reported pending
+decision. No custom editor/key-priority patch is used or horizontal parity claimed. Up/Down use the
+retained nearest visual row across pin sections rather than adding the column
+count. Native Menu/Shift+F10 open actions on the selected tile. A fresh empty
+query starts with no selected highlight, as in the source.
+
+Incomplete gates: liquid tile/reveal/ripple/menu visuals, exact native glass/font
+pixel matching and final output/root lifecycle. Native metadata/discovery/launch
+and CLI-open outside-dismissal decisions are still pending independently of the
+search simplification. No catcher or alternate catalog workaround is included.
 
 CPU: `lua tests/launcher/controllers.lua` executes production modules and checks
 category precedence, pin order, native launch refusal,100 actions including last
 action, history/persistence snapshot, bounds and1200-app virtualization.
-`pleamar --check shell/launcher/entry.plm` passes the pinned compiler. Actual
+`lua tests/launcher/search.lua` checks the approved simple matching order and
+stable bound, and `lua tests/launcher/geometry.lua` checks retained visual row
+movement across sections. `pleamar --check shell/launcher/entry.plm` passes the pinned compiler. Actual
 native private entrypoint/persistence/input checks are still required before
 this slice is called runtime-checked; coordinator must allocate the GPU slot.
-S owns final startup/CLI/root/setting integration; do not claim launcher delivery
-or wire a final reduced search behavior while the pending decisions remain.
+S owns final startup/CLI/root/setting integration; this is not complete launcher
+visual or native metadata parity while the independent pending decisions remain.
