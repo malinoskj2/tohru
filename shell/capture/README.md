@@ -1,41 +1,60 @@
-# Native capture investigation and open gates
+# Frozen region selection
 
-No screenshot command, exported image, clipboard image or completed selection UI
-is claimed by this source note. These paths must remain disabled until their
-entry point and lifetime contracts are implemented and checked privately.
+Production integration includes `state.plm`, `presentation.plm`, `view.plm` into
+one existing root scene and instantiates `controller.luau` once with an options
+callback and a result-notification callback. `entry.plm`/`entry.luau` are private
+development entry points, not another production role/settings owner.
 
-Pinned Pleamar dc902feb source:
+The options callback returns `{save, copy, directory, filename_pattern}` from the
+existing settings owner. Save/copy default true; directory/pattern default empty.
+The transaction snapshots these options, queries native layout/destination, then
+freezes every output **before** publishing any overlay route or opening it.
+Partial freeze failure releases all tokens already obtained. Up to32 outputs are
+supported; names that cannot pass literal native screen selectors fail explicitly.
+Global logical coordinates preserve cross-output selection, negative origins and
+mixed scale/rotation. Native export validates actual frozen geometry again.
 
-- `src/platform/capture.rs:1–27,55–85`: `capture.freeze(output)` returns a named
-  in-memory texture; `capture.pixel` samples a point. `FROZEN` retains the last
-  frame per output until another freeze replaces it or the process exits. No
-  public release command exists. Clearing the scene's text reference cannot
-  prove frame deletion or full cancellation cleanup. Release gap decision pending.
-- `src/platform/mod.rs:272–315`: public queries route files/capture/services;
-  no public output-rectangle query is exposed. Clipboard command accepts text
-  only; capture exports neither a PNG nor a selected image. PNG/image clipboard
-  gap decision remains pending; do not call an external screenshot tool or add
-  an exporter under an unrelated security approval.
-- `src/language/compiler.rs:4995–5033`: `screens: each` supplies screen name,
-  width, height, index and count (up to8 copies). It does not supply the output's
-  global logical origin. Named surfaces' own cursor is local to that surface.
-- `src/render.rs:1108–1148,1401–1406,2737–2781`: native render owns screen facts
-  and keeps monitor rectangles/cursor state internally; `cursor.x/y` exposed to
-  a scene is relative to the selected surface, not global desktop coordinates.
-  Removing a sheet updates count, without a complete topology record to Luau.
+Emit `capture_open_request` for `tohru screenshot region`. Escape, a click/smaller
+than2×2 logical selection, failed export, topology change and completion all close
+routes and release the transaction's exact version tokens. Native right-click
+prototype quit behavior is consumed. Rendering follows source j2bar screenshot
+constants:65% black dim, clipped bright selection,2px Catppuccin outline,14px bold
+badge,6/4 padding,12/14 pointer offset and3px badge radius. Source behavior comes
+from j2bar `src/app/screenshot/{overlay,mod,files}.rs`; native typography and
+renderer are retained, no copied GPU renderer.
 
-Retained source `src/app/screenshot/{mod.rs,overlay.rs,stitch.rs}` in read-only
-j2bar freezes every output before showing overlays, selects across global logical
-output areas, intersects/stitches the region at actual scales, cancels on Escape
-or a region below2×2, and releases overlay surfaces/textures before save/copy.
-Visual overlay is a frozen frame with65% black outside the region,2px
-Catppuccin-primary outline and14px bold dimension badge at pointer+12,+14.
+`capture_status` reports phase/error/actual native result; `capture_error` remains
+available for the root UI/CLI. Native result independently reports saved/copied,
+actual numbered path and durability/error details. The optional notify callback
+receives `(message, error)`; failure never erases successful save/copy evidence.
+S/L own connecting it to the existing notification role and placeholder sound.
 
-Source evidence indicates another topology boundary is needed for full
-cross-output selection: portable global output origins and stale/hotplug handling.
-Native single-output local selection is an available partial alternative; it is
-not silently accepted as a replacement for retained cross-output selection.
-Ask the coordinator/user before a new topology workaround or that reduction.
-No Hyprland polling/IPC dependency is introduced here. Freeze/selection UI source
-can proceed only with an honest supplied-topology contract and pending cleanup
-semantics; no partial UI is advertised as the finished screenshot command.
+Apply `runtime/capture/output-events.patch` after native and image-lifecycle
+patches. Existing Wayland output add/update/remove dispatch forwards a narrow
+internal event only when the scene subscribes to `capture_output_changed`.
+The controller queries the existing capture link and cancels only when metadata
+changed/became unavailable, avoiding timer polling and false cancellation from
+normal overlay creation. Source fixtures check dispatch placement before early
+returns; real protocol ordering still needs private display validation.
+
+An open request during an active transaction currently reports busy and preserves
+the current frozen selection. The original replaces active selection; this
+provisional policy has been sent to the coordinator because native close/rescreen
+is asynchronous and has no presentation acknowledgment. Even cancel→immediate
+reopen needs actual private pixel validation: no guessed delay is claimed as a
+close acknowledgment. Native capture exclusion is requested where supported but
+is not assumed for correctness. Logic reload retires preserved text tokens;
+compile/reload-reset cleanup and actual late in-flight GPU references remain
+explicit runtime gates.
+
+Reproduce CPU-only entry/compiler/Lua checks:
+
+```
+python3 tests/capture/check_ui.py --pleamar /absolute/pleamar --lua /absolute/lua
+python3 tests/capture/native-source.py --source /absolute/pinned/runtime/source
+```
+
+`--check` accepts322 properties/544 instructions/129 rules/32 zones. Ten production
+Lua transaction cases pass with explicit native transport fixtures. Type generation
+confirms the scene's exposed names, not a separate Luau static analysis. These
+commands do not create a display, capture a desktop or claim clipboard/GPU results.
