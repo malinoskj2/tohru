@@ -1,0 +1,26 @@
+part NetworkState {
+    fact net_open = false
+    fact net_page = 0
+    fact net_selected = -1
+    fact net_joining = false
+    fact net_target_active = false
+    fact net_target_known = false
+    text net_request = ""
+    text net_target = ""
+    text net_password = ""
+    model net_rows max 64 { ssid: text; strength: number; secure: bool; known: bool; active: bool }
+    service network as net { online: bool; kind: none | wired | wifi; name: text; strength: number; wifi: bool; error: text; networks: net_rows }
+    event network_toggle ->
+    event network_open ->
+    event network_close ->
+    event network_select ->
+    event network_join ->
+    event network_cancel ->
+    event network_scan ->
+    event network_power ->
+    event network_disconnect ->
+    event network_forget ->
+    event network_move ->
+    event network_activate ->
+    event network_page ->
+}
