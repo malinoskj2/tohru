@@ -38,3 +38,12 @@ check-abi: check-deps
 	$(CXX) -Itests/stubs $(CPPFLAGS) -std=c++2b tests/abi.cpp -o "$$dir/check" && "$$dir/check"
 
 .PHONY: check-abi
+
+check-focus:
+	@dir=$$(mktemp -d); \
+	trap 'rm -rf "$$dir"' EXIT; \
+	$(CXX) -std=c++2b -Wall -Wextra tests/focus-restoration.cpp -o "$$dir/check" && "$$dir/check"
+
+.PHONY: check-focus
+
+check: check-focus
