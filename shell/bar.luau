@@ -40,6 +40,15 @@ end)
 on("setting_corner_size", function(n)
     change(function() return tohru_settings.set("appearance.corner_size", n) end)
 end)
+for _, field in ipairs({"lock_seconds", "screen_off_unlocked_seconds", "screen_off_locked_seconds",
+    "suspend_unlocked_seconds", "suspend_locked_seconds", "fade_milliseconds"}) do
+    local key = "idle." .. field
+    on("setting_idle_" .. field, function(value)
+        change(function() return tohru_settings.set(key, value) end)
+    end)
+end
+on("setting_capture_save", function(value) change(function() return tohru_settings.set("capture.save", value ~= 0) end) end)
+on("setting_capture_copy", function(value) change(function() return tohru_settings.set("capture.copy", value ~= 0) end) end)
 on("setting_output", function()
     text.settings_error = "bar.preferred_output is deprecated and ignored: bars use every output"
 end)

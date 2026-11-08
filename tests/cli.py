@@ -23,6 +23,23 @@ class Cli(unittest.TestCase):
     def invoke(self, *args, **env):
         return subprocess.run([str(ROOT / "bin/tohru"), *args], env={**self.env, **env}, text=True, capture_output=True)
 
+    def test_idle_and_capture_settings_are_bounded_before_native_ipc(self):
+        fields=['lock_seconds','screen_off_unlocked_seconds','screen_off_locked_seconds',
+                'suspend_unlocked_seconds','suspend_locked_seconds','fade_milliseconds']
+        for field in fields:
+            maximum=120000 if field=='fade_milliseconds' else 4294967
+            for value in ['0',str(maximum)]:
+                result=self.invoke('config','set','idle.'+field,value)
+                self.assertEqual(result.returncode,0,result.stderr)
+                self.assertEqual(json.loads(result.stdout),['--say','tohru','emit setting_idle_'+field+' '+value])
+            for value in ['-1','01','+1','1.5','1e3',str(maximum+1),'99999999999999999999','0\nemit quit']:
+                self.assertEqual(self.invoke('config','set','idle.'+field,value).returncode,2)
+        self.assertEqual(self.invoke('config','set','idle.unknown','0').returncode,2)
+        for field in ['save','copy']:
+            result=self.invoke('config','set','capture.'+field,'false')
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(json.loads(result.stdout),['--say','tohru','emit setting_capture_'+field+' 0'])
+
     def test_capture_routes_are_fixed_native_requests(self):
         for arguments, message in [
             (('screenshot','region'), 'emit capture_open_request'),

@@ -369,6 +369,14 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         dispatch('settings_open_request'); assert(not fact.settings_open)
         dispatch('capture_cancel')
         assert(not fact.capture_open and fact.wallpaper_picker_keyboard and released==1)
+        tohru_settings.set=function(key,value) last_setting_key=key;last_setting_value=value;return tohru_settings.snapshot() end
+        for _,field in ipairs({'lock_seconds','screen_off_unlocked_seconds','screen_off_locked_seconds',
+            'suspend_unlocked_seconds','suspend_locked_seconds','fade_milliseconds'}) do
+            dispatch('setting_idle_'..field,17)
+            assert(last_setting_key=='idle.'..field and last_setting_value==17)
+        end
+        dispatch('setting_capture_save',0); assert(last_setting_key=='capture.save' and last_setting_value==false)
+        dispatch('setting_capture_copy',1); assert(last_setting_key=='capture.copy' and last_setting_value==true)
 
     "#,
     )
