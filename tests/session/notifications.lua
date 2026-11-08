@@ -38,3 +38,16 @@ local long=string.rep('🌊',1000);reloaded.report({notice(22,long,long)})
 assert(utf8.len(reloaded.env.model.banners[1].title)==256)
 assert(utf8.len(reloaded.env.model.banners[1].body)==768)
 print('native notification entry logic: passed')
+
+-- A valid old active replacement can move from outside the bounded cache to front.
+local bounded_role=boot({last_id=0});local active={}
+for id=1,66 do table.insert(active,1,notice(id)) end
+bounded_role.report(active);local before=#bounded_role.tones
+local replaced={notice(1,'Replacement outside cache')}
+for id=66,2,-1 do replaced[#replaced+1]=notice(id) end
+bounded_role.report(replaced)
+assert(#bounded_role.tones==before+1)
+assert(bounded_role.env.model.banners[1].title=='Replacement outside cache')
+-- Removing the top does not replay unchanged old entries entering at the tail.
+local after=#bounded_role.tones;table.remove(replaced,1);bounded_role.report(replaced)
+assert(#bounded_role.tones==after)

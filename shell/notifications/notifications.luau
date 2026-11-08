@@ -36,6 +36,7 @@ model.banners = {}
 sys.watch("notifications", function(notices)
     local current = {}
     local watermark = fact.last_id
+    local known_after = false
     -- Bound UI work/state; native protocol ownership/history stays in Pleamar.
     for index = math.min(#notices, 64), 1, -1 do
         local notice = notices[index]
@@ -43,7 +44,11 @@ sys.watch("notifications", function(notices)
         local body = bounded(notice.body, 768)
         local fingerprint = title .. "\0" .. body .. "\0" .. tostring(notice.time)
         current[notice.id] = fingerprint
-        if notice.id > watermark or (previous[notice.id] and previous[notice.id] ~= fingerprint) then incoming(notice, title, body) end
+        -- Native Notify moves a replacement to the front. Pruning alone
+        -- cannot move an unknown old ID ahead of an entry from the old window.
+        local moved_replacement = previous[notice.id] == nil and known_after
+        if notice.id > watermark or moved_replacement or (previous[notice.id] and previous[notice.id] ~= fingerprint) then incoming(notice, title, body) end
+        if previous[notice.id] ~= nil then known_after = true end
         fact.last_id = math.max(fact.last_id, notice.id)
     end
     previous = current
