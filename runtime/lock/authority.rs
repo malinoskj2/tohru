@@ -1,7 +1,7 @@
 //! Nonexported native lock-cycle authority; no scene data can construct a permit.
 use std::sync::{
     Arc,
-    atomic::{AtomicU8, Ordering},
+    atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
 const REQUESTED: u8 = 0;
@@ -13,6 +13,31 @@ const RELEASING: u8 = 3;
 pub(crate) struct Cycle {
     phase: Arc<AtomicU8>,
     owner: usize,
+}
+
+/// Per-output liveness is independent of the session cycle: an output may
+/// retire while the same lock stays held on the remaining monitors.
+#[derive(Clone)]
+pub(crate) struct Face {
+    alive: Arc<AtomicBool>,
+    cycle: Cycle,
+}
+
+impl Face {
+    pub(crate) fn new(cycle: Cycle) -> Self {
+        Self {
+            alive: Arc::new(AtomicBool::new(true)),
+            cycle,
+        }
+    }
+
+    pub(crate) fn retire(&self) {
+        self.alive.store(false, Ordering::Release);
+    }
+
+    pub(crate) fn current(&self) -> bool {
+        self.alive.load(Ordering::Acquire) && self.cycle.publishable()
+    }
 }
 
 pub(crate) struct Snapshot {
