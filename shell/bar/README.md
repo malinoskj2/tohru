@@ -7,8 +7,9 @@ Root integration (S): include `bar/state.plm`, then `bar/contents.plm` at the
 bar's origin; call `require("bar/controller")()` once from root logic. Declare
 read permissions `window`, `apps`, `media`, `clock`. Forward the existing
 process-owned `bar.mooncoil` setting to `fact.bar_mooncoil`; do not create a
-second settings owner. Route `calendar_toggle` and `session_toggle` to their
-named scenes. Accepted output policy is now native `screens: all`: the bar appears on every
+second settings owner. Compose `calendar/state.plm` + `calendar/popup.plm` and its controller in
+this same root scene (see ../calendar/README.md), preserving the native click
+serial. Only `session_toggle` needs routing to its independently owned role. Accepted output policy is now native `screens: all`: the bar appears on every
 output. Root owns this layout and the 31px reservation; no preferred/focused-first
 selection adapter or reconnect-selection policy is retained.
 

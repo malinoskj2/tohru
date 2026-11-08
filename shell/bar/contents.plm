@@ -8,7 +8,7 @@ part BarContents {
     group {
         move: (screen.width - bar_title_width) / 2, 0
         image bar_app_icon { at: 0, 8.5; size: 14, 14; show: bar_has_icon }
-        text bar_title { at: if(bar_has_icon, 20, 0), 16.5; anchor: left center; width: if(bar_has_icon, 340, 360); lines: 1; size: 13; weight: 500; color: #cdd6f4; measure: bar_title_measure }
+        text bar_title { at: if(bar_has_icon, 20, 0), 16.5; anchor: left center; width: if(bar_has_icon, 340, 360); lines: 1; tight: true; size: 13; weight: 500; color: #cdd6f4; measure: bar_title_measure }
     }
     // Native-selected MPRIS is display-only, present only during playback.
     text bar_media { at: screen.width - 408, 16.5; anchor: right center; width: 180; lines: 1; size: 13; color: #cdd6f4; show: bar_playing }

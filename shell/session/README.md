@@ -1,6 +1,10 @@
 # Private session/auth entry points
 
-These are independent feature scenes, not root imports or production activation.
+These are independent development scenes, not root imports or production activation.
+**The native IPC accepts arbitrary fact writes, including `engaged=false`, and can
+release the lock without PAM. Production lock safety/activation is blocked pending
+a native boundary decision. Authenticated UI behavior below does not establish
+security against native IPC control.**
 Use the existing pinned runtime; do not build another runtime for scene changes.
 After coordinator GPU allocation, on private compositor and private buses only:
 
@@ -17,15 +21,21 @@ There is no production launcher/CLI/Nix integration in this slice.
 
 | Native name | Request | Observable status |
 | --- | --- | --- |
-| tohru-session | `emit menu_open`, `emit menu_close` | `open`, `confirming`, `remaining`, `status`, `error` |
+| tohru-session | `emit menu_open`, `emit menu_close`, `emit menu_toggle` | `open`, `confirming`, `remaining`, `status`, `error` |
 | tohru-session | `emit choose N` (1 lock, 2 sleep, 3 restart, 4 shutdown, 5 logout) | 3–5 open confirmation; `emit accept_choice` or `emit cancel_choice` |
 | tohru-lock | `emit lock_request`, `emit lock_and_suspend` | `engaged` is requested state; `lock.held` is native compositor acknowledgment; `acknowledged` is the rule's mirrored fact; `checking`, `status` |
 | tohru-polkit | Native authority drives prompt, `emit cancel_request` | Native `auth.ready/pending/asking/error`, `status` |
 
-Passwords only enter native secret inputs: do not expose a public unlock event,
+The UI accepts passwords only in native secret inputs: do not expose a public unlock event,
 record password texts or put secrets in CLI arguments. Escape clears the lock
 input and cancels pending suspend; it never releases a lock. Native successful
-`auth.check` is the only UI path that sets `engaged=false`. A five-second missing
+`auth.check` is the UI path that sets `engaged=false`; unrestricted native IPC
+can bypass that UI path, the blocking security gap above. Submitted sleep requests stay deduplicated across logic reload until successful
+authentication or `system_resumed` from the future real resume observer. That event
+is not a public user CLI action, and no native resume observer is wired yet.
+A new lock queued behind successful PAM waits for the old native held=false edge
+and a fresh held=true edge; cached readiness cannot authorize the new cycle.
+A five-second missing
 acknowledgment cancels sleep while leaving the lock requested. Native rule
 `on change lock.held` mirrors acknowledgment into Luau because the upstream render
 updates `lock.held` without directly sending its fact event to logic.
@@ -60,3 +70,12 @@ Presentation is an initial native scene implementation with glass; source-matche
 layout/motion, wallpaper treatment, font/assets, authentication transitions and
 matched screenshots remain unfinished. No visual parity, native-glass acceptance,
 physical-session safety or performance gate is claimed.
+
+`menu_toggle` closes an open menu and cancels any confirmation; opening resets
+selection and errors. The root owns its visible menu control: this feature scene
+has only a 1px transparent anchor surface, without a duplicate visible button.
+
+After coordinator GPU allocation, `tests/session/native.sh --runtime /absolute/pleamar`
+runs only private menu/lock protocol checks; it never calls PAM or a power action.
+The current suite deliberately demonstrates the unpatched IPC release gap and
+must be updated to assert denial when the authorized native patch lands.

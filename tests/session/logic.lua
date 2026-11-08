@@ -46,6 +46,9 @@ local function menu()
     return boot("shell/session/menu.luau", {open=false, selected=1}, {})
 end
 local m=menu()
+m.event("menu_toggle");m.event("choose",3);m.event("menu_toggle")
+assert(not m.fact.open and m.fact.confirming==0)
+m.event("accept_choice");assert(#m.calls==0)
 m.event("choose", 4); assert(#m.calls==0)
 m.event("menu_open"); m.event("choose", 4)
 assert(m.fact.confirming==4 and #m.calls==0)
@@ -69,7 +72,7 @@ for index,command in pairs({[4]="session.poweroff",[5]="session.logout"}) do
     assert(m.calls[#m.calls][1]==command)
 end
 local function locker(held)
-    return boot("shell/lock/lock.luau", {engaged=held, acknowledged=held, checking=false}, {password="old secret"})
+    return boot("shell/lock/lock.luau", {engaged=held, acknowledged=held, checking=false, sleep_submitted=false}, {password="old secret"})
 end
 local l=locker(false)
 l.event("lock_and_suspend"); assert(l.fact.engaged and #l.calls==0)
@@ -86,6 +89,22 @@ l=locker(true);assert(l.fact.engaged and l.text.password=="") -- logic reload pr
 l.event("lock_and_suspend");assert(l.fact.engaged and #l.calls==1)
 l=locker(false);l.auth(true);l.event("submit:password","good");assert(not l.fact.engaged and #l.calls==0)
 l.event("lock_and_suspend");l.event("lock_request");l.fact.acknowledged=true;l.event("fact:acknowledged",true);assert(#l.calls==0)
+-- Queued sleep behind PAM cannot reuse the released cycle's acknowledgment.
+l=locker(true);l.auth(true);l.event("submit:password","good")
+l.event("lock_and_suspend");assert(#l.calls==0 and not l.fact.engaged)
+l.event("fact:acknowledged",true);assert(#l.calls==0)
+l.fact.acknowledged=false;l.event("fact:acknowledged",false)
+assert(l.fact.engaged and #l.calls==0)
+l.fact.acknowledged=true;l.event("fact:acknowledged",true)
+assert(#l.calls==1 and l.fact.sleep_submitted)
+l.event("lock_and_suspend");l.event("lock_and_suspend");assert(#l.calls==1)
+l.event("system_resumed");l.event("lock_and_suspend");assert(#l.calls==2)
+-- Native spawn rejection permits an explicit retry without claiming completion.
+l=locker(true);l.fail(true);l.event("lock_and_suspend");assert(not l.fact.sleep_submitted)
+l.fail(false);l.event("lock_and_suspend");assert(#l.calls==1)
+-- Reexecuting logic while submitted cannot issue another sleep.
+local retained=boot("shell/lock/lock.luau",{engaged=true,acknowledged=true,checking=false,sleep_submitted=true},{})
+retained.event("lock_and_suspend");assert(#retained.calls==0)
 local p=boot("shell/polkit/polkit.luau",{}, {answer="secret"})
 p.event("submit:answer","bad");assert(#p.calls==0 and p.text.answer=="")
 p.report("polkit",{pending=true,asking=true})

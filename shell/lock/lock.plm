@@ -5,10 +5,12 @@ scene TohruLock {
     fact engaged = false
     fact acknowledged = false
     fact checking = false
+    fact sleep_submitted = false
     text password = ""
     text status = ""
     event lock_request ->
     event lock_and_suspend ->
+    event system_resumed ->
     on change lock.held { acknowledged = lock.held }
     surface locked {
         kind: lock
