@@ -54,7 +54,7 @@ def verify(root, runtime, evidence, env, start, say, expect, wait_for):
         expect('launcher', 'launcher_query', query)
 
     first = launch('launcher-first')
-    input_query('co')
+    input_query('code editor')
     expect('launcher', 'launcher_total', '1')
     expect('launcher', 'launcher_tiles.0.name', 'Code Editor')
     say('launcher', 'key Escape')
