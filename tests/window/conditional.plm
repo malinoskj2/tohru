@@ -1,0 +1,9 @@
+scene WindowLifecycle {
+ fact visible = false
+ surface test_window {
+  kind: window; title: "Private conditional lifecycle"; app_id: "dev.tohru.WindowLifecycle"
+  size: 400, 240; open: visible; keyboard: exclusive
+ }
+ box { from: 0, 0; size: screen.width, screen.height; color: #243044 }
+ text "Private window lifecycle" { at: 24, 40; size: 18; color: #cdd6f4 }
+}

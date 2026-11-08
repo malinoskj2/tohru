@@ -28,11 +28,13 @@ def isolated_transport(inherited, runtime_dir):
     """Every app/CLI child must use these endpoints, overriding hostile inheritance."""
     env = {**inherited,
            "XDG_RUNTIME_DIR": str(runtime_dir),
-           "PLEAMAR_SOCKETS": str(runtime_dir / "pleamar-sockets"),
+           "PLEAMAR_SOCKETS": str(runtime_dir / "ipc"),
            "PULSE_SERVER": "unix:" + str(runtime_dir / "no-audio-socket"),
+           "PULSE_RUNTIME_PATH": str(runtime_dir / "pulse-runtime"),
+           "PULSE_STATE_PATH": str(runtime_dir / "pulse-state"),
            "DBUS_SESSION_BUS_ADDRESS": "unix:path=" + str(runtime_dir / "bus"),
            "DBUS_SYSTEM_BUS_ADDRESS": "unix:path=" + str(runtime_dir / "bus")}
-    for key in ("WAYLAND_DISPLAY", "SWAYSOCK", "WAYLAND_SOCKET", "CUA_INJECT_SOCKET", "DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE", "TOHRU_PRIVATE_TEST_BUS", "TOHRU_B_PRIVATE_BUS", "XDG_SESSION_ID", "DBUS_STARTER_ADDRESS", "DBUS_STARTER_BUS_TYPE", "LISTEN_FDS", "LISTEN_PID", "PULSE_COOKIE", "PIPEWIRE_REMOTE"):
+    for key in ("WAYLAND_DISPLAY", "SWAYSOCK", "WAYLAND_SOCKET", "CUA_INJECT_SOCKET", "DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE", "TOHRU_PRIVATE_TEST_BUS", "TOHRU_B_PRIVATE_BUS", "XDG_SESSION_ID", "DBUS_STARTER_ADDRESS", "DBUS_STARTER_BUS_TYPE", "LISTEN_FDS", "LISTEN_PID", "PULSE_COOKIE", "PULSE_COOKIEFILE", "PULSE_CONFIG_PATH", "PULSE_CLIENTCONFIG", "PIPEWIRE_REMOTE", "PIPEWIRE_RUNTIME_DIR"):
         env.pop(key, None)
     return env
 
@@ -50,6 +52,8 @@ def assert_private_transport(env, runtime_dir):
         assert not path.is_symlink(), key
     for key in ("WAYLAND_SOCKET", "CUA_INJECT_SOCKET", "HYPRLAND_INSTANCE_SIGNATURE"):
         assert key not in env
+    for key in ("PULSE_RUNTIME_PATH", "PULSE_STATE_PATH"):
+        assert Path(env[key]).resolve().is_relative_to(runtime_dir), key
     if "WAYLAND_DISPLAY" in env:
         assert not Path(env["WAYLAND_DISPLAY"]).is_absolute()
         assert (runtime_dir / env["WAYLAND_DISPLAY"]).resolve().is_relative_to(runtime_dir)
@@ -100,10 +104,27 @@ def create_evidence(root):
     return evidence
 
 
+def windows_for_app(tree, app_id):
+    """Count actual compositor views, including floating and duplicate roles."""
+    result, pending = [], [tree]
+    while pending:
+        node = pending.pop()
+        if not isinstance(node, dict):
+            continue
+        if node.get("app_id") == app_id:
+            result.append(node)
+        pending.extend(node.get("nodes", []))
+        pending.extend(node.get("floating_nodes", []))
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--sound", action="store_true", help="also test root sound/Settings with owned private Pulse null sink")
+    parser.add_argument("--windows", action="store_true", help="test window-only first open, WM close, resize and output retirement")
+    parser.add_argument("--pointer", type=Path, help="compiled tests/bar/pointer.c private persistent input fixture")
+    parser.add_argument("--wtype", type=Path, help="private-display virtual keyboard tool for Escape/search Return")
     args = parser.parse_args()
     evidence = create_evidence(ROOT)
     # Unix socket paths must remain below sockaddr_un's 108-byte limit.
@@ -120,7 +141,7 @@ def main():
     scene = evidence / "scene"
     shutil.copytree(ROOT / "shell", scene)
     sway_config = evidence / "sway.conf"
-    sway_config.write_text("output HEADLESS-1 mode 1280x240@60Hz\noutput HEADLESS-1 scale 1\noutput HEADLESS-1 bg #30232b solid_color\nseat seat0 hide_cursor 100\n")
+    sway_config.write_text("output HEADLESS-1 mode 1280x720@60Hz\noutput HEADLESS-1 scale 1\noutput HEADLESS-1 bg #30232b solid_color\nseat seat0 hide_cursor 100\n")
     env = {**os.environ,
            "HOME": str(home), "XDG_CONFIG_HOME": str(config),
            "XDG_CACHE_HOME": str(evidence / "cache"),
@@ -138,11 +159,12 @@ def main():
     env = isolated_transport(env, runtime_dir)
     assert_private_transport(env, runtime_dir)
     events = []
-    app = sway = bus = pulse = None
+    app = pointer = sway = bus = pulse = None
     app_log = None
     sway_log = (evidence / "sway.log").open("w")
     bus_log = (evidence / "bus.log").open("w")
     pulse_log = (evidence / "pulse.log").open("w")
+    pointer_log = (evidence / "pointer.log").open("w")
     bus_config = runtime_dir / "bus.conf"
     bus_config.write_text(private_bus_config(runtime_dir))
     try:
@@ -167,6 +189,77 @@ def main():
         assert "NVIDIA GeForce RTX 5090" in compositor_log, "compositor hardware adapter not verified"
         outputs = subprocess.check_output(["swaymsg", "-t", "get_outputs", "-r"], env=env, text=True)
         (evidence / "outputs.json").write_text(outputs)
+
+        def compositor(*command):
+            assert_private_transport(env, runtime_dir)
+            result = subprocess.run(["swaymsg", *command], env=env, capture_output=True, text=True, check=True, timeout=10)
+            events.append({"sway": command, "stdout": result.stdout, "stderr": result.stderr})
+            return result.stdout
+
+        def views(app_id):
+            return windows_for_app(json.loads(compositor("-t", "get_tree", "-r")), app_id)
+
+        def request(target, command):
+            assert_private_transport(env, runtime_dir)
+            result = subprocess.run([str(args.runtime.resolve()), "--say", target, command], env=env, capture_output=True, text=True, timeout=10)
+            events.append({"target": target, "native": command, "exit": result.returncode, "stdout": result.stdout, "stderr": result.stderr})
+            assert result.returncode == 0, events[-1]
+            return result.stdout.strip()
+
+        if args.pointer:
+            assert_private_transport(env, runtime_dir)
+            pointer = subprocess.Popen([str(args.pointer.resolve()), str(runtime_dir)], env=env, stdin=subprocess.PIPE, stdout=pointer_log, stderr=subprocess.STDOUT, text=True)
+            wait_for(lambda: "ready" in (evidence / "pointer.log").read_text(), "owned persistent private pointer")
+
+        def click(x, y):
+            assert pointer is not None and pointer.poll() is None
+            assert_private_transport(env, runtime_dir)
+            pointer.stdin.write(f"click {x} {y}\n")
+            pointer.stdin.flush()
+
+        def keyboard(*keys):
+            assert args.wtype is not None
+            assert_private_transport(env, runtime_dir)
+            subprocess.run([str(args.wtype.resolve()), *keys], env=env, check=True, capture_output=True, timeout=10)
+
+        if args.windows:
+            app_log = (evidence / "window-only.log").open("w")
+            assert_private_transport(env, runtime_dir)
+            app = subprocess.Popen([str(args.runtime.resolve()), "--scene", str(ROOT / "tests/window/conditional.plm"), "--answer-as", "tohru-window-lifecycle", "--no-hud", "--stall", "0"], env=env, stdout=app_log, stderr=subprocess.STDOUT)
+            def window(command): return request("tohru-window-lifecycle", command)
+            wait_for(lambda: window("get visible") == "false", "initially closed window-only process answers without GPU")
+            assert not views("dev.tohru.WindowLifecycle"), "blank initially closed window mapped"
+            assert "NVIDIA GeForce RTX 5090" not in (evidence / "window-only.log").read_text(), "window-only startup unexpectedly initialized GPU"
+            window("fact visible true")
+            wait_for(lambda: len(views("dev.tohru.WindowLifecycle")) == 1, "first window-only open without another surface")
+            assert "NVIDIA GeForce RTX 5090" in (evidence / "window-only.log").read_text(), "window-only app hardware adapter not verified"
+            compositor('[app_id="dev.tohru.WindowLifecycle"] floating enable, resize set width 520 px height 360 px')
+            wait_for(lambda: views("dev.tohru.WindowLifecycle")[0]["rect"]["width"] == 520, "ordinary native resize")
+            compositor('[app_id="dev.tohru.WindowLifecycle"] kill')
+            wait_for(lambda: window("get visible") == "false" and not views("dev.tohru.WindowLifecycle"), "WM close acknowledges presentation fact")
+            time.sleep(0.2)
+            assert not views("dev.tohru.WindowLifecycle"), "WM close immediately reopened"
+            window("fact visible true")
+            wait_for(lambda: len(views("dev.tohru.WindowLifecycle")) == 1, "explicit reopen without output change")
+            previous_id = views("dev.tohru.WindowLifecycle")[0]["id"]
+            compositor("create_output")
+            compositor("output", "HEADLESS-2", "mode", "1280x720", "scale", "1.25")
+            compositor("output", "HEADLESS-1", "disable")
+            wait_for(lambda: len(views("dev.tohru.WindowLifecycle")) == 1 and views("dev.tohru.WindowLifecycle")[0]["id"] != previous_id and window("get visible") == "true", "removed-output conditional replacement")
+            previous_id = views("dev.tohru.WindowLifecycle")[0]["id"]
+            compositor("output", "HEADLESS-1", "enable")
+            compositor("output", "HEADLESS-2", "disable")
+            wait_for(lambda: len(views("dev.tohru.WindowLifecycle")) == 1 and views("dev.tohru.WindowLifecycle")[0]["id"] != previous_id, "reconnect replacement without duplicate roles")
+            for _ in range(4):
+                window("fact visible false")
+                wait_for(lambda: not views("dev.tohru.WindowLifecycle"), "retire conditional role")
+                window("fact visible true")
+                wait_for(lambda: len(views("dev.tohru.WindowLifecycle")) == 1, "reopen one conditional role")
+            subprocess.run(["grim", "-o", "HEADLESS-1", str(evidence / "window-lifecycle.png")], env=env, check=True, timeout=10)
+            window("quit")
+            app.wait(timeout=10)
+            app_log.close()
+            app = None
 
         def cli(*arguments, check=True):
             assert_private_transport(env, runtime_dir)
@@ -195,22 +288,24 @@ def main():
             nonlocal app, app_log
             assert_private_transport(env, runtime_dir)
             app_log = (evidence / f"app-{label}.log").open("w")
-            app = subprocess.Popen([str(ROOT / "bin/tohru-run")], env=env, stdout=app_log, stderr=subprocess.STDOUT)
+            app = subprocess.Popen([str(ROOT / "bin/tohru-run")], env={**env, "WAYLAND_DEBUG": "client"}, stdout=app_log, stderr=subprocess.STDOUT)
             expect("bar.mooncoil", False, "nix")
             assert "NVIDIA GeForce RTX 5090" in (evidence / f"app-{label}.log").read_text(), "app hardware adapter not verified"
 
         launch("first")
         if args.sound:
             def native(command):
-                assert_private_transport(env, runtime_dir)
-                result = subprocess.run([str(args.runtime.resolve()), "--say", "tohru", command], env=env, capture_output=True, text=True, timeout=10)
-                events.append({"native": command, "exit": result.returncode, "stdout": result.stdout, "stderr": result.stderr})
-                assert result.returncode == 0, events[-1]
-                return result.stdout.strip()
+                return request("tohru", command)
             def audio_matches(volume, muted):
                 value = json.loads(cli("audio", "status", "--json").stdout)
                 return value if abs(value.get("volume", -10) - volume) < 0.015 and value.get("muted") == muted else None
             wait_for(lambda: audio_matches(0.5, False), "private native audio report")
+            if pointer:
+                click(956, 16)
+                wait_for(lambda: native("get sound_open") == "true", "actual bar sound click")
+                wait_for(lambda: ".grab(" in (evidence / "app-first.log").read_text(), "native sound popup pointer grab")
+                click(400, 300)
+                wait_for(lambda: native("get sound_open") == "false", "native click-open outside dismissal")
             cli("audio", "volume", "up")
             wait_for(lambda: audio_matches(0.55, False), "5 percent native step")
             cli("audio", "mute", "toggle")
@@ -223,6 +318,10 @@ def main():
             wait_for(lambda: native("get sound_open") == "true", "root sound popup open")
             native("emit audio_set 0.8")
             wait_for(lambda: audio_matches(0.8, False), "native slider write")
+            if args.wtype:
+                keyboard("-k", "Escape")
+                wait_for(lambda: native("get sound_open") == "false", "native Escape dismisses CLI-open sound")
+                cli("panel", "open", "sound")
             cli("panel", "open", "calendar")
             wait_for(lambda: native("get cal_open") == "true" and native("get sound_open") == "false", "root opposite close")
             cli("panel", "open", "sound")
@@ -241,9 +340,14 @@ def main():
             wait_for(lambda: native("get audio_failed") == "false", "native error clear")
             cli("settings", "open")
             wait_for(lambda: native("get settings_open") == "true" and native("get sound_open") == "false", "same-process Settings open")
+            if args.wtype:
+                keyboard("-M", "ctrl", "-k", "f", "-m", "ctrl")
             native("text settings_search mooncoil")
             wait_for(lambda: native("get settings_rows.count") == "1", "native Settings search")
-            native("emit settings_row 0")
+            if args.wtype:
+                keyboard("-k", "Return")
+            else:
+                native("emit settings_row 0")
             expect("bar.mooncoil", True, "runtime")
             native("emit settings_category 2")
             wait_for(lambda: native("get settings_page") == "2", "native Settings navigation")
@@ -255,7 +359,26 @@ def main():
             wait_for(lambda: native("get settings_open") == "false", "Settings close")
             cli("settings", "open")
             wait_for(lambda: native("get settings_open") == "true", "Settings reopen")
+            wait_for(lambda: len(views("dev.tohru.Settings")) == 1, "one real Settings window")
+            compositor('[app_id="dev.tohru.Settings"] kill')
+            wait_for(lambda: native("get settings_open") == "false" and not views("dev.tohru.Settings"), "Settings WM close authoritative fact")
+            cli("settings", "open")
+            wait_for(lambda: len(views("dev.tohru.Settings")) == 1, "Settings explicit reopen after WM close")
+            expect("bar.mooncoil", True, "runtime")
             cli("settings", "close")
+            cli("panel", "open", "calendar")
+            initial_month = int(native("get cal_month"))
+            native("emit calendar_next")
+            retained_month = initial_month % 12 + 1
+            wait_for(lambda: native("get cal_month") == str(retained_month), "retained calendar month before VM reload")
+            logic = scene / "bar.luau"
+            loads = (evidence / "app-first.log").read_text().count("bar.luau running")
+            logic.write_text(logic.read_text() + "\n-- visible calendar native VM reload\n")
+            wait_for(lambda: (evidence / "app-first.log").read_text().count("bar.luau running") > loads, "actual visible calendar VM replacement")
+            assert native("get cal_open") == "true" and native("get cal_month") == str(retained_month)
+            assert native("get cal_rail_error") == ""
+            wait_for(lambda: native("get cal_rail_moving") == "false", "retained rail settles after VM replacement", timeout=20)
+            cli("panel", "close")
         expect("appearance.corners", False, "user")
         cli("config", "set", "bar.mooncoil", "true")
         settings = expect("bar.mooncoil", True, "runtime")
@@ -291,11 +414,11 @@ def main():
         settings = expect("appearance.corners", True, "user")
         expect("bar.preferred_output", "DP-LEGACY", "user")
         assert not settings["bar.mooncoil"]["runtime_override"]
-        summary = {"result": "passed", "runtime": str(args.runtime.resolve()), "app_adapter": "NVIDIA GeForce RTX 5090 / Vulkan", "compositor_adapter": "NVIDIA GeForce RTX 5090 / GLES2", "screenshot": str(screenshot), "checks": ["native CLI", "managed override", "config reload", "actual logic VM reload", "unmanaged persistence", "unknown/comment preservation", "invalid reload atomicity", "process restart reset"], "sound_settings_checks": args.sound, "performance_acceptance": False}
+        summary = {"result": "passed", "runtime": str(args.runtime.resolve()), "app_adapter": "NVIDIA GeForce RTX 5090 / Vulkan", "compositor_adapter": "NVIDIA GeForce RTX 5090 / GLES2", "screenshot": str(screenshot), "checks": ["native CLI", "managed override", "config reload", "actual logic VM reload", "unmanaged persistence", "unknown/comment preservation", "invalid reload atomicity", "process restart reset"], "sound_settings_checks": args.sound, "window_only_checks": args.windows, "pointer_checks": bool(args.pointer), "performance_acceptance": False}
         (evidence / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     finally:
         original = sys.exc_info()[1]
-        errors = finish_private_run((app, sway, pulse, bus), (app_log, sway_log, pulse_log, bus_log),
+        errors = finish_private_run((app, pointer, sway, pulse, bus), (app_log, pointer.stdin if pointer else None, pointer_log, sway_log, pulse_log, bus_log),
             lambda: (evidence / "cli-events.json").write_text(json.dumps(events, indent=2) + "\n"))
         try:
             print(evidence, flush=True)
