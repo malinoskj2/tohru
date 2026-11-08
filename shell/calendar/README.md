@@ -6,7 +6,11 @@ This entry is test-only. Click Calendar; Escape closes it. Its native events are
 
 Production composition (S): include `bar/state.plm`, `calendar/state.plm`,
 `bar/contents.plm` and `calendar/popup.plm` in the SAME root scene; initialize
-`require("bar/controller")()` and `require("calendar/controller")()` once.
+`require("bar/controller")()` and `require("calendar/controller")(rail)` once.
+Construct rail with `require("calendar/rail-publisher")(tohru_workspace,"calendar","cal_rail_")`
+from root. Native require is entry-relative, not module-relative; private entry
+uses `require("rail-publisher")` explicitly. A failed reset prevents observations
+until the next open attempt so its error remains visible.
 The calendar initializer returns `{open, close, toggle}` callables: use these
 from root Lua panel coordination, because native Lua `emit` reaches render
 rules and does not redispatch Lua event handlers. Native calendar_* events

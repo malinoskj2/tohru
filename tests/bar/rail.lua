@@ -27,3 +27,6 @@ binding.tick = function() error("binding failed") end
 moving=true; rail.observe(5,4); timers[4]()
 assert(cancelled[4] and text.ws_error:find("binding failed",1,true))
 print("Native60Hz publication has one timer, rest/error/close cancellation and event resume")
+
+binding.reset = nil
+assert(rail.reset() == false and text.ws_error ~= "")

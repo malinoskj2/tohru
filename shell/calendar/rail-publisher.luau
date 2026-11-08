@@ -18,14 +18,15 @@ return function(binding, role, prefix)
     end
     local function invoke(method, ...)
         local ok, sample = pcall(method, ...)
-        if not ok then text[prefix .. "error"] = tostring(sample); stop(); return end
+        if not ok then text[prefix .. "error"] = tostring(sample); stop(); return false end
         text[prefix .. "error"] = ""
         publish(sample)
+        return true
     end
     tick = function() invoke(binding.tick, role) end
     return {
-        observe = function(highest, active) invoke(binding.observe, role, highest, active) end,
-        reset = function() stop(); invoke(binding.reset, role) end,
+        observe = function(highest, active) return invoke(binding.observe, role, highest, active) end,
+        reset = function() stop(); return invoke(binding.reset, role) end,
         stop = stop,
     }
 end
