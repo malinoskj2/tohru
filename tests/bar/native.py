@@ -85,6 +85,7 @@ def bootstrap_private_bus(child_dir, token, inherited, arguments, run=subprocess
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime', type=Path, required=True)
+    parser.add_argument('--review-only', action='store_true')
     parser.add_argument('--bus-child', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--bus-token', help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -103,12 +104,12 @@ def main():
     processes, logs, events = [], [], []
     runtime = str(args.runtime.resolve())
 
-    def start(command, label, extra=None):
+    def start(command, label, extra=None, stdin=None):
         log = (evidence / f'{label}.log').open('w')
         logs.append(log)
         child_env = {**env, **(extra or {})}
         assert_private_ipc(child_env, runtime_dir)
-        process = subprocess.Popen(command, env=child_env, stdout=log, stderr=subprocess.STDOUT, close_fds=True)
+        process = subprocess.Popen(command, env=child_env, stdout=log, stderr=subprocess.STDOUT, close_fds=True, stdin=stdin)
         processes.append(process)
         return process
 
@@ -136,6 +137,10 @@ def main():
         display = wait_for(lambda: next((p for p in runtime_dir.glob('wayland-*') if not p.name.endswith('.lock')), None), 'private display')
         env.update(SWAYSOCK=str(socket), WAYLAND_DISPLAY=display.name)
         assert 'NVIDIA GeForce RTX 5090' in (evidence / 'sway.log').read_text(), 'compositor GPU unverified'
+        if args.review_only:
+            from review import verify
+            verify(ROOT, runtime, evidence, env, start, say, expect, wait_for)
+            return
         launch(ROOT / 'shell/bar/entry.plm', 'bar', debug=True)
         wait_for(lambda: say('bar', 'get bar_date'), 'native clock')
         expect('bar', 'bar_mooncoil', 'false')
