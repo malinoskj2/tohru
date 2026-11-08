@@ -64,6 +64,17 @@
              return Ok(Operand::Text(k));
          }
          if let Some(k) = s.props.iter().position(|f| f.0 == t) {
+--- a/src/gpu.rs
++++ b/src/gpu.rs
+@@ -5314,7 +5314,7 @@
+                 if request_frame {
+                     l.window.request_frame();
+                 }
+-                self.queue.present(frame);
++                l.window.present(&self.queue, frame);
+             }
+             Frame::Lent(which, _) => {
+                 if request_frame {
 --- a/src/lib.rs
 +++ b/src/lib.rs
 @@ -10,6 +10,7 @@
@@ -172,12 +183,14 @@
  }
  
  /// The render has let go of the sheet of surface `id`, and with it of its
-@@ -1094,6 +1130,8 @@
+@@ -1094,6 +1130,10 @@
  
  /// What the render asks of a system window.
  pub trait PlatformWindow: Send {
 +    /// Retired native lock targets may arrive queued after authenticated release.
 +    fn is_current(&self) -> bool { true }
++    /// Native lock implementations order this submission with configure ACK.
++    fn present(&self, queue: &wgpu::Queue, frame: wgpu::SurfaceTexture) { queue.present(frame); }
      /// Where the mouse gets in: only through these boxes, in logical pixels.
      fn update_input_region(&self, boxes: &[[i32; 4]]);
      /// Of those boxes, the ones whose zones yield (`yields:`): a window manager
@@ -191,7 +204,7 @@
      wl: wl_surface::WlSurface,
      px: (u32, u32),
      frames: Vec<OwnFrame>,
-@@ -283,12 +284,15 @@
+@@ -283,12 +284,16 @@
              let (tx, rx) = std::sync::mpsc::channel::<Show>();
              let (wl, device) = (self.wl.clone(), device.clone());
              let connection = DMABUFS.get().map(|d| d.connection.clone());
@@ -204,25 +217,29 @@
                              // The compositor reads it as it is: not before the card has finished it.
                              sent.wait(&device, std::time::Duration::from_secs(1));
 +                            if lock_face.as_ref().is_some_and(|face| !face.life.current()) { continue; }
++                            lock_publication(lock_face.as_ref(), || {
                              wl.attach(Some(&buffer), 0, 0);
                              match pieces {
                                  None => wl.damage_buffer(0, 0, px.0 as i32, px.1 as i32),
-@@ -301,8 +305,12 @@
+@@ -299,10 +304,15 @@
+                                 }
+                             }
                              wl.commit();
++                            });
                          }
                          Show::Forget(buffers) => buffers.iter().for_each(|b| b.destroy()),
 -                        Show::Commit => wl.commit(),
 -                        Show::Run(f) => f(),
 +                        Show::Commit => {
-+                            if lock_face.as_ref().is_none_or(|face| face.life.current()) { wl.commit(); }
++                            lock_publication(lock_face.as_ref(), || wl.commit());
 +                        }
 +                        Show::Run(f) => {
-+                            if lock_face.as_ref().is_none_or(|face| face.life.current()) { f(); }
++                            lock_publication(lock_face.as_ref(), f);
 +                        }
                          Show::Settled(done) => {
                              if let Some(c) = &connection {
                                  let _ = c.flush();
-@@ -858,7 +866,16 @@
+@@ -858,7 +868,26 @@
      SURFACE_IDS.fetch_add(1, Ordering::Relaxed)
  }
  
@@ -234,12 +251,22 @@
 +    life: crate::tohru_lock::authority::Face,
 +}
 +
++fn lock_publication(face: Option<&LockFaceLease>, publish: impl FnOnce()) {
++    if let Some(face) = face {
++        let _ = crate::tohru_lock::publication::ordered(|| {
++            if face.life.current() { publish(); }
++        });
++    } else {
++        publish();
++    }
++}
++
  struct WaylandWindow {
 +    lock_face: Option<LockFaceLease>,
      wl: wl_surface::WlSurface,
      compositor: CompositorState,
      /// To change the cursor you need the pointer's "device" and the serial
-@@ -886,6 +903,7 @@
+@@ -886,12 +915,13 @@
  impl WaylandWindow {
      /// What it has changed, committed: in its turn after the frames, if it has frames of its own.
      fn commit(&self) {
@@ -247,7 +274,14 @@
          match self.shown.lock().unwrap().as_ref() {
              Some(tx) => {
                  let _ = tx.send(Show::Commit);
-@@ -909,6 +927,10 @@
+             }
+             None => {
+-                self.wl.commit();
++                lock_publication(self.lock_face.as_ref(), || self.wl.commit());
+                 if let Some(c) = MOVABLE_LAYERS.get() {
+                     let _ = c.connection.flush();
+                 }
+@@ -909,6 +939,24 @@
  }
  
  impl PlatformWindow for WaylandWindow {
@@ -255,10 +289,24 @@
 +        self.lock_face.as_ref().is_none_or(|face| face.life.current())
 +    }
 +
++    fn present(&self, queue: &wgpu::Queue, frame: wgpu::SurfaceTexture) {
++        if self.lock_face.is_none() { queue.present(frame); return; }
++        // Retain the backing texture across submission so its final resource
++        // destruction cannot occur while the publication guard is held.
++        let keep_texture = frame.texture.clone();
++        let mut pending = Some(frame);
++        lock_publication(self.lock_face.as_ref(), || {
++            if let Some(frame) = pending.take() { queue.present(frame); }
++        });
++        drop(pending);
++        drop(keep_texture);
++    }
++
++
      fn update_input_region(&self, boxes: &[[i32; 4]]) {
          if let Ok(region) = Region::new(&self.compositor) {
              for c in boxes {
-@@ -941,7 +963,7 @@
+@@ -941,7 +989,7 @@
      }
  
      fn own_frames(&self) -> Option<Box<dyn gpu::Frames>> {
@@ -267,7 +315,15 @@
      }
  
      fn desktop_place(&self) -> Option<(String, (i32, i32))> {
-@@ -1479,6 +1501,7 @@
+@@ -1142,6 +1190,7 @@
+ }
+ 
+ struct State {
++    deferred_lock_targets: Vec<Box<gpu::NewSheet>>,
+     registry: RegistryState,
+     seats: SeatState,
+     outputs: OutputState,
+@@ -1479,6 +1528,7 @@
  /// would be that killing the locker unlocked it— and it's what forces this to
  /// never fail halfway.
  struct Locks {
@@ -275,7 +331,7 @@
      qh: QueueHandle<State>,
      compositor: CompositorState,
      manager: smithay_client_toolkit::session_lock::SessionLockState,
-@@ -1495,6 +1518,7 @@
+@@ -1495,6 +1545,7 @@
  }
  
  struct Engaged {
@@ -283,7 +339,7 @@
      which: usize,
      /// The box the scene declares (`size:`), which gets centred on each monitor,
      /// and where its piece of the plane lands.
-@@ -1514,6 +1538,7 @@
+@@ -1514,6 +1565,7 @@
  
  /// The lock surface of ONE monitor.
  struct LockFace {
@@ -291,7 +347,7 @@
      id: u32,
      // In order: first what paints is released, then the surface.
      pending: Option<wgpu::Surface<'static>>,
-@@ -1529,33 +1554,36 @@
+@@ -1529,33 +1581,36 @@
      cover: Option<Option<(WlShmPool, WlBuffer, std::os::fd::OwnedFd, (u32, u32))>>,
      /// The monitor it covers: when that one goes, so does the face.
      output: wl_output::WlOutput,
@@ -340,7 +396,7 @@
          }
      };
      // One face per monitor, and all at once: until they're all there, the
-@@ -1570,24 +1598,102 @@
+@@ -1570,24 +1625,102 @@
      // On none of them (a monitor unplugged), on all: a lock with nowhere to type
      // the password would be no way back.
      let everywhere = !shown.contains(&true);
@@ -448,7 +504,7 @@
      }
      let viewport = c.viewporter.as_ref().map(|v| v.get_viewport(surface.wl_surface(), &c.qh, Silent));
      let fractional_scale = c.fractional_scales.as_ref().map(|m| m.get_fractional_scale(surface.wl_surface(), &c.qh, ScaleFor(id)));
-@@ -1599,7 +1705,7 @@
+@@ -1599,7 +1732,7 @@
              })
              .ok()
      };
@@ -457,7 +513,7 @@
  }
  
  /// Which monitors show the scene, by the lock's `screens:`.
-@@ -1627,11 +1733,12 @@
+@@ -1627,11 +1760,12 @@
      let Some(c) = LOCKS.get() else { return };
      let mut engaged = c.engaged.lock().unwrap();
      let Some(e) = engaged.as_mut() else { return };
@@ -471,7 +527,7 @@
      let covered = face.cover.is_some();
      e.faces.push(face);
      let _ = c.connection.flush();
-@@ -1655,13 +1762,14 @@
+@@ -1655,13 +1789,14 @@
  /// A cover paints nothing, so it can be destroyed here, and it is destroyed
  /// before the new face is made, since a monitor can only have one.
  fn promote_first_cover(c: &Locks, e: &mut Engaged) {
@@ -488,7 +544,7 @@
      e.faces.insert(0, face);
      let _ = c.connection.flush();
      println!("lock   · {name} shows the lock: the monitors it was meant for are not here");
-@@ -1679,15 +1787,21 @@
+@@ -1679,15 +1814,21 @@
      let mut engaged = c.engaged.lock().unwrap();
      let Some(e) = engaged.as_mut() else { return Vec::new() };
      let mut gone = Vec::new();
@@ -510,7 +566,7 @@
      let _ = c.connection.flush();
      gone
  }
-@@ -2020,7 +2134,7 @@
+@@ -2020,7 +2161,7 @@
              let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
                  id: a.id,
                  target: gpu::Target::Surface(surface),
@@ -519,7 +575,15 @@
                  scale: a.parent.scale,
                  size: a.size,
                  mhz: a.parent.mhz,
-@@ -2145,6 +2259,7 @@
+@@ -2094,6 +2235,7 @@
+         let _ = SCREENCOPY.set((c, s));
+     }
+     let mut state = State {
++        deferred_lock_targets: Vec::new(),
+         registry: RegistryState::new(&globals),
+         seats: SeatState::new(&globals, &qh),
+         outputs: OutputState::new(&globals, &qh),
+@@ -2145,6 +2287,7 @@
          Err(_) => eprintln!("warning: the compositor has no xdg-shell; there will be no popup surfaces"),
      }
      let _ = LOCKS.set(Locks {
@@ -527,7 +591,7 @@
          qh: qh.clone(),
          compositor: state.compositor.clone(),
          manager: smithay_client_toolkit::session_lock::SessionLockState::new(&globals, &qh),
-@@ -2243,7 +2358,7 @@
+@@ -2243,7 +2386,7 @@
              let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
                  id: p.id,
                  target: gpu::Target::Surface(surface),
@@ -536,7 +600,7 @@
                  scale: p.scale,
                  size,
                  mhz,
-@@ -2266,11 +2381,22 @@
+@@ -2266,11 +2409,22 @@
  impl smithay_client_toolkit::session_lock::SessionLockHandler for State {
      /// The compositor confirms it: now, and not before, the session is locked.
      fn locked(&mut self, _: &Connection, _: &QueueHandle<Self>, _: smithay_client_toolkit::session_lock::SessionLock) {
@@ -559,7 +623,7 @@
          eprintln!("lock   · the compositor did not grant the lock, or ended it: is another locker running?");
          let _ = self.to_render.send(ToRender::LockScreen(false));
      }
-@@ -2285,6 +2411,7 @@
+@@ -2285,6 +2439,7 @@
          let Some(c) = LOCKS.get() else { return };
          let mut engaged = c.engaged.lock().unwrap();
          let Some(e) = engaged.as_mut() else { return };
@@ -567,12 +631,15 @@
          let (which, bounds, origin) = (e.which, e.bounds, e.origin);
          let Some(face) = e.faces.iter_mut().find(|k| k.surface.wl_surface() == surface.wl_surface()) else { return };
          let size = conf.new_size;
-@@ -2311,17 +2438,22 @@
+@@ -2310,18 +2465,30 @@
+         }
          // Its box, centred on THIS monitor: what's left over around it is also
          // seen, so the background is painted large and each monitor shows its own part.
-         face.view_origin = (origin.0 - (size.0 as f32 - bounds.0 as f32) / 2.0, origin.1 - (size.1 as f32 - bounds.1 as f32) / 2.0);
+-        face.view_origin = (origin.0 - (size.0 as f32 - bounds.0 as f32) / 2.0, origin.1 - (size.1 as f32 - bounds.1 as f32) / 2.0);
 -        if let Some(paints) = face.pending.take() {
 -            let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
++        face.view_origin = crate::tohru_lock::view_origin(bounds, origin, (size.0 as f32, size.1 as f32));
++        let face_id = face.id;
 +        let sheet = face.pending.take().map(|paints| {
 +            Box::new(gpu::NewSheet {
                  id: face.id,
@@ -590,10 +657,41 @@
 +        drop(engaged);
 +        if let Some(sheet) = sheet {
 +            // Failed sends also destroy their GPU target outside engaged.
-+            let _ = self.to_render.send(ToRender::Sheet(sheet));
++            if let Err(std::sync::mpsc::SendError(ToRender::Sheet(sheet))) = self.to_render.send(ToRender::Sheet(sheet)) {
++                // The outer dispatch guard still covers this callback. Defer
++                // failed-send GPU destruction until that guard has left.
++                self.deferred_lock_targets.push(sheet);
++            }
++        } else {
++            let _ = self.to_render.send(ToRender::SheetSize(face_id, (size.0 as f32, size.1 as f32)));
          }
      }
  }
+@@ -2799,7 +2966,23 @@
+     registry_handlers![OutputState, SeatState];
+ }
+ 
+-smithay_client_toolkit::delegate_dispatch2!(State);
++// Same native Dispatch2 delegation as SCTK's macro, with ordering acquired
++// BEFORE its automatic lock-surface ack_configure and our viewport/state update.
++impl<I, UserData> wayland_client::Dispatch<I, UserData> for State
++where I: Proxy, UserData: Dispatch2<I, State> {
++    fn event(state: &mut State, proxy: &I, event: I::Event, data: &UserData, connection: &Connection, queue: &QueueHandle<State>) {
++        if I::interface().name == "ext_session_lock_surface_v1" {
++            let _ = crate::tohru_lock::publication::ordered(|| data.event(state, proxy, event, connection, queue));
++            drop(std::mem::take(&mut state.deferred_lock_targets));
++        } else {
++            data.event(state, proxy, event, connection, queue);
++        }
++    }
++
++    fn event_created_child(opcode: u16, queue: &QueueHandle<State>) -> Arc<dyn wayland_client::backend::ObjectData> {
++        UserData::event_created_child(opcode, queue)
++    }
++}
+ 
+ /// An icon by its name, the freedesktop way: the user's GTK icon theme and
+ /// the ones it inherits, then hicolor and a few common ones, in every icon
 --- a/src/render.rs
 +++ b/src/render.rs
 @@ -541,6 +541,7 @@
@@ -631,7 +729,17 @@
                      let g = gpu.get_or_insert_with(|| {
                          Gpu::new(&instance, match &n.target {
                              crate::gpu::Target::Surface(s) => Some(s),
-@@ -1227,11 +1241,32 @@
+@@ -1176,6 +1190,9 @@
+                             }
+                         }
+                         if l.view.size != new_size {
++                            if let Some(surface) = scene.surfaces.get(l.view.surface).filter(|surface| surface.lock_screen) {
++                                l.view.origin = crate::tohru_lock::view_origin((surface.width, surface.height), surface.origin, new_size);
++                            }
+                             l.view.size = new_size;
+                             g.reconfigure(l, size);
+                             if l.view.surface == 0 && l.view.popup.is_none() {
+@@ -1227,11 +1244,32 @@
                      Some(i) => texts[i] = value,
                      None => eprintln!("render · I don't know the text '{name}'"),
                  },
@@ -664,7 +772,7 @@
                  ToRender::LockScreen(held) => {
                      if !held {
                          // It has not granted it, or it has ended it: what was being painted is released
-@@ -1244,6 +1279,7 @@
+@@ -1244,6 +1282,7 @@
                          if let Some(g) = &gpu {
                              assign_pace(g, &mut sheets, size, op.no_vsync);
                          }
@@ -672,7 +780,7 @@
                      }
                      if let Some(k) = scene.facts.iter().position(|(n, _)| *n == "lock.held") {
                          facts[k] = if held { 1.0 } else { 0.0 };
-@@ -1264,6 +1300,9 @@
+@@ -1264,6 +1303,9 @@
                          facts[h] = 0.0;
                          let _ = to_logic.send(Event::Fact(scene.facts[h].0, 0.0));
                      }
@@ -682,7 +790,7 @@
                  }
                  ToRender::ExternalFact(name, written) => match scene.facts.iter().position(|h| h.0 == name) {
                      Some(i) => {
-@@ -1334,6 +1373,8 @@
+@@ -1334,6 +1376,8 @@
                              Some((_, t)) => t.to_text(facts[i]),
                              None => number(facts[i]),
                          }
@@ -691,7 +799,7 @@
                      } else if let Some(i) = scene.texts.iter().position(|t| t.0 == name) {
                          texts.get(i).cloned().unwrap_or_default()
                      } else if let Some(i) = scene.props.iter().position(|p| p.0 == name) {
-@@ -2881,7 +2922,7 @@
+@@ -2881,7 +2925,7 @@
                  .iter()
                  .filter(|t| {
                      let Some(s) = scene.surfaces.get(t.surface) else { return false };
@@ -700,7 +808,7 @@
                  })
                  .collect()
          };
-@@ -3889,23 +3930,17 @@
+@@ -3889,23 +3933,17 @@
          let want: Vec<(usize, bool)> = scene.surfaces.iter().enumerate().filter(|(_, s)| s.lock_screen).map(|(k, _)| (k, open(k))).collect();
          for (k, wants) in want {
              let was = locks.contains(&k);
@@ -734,7 +842,7 @@
          draw.views.clear();
          draw.views.extend(sheets.iter().filter(|l| open(l.view.surface)).map(|l| l.view.bounds()));
          for (k, em) in scene.popups.iter().enumerate() {
-@@ -4284,7 +4319,10 @@
+@@ -4284,7 +4322,10 @@
          // Conditions waited for: said as soon as they hold.
          if !waits.is_empty() {
              waits.retain(|(cond, start, deadline, reply)| {
@@ -746,7 +854,7 @@
                      let _ = reply.send(format!("yes, after {} ms\n", (now - *start).as_millis()));
                      false
                  } else if now >= *deadline {
-@@ -4531,9 +4569,9 @@
+@@ -4531,9 +4572,9 @@
          let closed: Vec<[f32; 4]> = sheets
              .iter()
              .filter(|l| l.view.popup.is_none())
@@ -758,7 +866,7 @@
              .collect();
          // From the zones as they are now: the rules may have moved some since the mouse looked.
          zone_memo.update(&scene, &facts, &props, &draw.hidden, &absent, check_shortcuts);
-@@ -4756,7 +4794,7 @@
+@@ -4756,7 +4797,7 @@
              // A copy that is closed (`open:`) keeps none: Marea lives on one
              // monitor, and the other's copy left an empty strip there.
              let c = Ctx { props: &props, facts: &facts, seen: None };
@@ -767,7 +875,7 @@
              let wants = if when.is_true(c) && open_here { sup.exclusive_zone } else { 0 };
              if reserves_set[k] != wants {
                  reserves_set[k] = wants;
-@@ -5455,6 +5493,8 @@
+@@ -5455,6 +5496,8 @@
                          format!("{:.4}", props[i].x)
                      } else if let Some(i) = scene.facts.iter().position(|h| h.0 == n) {
                          format!("{:.4}", facts[i])

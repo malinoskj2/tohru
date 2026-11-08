@@ -1,6 +1,8 @@
 //! Native root-locker bridge. Generic PAM queries never issue release permits.
 #[path = "tohru_lock/authority.rs"]
 pub(crate) mod authority;
+#[path = "tohru_lock/publication.rs"]
+pub(crate) mod publication;
 
 pub(crate) use authority::{Cycle, Permit};
 
@@ -30,6 +32,13 @@ pub(crate) fn authenticate_unlock(
 /// culling, input exclusion and surface pacing. Requested state is not authority.
 pub(crate) fn surface_open(owner: usize, requested: bool, active: &[usize]) -> bool {
     active.contains(&owner) || requested
+}
+
+pub(crate) fn view_origin(bounds: (u32, u32), origin: (f32, f32), size: (f32, f32)) -> (f32, f32) {
+    (
+        origin.0 - (size.0 - bounds.0 as f32) / 2.0,
+        origin.1 - (size.1 - bounds.1 as f32) / 2.0,
+    )
 }
 
 /// Native secret metadata is process-retained by the compiler across reloads.

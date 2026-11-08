@@ -201,3 +201,19 @@ fn queued_retired_target_keeps_native_owner_until_gpu_target_is_destroyed() {
         assert_eq!(*events.lock().unwrap(), ["gpu target", "native owner"]);
     }
 }
+
+#[test]
+fn resized_lock_view_and_native_pointer_origin_share_the_same_centering_rule() {
+    assert_eq!(
+        view_origin((600, 400), (0.0, 0.0), (1280.0, 800.0)),
+        (-340.0, -200.0)
+    );
+    assert_eq!(
+        view_origin((600, 400), (0.0, 0.0), (1920.0, 1080.0)),
+        (-660.0, -340.0)
+    );
+    assert_eq!(
+        view_origin((600, 400), (100.0, 50.0), (600.0, 400.0)),
+        (100.0, 50.0)
+    );
+}
