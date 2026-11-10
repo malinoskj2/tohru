@@ -34,9 +34,7 @@ def main():
                     '-pix_fmt', 'yuv420p', str(clip)], check=True, timeout=60,
                    env={k: v for k, v in os.environ.items() if k != 'LD_LIBRARY_PATH'})
     (evidence / 'config/tohru/config.toml').write_text(
-        "[wallpaper]\nenabled=true\nchange='never'\n[wallpaper.assignments]\nHEADLESS-1='" + str(clip) + "'\n"
-        "[idle]\nlock_seconds=0\nscreen_off_unlocked_seconds=0\nscreen_off_locked_seconds=0\n"
-        "suspend_unlocked_seconds=0\nsuspend_locked_seconds=0\nfade_milliseconds=0\n")
+        "[wallpaper]\nenabled=true\nchange='never'\n[wallpaper.assignments]\nHEADLESS-1='" + str(clip) + "'\n")
     scene = evidence / 'scene'
     shutil.copytree(ROOT / 'shell', scene)
     env = wallpaper.private_environment(os.environ, run, evidence, args.runtime, scene)

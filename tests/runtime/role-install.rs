@@ -117,11 +117,6 @@ fn tohru_role_child(case: &str) {
             .lua
             .as_ref()
             .expect("locker/disabled/plugin loads without shell TOML");
-        let available = matches!(
-            lua.globals().get::<mlua::Value>("tohru_idle").unwrap(),
-            mlua::Value::Table(_)
-        );
-        assert_eq!(available, case == "locker");
         for name in ["tohru_settings", "tohru_workspace", "tohru_info"] {
             assert!(
                 matches!(

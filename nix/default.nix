@@ -15,9 +15,7 @@ let
       ../runtime/capture/native.rs ../runtime/capture/clipboard.rs ../runtime/capture/clipboard_owner.rs
       ../runtime/video ../runtime/video_luau.rs ../tests/wallpaper/video.rs ../tests/wallpaper/mpv.rs ../tests/wallpaper/video_startup.rs
       ../tests/wallpaper/catalog.rs ../tests/wallpaper/preset.rs ../tests/wallpaper/presets.rs ../tests/wallpaper/raster.rs ../tests/capture
-      ../runtime/idle/mod.rs ../runtime/idle/cookies.rs ../runtime/idle/delay.rs ../runtime/idle/input.rs ../runtime/idle/logind_state.rs ../runtime/idle/configuration.rs ../runtime/idle/teardown.rs
-      ../runtime/idle/native.rs ../runtime/idle/observer.rs ../runtime/idle/screensaver.rs ../runtime/idle/logind.rs ../runtime/idle/sleep_guard.rs
-      ../tests/session/idle.rs ../tests/session/idle_cookies.rs ../tests/session/idle_delay.rs ../tests/session/idle_input.rs ../tests/session/idle_logind.rs ../tests/session/idle_configuration.rs ../tests/session/idle_teardown.rs ../tests/runtime/role-install.rs ../LICENSE ];
+      ../tests/runtime/role-install.rs ../LICENSE ];
   };
   lockSource = lib.fileset.toSource {
     root = ../.;
@@ -45,7 +43,7 @@ let
       ../runtime/capture/image-lifecycle.patch ../runtime/wallpaper/raster-limits.patch
       ../runtime/wallpaper/presets.patch ../runtime/patches/0009-preset-dependency.patch ../runtime/capture/output-events.patch
       ../runtime/patches/0007-capture-assembly.patch
-      ../runtime/idle/0004-idle-native.patch ../runtime/patches/0008-idle-binding.patch
+      ../runtime/patches/0008-locker-gate.patch
       ../runtime/patches/0010-key-rule-order.patch ../runtime/patches/0011-focus-round.patch
       ../runtime/patches/0012-video-binding.patch ];
     postPatch = ''
@@ -53,9 +51,7 @@ let
       cp ${foundationSource}/Cargo.toml foundation/
       cp ${foundationSource}/Cargo.lock foundation/
       cp -r ${foundationSource}/src foundation/
-      mkdir -p foundation/runtime foundation/tests/session
-      mkdir -p foundation/runtime/idle
-      cp ${foundationSource}/runtime/idle/mod.rs ${foundationSource}/runtime/idle/cookies.rs ${foundationSource}/runtime/idle/delay.rs ${foundationSource}/runtime/idle/input.rs ${foundationSource}/runtime/idle/logind_state.rs ${foundationSource}/runtime/idle/configuration.rs ${foundationSource}/runtime/idle/teardown.rs foundation/runtime/idle/
+      mkdir -p foundation/runtime
       cp -r ${foundationSource}/runtime/workspace foundation/runtime/
       mkdir -p foundation/runtime/capture
       cp ${foundationSource}/runtime/capture/mod.rs ${foundationSource}/runtime/capture/files.rs ${foundationSource}/runtime/capture/geometry.rs foundation/runtime/capture/
@@ -70,8 +66,6 @@ let
       mkdir -p foundation/runtime/video
       cp ${foundationSource}/runtime/video/mod.rs foundation/runtime/video/
       cp ${foundationSource}/tests/wallpaper/video.rs foundation/tests/wallpaper/
-      cp ${foundationSource}/tests/session/idle.rs foundation/tests/session/
-      cp ${foundationSource}/tests/session/idle_cookies.rs ${foundationSource}/tests/session/idle_delay.rs ${foundationSource}/tests/session/idle_input.rs ${foundationSource}/tests/session/idle_logind.rs ${foundationSource}/tests/session/idle_configuration.rs ${foundationSource}/tests/session/idle_teardown.rs foundation/tests/session/
       cp ${foundationSource}/runtime/settings_luau.rs src/tohru_settings.rs
       cp ${foundationSource}/runtime/workspace_luau.rs src/tohru_workspace.rs
       mkdir -p src/tohru_wallpaper tests/wallpaper
@@ -84,9 +78,6 @@ let
       cp ${foundationSource}/tests/wallpaper/presets.rs ${foundationSource}/tests/wallpaper/raster.rs tests/wallpaper/
       cp ${foundationSource}/runtime/window/visibility.rs src/tohru_window.rs
       cp ${foundationSource}/runtime/info_luau.rs src/tohru_info.rs
-      mkdir -p src/tohru_idle
-      cp ${foundationSource}/runtime/idle/native.rs src/tohru_idle.rs
-      cp ${foundationSource}/runtime/idle/observer.rs ${foundationSource}/runtime/idle/screensaver.rs ${foundationSource}/runtime/idle/logind.rs ${foundationSource}/runtime/idle/sleep_guard.rs src/tohru_idle/
       mkdir -p src/platform/tohru_capture
       cp ${foundationSource}/runtime/capture/native.rs ${foundationSource}/runtime/capture/clipboard_owner.rs src/platform/tohru_capture/
       cp ${foundationSource}/runtime/capture/clipboard.rs src/tohru_capture_clipboard.rs

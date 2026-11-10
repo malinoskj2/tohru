@@ -4,9 +4,6 @@ use mlua::Lua;
 #[path = "../osd/logic.rs"]
 mod osd;
 
-#[path = "../idle-settings/logic.rs"]
-mod idle_settings;
-
 #[path = "../wallpaper-settings/logic.rs"]
 mod wallpaper_settings;
 
@@ -260,19 +257,10 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
             info_reads=info_reads+1
             return {system={os_name='Fixture Linux'},accounts={},disks={},mounts={},generations={},issues={}}
         end}
-        tohru_idle={start=function(config)
-            assert(config.lock_seconds==1800 and config.screen_off_unlocked_seconds==0)
-            assert(config.screen_off_locked_seconds==60 and config.suspend_unlocked_seconds==7200)
-            assert(config.suspend_locked_seconds==5400 and config.fade_milliseconds==2000)
-            idle_configured=true; idle_configure_count=(idle_configure_count or 0)+1
-        end}
         tohru_settings={snapshot=function() return {
             ['bar.mooncoil']={value=false},['appearance.corners']={value=true},['appearance.corner_size']={value=32},
             ['bar.preferred_output']={value='legacy'},
-            ['capture.save']={value=true}, ['capture.copy']={value=true}, ['capture.directory']={value=''}, ['capture.filename_pattern']={value=''}, ['wallpaper.preset']={}, ['wallpaper.change']={value='never'}, ['appearance.palette']={value='mocha'}, ['wallpaper.fit']={value='fill'}, ['wallpaper.enabled']={value=false}, ['wallpaper.folder']={value=''}, ['wallpaper.assignments']={value={}},
-            ['idle.lock_seconds']={value=1800}, ['idle.screen_off_unlocked_seconds']={value=0},
-            ['idle.screen_off_locked_seconds']={value=60}, ['idle.suspend_unlocked_seconds']={value=7200},
-            ['idle.suspend_locked_seconds']={value=5400}, ['idle.fade_milliseconds']={value=2000}
+            ['capture.save']={value=true}, ['capture.copy']={value=true}, ['capture.directory']={value=''}, ['capture.filename_pattern']={value=''}, ['wallpaper.preset']={}, ['wallpaper.change']={value='never'}, ['appearance.palette']={value='mocha'}, ['wallpaper.fit']={value='fill'}, ['wallpaper.enabled']={value=false}, ['wallpaper.folder']={value=''}, ['wallpaper.assignments']={value={}}
         } end}
     "#).exec().unwrap();
     let modules: mlua::Table = lua.globals().get("modules").unwrap();
@@ -339,14 +327,6 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
             include_str!("../../shell/osd/controller.luau"),
         ),
         (
-            "settings/idle",
-            include_str!("../../shell/settings/idle.luau"),
-        ),
-        (
-            "session/idle",
-            include_str!("../../shell/session/idle.luau"),
-        ),
-        (
             "sound/controller",
             include_str!("../../shell/sound/controller.luau"),
         ),
@@ -380,8 +360,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         .unwrap();
     lua.load(
         r#"
-        assert(fact.corners and fact.corner_size==32 and idle_configured)
-        dispatch('config_reload'); assert(idle_configure_count==1, 'unchanged projection cannot resume idle')
+        assert(fact.corners and fact.corner_size==32)
         dispatch('audio_report'); assert(not fact.osd_open)
         dispatch('audio_step',1); assert(not fact.osd_open, 'ack is not an observation')
         fact['audio.volume']=0.4; dispatch('audio_report')
@@ -446,11 +425,6 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         dispatch('capture_cancel')
         assert(not fact.capture_open and fact.wallpaper_picker_keyboard and released==1)
         tohru_settings.set=function(key,value) last_setting_key=key;last_setting_value=value;return tohru_settings.snapshot() end
-        for _,field in ipairs({'lock_seconds','screen_off_unlocked_seconds','screen_off_locked_seconds',
-            'suspend_unlocked_seconds','suspend_locked_seconds','fade_milliseconds'}) do
-            dispatch('setting_idle_'..field,17)
-            assert(last_setting_key=='idle.'..field and last_setting_value==17)
-        end
         dispatch('setting_capture_save',0); assert(last_setting_key=='capture.save' and last_setting_value==false)
         dispatch('setting_capture_copy',1); assert(last_setting_key=='capture.copy' and last_setting_value==true)
 

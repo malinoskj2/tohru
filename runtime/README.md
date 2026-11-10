@@ -86,7 +86,7 @@ Hyprland runtime validation, preferred/focused/first-output fallback and reconne
 hotplug/scaling/rotation, exact 240Hz workspace motion and stop-at-rest frame
 integration (native API decision pending), full retained bar contents and 1:1
 visuals, native glass review, and all performance/presentation/soak gates.
-No notifications, authentication, idle, wallpaper or other singleton services
+No notifications, authentication, wallpaper or other singleton services
 are activated by this foundation. Native frame/namespace/notification gaps stay
 unpatched until the user's decisions. Independent review follows integration.
 

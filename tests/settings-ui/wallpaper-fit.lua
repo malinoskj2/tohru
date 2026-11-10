@@ -73,7 +73,6 @@ local noop=function()end
 local panel={open=noop,close=noop,toggle=noop,observe=noop,hide=noop,publish=noop}
 setmetatable(modules,{__index=function(_,name)
     if name=='settings/controller' then return function()return noop end end
-    if name=='settings/idle' then return function()return noop end end
     return function()return panel end
 end})
 modules['settings/wallpaper']=function()return bridge end

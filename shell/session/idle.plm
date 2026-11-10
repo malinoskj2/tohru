@@ -1,6 +1,0 @@
-language 0.4
-// Standalone parser/fixture entry; production root includes the owned part.
-scene TohruIdle {
-    surface { size: 1, 1; keyboard: none }
-    include "idle.part.plm"
-}

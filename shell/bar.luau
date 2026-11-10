@@ -1,6 +1,5 @@
 -- Settings ownership is in Rust, outside this reloadable VM.
 local refresh_settings
-local configure_idle
 local wallpaper
 local capture
 local corner_preferences
@@ -13,7 +12,6 @@ local function publish(settings)
     settings["bar.preferred_output"].effective = false
     text.settings_status = json.encode({schema = 7, settings = settings})
     if refresh_settings then refresh_settings(settings) end
-    if configure_idle then configure_idle(settings) end
     if wallpaper then wallpaper.publish(settings) end
     if capture then capture.publish(settings) end
     if corner_preferences then corner_preferences.publish(settings) end
@@ -64,13 +62,6 @@ end)
 on("setting_corner_size", function(n)
     change(function() return tohru_settings.set("appearance.corner_size", n) end)
 end)
-for _, field in ipairs({"lock_seconds", "screen_off_unlocked_seconds", "screen_off_locked_seconds",
-    "suspend_unlocked_seconds", "suspend_locked_seconds", "fade_milliseconds"}) do
-    local key = "idle." .. field
-    on("setting_idle_" .. field, function(value)
-        change(function() return tohru_settings.set(key, value) end)
-    end)
-end
 on("setting_capture_save", function(value) change(function() return tohru_settings.set("capture.save", value ~= 0) end) end)
 on("setting_capture_copy", function(value) change(function() return tohru_settings.set("capture.copy", value ~= 0) end) end)
 on("setting_output", function()
@@ -135,9 +126,6 @@ on("settings_wallpaper_open", function() close_panels(); if fact.capture_open th
 
 corner_preferences = require("settings/corner-size")(publish)
 corner_preferences.publish(tohru_settings.snapshot())
-
-configure_idle = require("settings/idle")(require("session/idle"))
-configure_idle(tohru_settings.snapshot())
 
 capture = require("settings/capture")(publish)
 capture.publish(tohru_settings.snapshot())

@@ -28,16 +28,10 @@ pub enum Key {
     CaptureCopy,
     CaptureDirectory,
     CaptureFilenamePattern,
-    IdleLockSeconds,
-    IdleScreenOffUnlockedSeconds,
-    IdleScreenOffLockedSeconds,
-    IdleSuspendUnlockedSeconds,
-    IdleSuspendLockedSeconds,
-    IdleFadeMilliseconds,
 }
 
 impl Key {
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 15] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::Corners,
@@ -53,12 +47,6 @@ impl Key {
         Self::CaptureCopy,
         Self::CaptureDirectory,
         Self::CaptureFilenamePattern,
-        Self::IdleLockSeconds,
-        Self::IdleScreenOffUnlockedSeconds,
-        Self::IdleScreenOffLockedSeconds,
-        Self::IdleSuspendUnlockedSeconds,
-        Self::IdleSuspendLockedSeconds,
-        Self::IdleFadeMilliseconds,
     ];
 
     #[must_use]
@@ -79,12 +67,6 @@ impl Key {
             Self::CaptureCopy => "capture.copy",
             Self::CaptureDirectory => "capture.directory",
             Self::CaptureFilenamePattern => "capture.filename_pattern",
-            Self::IdleLockSeconds => "idle.lock_seconds",
-            Self::IdleScreenOffUnlockedSeconds => "idle.screen_off_unlocked_seconds",
-            Self::IdleScreenOffLockedSeconds => "idle.screen_off_locked_seconds",
-            Self::IdleSuspendUnlockedSeconds => "idle.suspend_unlocked_seconds",
-            Self::IdleSuspendLockedSeconds => "idle.suspend_locked_seconds",
-            Self::IdleFadeMilliseconds => "idle.fade_milliseconds",
         }
     }
 
@@ -136,12 +118,6 @@ impl Key {
             Self::CaptureCopy => ("capture", "copy"),
             Self::CaptureDirectory => ("capture", "directory"),
             Self::CaptureFilenamePattern => ("capture", "filename_pattern"),
-            Self::IdleLockSeconds => ("idle", "lock_seconds"),
-            Self::IdleScreenOffUnlockedSeconds => ("idle", "screen_off_unlocked_seconds"),
-            Self::IdleScreenOffLockedSeconds => ("idle", "screen_off_locked_seconds"),
-            Self::IdleSuspendUnlockedSeconds => ("idle", "suspend_unlocked_seconds"),
-            Self::IdleSuspendLockedSeconds => ("idle", "suspend_locked_seconds"),
-            Self::IdleFadeMilliseconds => ("idle", "fade_milliseconds"),
         }
     }
 
@@ -149,12 +125,6 @@ impl Key {
     pub const fn integer_bounds(self) -> Option<(i64, i64)> {
         match self {
             Self::CornerSize => Some((1, 100)),
-            Self::IdleFadeMilliseconds => Some((0, 120_000)),
-            Self::IdleLockSeconds
-            | Self::IdleScreenOffUnlockedSeconds
-            | Self::IdleScreenOffLockedSeconds
-            | Self::IdleSuspendUnlockedSeconds
-            | Self::IdleSuspendLockedSeconds => Some((0, 4_294_967)),
             _ => None,
         }
     }
@@ -173,12 +143,6 @@ impl Key {
             Self::WallpaperPreset => Value::WallpaperPreset(None),
             Self::WallpaperChange => Value::WallpaperChange(WallpaperChange::Never),
             Self::Palette => Value::Palette(Palette::Mocha),
-            Self::IdleLockSeconds => Value::Integer(1800),
-            Self::IdleScreenOffUnlockedSeconds => Value::Integer(0),
-            Self::IdleScreenOffLockedSeconds => Value::Integer(60),
-            Self::IdleSuspendUnlockedSeconds => Value::Integer(7200),
-            Self::IdleSuspendLockedSeconds => Value::Integer(5400),
-            Self::IdleFadeMilliseconds => Value::Integer(2000),
         }
     }
 
