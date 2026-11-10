@@ -170,6 +170,7 @@ def main():
         assert 'NVIDIA GeForce RTX 5090' in (evidence/'sway.log').read_text()
         if a.notifications:
             import re
+            cookie=run/'pulse-cookie';cookie.write_bytes(os.urandom(256));cookie.chmod(0o600)
             pulse=start([str(a.pulseaudio),'-n','--daemonize=no','--exit-idle-time=-1',
                 '--log-target=stderr','--load=module-native-protocol-unix socket='+str(run/'pulse-native')+' auth-anonymous=1',
                 '--load=module-null-sink sink_name=private'], 'pulse.log')
