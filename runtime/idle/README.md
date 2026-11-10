@@ -1,6 +1,10 @@
 # Native integrated idle
 
-Source checkpoint; native compile/protocol acceptance outstanding. No activation.
+Built into the Nix runtime. `tests/native-idle.py` checks it on a private Sway
+display with a fake logind: screen-off fade, native output power-off, pointer
+wake, a connected ScreenSaver inhibitor, and logind BlockInhibited=idle. Lock and
+suspend actions, the dedicated locker's sleep delay and real logind are not
+covered there.
 The existing `tohru-shell` library owns policy/cookies/delay. Pinned Pleamar owns
 native transport/renderer, without a new crate/daemon/backend.
 
