@@ -14,7 +14,7 @@ local binding = {
 }
 local rail = assert(loadfile("shell/calendar/rail-publisher.luau"))()(binding,"workspace","ws_")
 rail.observe(5,1)
-assert(#timers == 0 and fact.ws_r == 255 and fact.ws_g == 127.5 and not fact.ws_moving)
+assert(#timers == 0 and fact.ws_r == 1 and fact.ws_g == 0.5 and not fact.ws_moving)
 moving=true; rail.observe(5,5); rail.observe(5,2)
 assert(#timers == 1 and fact.ws_moving and rail.active())
 moving=false; timers[1]()

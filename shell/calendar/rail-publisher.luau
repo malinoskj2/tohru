@@ -10,7 +10,7 @@ return function(binding, role, prefix)
     local tick
     local function publish(sample)
         for index = 1, 16 do fact[prefix .. "v." .. (index - 1)] = sample.shape[index] end
-        fact[prefix .. "r"], fact[prefix .. "g"], fact[prefix .. "b"] = sample.color[1] * 255, sample.color[2] * 255, sample.color[3] * 255
+        fact[prefix .. "r"], fact[prefix .. "g"], fact[prefix .. "b"] = sample.color[1], sample.color[2], sample.color[3]
         fact[prefix .. "present"] = sample.color[4] > 0
         fact[prefix .. "width"] = sample.width
         fact[prefix .. "moving"] = sample.moving

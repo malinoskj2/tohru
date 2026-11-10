@@ -3,9 +3,9 @@ part WorkspaceRailState {
     fact ws_width = 80
     fact ws_present = false
     fact ws_moving = false
-    fact ws_r = 250
-    fact ws_g = 179
-    fact ws_b = 135
+    fact ws_r = 0.98
+    fact ws_g = 0.702
+    fact ws_b = 0.529
     text ws_error = ""
     repeat i in 0..16 { fact ws_v.$i = 0 }
     repeat i in 1..11 { fact ws_advertised.$i = false }

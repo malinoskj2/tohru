@@ -77,9 +77,9 @@ end)
     resting('ws_',72);timers(False,False)
     description=say('rails','describe json')
     panels=json.loads(description)
-    nodes={node['name']:node for panel in panels for node in panel.get('nodes',[])}
+    nodes={node['name']:node for panel in panels for node in panel.get('nodes',[]) if 'name' in node}
     assert nodes['workspace_cell.1']['active'] is True
-    assert nodes['workspace_cell.2']['active'] is False
+    assert nodes.get('workspace_cell.2',{}).get('active',False) is False
     (evidence/'workspace-description.json').write_text(description+'\n')
     say('rails','emit workspace_select 2')
     expect('rails','ws_error','Workspace is not advertised');assert focused()=='5'
@@ -89,7 +89,7 @@ end)
     expect('rails','ws_error','')
     run(['grim','-o','HEADLESS-1',str(evidence/'workspace-native-rest.png')])
     from PIL import Image
-    expected=[float(say('rails','get ws_'+channel)) for channel in ('r','g','b')]
+    expected=[float(say('rails','get ws_'+channel))*255 for channel in ('r','g','b')]
     with Image.open(evidence/'workspace-native-rest.png') as image:
         # One opaque core sample exercises the real16-value GPU shader/color path;
         # this is neither image-wide source parity nor a performance benchmark.

@@ -3,9 +3,9 @@ part CalendarRailState {
     fact cal_rail_width = 192
     fact cal_rail_present = false
     fact cal_rail_moving = false
-    fact cal_rail_r = 250
-    fact cal_rail_g = 179
-    fact cal_rail_b = 135
+    fact cal_rail_r = 0.98
+    fact cal_rail_g = 0.702
+    fact cal_rail_b = 0.529
     text cal_rail_error = ""
     repeat i in 0..16 { fact cal_rail_v.$i = 0 }
 }
