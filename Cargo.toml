@@ -12,10 +12,6 @@ serde_json = "=1.0.151"
 thiserror = "=2.0.20"
 toml_edit = "=0.25.15"
 
-[[bin]]
-name = "tohru-wallpaper-probe"
-path = "runtime/wallpaper/probe.rs"
-
 [lints.rust]
 unsafe_code = "deny"
 unreachable_pub = "warn"

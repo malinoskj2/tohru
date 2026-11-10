@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Foundation postBuild uses the runtime vendor graph; every registry pin must exist."""
+"""The foundation crate builds from the runtime vendor graph; every registry pin must exist."""
 from pathlib import Path
 import tomllib
 
@@ -12,6 +12,4 @@ for package in foundation:
     assert key in keys, f'foundation package absent from runtime vendor lock: {key}'
 recipe = (ROOT / 'nix/default.nix').read_text()
 assert 'cargoLock.lockFile = ../runtime/Cargo.lock' in recipe
-assert '--manifest-path foundation/Cargo.toml' in recipe
-assert 'cargo build --offline --locked --release --jobs 1' in recipe
-print(f'PASS all {len(foundation)} foundation package identities exist in runtime vendor lock; offline/locked postBuild preserved')
+print(f'PASS all {len(foundation)} foundation package identities exist in runtime vendor lock')

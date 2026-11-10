@@ -1,13 +1,10 @@
 scene Tohru {
  surface { size: full, 42; anchor: top; margin: 0; reserve: 31; screens: all; keyboard: exclusive while sound_open or cal_open or net_open or bt_open or info_visible or about_visible }
- permissions { services: "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.app_volume", "audio.app_mute", "window", "apps", "media", "clock", "workspaces", "network.*", "bluetooth.*", "battery", "capture", "capture.region", "capture.release", "wallpaper", "wallpaper.preset", "video", "say:tohru-notifications", "say:tohru-session" }
+ permissions { services: "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.app_volume", "audio.app_mute", "window", "apps", "media", "clock", "workspaces", "network.*", "bluetooth.*", "battery", "say:tohru-notifications", "say:tohru-session" }
  include "bar/state.plm"
  include "bar/rail-state.plm"
  include "calendar/state.plm"
  include "settings/state.plm"
- include "wallpaper/state.plm"
- include "wallpaper/picker-state.plm"
- include "capture/state.plm"
  include "network/state.plm"
  include "bluetooth/state.plm"
  include "info/state.plm"
@@ -23,7 +20,6 @@ scene Tohru {
  event config_reload ->
  event setting_mooncoil ->
  event setting_corners ->
- event setting_wallpaper_enabled ->
  event setting_corner_size ->
  event setting_output ->
  body {
@@ -67,8 +63,5 @@ scene Tohru {
   include "settings/window.plm"
  }
  include "corners/view.plm"
- include "wallpaper/view.plm"
- include "capture/presentation.plm"
- include "capture/view.plm"
  include "osd/view.plm"
 }

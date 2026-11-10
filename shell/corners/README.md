@@ -19,5 +19,5 @@ The shader ports j2bar's exponent-4 superellipse and derivative-based linear
 coverage, preserving orientation and MIT attribution. GPU/matched pixels,
 stacking after bar recreation, click-through, hotplug/scale/rotation and actual
 native close/reopen remain validation gates; source inspection alone proves
-none of those runtime outcomes. Standalone startup takes wallpaper/notification/
-auth ownership of nothing.
+none of those runtime outcomes. Standalone startup takes notification/auth
+ownership of nothing.

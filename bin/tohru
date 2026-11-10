@@ -7,8 +7,6 @@ Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru settings open|close
        tohru session open|close|toggle
        tohru routing-error
-       tohru wallpaper open|randomize|rotate
-       tohru screenshot region|cancel|status --json
        tohru audio volume up|down
        tohru audio mute toggle
        tohru audio input volume up|down | input mute toggle
@@ -17,10 +15,8 @@ Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru audio status --json
        tohru status --json
        tohru config reload
-       tohru config set wallpaper.fit fill|fit|centre|tile
-       tohru config set wallpaper.change never|hourly|daily|login
        tohru config set appearance.palette mocha|macchiato|rose_pine|nord|gruvbox|tokyo_night|dracula|everforest
-       tohru config set bar.mooncoil|appearance.corners|wallpaper.enabled|capture.save|capture.copy true|false
+       tohru config set bar.mooncoil|appearance.corners true|false
        tohru config set appearance.corner_size 1..100
        tohru settings-error
        tohru help
@@ -40,25 +36,6 @@ case ${1:-help} in
     help|--help|-h)
         [[ $# -le 1 ]] || fail 'help takes no arguments'
         usage
-        ;;
-    screenshot)
-        case ${2:-} in
-            region|cancel)
-                [[ $# == 2 ]] || fail 'Usage: tohru screenshot region|cancel'
-                case $2 in region) event=capture_open_request ;; cancel) event=capture_cancel ;; esac
-                exec "$pleamar" --say tohru "emit $event"
-                ;;
-            status)
-                [[ $# == 3 && $3 == --json ]] || fail 'Usage: tohru screenshot status --json'
-                exec "$pleamar" --say tohru 'get capture_status'
-                ;;
-            *) fail 'Usage: tohru screenshot region|cancel|status --json' ;;
-        esac
-        ;;
-    wallpaper)
-        [[ $# == 2 ]] || fail 'Usage: tohru wallpaper open|randomize|rotate'
-        case $2 in open) event=settings_wallpaper_open ;; randomize) event=wallpaper_randomize ;; rotate) event=wallpaper_rotate ;; *) fail 'Usage: tohru wallpaper open|randomize|rotate' ;; esac
-        exec "$pleamar" --say tohru "emit $event"
         ;;
     session)
         [[ $# == 2 ]] || fail 'Usage: tohru session open|close|toggle'
@@ -147,22 +124,14 @@ case ${1:-help} in
             set)
                 [[ $# == 4 ]] || fail 'Usage: tohru config set KEY VALUE'
                 case $3 in
-                    bar.mooncoil|appearance.corners|wallpaper.enabled|capture.save|capture.copy)
+                    bar.mooncoil|appearance.corners)
                         case $4 in true) number=1 ;; false) number=0 ;; *) fail 'Value must be true or false' ;; esac
-                        case $3 in bar.mooncoil) event=setting_mooncoil ;; appearance.corners) event=setting_corners ;; wallpaper.enabled) event=setting_wallpaper_enabled ;; capture.save) event=setting_capture_save ;; capture.copy) event=setting_capture_copy ;; esac
+                        case $3 in bar.mooncoil) event=setting_mooncoil ;; appearance.corners) event=setting_corners ;; esac
                         exec "$pleamar" --say tohru "emit $event $number"
-                        ;;
-                    wallpaper.change)
-                        case $4 in never) number=0 ;; hourly) number=1 ;; daily) number=2 ;; login) number=3 ;; *) fail 'Wallpaper change must be never, hourly, daily or login' ;; esac
-                        exec "$pleamar" --say tohru "emit setting_wallpaper_change $number"
                         ;;
                     appearance.palette)
                         case $4 in mocha) number=0 ;; macchiato) number=1 ;; rose_pine) number=2 ;; nord) number=3 ;; gruvbox) number=4 ;; tokyo_night) number=5 ;; dracula) number=6 ;; everforest) number=7 ;; *) fail 'Choose a canonical retained palette name' ;; esac
                         exec "$pleamar" --say tohru "emit setting_palette $number"
-                        ;;
-                    wallpaper.fit)
-                        case $4 in fill) number=0 ;; fit) number=1 ;; centre) number=2 ;; tile) number=3 ;; *) fail 'Wallpaper fit must be fill, fit, centre or tile' ;; esac
-                        exec "$pleamar" --say tohru "emit setting_wallpaper_fit $number"
                         ;;
                     bar.preferred_output)
                         fail 'bar.preferred_output is deprecated and ignored: bars use every output'

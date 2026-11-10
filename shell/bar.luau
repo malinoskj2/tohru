@@ -1,7 +1,5 @@
 -- Settings ownership is in Rust, outside this reloadable VM.
 local refresh_settings
-local wallpaper
-local capture
 local corner_preferences
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
@@ -12,8 +10,6 @@ local function publish(settings)
     settings["bar.preferred_output"].effective = false
     text.settings_status = json.encode({schema = 7, settings = settings})
     if refresh_settings then refresh_settings(settings) end
-    if wallpaper then wallpaper.publish(settings) end
-    if capture then capture.publish(settings) end
     if corner_preferences then corner_preferences.publish(settings) end
 end
 local function change(operation)
@@ -25,36 +21,16 @@ local function change(operation)
         text.settings_error = tostring(result)
     end
 end
-wallpaper = require("settings/wallpaper")(publish)
 publish(tohru_settings.snapshot())
 on("config_reload", function() change(tohru_settings.reload) end)
 on("setting_mooncoil", function(n)
     change(function() return tohru_settings.set("bar.mooncoil", n ~= 0) end)
 end)
-on("setting_wallpaper_enabled", function(n)
-    change(function() return tohru_settings.set("wallpaper.enabled", n ~= 0) end)
-end)
-on("setting_wallpaper_fit", function(index)
-    local modes = {[0]="fill", "fit", "centre", "tile"}
-    local mode = modes[index]
-    if not mode then text.settings_error = "Wallpaper fit must be fill, fit, centre or tile"; return end
-    change(function() return tohru_settings.set("wallpaper.fit", mode) end)
-end)
-on("setting_wallpaper_change",function(index)
-    local policies={[0]="never","hourly","daily","login"}
-    local policy=policies[index]
-    if not policy then text.settings_error="Invalid wallpaper change policy";return end
-    local ok,err=pcall(wallpaper.change_policy,policy)
-    if not ok then text.settings_error=tostring(err);text.settings_ui_error=tostring(err)end
-end)
-on("setting_palette",function(index)
-    local palettes={[0]="mocha","macchiato","rose_pine","nord","gruvbox","tokyo_night","dracula","everforest"}
-    local palette=palettes[index]
-    if not palette then text.settings_error="Invalid retained palette";return end
-    -- Preparation uses the proposed palette; the callback accepts its assignment
-    -- map and palette together. Never set the palette first then repair images.
-    local ok,err=pcall(wallpaper.palette,palette)
-    if not ok then text.settings_error=tostring(err);text.settings_ui_error=tostring(err)end
+on("setting_palette", function(index)
+    local palettes = {[0]="mocha", "macchiato", "rose_pine", "nord", "gruvbox", "tokyo_night", "dracula", "everforest"}
+    local palette = palettes[index]
+    if not palette then text.settings_error = "Invalid retained palette"; return end
+    change(function() return tohru_settings.set("appearance.palette", palette) end)
 end)
 on("setting_corners", function(n)
     change(function() return tohru_settings.set("appearance.corners", n ~= 0) end)
@@ -62,8 +38,6 @@ end)
 on("setting_corner_size", function(n)
     change(function() return tohru_settings.set("appearance.corner_size", n) end)
 end)
-on("setting_capture_save", function(value) change(function() return tohru_settings.set("capture.save", value ~= 0) end) end)
-on("setting_capture_copy", function(value) change(function() return tohru_settings.set("capture.copy", value ~= 0) end) end)
 on("setting_output", function()
     text.settings_error = "bar.preferred_output is deprecated and ignored: bars use every output"
 end)
@@ -80,13 +54,9 @@ local calendar_rail = make_rail(tohru_workspace, "calendar", "cal_rail_")
 local calendar = require("calendar/controller")(calendar_rail)
 local network = require("network/controller")()
 local bluetooth = require("bluetooth/controller")()
-local info = require("info/controller")(tohru_info.snapshot, function() return sys.ask("capture.outputs") end)
+local info = require("info/controller")(tohru_info.snapshot)
 local about
 local function close_panels(keep)
-    if fact.capture_open then
-        keep=nil
-        text.routing_error="Finish or cancel the region selection before opening another panel"
-    end
     if keep ~= "sound" then sound.close() end
     if keep ~= "calendar" then calendar.close() end
     if keep ~= "network" then network.close() end
@@ -120,31 +90,11 @@ if fact.bt_open then close_panels("bluetooth") end
 refresh_settings = require("settings/controller")(function(settings, warning)
     text.settings_error = warning or ""
     publish(settings)
-end, wallpaper)
-on("settings_open_request", function() close_panels(); if fact.capture_open then fact.settings_open=false end end)
-on("settings_wallpaper_open", function() close_panels(); if fact.capture_open then fact.settings_open=false; wallpaper.close() end end)
+end)
+on("settings_open_request", function() close_panels() end)
 
 corner_preferences = require("settings/corner-size")(publish)
 corner_preferences.publish(tohru_settings.snapshot())
 
-capture = require("settings/capture")(publish)
-capture.publish(tohru_settings.snapshot())
-local function capture_keyboard()
-    fact.wallpaper_picker_keyboard = not fact.capture_open
-end
-on("capture_open_request", function()
-    if fact.capture_open then
-        close_panels()
-        osd.hide()
-        fact.settings_open=false
-        wallpaper.close()
-    end
-    capture_keyboard()
-end)
-on("capture_finish", capture_keyboard)
-on("capture_cancel", capture_keyboard)
-on("capture_output_changed", capture_keyboard)
-on("fact:capture_open", capture_keyboard)
-capture_keyboard()
 
 require("session-route")

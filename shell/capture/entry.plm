@@ -1,6 +1,0 @@
-scene TohruCapture {
-    permissions { services: "capture", "capture.region", "capture.release" }
-    include "state.plm"
-    include "presentation.plm"
-    include "view.plm"
-}
