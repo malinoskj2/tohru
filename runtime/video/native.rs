@@ -229,17 +229,16 @@ impl Drop for Controller {
         self.shared.closing.store(true, Ordering::Release);
         // Only bootstrap may abort the private socket; after Ready normal owner
         // cleanup must retain Wayland while dropping GL/core resources.
-        if let Ok(startup) = self.shared.startup.lock() {
-            if let Some(startup) = startup.as_ref() {
+        if let Ok(startup) = self.shared.startup.lock()
+            && let Some(startup) = startup.as_ref() {
                 startup.cancel();
             }
-        }
         self.shared.wake.notify();
         if let Some(worker) = &self.worker {
             worker.thread().unpark();
         }
-        if let Some(worker) = self.worker.take() {
-            if worker.join().is_err() {
+        if let Some(worker) = self.worker.take()
+            && worker.join().is_err() {
                 self.shared.report(Report {
                     phase: Phase::Failed,
                     error: "video owner panicked; native cleanup requires inspection".into(),
@@ -247,7 +246,6 @@ impl Drop for Controller {
                     ..Report::default()
                 });
             }
-        }
     }
 }
 
@@ -461,6 +459,7 @@ fn message(error: &anyhow::Error) -> String {
     value
 }
 
+#[expect(clippy::struct_excessive_bools, reason = "independent per-output protocol flags, not a state machine")]
 struct Live {
     mpv: Option<mpv::Player>,
     target: Rc<egl::Target>,
@@ -663,14 +662,13 @@ impl Drop for Bootstrap<'_> {
         if let Some(watchdog) = self.watchdog.take() {
             let _ = watchdog.join();
         }
-        if let Ok(mut current) = self.shared.startup.lock() {
-            if current
+        if let Ok(mut current) = self.shared.startup.lock()
+            && current
                 .as_ref()
                 .is_some_and(|value| Arc::ptr_eq(value, &self.startup))
             {
                 *current = None;
             }
-        }
     }
 }
 
@@ -687,7 +685,7 @@ fn supervise(shared: &Shared, receiver: &Receiver) -> Result<()> {
         match run(shared, receiver) {
             // An inactive map releases the private native graph but keeps the
             // owner available for a later accepted enable/assignment update.
-            Ok(()) => continue,
+            Ok(()) => {}
             Err(_)
                 if shared.closing.load(Ordering::Acquire)
                     && !shared.fatal.load(Ordering::Acquire) =>
@@ -752,6 +750,7 @@ fn inactive_report(snapshot: &Snapshot) -> Report {
     }
 }
 
+#[expect(clippy::too_many_lines, reason = "one connection lifetime: setup, event loop and ordered teardown")]
 fn run(shared: &Shared, receiver: &Receiver) -> Result<()> {
     // Secondary connection must never consume inherited WAYLAND_SOCKET, which
     // can belong to the root's primary rendering connection. Use the SDK's
@@ -931,8 +930,8 @@ impl Engine {
         for (name, closed) in stale {
             self.players.remove(&name);
             self.wayland.state.layers.remove(&name);
-            if closed {
-                if let Some(path) = snapshot.assignments.get(&name) {
+            if closed
+                && let Some(path) = snapshot.assignments.get(&name) {
                     let previous = self
                         .retries
                         .get(&name)
@@ -947,7 +946,6 @@ impl Engine {
                         },
                     );
                 }
-            }
         }
         self.retries.retain(|name,retry|matches!(snapshot.action(name,connected.contains_key(name)),Action::Keep{path,..} if path==retry.path));
     }
@@ -967,8 +965,8 @@ impl Engine {
         now: Instant,
         deadlines: &mut Vec<Instant>,
     ) -> Result<OutputReport> {
-        if let Some(retry) = self.retries.get(name) {
-            if retry.backoff.retry_at() > now {
+        if let Some(retry) = self.retries.get(name)
+            && retry.backoff.retry_at() > now {
                 deadlines.push(retry.backoff.retry_at());
                 return Ok(OutputReport {
                     path: path.into(),
@@ -978,7 +976,6 @@ impl Engine {
                     ..OutputReport::default()
                 });
             }
-        }
         if !self.wayland.state.layers.contains_key(name) {
             self.wayland
                 .create_layer(name, output.output.clone(), now)?;
