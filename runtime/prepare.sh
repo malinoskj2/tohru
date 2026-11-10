@@ -32,6 +32,8 @@ git apply --unsafe-paths --directory="$destination" "$root/runtime/capture/outpu
 git apply --unsafe-paths --directory="$destination" "$root/runtime/patches/0007-capture-assembly.patch"
 git apply --unsafe-paths --directory="$destination" "$root/runtime/idle/0004-idle-native.patch"
 git apply --unsafe-paths --directory="$destination" "$root/runtime/patches/0008-idle-binding.patch"
+git apply --unsafe-paths --directory="$destination" "$root/runtime/patches/0010-key-rule-order.patch"
+git apply --unsafe-paths --directory="$destination" "$root/runtime/patches/0011-focus-round.patch"
 mkdir "$destination/foundation"
 cp "$root/Cargo.toml" "$destination/foundation/"
 cp "$root/Cargo.lock" "$destination/foundation/"

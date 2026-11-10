@@ -1,0 +1,27 @@
+diff --git a/src/render.rs b/src/render.rs
+index 91ff1fa..0da09d3 100644
+--- a/src/render.rs
++++ b/src/render.rs
+@@ -862,6 +862,10 @@ pub fn run(
+         // press is the zone's under where it was pressed, the moving and what
+         // follows it, the next round's.
+         let mut pressed = false;
++        // A key, and more keys in the same round (a burst typed after Ctrl+F):
++        // what follows is the next round's, so the rule the first one sets off
++        // (focusing the search) has already acted when they arrive.
++        let mut key_pressed = false;
+         if timing {
+             for m in &incoming {
+                 let kind = match m {
+@@ -888,6 +892,11 @@ pub fn run(
+                 continue;
+             }
+             pressed |= matches!(m, ToRender::Button(_, true) | ToRender::AgentButton(_, true));
++            if key_pressed && matches!(m, ToRender::Key(..) | ToRender::KeyReleased(..)) {
++                held_back.push(m);
++                continue;
++            }
++            key_pressed |= matches!(m, ToRender::Key(..));
+             match m {
+                 // A reload that does not go through is shown on the surface, not only on
+                 // a console that nobody may be looking at. It is composed

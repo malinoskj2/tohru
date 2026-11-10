@@ -44,7 +44,8 @@ let
       ../runtime/capture/image-lifecycle.patch ../runtime/wallpaper/raster-limits.patch
       ../runtime/wallpaper/presets.patch ../runtime/patches/0009-preset-dependency.patch ../runtime/capture/output-events.patch
       ../runtime/patches/0007-capture-assembly.patch
-      ../runtime/idle/0004-idle-native.patch ../runtime/patches/0008-idle-binding.patch ];
+      ../runtime/idle/0004-idle-native.patch ../runtime/patches/0008-idle-binding.patch
+      ../runtime/patches/0010-key-rule-order.patch ../runtime/patches/0011-focus-round.patch ];
     postPatch = ''
       mkdir foundation
       cp ${foundationSource}/Cargo.toml foundation/

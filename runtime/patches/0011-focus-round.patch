@@ -1,0 +1,17 @@
+diff --git a/src/render.rs b/src/render.rs
+index 0da09d3..aac918e 100644
+--- a/src/render.rs
++++ b/src/render.rs
+@@ -3122,8 +3122,10 @@ pub fn run(
+                     }
+                     Trigger::Key(t) => keys.iter().any(|x| x == t),
+                     Trigger::Submit(t) => submitted.contains(&(t.0 as usize)),
+-                    Trigger::FocusGained => focus_changes.contains(&true),
+-                    Trigger::FocusLost => focus_changes.contains(&false),
++                    // A leave and an enter in one round (a popup's grab moving the
++                    // keyboard between our own surfaces) is not losing it.
++                    Trigger::FocusGained => focus_changes.last() == Some(&true),
++                    Trigger::FocusLost => focus_changes.last() == Some(&false),
+                     Trigger::Receive(z) => !drops.is_empty() && inside[z.0 as usize],
+                     Trigger::Carry(z) => carried_now == Some(z.0 as usize),
+                     Trigger::Above { zone, also, duration } => {
