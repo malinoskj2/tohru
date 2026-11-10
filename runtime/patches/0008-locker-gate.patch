@@ -1,0 +1,25 @@
+diff --git a/src/logic_luau.rs b/src/logic_luau.rs
+index 5e229fb..f8ba402 100644
+--- a/src/logic_luau.rs
++++ b/src/logic_luau.rs
+@@ -1416,7 +1416,11 @@ impl LuauScript {
+         json.set("encode", lua.create_function(|_, v: Value| Ok(crate::platform::json_encode(&lua_to_value(&v, 0))))?)?;
+         g.set("json", json)?;
+ 
+-        if self.prefix.is_none() && std::env::var("TOHRU_SHELL").as_deref() == Ok("1") {
++        // Dedicated lockers must not load unrelated shell TOML before authentication.
++        if self.prefix.is_none()
++            && std::env::var("TOHRU_LOCKER").as_deref() != Ok("1")
++            && std::env::var("TOHRU_SHELL").as_deref() == Ok("1")
++        {
+             crate::tohru_settings::install(&lua)?;
+             crate::tohru_workspace::install(&lua)?;
+             crate::tohru_info::install(&lua)?;
+@@ -1795,6 +1799,7 @@ pub static REQUIRED: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mute
+ mod tests {
+     use super::{command_allowed, say_allowed};
+     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/session/native_binding.rs"));
++    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/runtime/role-install.rs"));
+ 
+     #[test]
+     fn a_command_declared_with_its_script_runs_only_that() {

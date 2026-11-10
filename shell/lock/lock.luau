@@ -14,20 +14,11 @@ local function native_held()
     local ok, held = pcall(function() return sys.ask("lock.held") end)
     return ok and held == true
 end
--- Timing hint for ordinary idle owner; never native release/sleep authority.
-local function publish_state()
-    pcall(function() sys.call("say", "tohru", "emit idle_lock_state " .. (native_held() and "1" or "0")) end)
-end
-on("state_request", publish_state)
-if tohru_idle then
-    local ok, message = pcall(function() tohru_idle.start_guard() end)
-    if not ok then text.status = "Sleep delay unavailable: " .. tostring(message) end
-end
 local function suspend_when_held()
     if not sleep_pending or not ready or releasing or fact.sleep_submitted or not native_held() then return end
     cancel_sleep()
     -- Retained across logic reload; reset only by successful authentication or
-    -- an explicit system-resume observation from the eventual idle boundary.
+    -- an explicit `system_resumed` event.
     fact.sleep_submitted = true
     local ok, err = pcall(function() sys.call("session.suspend") end)
     if not ok then fact.sleep_submitted = false end
@@ -67,7 +58,6 @@ on("system_resumed", function()
     fact.sleep_submitted = false
 end)
 on("fact:acknowledged", function(held)
-    publish_state()
     if not held then
         ready = false
         cancel_sleep()

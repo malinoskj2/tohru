@@ -1,7 +1,7 @@
 -- Executes the actual Lua-compatible feature entry scripts with controlled native boundaries.
 -- This CPU check does not establish compositor, PAM, polkit-helper or Luau VM parity.
 local function boot(path, facts, texts)
-    local h, timers, calls, watches, hints = {}, {}, {}, {}, {}
+    local h, timers, calls, watches = {}, {}, {}, {}
     local now, auth, failure = 0, false, false
     local native_held = facts.acknowledged or false
     local env = setmetatable({ fact = facts, text = texts }, { __index = _G })
@@ -13,10 +13,7 @@ local function boot(path, facts, texts)
     env.sys = {
         call = function(name, ...)
             if failure then error("native request rejected") end
-            local args = {...}
-            if name == "say" and args[1] == "tohru" then
-                hints[#hints+1] = args[2]
-            else calls[#calls+1] = {name, ...} end
+            calls[#calls+1] = {name, ...}
         end,
         ask = function(name, password)
             if name == "lock.held" then return native_held end
@@ -29,7 +26,7 @@ local function boot(path, facts, texts)
     }
     assert(loadfile(path, "t", env))()
     return {
-        fact=facts, text=texts, calls=calls, hints=hints,
+        fact=facts, text=texts, calls=calls,
         event=function(name, ...) assert(h[name], name)(...) end,
         report=function(name, value) watches[name](value) end,
         auth=function(value) auth=value end,
@@ -132,8 +129,3 @@ l.event("fact:acknowledged",true);l.event("lock_and_suspend")
 assert(#l.calls==0)
 l.auth(true);l.event("submit:password","irrelevant")
 assert(l.fact.engaged and #l.calls==0)
-
-l=locker(false);l.fact.acknowledged=true;l.event("state_request")
-assert(l.hints[#l.hints]=="emit idle_lock_state 0")
-l.held(true);l.event("state_request")
-assert(l.hints[#l.hints]=="emit idle_lock_state 1")

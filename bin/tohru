@@ -22,15 +22,11 @@ Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru config set appearance.palette mocha|macchiato|rose_pine|nord|gruvbox|tokyo_night|dracula|everforest
        tohru config set bar.mooncoil|appearance.corners|wallpaper.enabled|capture.save|capture.copy true|false
        tohru config set appearance.corner_size 1..100
-       tohru config set idle.KEY INTEGER (seconds 0..4294967; fade_milliseconds 0..120000)
        tohru settings-error
        tohru help
 
 Commands report native request acceptance, not completion.
 Audio status reports the last native observation and command errors.
-Idle keys: lock_seconds, screen_off_unlocked_seconds, screen_off_locked_seconds,
-           suspend_unlocked_seconds, suspend_locked_seconds, fade_milliseconds.
-Zero idle seconds disables that action; fade uses milliseconds.
 Input device selection is unavailable: native input/output IDs collide; input devices are read-only.
 Inspect status and settings-error for settings results or failure.
 HELP
@@ -174,14 +170,6 @@ case ${1:-help} in
                     appearance.corner_size)
                         [[ $4 =~ ^([1-9]|[1-9][0-9]|100)$ ]] || fail 'Corner size must be an integer from 1 to 100'
                         exec "$pleamar" --say tohru "emit setting_corner_size $4"
-                        ;;
-                    idle.lock_seconds|idle.screen_off_unlocked_seconds|idle.screen_off_locked_seconds|idle.suspend_unlocked_seconds|idle.suspend_locked_seconds|idle.fade_milliseconds)
-                        [[ $4 =~ ^(0|[1-9][0-9]{0,6})$ ]] || fail 'Idle setting must be a canonical nonnegative integer'
-                        maximum=4294967
-                        [[ $3 != idle.fade_milliseconds ]] || maximum=120000
-                        (( 10#$4 <= maximum )) || fail 'Idle setting exceeds its native protocol bound'
-                        event=setting_${3//./_}
-                        exec "$pleamar" --say tohru "emit $event $4"
                         ;;
                     *) fail 'Unknown setting key' ;;
                 esac

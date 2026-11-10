@@ -269,7 +269,6 @@ mod tests {
             std::fs::read_to_string(managed).unwrap(),
             "[bar]\nmooncoil = false\n"
         );
-        replacement.load("tohru_settings.set('idle.lock_seconds', 0.0); tohru_settings.set('idle.fade_milliseconds', 120000.0); assert(tohru_settings.snapshot()['idle.lock_seconds'].value==0); for _, v in {-1,120001,0.5,math.huge,0/0} do assert(not pcall(tohru_settings.set,'idle.fade_milliseconds',v)) end; assert(tohru_settings.snapshot()['idle.fade_milliseconds'].value==120000)").exec().unwrap();
         let warning =
             SetOutcome::CommittedDurabilityUnconfirmed(tohru_shell::settings::DurabilityWarning {
                 path: root.join("tohru/config.toml"),

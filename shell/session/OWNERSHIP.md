@@ -5,14 +5,13 @@ Production security BLOCKED: unrestricted native IPC can write `engaged=false`
 and bypass UI authentication; the proposed auth-only release rule below is not
 enforced at the native control boundary. User decision pending, no workaround.
 The root shell may open the session menu and send requests; it must never import
-or start a session-lock, polkit, notification or idle singleton owner.
+or start a session-lock, polkit or notification singleton owner.
 
 | Role | Lifetime and private entry point | Restart/failure rule |
 | --- | --- | --- |
 | Session menu | Ordinary UI, `shell/session/menu.plm` | Closing/reloading cancels confirmation; never releases a lock. |
 | Locker | Dedicated Pleamar process, `shell/lock/lock.plm`, native `kind: lock` | Independent of bar process/group/service. Keep alive while locked. Only a native PAM/account-verified cycle-bound one-shot permit releases the native lock; writable `open` is merely request state; never release on Escape, denial, timeout, scene reload or power failure. Compositor must retain lock after crash. |
 | Polkit | Dedicated native Pleamar agent, `shell/polkit/polkit.plm` | Exactly one per login session. Cancel pending conversation on owner stop; no j2bar backend. |
-| Idle | One integrated process-owned boundary in existing shell package | Own standard idle/inhibitor observation, fade cancellation, screen-power adapter and logind delay inhibitor; never an additional daemon. |
 | Notifications | Dedicated native role; internal retention accepted | Exactly one bus owner; no activation before singleton wiring/validation. |
 
 Nix owns independent service/process lifetime, PAM policy and polkit policy.

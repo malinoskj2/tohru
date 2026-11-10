@@ -4,8 +4,8 @@ These are independent development scenes, not root imports or production activat
 Use the assembled pinned runtime with reviewed native lock release-authority and
 secret-export protections. An unpatched upstream runtime permits IPC unlock and
 secret reads and is unsuitable for these scenes. Native resize/hotplug/edit/export/
-reload/crash checks have passed on frozen53f8ea2; controlled fixture PAM and final
-native idle/guard integration remain acceptance gates. No physical-session safety
+reload/crash checks have passed on frozen53f8ea2; controlled fixture PAM remains
+an acceptance gate. No physical-session safety
 or activation is inferred. Scene-only changes reuse the compiled runtime.
 After coordinator GPU allocation, on private compositor and private buses only:
 
@@ -84,12 +84,3 @@ they require executable wtype/bwrap, exact private namespace/policy guard, synth
 credentials and a separate authorized allocation. Optional notifications workload
 uses private buses and an owned null audio sink. There is never a host-PAM fallback.
 See L progress log for exact frozen artifact/hashes and evidence paths.
-
-The ordinary-root private idle include is `shell/session/idle.part.plm` plus
-`require("session/idle")`; `idle.plm` is its standalone parser/fixture entry.
-Native copy/install hooks and API are in `runtime/idle/README.md`; the new adapters
-are source checkpoints awaiting native compilation/protocol validation. Dedicated
-locker `state_request` emits `idle_lock_state`0/1 to fixed root `tohru` using actual
-native held query, solely a timing hint. The locker-local native logind delay
-helper bypasses Lua/PAM liveness and requires confirmed local held authority;
-no public fact/event or ordinary-root hint can release its descriptor.

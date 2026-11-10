@@ -46,13 +46,12 @@ static EVENTS: Mutex<Vec<&str>> = Mutex::new(Vec::new());
 static BEFORE_QUIT: Mutex<Option<fn()>> = Mutex::new(Some(before));
 fn before() { EVENTS.lock().unwrap().push("before"); }
 mod logic_luau {pub fn stop_children(){super::EVENTS.lock().unwrap().push("logic children");}}
-mod tohru_idle {pub fn shutdown(){super::EVENTS.lock().unwrap().push("idle owners");}}
 mod platform {
  mod capture {pub fn shutdown(){crate::EVENTS.lock().unwrap().push("capture manager");}}
 '''+forward+'\n}\n'+quit_body+'''
 #[test]fn orderly_quit_stops_capture_owner_before_process_exit(){
  assert!(std::panic::catch_unwind(quit).is_err());
- assert_eq!(*EVENTS.lock().unwrap(), vec!["before","logic children","idle owners","capture manager"]);
+ assert_eq!(*EVENTS.lock().unwrap(), vec!["before","logic children","capture manager"]);
 }
 '''
 with tempfile.TemporaryDirectory(prefix='capture-assembly-', dir=root / '.tmp') as directory:

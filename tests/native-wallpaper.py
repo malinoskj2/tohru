@@ -89,7 +89,7 @@ def main():
     for name in ['home', 'config/tohru', 'cache', 'data', 'state']:
         (evidence / name).mkdir(parents=True, mode=0o700)
     user = evidence / 'config/tohru/config.toml'
-    user.write_text("# private test\n[wallpaper]\nenabled=true\nchange='never'\n[idle]\nlock_seconds=0\nscreen_off_unlocked_seconds=0\nscreen_off_locked_seconds=0\nsuspend_unlocked_seconds=0\nsuspend_locked_seconds=0\nfade_milliseconds=0\n")
+    user.write_text("# private test\n[wallpaper]\nenabled=true\nchange='never'\n")
     scene = evidence / 'scene'
     shutil.copytree(ROOT / 'shell', scene)
     base.install_focus_probe(scene)
