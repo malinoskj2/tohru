@@ -135,8 +135,7 @@ class Cli(unittest.TestCase):
 
     def test_native_arguments(self):
         for args, expected in [
-            (("settings", "open"), ["--say", "tohru", "emit settings_open_request"]),
-            (("settings", "close"), ["--say", "tohru", "emit settings_close"]),
+            (("settings", "close"), ["--say", "tohru-settings", "quit"]),
             (("panel", "open", "sound"), ["--say", "tohru", "emit sound_open_request"]),
             (("panel", "toggle", "sound"), ["--say", "tohru", "emit sound_toggle"]),
             (("panel", "open", "calendar"), ["--say", "tohru", "emit calendar_open"]),
@@ -157,6 +156,25 @@ class Cli(unittest.TestCase):
                 result = self.invoke(*args)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(json.loads(result.stdout), expected)
+
+    def test_settings_open_raises_or_starts_its_own_process(self):
+        result = self.invoke("settings", "open")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        launched = self.path / "launched"
+        starter = self.path / "settings run"
+        starter.write_text(f"#!/usr/bin/env bash\nprintf '%s' \"$*\" > '{launched}'\n")
+        starter.chmod(0o755)
+        result = self.invoke("settings", "open", NATIVE_EXIT="1", TOHRU_SETTINGS_RUN=str(starter))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for _ in range(100):
+            if launched.exists():
+                break
+            subprocess.run(["sleep", "0.05"])
+        self.assertEqual(launched.read_text(), "")
+        launched.unlink()
+        self.invoke("settings", "open", TOHRU_SETTINGS_RUN=str(starter))
+        subprocess.run(["sleep", "0.3"])
+        self.assertFalse(launched.exists())
 
     def test_deprecated_output_is_rejected_without_execution(self):
         marker = self.path / "injected"

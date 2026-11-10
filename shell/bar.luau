@@ -1,9 +1,7 @@
 -- Settings ownership is in Rust, outside this reloadable VM.
-local refresh_settings
 local configure_idle
 local wallpaper
 local capture
-local corner_preferences
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
@@ -12,11 +10,9 @@ local function publish(settings)
     settings["bar.preferred_output"].deprecated = true
     settings["bar.preferred_output"].effective = false
     text.settings_status = json.encode({schema = 7, settings = settings})
-    if refresh_settings then refresh_settings(settings) end
     if configure_idle then configure_idle(settings) end
     if wallpaper then wallpaper.publish(settings) end
     if capture then capture.publish(settings) end
-    if corner_preferences then corner_preferences.publish(settings) end
 end
 local function change(operation)
     local ok, result, warning = pcall(operation)
@@ -126,16 +122,6 @@ on("about_toggle", function() if fact.about_visible then close_panels("about") e
 on("panel_close", function() close_panels() end)
 if fact.bt_open then close_panels("bluetooth") end
 
-refresh_settings = require("settings/controller")(function(settings, warning)
-    text.settings_error = warning or ""
-    publish(settings)
-end, wallpaper)
-on("settings_open_request", function() close_panels(); if fact.capture_open then fact.settings_open=false end end)
-on("settings_wallpaper_open", function() close_panels(); if fact.capture_open then fact.settings_open=false; wallpaper.close() end end)
-
-corner_preferences = require("settings/corner-size")(publish)
-corner_preferences.publish(tohru_settings.snapshot())
-
 configure_idle = require("settings/idle")(require("session/idle"))
 configure_idle(tohru_settings.snapshot())
 
@@ -148,7 +134,6 @@ on("capture_open_request", function()
     if fact.capture_open then
         close_panels()
         osd.hide()
-        fact.settings_open=false
         wallpaper.close()
     end
     capture_keyboard()

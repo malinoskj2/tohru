@@ -282,10 +282,6 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
             include_str!("../../shell/session-route.luau"),
         ),
         (
-            "settings/corner-size",
-            include_str!("../../shell/settings/corner-size.luau"),
-        ),
-        (
             "settings/capture",
             include_str!("../../shell/settings/capture.luau"),
         ),
@@ -366,10 +362,6 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
             "bar/workspace",
             include_str!("../../shell/bar/workspace.luau"),
         ),
-        (
-            "settings/controller",
-            include_str!("../../shell/settings/controller.luau"),
-        ),
     ] {
         modules
             .set(name, lua.load(source).eval::<mlua::Value>().unwrap())
@@ -425,24 +417,14 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         dispatch('about_open'); assert(fact.about_visible and not fact.info_visible and info_reads==2)
         dispatch('about_more')
         assert(fact.info_visible and not fact.about_visible and fact.info_page==0 and info_reads==3)
-        dispatch('network_open'); dispatch('settings_open_request')
-        assert(fact.settings_open and not fact.net_open and not fact.info_visible and not fact.bt_open)
-        dispatch('panel_close'); assert(info_reads==3)
-        dispatch('settings_wallpaper_open')
-        assert(fact.settings_open and fact.settings_wallpaper_page and fact.wallpaper_picker_open)
-        assert(text.wallpaper_picker_error=='' and model.wallpaper_picker_files and #model.wallpaper_picker_files==0)
-        dispatch('wallpaper_picker_close')
-        assert(fact.settings_page==2 and not fact.settings_wallpaper_page and not fact.wallpaper_picker_open)
-        dispatch('settings_wallpaper_open'); dispatch('settings_close')
-        assert(not fact.settings_open and not fact.wallpaper_picker_open)
-        dispatch('settings_wallpaper_open')
+        dispatch('network_open'); dispatch('panel_close')
+        assert(not fact.net_open and not fact.info_visible and not fact.bt_open and info_reads==3)
         dispatch('capture_open_request')
-        assert(fact.capture_open and not fact.settings_open and not fact.wallpaper_picker_open and not fact.wallpaper_picker_keyboard)
+        assert(fact.capture_open and not fact.wallpaper_picker_open and not fact.wallpaper_picker_keyboard)
         local token=text.capture_frame_0
         dispatch('capture_open_request')
         assert(fact.capture_open and text.capture_frame_0==token and released==nil, 'busy cannot replace/release selection')
         dispatch('network_open'); assert(not fact.net_open and fact.capture_open)
-        dispatch('settings_open_request'); assert(not fact.settings_open)
         dispatch('capture_cancel')
         assert(not fact.capture_open and fact.wallpaper_picker_keyboard and released==1)
         tohru_settings.set=function(key,value) last_setting_key=key;last_setting_value=value;return tohru_settings.snapshot() end

@@ -10,8 +10,8 @@ The shell's own initial settings implementation is MIT.
 one binding installation hook, gated by TOHRU_SHELL=1 and excluding plugins.
 `settings_luau.rs` owns the process singleton and Luau boundary. Additional narrow
 patches cover approved lock/secret safety, workspace shader scalars/API and
-wallpaper catalog/image identity. Ordinary window lifecycle is a separately
-reviewed patch; exact applied lists live in prepare.sh and nix/default.nix.
+wallpaper catalog/image identity; exact applied lists live in prepare.sh and
+nix/default.nix.
 `Cargo.lock` starts from the pinned upstream lock and adds only anyhow, the local
 library, and toml_writer (needed for comment-preserving TOML writes). The library
 uses upstream's already selected toml_edit 0.25.15 and serde_json 1.0.151.

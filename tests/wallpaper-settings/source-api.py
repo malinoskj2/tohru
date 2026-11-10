@@ -47,7 +47,7 @@ assert 'if commands {' in permission and 'has(name) || has(&format!("{service}.*
 assert permission.index('if commands {') < permission.index('if has(service)')
 bar = (ROOT / 'shell/bar.plm').read_text()
 assert '"wallpaper", "wallpaper.preset"' in bar and '"wallpaper.*"' not in bar
-assert 'size: 800, 800; open: settings_open' in bar
+assert 'size: 800, 800; keyboard: exclusive' in (ROOT / 'shell/settings/settings.plm').read_text()
 assert 'schema = 7' in (ROOT / 'shell/bar.luau').read_text()
 # Import provenance, not a recompilation of the reviewed W domain/cache code.
 paths = set()

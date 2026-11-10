@@ -145,15 +145,15 @@ def install_focus_probe(scene):
     source = view.read_text()
     assert source.rstrip().endswith("}")
     end = source.rindex("}")
-    probe = (ROOT / "tests/window/focus-probe.plm").read_text()
+    probe = (ROOT / "tests/settings-ui/focus-probe.plm").read_text()
     view.write_text(source[:end] + probe + source[end:])
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime", type=Path, required=True)
-    parser.add_argument("--sound", action="store_true", help="also test root sound/Settings with owned private Pulse null sink")
-    parser.add_argument("--windows", action="store_true", help="test window-only first open, WM close, resize and output retirement")
+    parser.add_argument("--sound", action="store_true", help="also test root sound and calendar with owned private Pulse null sink")
+    parser.add_argument("--settings", action="store_true", help="test the separate Settings process: open, edits, close, WM close and reopen")
     parser.add_argument("--pointer", type=Path, help="compiled tests/bar/pointer.c private persistent input fixture")
     parser.add_argument("--wtype", type=Path, help="private-display virtual keyboard tool for Escape/search Return")
     parser.add_argument("--keyboard", type=Path, help="compiled tests/launcher/keyboard.c persistent seat keyboard, required with --wtype")
@@ -191,7 +191,17 @@ def main():
            "WGPU_BACKEND": "vulkan", "PLEAMAR_BACKEND": "vulkan",
            "PULSE_SERVER": "unix:" + str(runtime_dir / "no-audio-socket"),
            "TOHRU_RUNTIME": str(args.runtime.resolve()),
-           "TOHRU_MANAGED_CONFIG": str(managed), "TOHRU_SCENE": str(scene / "bar.plm")}
+           "TOHRU_MANAGED_CONFIG": str(managed), "TOHRU_SCENE": str(scene / "bar.plm"),
+           "TOHRU_SETTINGS_SCENE": str(scene / "settings/settings.plm"),
+           "TOHRU_SETTINGS_RUN": str(evidence / "settings-run")}
+    settings_pid = evidence / "settings.pid"
+    settings_status = evidence / "settings-status"
+    (evidence / "settings-run").write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf '%s\\n' $$ > '{settings_pid}'\n"
+        f"'{ROOT / 'bin/tohru-settings-run'}' >> '{evidence / 'settings.log'}' 2>&1\n"
+        f"printf '%s\\n' $? >> '{settings_status}'\n")
+    (evidence / "settings-run").chmod(0o755)
     env = isolated_transport(env, runtime_dir)
     assert_private_transport(env, runtime_dir)
     events = []
@@ -267,50 +277,6 @@ def main():
             assert_private_transport(env, runtime_dir)
             subprocess.run([str(args.wtype.resolve()), *keys], env=env, check=True, capture_output=True, timeout=10)
 
-        if args.windows:
-            app_log = (evidence / "window-only.log").open("w")
-            assert_private_transport(env, runtime_dir)
-            app = subprocess.Popen([str(args.runtime.resolve()), "--scene", str(ROOT / "tests/window/conditional.plm"), "--answer-as", "tohru-window-lifecycle", "--no-hud", "--stall", "0"], env=env, stdout=app_log, stderr=subprocess.STDOUT)
-            def window(command): return request("tohru-window-lifecycle", command)
-            def replaced_view(previous_id):
-                current = views("dev.tohru.WindowLifecycle")
-                return len(current) == 1 and current[0]["id"] != previous_id
-            wait_for(lambda: app.poll() is not None or (runtime_dir / "ipc/tohru-window-lifecycle.sock").exists(), "window-only process answers")
-            assert app.poll() is None, "window-only process exited during startup"
-            wait_for(lambda: window("get visible") == "false", "initially closed window-only process answers without GPU")
-            assert not views("dev.tohru.WindowLifecycle"), "blank initially closed window mapped"
-            assert "NVIDIA GeForce RTX 5090" not in (evidence / "window-only.log").read_text(), "window-only startup unexpectedly initialized GPU"
-            window("fact visible true")
-            wait_for(lambda: len(views("dev.tohru.WindowLifecycle")) == 1, "first window-only open without another surface")
-            assert "NVIDIA GeForce RTX 5090" in (evidence / "window-only.log").read_text(), "window-only app hardware adapter not verified"
-            compositor('[app_id="dev.tohru.WindowLifecycle"] floating enable, resize set width 520 px height 360 px')
-            wait_for(lambda: views("dev.tohru.WindowLifecycle")[0]["rect"]["width"] == 520, "ordinary native resize")
-            compositor('[app_id="dev.tohru.WindowLifecycle"] kill')
-            wait_for(lambda: window("get visible") == "false" and not views("dev.tohru.WindowLifecycle"), "WM close acknowledges presentation fact")
-            time.sleep(0.2)
-            assert not views("dev.tohru.WindowLifecycle"), "WM close immediately reopened"
-            window("fact visible true")
-            wait_for(lambda: len(views("dev.tohru.WindowLifecycle")) == 1, "explicit reopen without output change")
-            previous_id = views("dev.tohru.WindowLifecycle")[0]["id"]
-            compositor("create_output")
-            compositor("output", "HEADLESS-2", "mode", "1280x720", "scale", "1.25")
-            compositor("output", "HEADLESS-1", "disable")
-            wait_for(lambda: replaced_view(previous_id) and window("get visible") == "true", "removed-output conditional replacement")
-            previous_id = views("dev.tohru.WindowLifecycle")[0]["id"]
-            compositor("output", "HEADLESS-1", "enable")
-            compositor("output", "HEADLESS-2", "disable")
-            wait_for(lambda: replaced_view(previous_id), "reconnect replacement without duplicate roles")
-            for _ in range(4):
-                window("fact visible false")
-                wait_for(lambda: not views("dev.tohru.WindowLifecycle"), "retire conditional role")
-                window("fact visible true")
-                wait_for(lambda: len(views("dev.tohru.WindowLifecycle")) == 1, "reopen one conditional role")
-            subprocess.run(["grim", "-o", "HEADLESS-1", str(evidence / "window-lifecycle.png")], env=env, check=True, timeout=10)
-            window("quit")
-            clean_exit(app, "window-only intentional quit", events)
-            app_log.close()
-            app = None
-
         def cli(*arguments, check=True):
             assert_private_transport(env, runtime_dir)
             result = subprocess.run([str(ROOT / "bin/tohru"), *arguments], env=env, capture_output=True, text=True, timeout=10)
@@ -343,9 +309,21 @@ def main():
             assert "NVIDIA GeForce RTX 5090" in (evidence / f"app-{label}.log").read_text(), "app hardware adapter not verified"
 
         launch("first")
+
+        def native(command):
+            return request("tohru", command)
+
+        def settings_alive():
+            try:
+                os.kill(int(settings_pid.read_text()), 0)
+                return True
+            except (FileNotFoundError, ValueError, ProcessLookupError):
+                return False
+
+        def settings_exits():
+            return settings_status.read_text().split() if settings_status.exists() else []
+
         if args.sound:
-            def native(command):
-                return request("tohru", command)
             def audio_matches(volume, muted):
                 value = json.loads(cli("audio", "status", "--json").stdout)
                 return value if abs(value.get("volume", -10) - volume) < 0.015 and value.get("muted") == muted else None
@@ -388,35 +366,6 @@ def main():
             wait_for(lambda: json.loads(cli("audio", "status", "--json").stdout).get("output_present") is True, "private output restored")
             cli("audio", "volume", "up")
             wait_for(lambda: native("get audio_failed") == "false", "native error clear")
-            cli("settings", "open")
-            wait_for(lambda: native("get settings_open") == "true" and native("get sound_open") == "false", "same-process Settings open")
-            if args.wtype:
-                wait_for(lambda: len(views("dev.tohru.Settings")) == 1 and views("dev.tohru.Settings")[0]["focused"], "real Settings window has keyboard focus")
-                focused_search_submit(native, keyboard, "mooncoil")
-                native("fact runner_focus_probe_enabled false")
-            else:
-                native("text settings_search mooncoil")
-                wait_for(lambda: native("get settings_rows.count") == "1", "native Settings search")
-                native("emit settings_row 0")
-            expect("bar.mooncoil", True, "runtime")
-            native("emit settings_category 2")
-            wait_for(lambda: native("get settings_page") == "2", "native Settings navigation")
-            native("emit settings_back")
-            wait_for(lambda: native("get settings_page") == "1", "native Settings back")
-            time.sleep(0.2)
-            subprocess.run(["grim", "-o", "HEADLESS-1", str(evidence / "settings-window.png")], env=env, check=True, timeout=10)
-            cli("settings", "close")
-            wait_for(lambda: native("get settings_open") == "false", "Settings close")
-            cli("settings", "open")
-            wait_for(lambda: native("get settings_open") == "true", "Settings reopen")
-            wait_for(lambda: len(views("dev.tohru.Settings")) == 1, "one real Settings window")
-            compositor('[app_id="dev.tohru.Settings"] kill')
-            wait_for(lambda: native("get settings_open") == "false" and not views("dev.tohru.Settings"), "Settings WM close authoritative fact")
-            cli("settings", "open")
-            wait_for(lambda: len(views("dev.tohru.Settings")) == 1, "Settings explicit reopen after WM close")
-            expect("bar.mooncoil", True, "runtime")
-            cli("settings", "close")
-            wait_for(lambda: native("get settings_open") == "false" and not views("dev.tohru.Settings"), "Settings closed before calendar")
             cli("panel", "open", "calendar")
             wait_for(lambda: native("get cal_open") == "true", "calendar open")
             initial_month = int(native("get cal_month"))
@@ -432,6 +381,62 @@ def main():
             assert native("get cal_rail_error") == ""
             wait_for(lambda: native("get cal_rail_moving") == "false", "retained rail settles after VM replacement", timeout=20)
             cli("panel", "close")
+        if args.settings:
+            def ui(command):
+                return request("tohru-settings", command)
+            cli("settings", "open")
+            wait_for(lambda: len(views("dev.tohru.Settings")) == 1, "Settings process maps its window")
+            wait_for(lambda: ui("get settings_open") == "true", "Settings process answers")
+            assert "NVIDIA GeForce RTX 5090" in (evidence / "settings.log").read_text(), "Settings hardware adapter not verified"
+            if args.wtype:
+                wait_for(lambda: views("dev.tohru.Settings")[0]["focused"], "real Settings window has keyboard focus")
+                focused_search_submit(ui, keyboard, "mooncoil")
+                ui("fact runner_focus_probe_enabled false")
+            else:
+                ui("text settings_search mooncoil")
+                wait_for(lambda: ui("get settings_rows.count") == "1", "native Settings search")
+                ui("emit settings_row 0")
+            expect("bar.mooncoil", True, "runtime")
+            assert managed.read_text() == "[bar]\nmooncoil = false\n"
+            ui("text settings_search appearance.corners")
+            wait_for(lambda: ui("get settings_rows.count") == "1", "Settings corners search")
+            ui("emit settings_row 0")
+            expect("appearance.corners", True, "user")
+            assert "corners = true" in user.read_text() and "# preserve me" in user.read_text()
+            ui("emit settings_category 2")
+            wait_for(lambda: ui("get settings_page") == "2", "native Settings navigation")
+            ui("submit settings_corner_size_edit 48")
+            expect("appearance.corner_size", 48, "user")
+            ui("emit settings_back")
+            wait_for(lambda: ui("get settings_page") == "1", "native Settings back")
+            time.sleep(0.3)
+            subprocess.run(["grim", "-o", "HEADLESS-1", str(evidence / "settings-window.png")], env=env, check=True, timeout=10)
+            cli("settings", "close")
+            wait_for(lambda: not settings_alive() and not views("dev.tohru.Settings"), "Settings close ends its process")
+            assert settings_exits() == ["0"], settings_exits()
+            cli("settings", "open")
+            wait_for(lambda: len(views("dev.tohru.Settings")) == 1 and settings_alive(), "Settings reopen starts a new process")
+            first = settings_pid.read_text()
+            cli("settings", "open")
+            time.sleep(0.5)
+            assert settings_pid.read_text() == first and len(views("dev.tohru.Settings")) == 1, "second open started another Settings"
+            compositor('[app_id="dev.tohru.Settings"] kill')
+            wait_for(lambda: not settings_alive() and not views("dev.tohru.Settings"), "WM close ends the Settings process")
+            assert settings_exits() == ["0", "0"], settings_exits()
+            cli("settings", "open")
+            wait_for(lambda: len(views("dev.tohru.Settings")) == 1 and settings_alive(), "Settings reopen after WM close")
+            wait_for(lambda: ui("get settings_open") == "true", "reopened Settings answers")
+            if args.wtype:
+                wait_for(lambda: views("dev.tohru.Settings")[0]["focused"], "reopened Settings has keyboard focus")
+                keyboard("-k", "Escape")
+                wait_for(lambda: not settings_alive() and not views("dev.tohru.Settings"), "Escape ends the Settings process")
+            else:
+                cli("settings", "close")
+                wait_for(lambda: not settings_alive(), "Settings closed")
+            assert settings_exits() == ["0", "0", "0"], settings_exits()
+            expect("bar.mooncoil", True, "runtime")
+            cli("config", "set", "appearance.corners", "false")
+            cli("config", "set", "appearance.corner_size", "32")
         expect("appearance.corners", False, "user")
         cli("config", "set", "bar.mooncoil", "true")
         settings = expect("bar.mooncoil", True, "runtime")
@@ -467,10 +472,14 @@ def main():
         settings = expect("appearance.corners", True, "user")
         expect("bar.preferred_output", "DP-LEGACY", "user")
         assert not settings["bar.mooncoil"]["runtime_override"]
-        summary = {"result": "passed", "runtime": str(args.runtime.resolve()), "app_adapter": "NVIDIA GeForce RTX 5090 / Vulkan", "compositor_adapter": "NVIDIA GeForce RTX 5090 / GLES2", "screenshot": str(screenshot), "checks": ["native CLI", "managed override", "config reload", "actual logic VM reload", "unmanaged persistence", "unknown/comment preservation", "invalid reload atomicity", "process restart reset"], "sound_settings_checks": args.sound, "window_only_checks": args.windows, "pointer_checks": bool(args.pointer), "performance_acceptance": False}
+        summary = {"result": "passed", "runtime": str(args.runtime.resolve()), "app_adapter": "NVIDIA GeForce RTX 5090 / Vulkan", "compositor_adapter": "NVIDIA GeForce RTX 5090 / GLES2", "screenshot": str(screenshot), "checks": ["native CLI", "managed override", "config reload", "actual logic VM reload", "unmanaged persistence", "unknown/comment preservation", "invalid reload atomicity", "process restart reset"], "sound_checks": args.sound, "settings_process_checks": args.settings, "pointer_checks": bool(args.pointer), "performance_acceptance": False}
         (evidence / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     finally:
         original = sys.exc_info()[1]
+        try:
+            os.killpg(int(settings_pid.read_text()), 15)
+        except (FileNotFoundError, ValueError, ProcessLookupError):
+            pass
         errors = finish_private_run((app, pointer, keyboard_holder, sway, pulse, bus), (app_log, pointer.stdin if pointer else None, pointer_log, keyboard_holder.stdin if keyboard_holder else None, keyboard_log, sway_log, pulse_log, bus_log),
             lambda: (evidence / "cli-events.json").write_text(json.dumps(events, indent=2) + "\n"))
         try:

@@ -88,7 +88,7 @@ return function(applied, wallpaper)
         local row=rows[index+1]
         if not row or not row.editable then return end
         local cycle=choices[row.key]
-        if cycle then
+        if cycle and row.key~="appearance.palette" then
             local value
             for i,current in ipairs(cycle)do
                 if current==snapshot[row.key].value then value=cycle[i%#cycle+1];break end
@@ -113,7 +113,11 @@ return function(applied, wallpaper)
             return
         end
         local value
-        if row.key == "wallpaper.fit" then
+        if cycle then
+            for i,current in ipairs(cycle)do
+                if current==snapshot[row.key].value then value=cycle[i%#cycle+1];break end
+            end
+        elseif row.key == "wallpaper.fit" then
             local next_mode = {fill="fit", fit="centre", centre="tile", tile="fill"}
             value = next_mode[snapshot[row.key].value]
         else

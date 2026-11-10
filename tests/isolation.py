@@ -58,7 +58,7 @@ class Isolation(unittest.TestCase):
                 runner.assert_private_transport(env, private)
 
     def test_actual_view_counter_detects_duplicate_roles_in_floating_nodes(self):
-        app = "dev.tohru.WindowLifecycle"
+        app = "dev.tohru.Settings"
         tree = {"nodes": [{"app_id": app, "id": 1}, {"app_id": "other"}],
                 "floating_nodes": [{"nodes": [{"app_id": app, "id": 2}]}]}
         self.assertEqual({node["id"] for node in runner.windows_for_app(tree, app)}, {1, 2})

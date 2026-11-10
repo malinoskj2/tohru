@@ -15,7 +15,7 @@ Shared-owner wiring after review:
 - Declare `mod tohru_idle;` in native lib and call
   `crate::tohru_idle::install(&lua, self.tx.clone(), self.to_logic.clone())?`
   beside native settings install, inside immutable root-only TOHRU_SHELL gate.
-- Apply `runtime/idle/0004-idle-native.patch` after reviewed0002 and window0003.
+- Apply `runtime/idle/0004-idle-native.patch` after reviewed0002.
   It only adds the native held transaction and callback, not auth behavior.
 - Existing library fileset includes configuration.rs/cookies.rs/delay.rs/input.rs/
   logind_state.rs/teardown.rs plus mod.rs and all matching tests listed below.

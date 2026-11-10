@@ -75,8 +75,15 @@ case ${1:-help} in
         ;;
     settings)
         [[ $# == 2 ]] || fail 'Usage: tohru settings open|close'
-        case $2 in open) event=settings_open_request ;; close) event=settings_close ;; *) fail 'Usage: tohru settings open|close' ;; esac
-        exec "$pleamar" --say tohru "emit $event"
+        case $2 in
+            open)
+                "$pleamar" --say tohru-settings 'emit settings_open_request' >/dev/null 2>&1 && exit 0
+                run=${TOHRU_SETTINGS_RUN:-$(dirname -- "${BASH_SOURCE[0]}")/tohru-settings-run}
+                (set -m; nohup "$run" </dev/null >/dev/null 2>&1 &)
+                ;;
+            close) exec "$pleamar" --say tohru-settings quit ;;
+            *) fail 'Usage: tohru settings open|close' ;;
+        esac
         ;;
     panel)
         case ${2:-} in

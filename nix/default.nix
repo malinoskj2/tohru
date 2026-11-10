@@ -9,7 +9,6 @@ let
       ../runtime/workspace/mod.rs ../runtime/workspace/workspace_motion.rs ../runtime/workspace/workspace_track.rs
       ../runtime/wallpaper/mod.rs ../runtime/wallpaper/probe.rs ../runtime/wallpaper/native.rs
       ../runtime/wallpaper/preset.rs ../runtime/wallpaper/presets.rs ../runtime/wallpaper/raster.rs ../runtime/wallpaper/J2BAR-LICENSE
-      ../runtime/window/visibility.rs
       ../runtime/info_luau.rs ../runtime/info/mod.rs ../runtime/info/read.rs ../runtime/info/storage.rs ../runtime/info/system.rs ../tests/info/snapshot.rs ../tests/info.rs ../tests/settings.rs
       ../runtime/capture/mod.rs ../runtime/capture/files.rs ../runtime/capture/geometry.rs
       ../runtime/capture/native.rs ../runtime/capture/clipboard.rs ../runtime/capture/clipboard_owner.rs
@@ -40,7 +39,7 @@ let
     patches = [ ../runtime/patches/0001-shell-settings.patch ../runtime/patches/0002-lock-boundary.patch
       ../runtime/workspace/shader-inputs.patch ../runtime/patches/0004-workspace-binding.patch
       ../runtime/wallpaper/catalog.patch ../runtime/wallpaper/image-reset.patch ../runtime/wallpaper/fit.patch ../runtime/patches/0005-wallpaper-module.patch
-      ../runtime/launcher/namespace.patch ../runtime/patches/0003-window-lifecycle.patch ../runtime/patches/0006-info-binding.patch
+      ../runtime/launcher/namespace.patch ../runtime/patches/0006-info-binding.patch
       ../runtime/capture/native.patch ../runtime/capture/layout-link.patch
       ../runtime/capture/image-lifecycle.patch ../runtime/wallpaper/raster-limits.patch
       ../runtime/wallpaper/presets.patch ../runtime/patches/0009-preset-dependency.patch ../runtime/capture/output-events.patch
@@ -82,7 +81,6 @@ let
         --replace-fail '#!/usr/bin/env python3' '#!${python3}/bin/python3'
       cp ${foundationSource}/runtime/wallpaper/presets.rs ${foundationSource}/runtime/wallpaper/raster.rs src/tohru_wallpaper/
       cp ${foundationSource}/tests/wallpaper/presets.rs ${foundationSource}/tests/wallpaper/raster.rs tests/wallpaper/
-      cp ${foundationSource}/runtime/window/visibility.rs src/tohru_window.rs
       cp ${foundationSource}/runtime/info_luau.rs src/tohru_info.rs
       mkdir -p src/tohru_idle
       cp ${foundationSource}/runtime/idle/native.rs src/tohru_idle.rs
@@ -150,11 +148,14 @@ in stdenvNoCC.mkDerivation {
     mkdir -p $out/bin $out/share/tohru
     cp -r shell $out/share/tohru/
     cp LICENSE $out/share/tohru/LICENSE
-    cp bin/tohru bin/tohru-run bin/tohru-locker-run $out/bin/
+    cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-locker-run $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar
     wrapProgram $out/bin/tohru-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_SCENE $out/share/tohru/shell/bar.plm
+    wrapProgram $out/bin/tohru-settings-run \
+      --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
+      --set TOHRU_SETTINGS_SCENE $out/share/tohru/shell/settings/settings.plm
     wrapProgram $out/bin/tohru-locker-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_LOCK_SCENE $out/share/tohru/shell/lock/lock.plm

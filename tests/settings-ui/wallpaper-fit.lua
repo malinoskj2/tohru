@@ -77,7 +77,6 @@ setmetatable(modules,{__index=function(_,name)
     return function()return panel end
 end})
 modules['settings/wallpaper']=function()return bridge end
-modules['settings/corner-size']=assert(loadfile('shell/settings/corner-size.luau'))()
 tohru_workspace={};tohru_info={snapshot=noop}
 assert(loadfile('shell/bar.luau'))()
 assert(status.schema==7)
@@ -91,9 +90,6 @@ for _,invalid in ipairs({-1,4,.5,'fit',math.huge})do
     handlers.setting_wallpaper_fit(invalid)
     assert(changed==before+4 and text.settings_error:find('Wallpaper fit must be'))
 end
-assert(text.settings_corner_size_edit=='32')
-text.settings_corner_size_edit='64';handlers['submit:settings_corner_size_edit']()
-assert(config['appearance.corner_size'].value==64 and text.settings_corner_size_edit=='64')
 local last_policy,last_palette
 bridge.change_policy=function(value)last_policy=value end
 bridge.palette=function(value)last_palette=value end
@@ -105,4 +101,4 @@ for index,value in ipairs({'mocha','macchiato','rose_pine','nord','gruvbox','tok
 end
 handlers.setting_wallpaper_change(4);assert(last_policy=='login' and text.settings_error:find('Invalid'))
 handlers.setting_palette(8);assert(last_palette=='everforest' and text.settings_error:find('Invalid'))
-print('PASS wallpaper fit/corner size and root canonical palette/change action routes')
+print('PASS wallpaper fit and root canonical palette/change action routes')

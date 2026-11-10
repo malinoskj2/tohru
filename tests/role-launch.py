@@ -19,9 +19,11 @@ class RoleLaunch(unittest.TestCase):
             recorder.chmod(0o755)
             environment = dict(os.environ, TOHRU_RUNTIME=str(recorder), TOHRU_SHELL='1', TOHRU_LOCKER='1', TOHRU_SCENE='/ordinary/scene')
             environment.pop('TOHRU_LOCK_SCENE', None)
+            environment.pop('TOHRU_SETTINGS_SCENE', None)
             for script, name, shell, locker, scene in [
                 ('tohru-run', 'tohru', '1', None, '/ordinary/scene'),
                 ('tohru-locker-run', 'tohru-lock', None, '1', str(ROOT / 'shell/lock/lock.plm')),
+                ('tohru-settings-run', 'tohru-settings', '1', None, str(ROOT / 'shell/settings/settings.plm')),
             ]:
                 result = subprocess.run([str(ROOT / 'bin' / script)], env=environment, text=True, capture_output=True, check=True)
                 value = json.loads(result.stdout)
