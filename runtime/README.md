@@ -9,24 +9,12 @@ The shell's own initial settings implementation is MIT.
 `0001-shell-settings.patch` adds the focused `tohru-shell` path dependency and
 one binding installation hook, gated by TOHRU_SHELL=1 and excluding plugins.
 `settings_luau.rs` owns the process singleton and Luau boundary. Additional narrow
-patches cover approved lock/secret safety, workspace shader scalars/API and
-wallpaper catalog/image identity. Ordinary window lifecycle is a separately
+patches cover approved lock/secret safety and workspace shader scalars/API.
+Ordinary window lifecycle is a separately
 reviewed patch; exact applied lists live in prepare.sh and nix/default.nix.
 `Cargo.lock` starts from the pinned upstream lock and adds only anyhow, the local
 library, and toml_writer (needed for comment-preserving TOML writes). The library
 uses upstream's already selected toml_edit 0.25.15 and serde_json 1.0.151.
-The same package's `tohru-wallpaper-probe` binary must be installed beside the
-actual native Pleamar executable, including behind the launch wrapper. Catalog
-dispatch locates that fixed sibling through current_exe, never a PATH override.
-Nix builds the helper from foundation/Cargo.toml into the shared target directory
-and installs it in the native runtime output. Local native builds must also build
-`--manifest-path PREPARED/foundation/Cargo.toml --bin tohru-wallpaper-probe
---release --locked --jobs 1 --target-dir PREPARED/target` before catalog calls.
-The catalog query `wallpaper.catalog` requires base service `wallpaper` in scene
-permissions (native sys.ask checks the base before the dot); accepting an
-assignment does not prove image decoding/presentation. Capture's bounded geometry
-and file-publication domain is included; native capture adapters/helpers remain
-separate source deliveries and are not advertised by this inclusion.
 
 ```sh
 ./runtime/prepare.sh
@@ -86,7 +74,7 @@ Hyprland runtime validation, preferred/focused/first-output fallback and reconne
 hotplug/scaling/rotation, exact 240Hz workspace motion and stop-at-rest frame
 integration (native API decision pending), full retained bar contents and 1:1
 visuals, native glass review, and all performance/presentation/soak gates.
-No notifications, authentication, idle, wallpaper or other singleton services
+No notifications, authentication, idle or other singleton services
 are activated by this foundation. Native frame/namespace/notification gaps stay
 unpatched until the user's decisions. Independent review follows integration.
 

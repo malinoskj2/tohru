@@ -1,18 +1,7 @@
 part SettingsState {
  fact settings_open = false
  fact settings_page = 1
- fact settings_wallpaper_page = false
- fact settings_capture_page = false
  fact settings_appearance_page = false
- text capture_directory_edit = ""
- text capture_pattern_edit = ""
- text capture_preferences_notice = ""
- text wallpaper_settings_notice = ""
- text wallpaper_rotation_error = ""
- text wallpaper_preset_status = "{}"
- fact wallpaper_rotation_initialized = false
- event wallpaper_rotate ->
- event setting_wallpaper_change ->
  event setting_palette ->
  fact settings_selected = 0
  fact settings_sidebar = true
@@ -26,9 +15,6 @@ part SettingsState {
  text settings_ui_error = ""
  model settings_categories max 5 { id: number; title: text; selected: bool }
  model settings_rows max 15 { title: text; detail: text; value: bool; choice: bool; editable: bool; managed: bool; temporary: bool }
- event setting_wallpaper_fit ->
- event setting_capture_save ->
- event setting_capture_copy ->
  event setting_idle_lock_seconds ->
  event setting_idle_screen_off_unlocked_seconds ->
  event setting_idle_screen_off_locked_seconds ->
@@ -36,7 +22,6 @@ part SettingsState {
  event setting_idle_suspend_locked_seconds ->
  event setting_idle_fade_milliseconds ->
  event settings_open_request ->
- event settings_wallpaper_open ->
  event settings_close ->
  event settings_category ->
  event settings_back ->

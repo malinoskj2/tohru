@@ -7,8 +7,6 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 use toml_edit::{DocumentMut, Item, Table, value};
 
-use crate::wallpaper::preset::{Palette, Preset};
-
 const MAX_CONFIG_BYTES: u64 = 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -17,17 +15,7 @@ pub enum Key {
     Mooncoil,
     Corners,
     CornerSize,
-    WallpaperEnabled,
-    WallpaperAssignments,
-    WallpaperFolder,
-    WallpaperFit,
-    WallpaperPreset,
-    WallpaperChange,
     Palette,
-    CaptureSave,
-    CaptureCopy,
-    CaptureDirectory,
-    CaptureFilenamePattern,
     IdleLockSeconds,
     IdleScreenOffUnlockedSeconds,
     IdleScreenOffLockedSeconds,
@@ -37,22 +25,12 @@ pub enum Key {
 }
 
 impl Key {
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 11] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::Corners,
         Self::CornerSize,
-        Self::WallpaperEnabled,
-        Self::WallpaperAssignments,
-        Self::WallpaperFolder,
-        Self::WallpaperFit,
-        Self::WallpaperPreset,
-        Self::WallpaperChange,
         Self::Palette,
-        Self::CaptureSave,
-        Self::CaptureCopy,
-        Self::CaptureDirectory,
-        Self::CaptureFilenamePattern,
         Self::IdleLockSeconds,
         Self::IdleScreenOffUnlockedSeconds,
         Self::IdleScreenOffLockedSeconds,
@@ -68,17 +46,7 @@ impl Key {
             Self::Mooncoil => "bar.mooncoil",
             Self::Corners => "appearance.corners",
             Self::CornerSize => "appearance.corner_size",
-            Self::WallpaperEnabled => "wallpaper.enabled",
-            Self::WallpaperAssignments => "wallpaper.assignments",
-            Self::WallpaperFolder => "wallpaper.folder",
-            Self::WallpaperFit => "wallpaper.fit",
-            Self::WallpaperPreset => "wallpaper.preset",
-            Self::WallpaperChange => "wallpaper.change",
             Self::Palette => "appearance.palette",
-            Self::CaptureSave => "capture.save",
-            Self::CaptureCopy => "capture.copy",
-            Self::CaptureDirectory => "capture.directory",
-            Self::CaptureFilenamePattern => "capture.filename_pattern",
             Self::IdleLockSeconds => "idle.lock_seconds",
             Self::IdleScreenOffUnlockedSeconds => "idle.screen_off_unlocked_seconds",
             Self::IdleScreenOffLockedSeconds => "idle.screen_off_locked_seconds",
@@ -105,16 +73,9 @@ impl Key {
     /// Rejects unknown closed-domain names; `Owner` validates other text bounds.
     pub fn parse_text(self, text: &str) -> Result<Value, Error> {
         match self {
-            Self::WallpaperFit => WallpaperFit::parse(text).map(Value::WallpaperFit),
-            Self::WallpaperPreset => text
-                .parse::<Preset>()
-                .map(|preset| Value::WallpaperPreset(Some(preset)))
-                .map_err(|_| Error::InvalidValue(self.name())),
-            Self::WallpaperChange => WallpaperChange::parse(text).map(Value::WallpaperChange),
-            Self::Palette => text
-                .parse::<Palette>()
+            Self::Palette => Palette::parse(text)
                 .map(Value::Palette)
-                .map_err(|_| Error::InvalidValue(self.name())),
+                .ok_or(Error::InvalidValue(self.name())),
             _ => Ok(Value::Text(text.to_owned())),
         }
     }
@@ -125,17 +86,7 @@ impl Key {
             Self::Mooncoil => ("bar", "mooncoil"),
             Self::Corners => ("appearance", "corners"),
             Self::CornerSize => ("appearance", "corner_size"),
-            Self::WallpaperEnabled => ("wallpaper", "enabled"),
-            Self::WallpaperAssignments => ("wallpaper", "assignments"),
-            Self::WallpaperFolder => ("wallpaper", "folder"),
-            Self::WallpaperFit => ("wallpaper", "fit"),
-            Self::WallpaperPreset => ("wallpaper", "preset"),
-            Self::WallpaperChange => ("wallpaper", "change"),
             Self::Palette => ("appearance", "palette"),
-            Self::CaptureSave => ("capture", "save"),
-            Self::CaptureCopy => ("capture", "copy"),
-            Self::CaptureDirectory => ("capture", "directory"),
-            Self::CaptureFilenamePattern => ("capture", "filename_pattern"),
             Self::IdleLockSeconds => ("idle", "lock_seconds"),
             Self::IdleScreenOffUnlockedSeconds => ("idle", "screen_off_unlocked_seconds"),
             Self::IdleScreenOffLockedSeconds => ("idle", "screen_off_locked_seconds"),
@@ -161,17 +112,10 @@ impl Key {
 
     fn default_value(self) -> Value {
         match self {
-            Self::PreferredOutput
-            | Self::WallpaperFolder
-            | Self::CaptureDirectory
-            | Self::CaptureFilenamePattern => Value::Text(String::new()),
-            Self::Mooncoil | Self::WallpaperEnabled => Value::Bool(false),
-            Self::Corners | Self::CaptureSave | Self::CaptureCopy => Value::Bool(true),
+            Self::PreferredOutput => Value::Text(String::new()),
+            Self::Mooncoil => Value::Bool(false),
+            Self::Corners => Value::Bool(true),
             Self::CornerSize => Value::Integer(32),
-            Self::WallpaperAssignments => Value::Assignments(BTreeMap::new()),
-            Self::WallpaperFit => Value::WallpaperFit(WallpaperFit::Fill),
-            Self::WallpaperPreset => Value::WallpaperPreset(None),
-            Self::WallpaperChange => Value::WallpaperChange(WallpaperChange::Never),
             Self::Palette => Value::Palette(Palette::Mocha),
             Self::IdleLockSeconds => Value::Integer(1800),
             Self::IdleScreenOffUnlockedSeconds => Value::Integer(0),
@@ -189,37 +133,8 @@ impl Key {
             {
                 Ok(())
             }
-            (
-                Self::Mooncoil
-                | Self::Corners
-                | Self::WallpaperEnabled
-                | Self::CaptureSave
-                | Self::CaptureCopy,
-                Value::Bool(_),
-            ) => Ok(()),
-            (Self::WallpaperFolder, Value::Text(text))
-                if text.len() <= 4096 && !text.contains('\0') =>
-            {
-                Ok(())
-            }
-            (Self::WallpaperFit, Value::WallpaperFit(_))
-            | (Self::WallpaperPreset, Value::WallpaperPreset(_))
-            | (Self::WallpaperChange, Value::WallpaperChange(_))
+            (Self::Mooncoil | Self::Corners, Value::Bool(_))
             | (Self::Palette, Value::Palette(_)) => Ok(()),
-            (Self::CaptureDirectory, Value::Text(text)) if valid_capture_directory(text) => Ok(()),
-            (Self::CaptureFilenamePattern, Value::Text(text))
-                if text.len() <= 1024 && !text.contains(['/', '\\', '\0']) =>
-            {
-                Ok(())
-            }
-            (Self::WallpaperAssignments, Value::Assignments(assignments))
-                if assignments.len() <= 32
-                    && assignments
-                        .iter()
-                        .all(|(output, path)| valid_output(output) && valid_wallpaper(path)) =>
-            {
-                Ok(())
-            }
             (_, Value::Integer(value))
                 if self
                     .integer_bounds()
@@ -232,70 +147,46 @@ impl Key {
     }
 }
 
-/// Static wallpaper image placement, parsed at configuration boundaries.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum WallpaperFit {
-    Fill,
-    Fit,
-    Centre,
-    Tile,
+pub enum Palette {
+    Mocha,
+    Macchiato,
+    RosePine,
+    Nord,
+    Gruvbox,
+    TokyoNight,
+    Dracula,
+    Everforest,
 }
 
-impl WallpaperFit {
-    /// Parse the exact public TOML/Lua representation.
-    ///
-    /// # Errors
-    /// Rejects aliases, noncanonical case and unknown modes.
-    pub fn parse(value: &str) -> Result<Self, Error> {
-        match value {
-            "fill" => Ok(Self::Fill),
-            "fit" => Ok(Self::Fit),
-            "centre" => Ok(Self::Centre),
-            "tile" => Ok(Self::Tile),
-            _ => Err(Error::InvalidValue(Key::WallpaperFit.name())),
-        }
-    }
+impl Palette {
+    pub const ALL: [Self; 8] = [
+        Self::Mocha,
+        Self::Macchiato,
+        Self::RosePine,
+        Self::Nord,
+        Self::Gruvbox,
+        Self::TokyoNight,
+        Self::Dracula,
+        Self::Everforest,
+    ];
 
     #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Fill => "fill",
-            Self::Fit => "fit",
-            Self::Centre => "centre",
-            Self::Tile => "tile",
-        }
-    }
-}
-
-/// Native timer policy; never implies an observation or wall-clock scheduler.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum WallpaperChange {
-    Never,
-    Hourly,
-    Daily,
-    Login,
-}
-
-impl WallpaperChange {
-    /// # Errors
-    /// Rejects noncanonical timer policy names.
-    pub fn parse(text: &str) -> Result<Self, Error> {
-        match text {
-            "never" => Ok(Self::Never),
-            "hourly" => Ok(Self::Hourly),
-            "daily" => Ok(Self::Daily),
-            "login" => Ok(Self::Login),
-            _ => Err(Error::InvalidValue(Key::WallpaperChange.name())),
-        }
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|palette| palette.name() == name)
     }
 
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
-            Self::Never => "never",
-            Self::Hourly => "hourly",
-            Self::Daily => "daily",
-            Self::Login => "login",
+            Self::Mocha => "mocha",
+            Self::Macchiato => "macchiato",
+            Self::RosePine => "rose_pine",
+            Self::Nord => "nord",
+            Self::Gruvbox => "gruvbox",
+            Self::TokyoNight => "tokyo_night",
+            Self::Dracula => "dracula",
+            Self::Everforest => "everforest",
         }
     }
 }
@@ -304,53 +195,8 @@ impl WallpaperChange {
 pub enum Value {
     Bool(bool),
     Text(String),
-    WallpaperFit(WallpaperFit),
-    WallpaperPreset(Option<Preset>),
-    WallpaperChange(WallpaperChange),
     Palette(Palette),
     Integer(i64),
-    Assignments(BTreeMap<String, String>),
-}
-
-// Keep HOME expansion and native chrono formatting at the operation boundary.
-// This lexical validation never reads the filesystem or the process HOME.
-fn valid_capture_directory(directory: &str) -> bool {
-    if directory.len() > 4096 || directory.contains('\0') {
-        return false;
-    }
-    let tail = directory
-        .strip_prefix("~/")
-        .or_else(|| directory.strip_prefix("$HOME/"));
-    (directory.is_empty()
-        || directory == "~"
-        || tail.is_some()
-        || Path::new(directory).is_absolute())
-        && !Path::new(tail.unwrap_or(directory))
-            .components()
-            .any(|part| matches!(part, std::path::Component::ParentDir))
-}
-
-fn valid_output(output: &str) -> bool {
-    !output.is_empty()
-        && output.len() <= 255
-        && output.trim() == output
-        && !output.contains(',')
-        && !output.chars().any(char::is_control)
-}
-
-fn valid_wallpaper(path: &str) -> bool {
-    path.len() <= 4096
-        && Path::new(path).is_absolute()
-        && !path.contains('\0')
-        && Path::new(path)
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .is_some_and(|ext| {
-                matches!(
-                    ext.to_ascii_lowercase().as_str(),
-                    "png" | "jpg" | "jpeg" | "webp" | "mp4" | "webm" | "mkv" | "mov" | "gif"
-                )
-            })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -468,20 +314,7 @@ impl Layer {
             let Some(item) = table.get(field) else {
                 continue;
             };
-            let candidate = if key == Key::WallpaperAssignments {
-                let entries = item
-                    .as_table_like()
-                    .ok_or(Error::InvalidValue(key.name()))?;
-                if entries.len() > 32 {
-                    return Err(Error::InvalidValue(key.name()));
-                }
-                let mut assignments = BTreeMap::new();
-                for (output, path) in entries.iter() {
-                    let path = path.as_str().ok_or(Error::InvalidValue(key.name()))?;
-                    assignments.insert(output.to_owned(), path.to_owned());
-                }
-                Value::Assignments(assignments)
-            } else if let Some(text) = item.as_str() {
+            let candidate = if let Some(text) = item.as_str() {
                 key.parse_text(text)?
             } else if let Some(boolean) = item.as_bool() {
                 Value::Bool(boolean)
@@ -507,29 +340,6 @@ pub struct Owner {
 }
 
 impl Owner {
-    /// Atomically edit one output assignment through the effective managed/user layer.
-    ///
-    /// # Errors
-    /// Rejects invalid selectors, unsupported paths, map overflow and persistence errors.
-    pub fn assign_wallpaper(
-        &mut self,
-        output: &str,
-        path: Option<&str>,
-    ) -> Result<SetOutcome, Error> {
-        if !valid_output(output) {
-            return Err(Error::InvalidValue(Key::WallpaperAssignments.name()));
-        }
-        let Value::Assignments(mut assignments) = self.get(Key::WallpaperAssignments).value else {
-            return Err(Error::InvalidValue(Key::WallpaperAssignments.name()));
-        };
-        if let Some(path) = path {
-            assignments.insert(output.to_owned(), path.to_owned());
-        } else {
-            assignments.remove(output);
-        }
-        self.set(Key::WallpaperAssignments, Value::Assignments(assignments))
-    }
-
     /// Load user and optional managed layers without importing old shell state.
     ///
     /// # Errors
@@ -653,28 +463,11 @@ impl Owner {
             let item = match &candidate {
                 Value::Bool(boolean) => value(*boolean),
                 Value::Text(text) => value(text),
-                Value::WallpaperFit(fit) => value(fit.as_str()),
-                Value::WallpaperPreset(preset) => {
-                    preset.map_or(Item::None, |preset| value(preset.name()))
-                }
-                Value::WallpaperChange(change) => value(change.name()),
                 Value::Palette(palette) => value(palette.name()),
                 Value::Integer(integer) => value(*integer),
-                Value::Assignments(assignments) => {
-                    let mut entries = Table::new();
-                    for (output, path) in assignments {
-                        entries.insert(output, value(path));
-                    }
-                    Item::Table(entries)
-                }
             };
-            if item.is_none() {
-                table.remove(field);
-                layer.values.remove(&key);
-            } else {
-                table.insert(field, item);
-                layer.values.insert(key, candidate);
-            }
+            table.insert(field, item);
+            layer.values.insert(key, candidate);
         }
         let serialized = next.document.to_string();
         if serialized.len() as u64 > MAX_CONFIG_BYTES {
@@ -740,21 +533,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn wallpaper_batch_postcommit_sync_failure_retains_entire_committed_state() {
+    fn batch_postcommit_sync_failure_retains_entire_committed_state() {
         let directory =
-            std::env::temp_dir().join(format!("tohru-wallpaper-batch-sync-{}", std::process::id()));
+            std::env::temp_dir().join(format!("tohru-batch-sync-{}", std::process::id()));
         fs::create_dir_all(&directory).unwrap();
         let path = directory.join("config.toml");
         let mut owner = Owner::load(path.clone(), None).unwrap();
         let proposal = BTreeMap::from([
-            (
-                Key::WallpaperAssignments,
-                Value::Assignments(BTreeMap::from([("A".into(), "/image.png".into())])),
-            ),
-            (
-                Key::WallpaperPreset,
-                Value::WallpaperPreset(Some(Preset::Solid)),
-            ),
+            (Key::Mooncoil, Value::Bool(true)),
+            (Key::CornerSize, Value::Integer(48)),
             (Key::Palette, Value::Palette(Palette::Nord)),
         ]);
         let outcome = owner

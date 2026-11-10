@@ -23,31 +23,16 @@ class Cli(unittest.TestCase):
     def invoke(self, *args, **env):
         return subprocess.run([str(ROOT / "bin/tohru"), *args], env={**self.env, **env}, text=True, capture_output=True)
 
-    def test_rotation_and_palette_routes_are_closed_before_ipc(self):
-        result=self.invoke('wallpaper','rotate')
-        self.assertEqual(result.returncode,0,result.stderr)
-        self.assertEqual(json.loads(result.stdout),['--say','tohru','emit wallpaper_rotate'])
-        for key,modes,event in [
-            ('wallpaper.change',['never','hourly','daily','login'],'setting_wallpaper_change'),
-            ('appearance.palette',['mocha','macchiato','rose_pine','nord','gruvbox','tokyo_night','dracula','everforest'],'setting_palette')]:
-            for index,mode in enumerate(modes):
-                result=self.invoke('config','set',key,mode)
-                self.assertEqual(result.returncode,0,result.stderr)
-                self.assertEqual(json.loads(result.stdout),['--say','tohru','emit '+event+' '+str(index)])
-            for invalid in ['Mocha','rose-pine','hourly ','0','../other','daily;quit','']:
-                result=self.invoke('config','set',key,invalid)
-                self.assertEqual(result.returncode,2)
-                self.assertEqual(result.stdout,'')
-
-    def test_wallpaper_fit_canonical_enum_is_mapped_before_native_ipc(self):
-        for index, mode in enumerate(['fill', 'fit', 'centre', 'tile']):
-            result = self.invoke('config', 'set', 'wallpaper.fit', mode)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(json.loads(result.stdout), ['--say', 'tohru', 'emit setting_wallpaper_fit '+str(index)])
-        for mode in ['cover', 'contain', 'center', 'Fill', 'tile ', '', '0', 'fit;quit', 'fit\nemit quit']:
-            result = self.invoke('config', 'set', 'wallpaper.fit', mode)
-            self.assertEqual(result.returncode, 2)
-            self.assertEqual(result.stdout, '')
+    def test_palette_route_is_closed_before_ipc(self):
+        modes=['mocha','macchiato','rose_pine','nord','gruvbox','tokyo_night','dracula','everforest']
+        for index,mode in enumerate(modes):
+            result=self.invoke('config','set','appearance.palette',mode)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(json.loads(result.stdout),['--say','tohru','emit setting_palette '+str(index)])
+        for invalid in ['Mocha','rose-pine','nord ','0','../other','nord;quit','']:
+            result=self.invoke('config','set','appearance.palette',invalid)
+            self.assertEqual(result.returncode,2)
+            self.assertEqual(result.stdout,'')
 
     def test_session_menu_routes_never_start_a_role(self):
         for action in ['open','close','toggle']:
@@ -83,7 +68,7 @@ class Cli(unittest.TestCase):
                 self.assertEqual(result.returncode,2)
                 self.assertEqual(result.stdout,'')
 
-    def test_idle_and_capture_settings_are_bounded_before_native_ipc(self):
+    def test_idle_settings_are_bounded_before_native_ipc(self):
         fields=['lock_seconds','screen_off_unlocked_seconds','screen_off_locked_seconds',
                 'suspend_unlocked_seconds','suspend_locked_seconds','fade_milliseconds']
         for field in fields:
@@ -95,33 +80,6 @@ class Cli(unittest.TestCase):
             for value in ['-1','01','+1','1.5','1e3',str(maximum+1),'99999999999999999999','0\nemit quit']:
                 self.assertEqual(self.invoke('config','set','idle.'+field,value).returncode,2)
         self.assertEqual(self.invoke('config','set','idle.unknown','0').returncode,2)
-        for field in ['save','copy']:
-            result=self.invoke('config','set','capture.'+field,'false')
-            self.assertEqual(result.returncode,0,result.stderr)
-            self.assertEqual(json.loads(result.stdout),['--say','tohru','emit setting_capture_'+field+' 0'])
-
-    def test_capture_routes_are_fixed_native_requests(self):
-        for arguments, message in [
-            (('screenshot','region'), 'emit capture_open_request'),
-            (('screenshot','cancel'), 'emit capture_cancel'),
-            (('screenshot','status','--json'), 'get capture_status'),
-        ]:
-            result=self.invoke(*arguments)
-            self.assertEqual(result.returncode,0,result.stderr)
-            self.assertEqual(json.loads(result.stdout),['--say','tohru',message])
-        for arguments in [('screenshot','region','extra'),('screenshot','status'),('screenshot','region;quit')]:
-            self.assertEqual(self.invoke(*arguments).returncode,2)
-
-    def test_wallpaper_routes_and_enable_are_fixed_native_requests(self):
-        for arguments, event in [
-            (('wallpaper', 'open'), 'settings_wallpaper_open'),
-            (('wallpaper', 'randomize'), 'wallpaper_randomize'),
-            (('config', 'set', 'wallpaper.enabled', 'true'), 'setting_wallpaper_enabled 1'),
-        ]:
-            result=self.invoke(*arguments)
-            self.assertEqual(result.returncode,0,result.stderr)
-            self.assertEqual(json.loads(result.stdout),['--say','tohru','emit '+event])
-        self.assertEqual(self.invoke('wallpaper','randomize','DP-1').returncode,2)
 
     def test_service_panel_routes_are_fixed_native_events(self):
         for panel in ['network', 'bluetooth', 'about', 'info']:
@@ -178,6 +136,8 @@ class Cli(unittest.TestCase):
             ("config", "reload", "extra"), ("config", "set", "bar.mooncoil", "yes"),
             ("config", "set", "unknown.key", "true"), ("assistant",),
             ("gaming",), ("dnd",), ("workspace", "select", "1"),
+            ("screenshot", "region"), ("wallpaper", "open"),
+            ("config", "set", "wallpaper.enabled", "true"), ("config", "set", "capture.save", "false"),
             ("settings-error", "extra"), ("help", "extra"),
         ]:
             with self.subTest(args=args):

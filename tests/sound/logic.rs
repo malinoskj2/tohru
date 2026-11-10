@@ -7,12 +7,6 @@ mod osd;
 #[path = "../idle-settings/logic.rs"]
 mod idle_settings;
 
-#[path = "../wallpaper-settings/logic.rs"]
-mod wallpaper_settings;
-
-#[path = "../capture-settings/logic.rs"]
-mod capture_settings;
-
 #[path = "../../runtime/workspace_luau.rs"]
 mod actual_workspace_binding;
 
@@ -240,14 +234,6 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         function emit(name) table.insert(calls,{render_only=name}) end
         function require(name) return modules[name] end
         sys={call=function(name,value) table.insert(calls,{name=name,value=value}) end,
-             ask=function(name)
-                if name=='capture.destination' then return '/private/result.png' end
-                if name=='capture.freeze' then return 'capture:PRIVATE-1?1' end
-                if name=='capture.release' then released=(released or 0)+1;return {} end
-                if name=='capture.region' then return {saved=true,copied=true,durable=true,path='/private/result.png'} end
-                assert(name=='capture.outputs'); output_queries=(output_queries or 0)+1
-                return {{name='PRIVATE-1',x=0,y=0,width=1280,height=720,scale=1,transform=0,routable=true}}
-             end,
              watch=function(name,callback)
                 if name=='audio' then audio_watch=callback
                 elseif name=='clock' then callback({year=2026,month=11,day=7,weekday=6,hour=12,minute=0})
@@ -269,7 +255,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         tohru_settings={snapshot=function() return {
             ['bar.mooncoil']={value=false},['appearance.corners']={value=true},['appearance.corner_size']={value=32},
             ['bar.preferred_output']={value='legacy'},
-            ['capture.save']={value=true}, ['capture.copy']={value=true}, ['capture.directory']={value=''}, ['capture.filename_pattern']={value=''}, ['wallpaper.preset']={}, ['wallpaper.change']={value='never'}, ['appearance.palette']={value='mocha'}, ['wallpaper.fit']={value='fill'}, ['wallpaper.enabled']={value=false}, ['wallpaper.folder']={value=''}, ['wallpaper.assignments']={value={}},
+            ['appearance.palette']={value='mocha'},
             ['idle.lock_seconds']={value=1800}, ['idle.screen_off_unlocked_seconds']={value=0},
             ['idle.screen_off_locked_seconds']={value=60}, ['idle.suspend_unlocked_seconds']={value=7200},
             ['idle.suspend_locked_seconds']={value=5400}, ['idle.fade_milliseconds']={value=2000}
@@ -284,38 +270,6 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         (
             "settings/corner-size",
             include_str!("../../shell/settings/corner-size.luau"),
-        ),
-        (
-            "settings/capture",
-            include_str!("../../shell/settings/capture.luau"),
-        ),
-        (
-            "settings/capture-result",
-            include_str!("../../shell/settings/capture-result.luau"),
-        ),
-        (
-            "capture/controller",
-            include_str!("../../shell/capture/controller.luau"),
-        ),
-        (
-            "settings/wallpaper-actions",
-            include_str!("../../shell/settings/wallpaper-actions.luau"),
-        ),
-        (
-            "wallpaper/rotation",
-            include_str!("../../shell/wallpaper/rotation.luau"),
-        ),
-        (
-            "settings/wallpaper",
-            include_str!("../../shell/settings/wallpaper.luau"),
-        ),
-        (
-            "wallpaper/controller",
-            include_str!("../../shell/wallpaper/controller.luau"),
-        ),
-        (
-            "wallpaper/picker",
-            include_str!("../../shell/wallpaper/picker.luau"),
         ),
         (
             "network/controller",
@@ -419,8 +373,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         assert(fact.info_visible and not fact.bt_open and not fact.bt_scan_owned and text.bt_answer=='')
         assert(info_reads==1)
         dispatch('info_open',1)
-        assert(info_reads==1 and output_queries==1 and model.info_rows[1].value=='PRIVATE-1')
-        assert(model.info_rows[2].value=='1280 × 720' and model.info_rows[3].value=='Unknown')
+        assert(info_reads==1 and model.info_rows[1].value=='Unknown')
         fact['bt.pairing_id']=0; fact['bt.pairing']='none'
         dispatch('about_open'); assert(fact.about_visible and not fact.info_visible and info_reads==2)
         dispatch('about_more')
@@ -428,31 +381,13 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         dispatch('network_open'); dispatch('settings_open_request')
         assert(fact.settings_open and not fact.net_open and not fact.info_visible and not fact.bt_open)
         dispatch('panel_close'); assert(info_reads==3)
-        dispatch('settings_wallpaper_open')
-        assert(fact.settings_open and fact.settings_wallpaper_page and fact.wallpaper_picker_open)
-        assert(text.wallpaper_picker_error=='' and model.wallpaper_picker_files and #model.wallpaper_picker_files==0)
-        dispatch('wallpaper_picker_close')
-        assert(fact.settings_page==2 and not fact.settings_wallpaper_page and not fact.wallpaper_picker_open)
-        dispatch('settings_wallpaper_open'); dispatch('settings_close')
-        assert(not fact.settings_open and not fact.wallpaper_picker_open)
-        dispatch('settings_wallpaper_open')
-        dispatch('capture_open_request')
-        assert(fact.capture_open and not fact.settings_open and not fact.wallpaper_picker_open and not fact.wallpaper_picker_keyboard)
-        local token=text.capture_frame_0
-        dispatch('capture_open_request')
-        assert(fact.capture_open and text.capture_frame_0==token and released==nil, 'busy cannot replace/release selection')
-        dispatch('network_open'); assert(not fact.net_open and fact.capture_open)
-        dispatch('settings_open_request'); assert(not fact.settings_open)
-        dispatch('capture_cancel')
-        assert(not fact.capture_open and fact.wallpaper_picker_keyboard and released==1)
         tohru_settings.set=function(key,value) last_setting_key=key;last_setting_value=value;return tohru_settings.snapshot() end
         for _,field in ipairs({'lock_seconds','screen_off_unlocked_seconds','screen_off_locked_seconds',
             'suspend_unlocked_seconds','suspend_locked_seconds','fade_milliseconds'}) do
             dispatch('setting_idle_'..field,17)
             assert(last_setting_key=='idle.'..field and last_setting_value==17)
         end
-        dispatch('setting_capture_save',0); assert(last_setting_key=='capture.save' and last_setting_value==false)
-        dispatch('setting_capture_copy',1); assert(last_setting_key=='capture.copy' and last_setting_value==true)
+        dispatch('setting_palette',3); assert(last_setting_key=='appearance.palette' and last_setting_value=='nord')
 
     "#,
     )
