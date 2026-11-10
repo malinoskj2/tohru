@@ -83,7 +83,7 @@ struct WindowRefresh;
 REFRESH_CALLBACK
 struct WindowReleased(u32);
 RELEASE_CALLBACK
-enum ToRender { SheetGone(u32) }
+enum ToRender { SheetGone(u32), CaptureOutputChanged }
 struct Locks { monitors: Mutex<Vec<(u32, (), ())>> }
 struct MovableLayers {
     connection: Connection, qh: QueueHandle<State>,
@@ -161,7 +161,7 @@ fn acknowledge(state: &mut State, qh: &QueueHandle<State>) {
         assert!(!life.current());
         assert_eq!(state.retired_windows.len(),1);
         assert_eq!(state.created,0,"replacement before barrier");
-        assert!(matches!(rx.recv().unwrap(),ToRender::SheetGone(1)));
+        assert!(rx.try_iter().any(|m| matches!(m,ToRender::SheetGone(1))));
         if gpu_first { drop(queued.take()); acknowledge(&mut state,&qh); assert_eq!(state.created,0); }
         resume.send(()).unwrap(); thread.join().unwrap();
         refresh(&mut state,&qh);

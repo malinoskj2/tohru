@@ -125,8 +125,7 @@ def focused_search_submit(native, keyboard, query, timeout=10):
     # first, so that broken Ctrl+F cannot pass through that default behavior.
     native("focus runner_focus_canary")
     canary = native("get runner_focus_canary")
-    keyboard("-M", "ctrl", "-k", "f", "-m", "ctrl")
-    keyboard(query)
+    keyboard("-M", "ctrl", "-k", "f", "-m", "ctrl", query)
     wait_for(lambda: native("get settings_search") == query, "Ctrl+F focused native search received typing", timeout)
     wait_for(lambda: native("get settings_rows.count") == "1", "typed native Settings search result", timeout)
     assert native("get runner_focus_canary") == canary, "query reached the focus canary instead of search"
@@ -157,7 +156,10 @@ def main():
     parser.add_argument("--windows", action="store_true", help="test window-only first open, WM close, resize and output retirement")
     parser.add_argument("--pointer", type=Path, help="compiled tests/bar/pointer.c private persistent input fixture")
     parser.add_argument("--wtype", type=Path, help="private-display virtual keyboard tool for Escape/search Return")
+    parser.add_argument("--keyboard", type=Path, help="compiled tests/launcher/keyboard.c persistent seat keyboard, required with --wtype")
     args = parser.parse_args()
+    if args.wtype and not args.keyboard:
+        parser.error("--wtype needs --keyboard: one-shot wtype devices leave before the app binds the seat keyboard")
     evidence = create_evidence(ROOT)
     # Unix socket paths must remain below sockaddr_un's 108-byte limit.
     runtime_dir = ROOT / ".tmp" / f"r{os.getpid()}"
@@ -193,12 +195,13 @@ def main():
     env = isolated_transport(env, runtime_dir)
     assert_private_transport(env, runtime_dir)
     events = []
-    app = pointer = sway = bus = pulse = None
+    app = pointer = keyboard_holder = sway = bus = pulse = None
     app_log = None
     sway_log = (evidence / "sway.log").open("w")
     bus_log = (evidence / "bus.log").open("w")
     pulse_log = (evidence / "pulse.log").open("w")
     pointer_log = (evidence / "pointer.log").open("w")
+    keyboard_log = (evidence / "keyboard.log").open("w")
     bus_config = runtime_dir / "bus.conf"
     bus_config.write_text(private_bus_config(runtime_dir))
     try:
@@ -209,8 +212,12 @@ def main():
             pulse_config = runtime_dir / "pulse.pa"
             pulse_config.write_text("load-module module-native-protocol-unix socket=" + str(pulse_socket) + " auth-anonymous=1\nload-module module-null-sink sink_name=tohru_private sink_properties=device.description=Tohru-Private\nset-default-sink tohru_private\n")
             env["PULSE_SERVER"] = "unix:" + str(pulse_socket)
+            # Pleamar's client always sends a cookie; PulseAudio rejects an empty one even with anonymous auth.
+            cookie = home / ".pulse-cookie"
+            cookie.write_bytes(os.urandom(256))
+            cookie.chmod(0o600)
             assert_private_transport(env, runtime_dir)
-            pulse = subprocess.Popen(["pulseaudio", "--daemonize=no", "--use-pid-file=no", "--exit-idle-time=-1", "-n", "--file=" + str(pulse_config)], env=env, stdout=pulse_log, stderr=subprocess.STDOUT)
+            pulse =subprocess.Popen(["pulseaudio", "--daemonize=no", "--use-pid-file=no", "--exit-idle-time=-1", "-n", "--file=" + str(pulse_config)], env=env, stdout=pulse_log, stderr=subprocess.STDOUT)
             wait_for(pulse_socket.is_socket, "owned private Pulse socket")
             subprocess.run(["pactl", "set-sink-volume", "tohru_private", "50%"], env=env, check=True, timeout=10)
         assert_private_transport(env, runtime_dir)
@@ -244,6 +251,10 @@ def main():
             assert_private_transport(env, runtime_dir)
             pointer = subprocess.Popen([str(args.pointer.resolve()), str(runtime_dir)], env=env, stdin=subprocess.PIPE, stdout=pointer_log, stderr=subprocess.STDOUT, text=True)
             wait_for(lambda: "ready" in (evidence / "pointer.log").read_text(), "owned persistent private pointer")
+        if args.keyboard:
+            assert_private_transport(env, runtime_dir)
+            keyboard_holder = subprocess.Popen([str(args.keyboard.resolve()), str(runtime_dir)], env=env, stdin=subprocess.PIPE, stdout=keyboard_log, stderr=subprocess.STDOUT, text=True)
+            wait_for(lambda: "ready" in (evidence / "keyboard.log").read_text(), "owned persistent private keyboard")
 
         def click(x, y):
             assert pointer is not None and pointer.poll() is None
@@ -261,6 +272,11 @@ def main():
             assert_private_transport(env, runtime_dir)
             app = subprocess.Popen([str(args.runtime.resolve()), "--scene", str(ROOT / "tests/window/conditional.plm"), "--answer-as", "tohru-window-lifecycle", "--no-hud", "--stall", "0"], env=env, stdout=app_log, stderr=subprocess.STDOUT)
             def window(command): return request("tohru-window-lifecycle", command)
+            def replaced_view(previous_id):
+                current = views("dev.tohru.WindowLifecycle")
+                return len(current) == 1 and current[0]["id"] != previous_id
+            wait_for(lambda: app.poll() is not None or (runtime_dir / "ipc/tohru-window-lifecycle.sock").exists(), "window-only process answers")
+            assert app.poll() is None, "window-only process exited during startup"
             wait_for(lambda: window("get visible") == "false", "initially closed window-only process answers without GPU")
             assert not views("dev.tohru.WindowLifecycle"), "blank initially closed window mapped"
             assert "NVIDIA GeForce RTX 5090" not in (evidence / "window-only.log").read_text(), "window-only startup unexpectedly initialized GPU"
@@ -279,11 +295,11 @@ def main():
             compositor("create_output")
             compositor("output", "HEADLESS-2", "mode", "1280x720", "scale", "1.25")
             compositor("output", "HEADLESS-1", "disable")
-            wait_for(lambda: len(views("dev.tohru.WindowLifecycle")) == 1 and views("dev.tohru.WindowLifecycle")[0]["id"] != previous_id and window("get visible") == "true", "removed-output conditional replacement")
+            wait_for(lambda: replaced_view(previous_id) and window("get visible") == "true", "removed-output conditional replacement")
             previous_id = views("dev.tohru.WindowLifecycle")[0]["id"]
             compositor("output", "HEADLESS-1", "enable")
             compositor("output", "HEADLESS-2", "disable")
-            wait_for(lambda: len(views("dev.tohru.WindowLifecycle")) == 1 and views("dev.tohru.WindowLifecycle")[0]["id"] != previous_id, "reconnect replacement without duplicate roles")
+            wait_for(lambda: replaced_view(previous_id), "reconnect replacement without duplicate roles")
             for _ in range(4):
                 window("fact visible false")
                 wait_for(lambda: not views("dev.tohru.WindowLifecycle"), "retire conditional role")
@@ -400,11 +416,14 @@ def main():
             wait_for(lambda: len(views("dev.tohru.Settings")) == 1, "Settings explicit reopen after WM close")
             expect("bar.mooncoil", True, "runtime")
             cli("settings", "close")
+            wait_for(lambda: native("get settings_open") == "false" and not views("dev.tohru.Settings"), "Settings closed before calendar")
             cli("panel", "open", "calendar")
+            wait_for(lambda: native("get cal_open") == "true", "calendar open")
             initial_month = int(native("get cal_month"))
             native("emit calendar_next")
             retained_month = initial_month % 12 + 1
             wait_for(lambda: native("get cal_month") == str(retained_month), "retained calendar month before VM reload")
+            assert native("get cal_open") == "true", "calendar closed before VM reload"
             logic = scene / "bar.luau"
             loads = (evidence / "app-first.log").read_text().count("bar.luau running")
             logic.write_text(logic.read_text() + "\n-- visible calendar native VM reload\n")
@@ -452,7 +471,7 @@ def main():
         (evidence / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     finally:
         original = sys.exc_info()[1]
-        errors = finish_private_run((app, pointer, sway, pulse, bus), (app_log, pointer.stdin if pointer else None, pointer_log, sway_log, pulse_log, bus_log),
+        errors = finish_private_run((app, pointer, keyboard_holder, sway, pulse, bus), (app_log, pointer.stdin if pointer else None, pointer_log, keyboard_holder.stdin if keyboard_holder else None, keyboard_log, sway_log, pulse_log, bus_log),
             lambda: (evidence / "cli-events.json").write_text(json.dumps(events, indent=2) + "\n"))
         try:
             print(evidence, flush=True)

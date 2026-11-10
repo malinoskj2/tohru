@@ -74,8 +74,7 @@ class Isolation(unittest.TestCase):
     def test_search_focus_types_before_submit_with_no_ipc_mutation(self):
         state = {"focus": "search", "query": "", "submitted": False}
         def keyboard(*keys):
-            if keys == ("-M", "ctrl", "-k", "f", "-m", "ctrl"): state["focus"] = "search"
-            elif keys == ("mooncoil",) and state["focus"] == "search": state["query"] = keys[0]
+            if keys == ("-M", "ctrl", "-k", "f", "-m", "ctrl", "mooncoil"): state["focus"] = "search"; state["query"] = keys[-1]
             elif keys == ("-k", "Return"): state["submitted"] = True
         def native(command):
             if command == "focus runner_focus_canary": state["focus"] = "canary"; return ""
@@ -93,10 +92,10 @@ class Isolation(unittest.TestCase):
             self.assertEqual(command, "get settings_rows.count")
             return "1"
         def keyboard(*keys):
-            if keys == ("mooncoil",):
-                if state["focus"] == "search": state["query"] = keys[0]
-                else: state["canary"] += keys[0]
             # Deliberately ignore Ctrl+F; native first-field focus started on search.
+            if keys[-1] == "mooncoil":
+                if state["focus"] == "search": state["query"] = keys[-1]
+                else: state["canary"] += keys[-1]
         with self.assertRaisesRegex(AssertionError, "focused native search"):
             runner.focused_search_submit(native, keyboard, "mooncoil", timeout=0.001)
 

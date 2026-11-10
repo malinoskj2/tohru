@@ -13,25 +13,27 @@ CPU readiness checks:
 
 ```sh
 python3 tests/isolation.py
-python3 tests/window-output-route.py .tmp/s-window-output-correction
+python3 tests/window-output-route.py .tmp/pleamar-runtime  # a runtime/prepare.sh tree
 source runtime/dev-env.sh
 mkdir -p .tmp/s-pointer-build
 wayland-scanner client-header tests/bar/virtual-pointer.xml .tmp/s-pointer-build/virtual-pointer.h
 wayland-scanner private-code tests/bar/virtual-pointer.xml .tmp/s-pointer-build/virtual-pointer.c
 cc -std=c11 -Wall -Wextra -Werror $(pkg-config --cflags wayland-client) -I.tmp/s-pointer-build tests/bar/pointer.c .tmp/s-pointer-build/virtual-pointer.c $(pkg-config --libs wayland-client) -o .tmp/s-pointer-build/pointer
+wayland-scanner client-header tests/launcher/virtual-keyboard.xml .tmp/s-pointer-build/virtual-keyboard.h
+wayland-scanner private-code tests/launcher/virtual-keyboard.xml .tmp/s-pointer-build/virtual-keyboard.c
+cc -std=c11 -Wall -Wextra -Werror $(pkg-config --cflags wayland-client xkbcommon) -I.tmp/s-pointer-build tests/launcher/keyboard.c .tmp/s-pointer-build/virtual-keyboard.c $(pkg-config --libs wayland-client xkbcommon) -o .tmp/s-pointer-build/keyboard
 ```
 
 Supply an installed wayland-scanner path if it is absent from PATH. The current
 sandbox has `/nix/store/2a96lbjxyq7yiaf5zb013kshf8p8nigx-wayland-scanner-1.25.0-bin/bin/wayland-scanner`.
 
-After allocation, with the corrected typed artifact (frozen53 lacks the final
-output-removal barrier):
+Run against the Nix runtime (`nix build --print-out-paths .#pleamar-runtime`):
 
 ```sh
 tests/native-settings.sh \
-  --runtime "$PWD/.tmp/s-native-artifact-27b16e4/bin/pleamar" \
+  --runtime "$runtime/bin/pleamar" \
   --windows --sound --pointer "$PWD/.tmp/s-pointer-build/pointer" \
-  --wtype /nix/store/4hifjyka5k29srmd515w323habr7g8kf-wtype-0.4/bin/wtype
+  --keyboard "$PWD/.tmp/s-pointer-build/keyboard" --wtype "$(command -v wtype)"
 ```
 
 The window-only scene has no other surface/GPU dependency. Checks cover initial
@@ -41,6 +43,10 @@ retirement and active shutdown. The same private compositor then runs actual roo
 click/grab/outside-dismissal, CLI Escape, private output volume/mute/error paths,
 Settings search Return/provenance/WM-close/reopen, visible-calendar VM reload and
 retained timer rest, writable/managed settings reload and process restart.
+The persistent keyboard keeps the seat's keyboard bound while one-shot wtype
+devices come and go; without it wtype's keys arrive before the app binds them.
+Ctrl+F and the query are one wtype burst, so keys typed right after the shortcut
+must reach search (runtime/patches/0010-key-rule-order.patch).
 Ctrl+F evidence types the query through the virtual keyboard and checks the live
 input text before Return; no IPC search setter can bypass a failed focus action.
 The evidence-only Settings clone adds a second real native input. Focus starts on
