@@ -1,6 +1,4 @@
 -- Settings ownership is in Rust, outside this reloadable VM.
-local refresh_settings
-local corner_preferences
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
@@ -9,8 +7,6 @@ local function publish(settings)
     settings["bar.preferred_output"].deprecated = true
     settings["bar.preferred_output"].effective = false
     text.settings_status = json.encode({schema = 7, settings = settings})
-    if refresh_settings then refresh_settings(settings) end
-    if corner_preferences then corner_preferences.publish(settings) end
 end
 local function change(operation)
     local ok, result, warning = pcall(operation)
@@ -86,15 +82,6 @@ on("about_open", function() close_panels("about") end)
 on("about_toggle", function() if fact.about_visible then close_panels("about") end end)
 on("panel_close", function() close_panels() end)
 if fact.bt_open then close_panels("bluetooth") end
-
-refresh_settings = require("settings/controller")(function(settings, warning)
-    text.settings_error = warning or ""
-    publish(settings)
-end)
-on("settings_open_request", function() close_panels() end)
-
-corner_preferences = require("settings/corner-size")(publish)
-corner_preferences.publish(tohru_settings.snapshot())
 
 
 require("session-route")

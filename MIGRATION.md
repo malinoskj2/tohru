@@ -70,8 +70,8 @@ Accepted differences from j2bar that stay:
 - [ ] Re-run the private native checks that survive the removals against
       `nix build --print-out-paths .#pleamar-runtime` (they own a private Sway,
       bus and Pulse; see `tests/WINDOW-RUNNER.md`):
-      `tests/native-settings.sh --windows --sound --pointer --keyboard --wtype`
-      (rework for the Settings process, #2), `tests/bar/native.py` in every mode
+      `tests/native-settings.sh --settings --sound --pointer --keyboard --wtype`
+      (`--pointer` coordinates need the new bar layout), `tests/bar/native.py` in every mode
       (needs `setsid`, `wayland-scanner`, xkbcommon pkg-config; update for the
       new bar layout), and `tests/session/native.sh` with `--notifications`
       (its lock and PAM modes go with #1).
@@ -85,7 +85,7 @@ Accepted differences from j2bar that stay:
 | `tohru-launcher` | `shell/launcher/entry.plm` | `pleamar --scene … --answer-as tohru-launcher --stall 0` |
 | `tohru-notifications` | `shell/notifications/notifications.plm` | own process; must be the only notification daemon |
 | `tohru-polkit` | `shell/polkit/polkit.plm` | own process; must be the only polkit agent |
-| `tohru-settings` | Settings scene | spawned on open after #2 |
+| `tohru-settings` | `shell/settings/settings.plm` | `tohru settings open` runs `bin/tohru-settings-run` (sets `TOHRU_SHELL=1`) when no Settings answers |
 
 Every role is its own process and can restart on its own. Scenes talk with
 `sys.call("say", "<name>", "emit …")`, which needs `say:<name>` in the caller's
@@ -187,6 +187,8 @@ How Tohru settings work:
   Nix-managed value in Settings or with `tohru config set` applies at once and
   survives `tohru config reload`, but is never written and ends with the process.
   Unmanaged edits are written to the TOML file. Settings marks managed rows.
+  Settings is a separate process, so its overrides live there; it forwards
+  them to the bar, which then holds its own until it exits.
 - Keys left after removals #3, #5 and #6: `appearance.palette`,
   `appearance.corners`, `appearance.corner_size` (1–100), `bar.mooncoil`.
   `bar.preferred_output` is accepted but ignored (bars use every output).

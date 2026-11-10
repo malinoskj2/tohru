@@ -7,7 +7,6 @@ let
     root = ../.;
     fileset = lib.fileset.unions [ ../Cargo.toml ../Cargo.lock ../src ../runtime/settings_luau.rs ../runtime/workspace_luau.rs
       ../runtime/workspace/mod.rs ../runtime/workspace/workspace_motion.rs ../runtime/workspace/workspace_track.rs
-      ../runtime/window/visibility.rs
       ../runtime/info_luau.rs ../runtime/info/mod.rs ../runtime/info/read.rs ../runtime/info/storage.rs ../runtime/info/system.rs ../tests/info/snapshot.rs ../tests/info.rs ../tests/settings.rs
         ../tests/runtime/role-install.rs ../LICENSE ];
   };
@@ -31,7 +30,7 @@ let
     cargoLock.lockFile = ../runtime/Cargo.lock;
     patches = [ ../runtime/patches/0001-shell-settings.patch ../runtime/patches/0002-lock-boundary.patch
       ../runtime/workspace/shader-inputs.patch ../runtime/patches/0004-workspace-binding.patch
-      ../runtime/launcher/namespace.patch ../runtime/patches/0003-window-lifecycle.patch ../runtime/patches/0006-info-binding.patch
+      ../runtime/launcher/namespace.patch ../runtime/patches/0006-info-binding.patch
         ../runtime/patches/0008-locker-gate.patch
         ../runtime/patches/0010-key-rule-order.patch ../runtime/patches/0011-focus-round.patch ];
     postPatch = ''
@@ -47,7 +46,6 @@ let
       cp ${foundationSource}/tests/info.rs ${foundationSource}/tests/settings.rs foundation/tests/
       cp ${foundationSource}/runtime/settings_luau.rs src/tohru_settings.rs
       cp ${foundationSource}/runtime/workspace_luau.rs src/tohru_workspace.rs
-      cp ${foundationSource}/runtime/window/visibility.rs src/tohru_window.rs
       cp ${foundationSource}/runtime/info_luau.rs src/tohru_info.rs
       mkdir -p src/tohru_lock tests/session
       cp ${lockSource}/runtime/lock/native.rs src/tohru_lock.rs
@@ -86,11 +84,14 @@ in stdenvNoCC.mkDerivation {
     mkdir -p $out/bin $out/share/tohru
     cp -r shell $out/share/tohru/
     cp LICENSE $out/share/tohru/LICENSE
-    cp bin/tohru bin/tohru-run bin/tohru-locker-run $out/bin/
+    cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-locker-run $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar
     wrapProgram $out/bin/tohru-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_SCENE $out/share/tohru/shell/bar.plm
+    wrapProgram $out/bin/tohru-settings-run \
+      --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
+      --set TOHRU_SETTINGS_SCENE $out/share/tohru/shell/settings/settings.plm
     wrapProgram $out/bin/tohru-locker-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_LOCK_SCENE $out/share/tohru/shell/lock/lock.plm

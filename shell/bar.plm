@@ -57,11 +57,6 @@ scene Tohru {
  include "bluetooth/popup.plm"
  include "info/popup.plm"
  include "about/popup.plm"
- surface settings {
-  kind: window; title: "Tohru Settings"; app_id: "dev.tohru.Settings"
-  size: 800, 800; open: settings_open; keyboard: exclusive
-  include "settings/window.plm"
- }
  include "corners/view.plm"
  include "osd/view.plm"
 }

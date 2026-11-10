@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+unset TOHRU_LOCKER
+export TOHRU_SHELL=1
+exec "${TOHRU_RUNTIME:-pleamar}" --scene "${TOHRU_SETTINGS_SCENE:-$root/shell/settings/settings.plm}" --no-hud --stall 0 --answer-as tohru-settings "$@"

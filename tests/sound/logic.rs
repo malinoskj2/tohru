@@ -257,10 +257,6 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
             include_str!("../../shell/session-route.luau"),
         ),
         (
-            "settings/corner-size",
-            include_str!("../../shell/settings/corner-size.luau"),
-        ),
-        (
             "network/controller",
             include_str!("../../shell/network/controller.luau"),
         ),
@@ -300,10 +296,6 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         (
             "bar/workspace",
             include_str!("../../shell/bar/workspace.luau"),
-        ),
-        (
-            "settings/controller",
-            include_str!("../../shell/settings/controller.luau"),
         ),
     ] {
         modules
@@ -358,9 +350,8 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         dispatch('about_open'); assert(fact.about_visible and not fact.info_visible and info_reads==2)
         dispatch('about_more')
         assert(fact.info_visible and not fact.about_visible and fact.info_page==0 and info_reads==3)
-        dispatch('network_open'); dispatch('settings_open_request')
-        assert(fact.settings_open and not fact.net_open and not fact.info_visible and not fact.bt_open)
-        dispatch('panel_close'); assert(info_reads==3)
+        dispatch('network_open'); dispatch('panel_close')
+        assert(not fact.net_open and not fact.info_visible and not fact.bt_open and info_reads==3)
         tohru_settings.set=function(key,value) last_setting_key=key;last_setting_value=value;return tohru_settings.snapshot() end
         dispatch('setting_palette',3); assert(last_setting_key=='appearance.palette' and last_setting_value=='nord')
 
