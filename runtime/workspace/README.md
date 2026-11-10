@@ -1,7 +1,7 @@
 # Exact workspace physics preparation
 
 This is the approved exact-motion boundary, ready for S integration with the authorized cancellable native60Hz
-publication timer (AUTONOMOUS_DECISIONS.md). It is not active in the shell yet. No crate,
+publication timer. It is not active in the shell yet. No crate,
 backend, IPC, thread, timer, frame handler or polling adapter is added here.
 
 `mod.rs` exposes one retained `Indicator`, `observe`/`advance`/`sample`, and typed

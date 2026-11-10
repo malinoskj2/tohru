@@ -61,7 +61,8 @@ Accepted differences from j2bar that stay:
       owner; verify banner text and the placeholder sound.
 - [ ] Polkit: Tohru's agent must be the only agent (j2bar currently runs
       `j2bar polkit-agent`).
-- [ ] Effects plugin: fix the first-pass `hl.animation` ordering (WORK-QUEUE),
+- [ ] Effects plugin: fix the first-pass `hl.animation` ordering (its animation calls run before
+      `hl.plugin.load` registers them, so they only apply after a reload),
       run its visual/unload/damage checks in a nested Hyprland, then move
       `effects/` to its own repository as planned.
 - [ ] Settings window: decide whether it floats or tiles (it renders 800 px wide

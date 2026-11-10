@@ -159,7 +159,6 @@ Q1/Q3 persistence fixes pass the locked root tests, Clippy with warnings denied,
 actual Rust 1.85.0 tests, and a real Luau binding VM/warning test. Final committed
 root `nix build .#tohru --max-jobs 1 --cores 4` succeeded on x86_64-linux; installed
 help, scene check, runtime version and zero-instance exit boundaries passed.
-The artifact paths/NAR hashes and raw evidence are in `docs/implementation/progress/F.md`.
 A real exported Home Manager consumer evaluated and generated the expected TOML
 without services or activation; the available HM26.05 source warned about pinned
 nixpkgs26.11. Release-matched machine integration is still a later gate.

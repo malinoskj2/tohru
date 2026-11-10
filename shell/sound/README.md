@@ -49,7 +49,7 @@ closes. Parent asks exclusive keyboard only while panel is open and releases it
 on close. Native pointer-open popup grabs use a recent real pointer serial;
 outside click then follows compositor popup_done. CLI-open without recent pointer
 serial has no native outside grab and may require Escape. This native behavior
-is accepted by AUTONOMOUS_DECISIONS.md; outside-click parity is not claimed.
+is accepted (MIGRATION.md, accepted differences); outside-click parity is not claimed.
 No layer catcher, serial workaround or native patch added.
 
 User accepted native every-output bars, superseding preferred single-output

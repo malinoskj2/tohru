@@ -30,7 +30,7 @@ Source mapping: read-only j2bar launcher/{category,usage,view}.rs and
 app/launcher.rs; adapted behavior is MIT (notice ../bar/J2BAR-LICENSE). Native
 metadata cannot yet preserve all source discovery/launch behavior: immediate-only
 scan/name dedup, visibility/TryExec/Path/D-Bus/activation/terminal/alias gaps were
-reported with exact source evidence and explicitly accepted in AUTONOMOUS_DECISIONS. No alternate
+reported with exact source evidence and explicitly accepted (MIGRATION.md). No alternate
 catalog/launcher backend or runtime extension is implemented.
 
 The user selected simple fuzzy search instead of exact frizbee scoring. The
@@ -56,7 +56,7 @@ Accepted native approximation: reveal spring/scale/opacity/vertical motion,
 per-tile spring/velocity squash/impulse and glow, panel/menu native glass, frost,
 refraction and ripple. Nested group blur+glow is rejected by the native compiler;
 background frost supplies blur instead. Exact Warp/Slosh/turbulence was dropped
-by AUTONOMOUS_DECISIONS.md. Native caret, catalog/launch, whole-file read and
+by MIGRATION.md. Native caret, catalog/launch, whole-file read and
 CLI idle Escape limitations are accepted. No catcher/alternate catalog is used.
 Actual entry now has a1px transparent/empty-input/no-reserve native bootstrap
 per output (native each max8) and one fullscreen named launcher_layer, whose
