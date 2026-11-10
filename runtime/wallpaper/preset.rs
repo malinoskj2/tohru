@@ -63,6 +63,7 @@ impl Preset {
         }
     }
     #[must_use]
+    #[expect(clippy::unreadable_literal, reason = "hex colours read as #rrggbb")]
     pub const fn colors(self, palette: Palette) -> [u32; 3] {
         match self {
             Self::Spectrum => [0x11111b, 0x28233c, 0x4a3854],
@@ -76,10 +77,17 @@ impl Preset {
     /// Byte-rounded RGB sampling from j2bar's MIT-licensed fixed preset function.
     /// Fixed coordinates preserve its640x400 raster, including Centre/Tile fits.
     #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "640x400 coordinates are exact in f32 and blends stay within 0..=255"
+    )]
     pub fn rgba(self, palette: Palette) -> Vec<u8> {
-        let colors = self
-            .colors(palette)
-            .map(|c| [(c >> 16) as u8, (c >> 8) as u8, c as u8]);
+        let colors = self.colors(palette).map(|c| {
+            let [_, r, g, b] = c.to_be_bytes();
+            [r, g, b]
+        });
         let mut pixels = Vec::with_capacity(WIDTH as usize * HEIGHT as usize * 4);
         for y in 0..HEIGHT {
             for x in 0..WIDTH {
@@ -127,6 +135,7 @@ impl Palette {
         }
     }
     #[must_use]
+    #[expect(clippy::unreadable_literal, reason = "hex colours read as #rrggbb")]
     pub const fn base(self) -> u32 {
         match self {
             Self::Mocha => 0x1e1e2e,
