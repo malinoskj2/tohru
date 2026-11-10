@@ -229,6 +229,16 @@ impl Player {
             (c"load-scripts", c"no"),
             (c"ytdl", c"no"),
             (c"osc", c"no"),
+            // Built-in Lua scripts would run mpv's liblua against the Luau symbols
+            // this process exports, and crash; load-scripts covers only user scripts.
+            (c"load-stats-overlay", c"no"),
+            (c"load-console", c"no"),
+            (c"load-osd-console", c"no"),
+            (c"load-auto-profiles", c"no"),
+            (c"load-select", c"no"),
+            (c"load-positioning", c"no"),
+            (c"load-commands", c"no"),
+            (c"load-context-menu", c"no"),
             (c"input-default-bindings", c"no"),
             (c"input-terminal", c"no"),
             (c"terminal", c"no"),

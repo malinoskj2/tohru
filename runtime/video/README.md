@@ -9,12 +9,19 @@ investigation is superseded: NVIDIA CUDA/GL output cannot be assumed to export
 hardware DMA-BUF; using libmpv's own GL render API avoids native Vulkan texture
 interop changes.
 
-Current evidence is **source/compile-only**. Actual pinned EGL/MPV/wake modules
-pass an allocated offline Cargo API check and Clippy with jobs1. Policy/startup,
-selected actual report/query methods and MPV wrapper behavior pass cheap cached
-Rust fixtures; MPV tests supply fake SDK symbols. Full native actor/Wayland/root
-assembly, linked library/driver/codec behavior, private pixels and shutdown/output
-measurements remain gates. No video role/decoder/EGL context has been started.
+Assembled into the runtime by runtime/patches/0012-video-binding.patch and
+runtime/video_luau.rs. The root settings owner publishes accepted video
+assignments through `tohru_video.publish(enabled, videos)`, Settings reads
+`video.status`, and orderly quit calls `tohru_video::shutdown()`.
+`tests/native-video.py` checks a private Sway output: the assigned clip's first
+frame is presented behind the bar, paused, and the root exits cleanly.
+
+Logind, locker and occupancy providers are not wired yet. The binding publishes
+them as Unknown, which the policy treats as paused, so assigned videos show a
+still frame until those providers exist.
+
+mpv's built-in Lua scripts are all disabled: mpv's liblua would otherwise
+resolve against the Luau symbols this process exports and crash.
 
 ## Ownership and entry points
 
@@ -32,8 +39,8 @@ Nix/dependency pins and verified provider hooks. W owns these files and tests.
    do not enter foundation. S owns exact full transitive lock preservation.
    Native cfg(test) also needs tests/wallpaper/{mpv,video_startup}.rs copied to
    native tests/wallpaper/ so the installed module test paths remain valid.
-3. Apply **wallpaper/catalog.patch before video/status.patch**. The latter adds
-   only readonly `video.status` dispatch. A scene needs base `video` read
+3. The `video.status` dispatch is part of 0012-video-binding.patch, applied
+   after the wallpaper patches. It is readonly. A scene needs base `video` read
    permission; no public video publishing/command service is added.
 4. Root's existing accepted-settings/projection owner calls
    `tohru_video::publish(snapshot, to_render.clone())`. Snapshot contains only the

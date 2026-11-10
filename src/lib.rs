@@ -15,3 +15,6 @@ pub mod capture;
 
 #[path = "../runtime/info/mod.rs"]
 pub mod info;
+
+#[path = "../runtime/video/mod.rs"]
+pub mod video;

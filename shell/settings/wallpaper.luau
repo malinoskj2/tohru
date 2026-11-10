@@ -25,7 +25,7 @@ return function(publish)
     local function prepare(preset,palette)return sys.ask("wallpaper.preset",preset,palette)end
     local wallpaper=require("wallpaper/controller")(function(output,path)
         return update(function()return tohru_settings.wallpaper_assign(output,path)end)
-    end)
+    end,tohru_video and function()return sys.ask("video.status")end)
     local picker=require("wallpaper/picker")(wallpaper,read,
         function(assignments,preset)
             local proposal={assignments=assignments,preset=preset}
@@ -74,7 +74,12 @@ return function(publish)
                 local field=settings[key];temporary=temporary or field.managed or field.runtime_override
             end
             text.wallpaper_settings_notice=temporary and "Nix-managed or related wallpaper edits are temporary until shell exit." or "Wallpaper edits are saved in config.toml."
-            if next(videos)then text.wallpaper_settings_notice=text.wallpaper_settings_notice.." Video renderer integration is pending."end
+            if tohru_video then
+                local ok,err=pcall(tohru_video.publish,settings["wallpaper.enabled"].value,videos)
+                if not ok then text.wallpaper_video_error=tostring(err)end
+            elseif next(videos)then
+                text.wallpaper_settings_notice=text.wallpaper_settings_notice.." Video wallpapers need the native video renderer."
+            end
             local change=settings["wallpaper.change"].value
             if change~=accepted_change then accepted_change=change;rotation.configure(change)end
         end,

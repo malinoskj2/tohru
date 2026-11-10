@@ -1,6 +1,6 @@
 scene Tohru {
  surface { size: full, 42; anchor: top; margin: 0; reserve: 31; screens: all; keyboard: exclusive while sound_open or cal_open or net_open or bt_open or info_visible or about_visible }
- permissions { services: "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.app_volume", "audio.app_mute", "window", "apps", "media", "clock", "workspaces", "network.*", "bluetooth.*", "battery", "capture", "capture.region", "capture.release", "wallpaper", "wallpaper.preset", "say:tohru-notifications", "say:tohru-session" }
+ permissions { services: "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.app_volume", "audio.app_mute", "window", "apps", "media", "clock", "workspaces", "network.*", "bluetooth.*", "battery", "capture", "capture.region", "capture.release", "wallpaper", "wallpaper.preset", "video", "say:tohru-notifications", "say:tohru-session" }
  include "bar/state.plm"
  include "bar/rail-state.plm"
  include "calendar/state.plm"

@@ -1,0 +1,66 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 23c4e79..740b4d0 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -46,6 +46,7 @@ ash = "0.38"
+ # OpenGL (`dmabuf::import_gl`): the same versions wgpu's OpenGL side uses.
+ glow = "0.17"
+ khronos-egl = { version = "6", features = ["dynamic"] }
++wayland-egl = "=0.32.11"
+ smithay-client-toolkit = "0.21"
+ wayland-client = { version = "0.31", features = ["system"] }
+ # The protocols every compositor understands: windows and desktops.
+diff --git a/src/lib.rs b/src/lib.rs
+index 2873a4b..9ac7c38 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -17,6 +17,10 @@ mod tohru_workspace;
+ #[cfg(feature = "luau")]
+ mod tohru_settings;
+ mod tohru_lock;
++#[cfg(target_os = "linux")]
++mod tohru_video;
++#[cfg(all(target_os = "linux", feature = "luau"))]
++mod tohru_video_luau;
+ mod tohru_wallpaper;
+ mod tohru_window;
+ pub mod scene;
+@@ -665,6 +669,10 @@ fn quit() -> ! {
+     logic_luau::stop_children();
+     #[cfg(feature = "luau")]
+     crate::tohru_idle::shutdown();
++    #[cfg(target_os = "linux")]
++    if let Err(error) = crate::tohru_video::shutdown() {
++        eprintln!("video  · {error}");
++    }
+     platform::shutdown_capture();
+     std::process::exit(0)
+ }
+diff --git a/src/logic_luau.rs b/src/logic_luau.rs
+index 6bc4bee..7c56054 100644
+--- a/src/logic_luau.rs
++++ b/src/logic_luau.rs
+@@ -1425,6 +1425,8 @@ impl LuauScript {
+             crate::tohru_workspace::install(&lua)?;
+             crate::tohru_info::install(&lua)?;
+             crate::tohru_idle::install(&lua, self.tx.clone(), self.to_logic.clone())?;
++            #[cfg(target_os = "linux")]
++            crate::tohru_video_luau::install(&lua, self.tx.clone())?;
+         }
+ 
+         // The sandbox, last of all: from here on the globals are not touched.
+diff --git a/src/platform/mod.rs b/src/platform/mod.rs
+index 5427a97..424fb1f 100644
+--- a/src/platform/mod.rs
++++ b/src/platform/mod.rs
+@@ -278,6 +278,10 @@ pub fn query(from: &str, name: &str, args: &[SysValue]) -> Result<SysValue, Stri
+     if matches!(name, "wallpaper.catalog" | "wallpaper.identities" | "wallpaper.preset") {
+         return crate::tohru_wallpaper::query(name, args);
+     }
++    #[cfg(target_os = "linux")]
++    if name == "video.status" {
++        return crate::tohru_video::query(name, args);
++    }
+     if name.starts_with("files.") {
+         return files::query(from, name, args);
+     }
