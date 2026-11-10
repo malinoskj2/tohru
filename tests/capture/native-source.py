@@ -2,6 +2,7 @@
 """Compile actual patched native capture permission/cache methods with explicit I/O/type fixtures."""
 import argparse
 import pathlib
+import re
 import shutil
 import subprocess
 import tempfile
@@ -27,10 +28,13 @@ with tempfile.TemporaryDirectory(prefix="capture-native-source-", dir=root / ".t
     (temp / "src/platform").mkdir(parents=True)
     (temp / "src/language").mkdir()
     (temp / "tests").mkdir()
-    for relative in ["src/text.rs", "src/scene.rs", "src/render.rs", "src/logic_luau.rs", "src/platform/capture.rs", "src/platform/wayland.rs", "src/gpu.rs", "src/shape.wgsl", "src/language/vocabulary.rs", "src/platform/mod.rs"]:
+    copied = ["src/text.rs", "src/scene.rs", "src/render.rs", "src/logic_luau.rs", "src/platform/capture.rs", "src/platform/wayland.rs", "src/gpu.rs", "src/shape.wgsl", "src/language/vocabulary.rs", "src/platform/mod.rs"]
+    for relative in copied:
         shutil.copyfile(args.source / relative, temp / relative)
-    for patch in ["runtime/wallpaper/catalog.patch", "runtime/wallpaper/image-reset.patch", "runtime/wallpaper/fit.patch", "runtime/capture/native.patch", "runtime/capture/layout-link.patch", "runtime/capture/image-lifecycle.patch", "runtime/wallpaper/raster-limits.patch", "runtime/wallpaper/presets.patch", "runtime/capture/output-events.patch"]:
-        subprocess.run(["git", "apply", "--unsafe-paths", f"--directory={temp}", str(root / patch)], check=True)
+    # The recipe's own order, through the last capture patch, limited to the copied files.
+    patches = re.findall(r'"\$root/(runtime/[^"]+\.patch)"', (root / "runtime/prepare.sh").read_text())
+    for patch in patches[:patches.index("runtime/capture/output-events.patch") + 1]:
+        subprocess.run(["git", "apply", "--unsafe-paths", f"--directory={temp}", *(f"--include=*/{relative}" for relative in copied), str(root / patch)], check=True)
     wayland = (temp / "src/platform/wayland.rs").read_text()
     handlers = wayland[wayland.index("impl OutputHandler for State"):]
     for method in ["new_output", "update_output", "output_destroyed"]:
