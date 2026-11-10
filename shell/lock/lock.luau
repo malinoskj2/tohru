@@ -43,7 +43,9 @@ local function lock(sleep)
         queued_sleep = sleep
         return
     end
-    if not fact.engaged then ready = false end
+    -- A public engaged=false write while the compositor still holds this cycle
+    -- must not strand it unready: acknowledged would never change to restore it.
+    if not fact.engaged and not native_held() then ready = false end
     sleep_pending = sleep
     fact.engaged = true
     if sleep then

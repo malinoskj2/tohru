@@ -109,6 +109,9 @@ l.event("system_resumed");l.event("lock_and_suspend");assert(#l.calls==2)
 l=locker(true);l.fail(true);l.event("lock_and_suspend");assert(not l.fact.sleep_submitted)
 l.fail(false);l.event("lock_and_suspend");assert(#l.calls==1)
 -- Reexecuting logic while submitted cannot issue another sleep.
+-- A public engaged=false write during a held cycle must not leave it unable to unlock.
+l=locker(true);l.fact.engaged=false;l.event("lock_request");assert(l.fact.engaged)
+l.auth(true);l.event("submit:password","good");assert(not l.fact.engaged)
 local retained=boot("shell/lock/lock.luau",{engaged=true,acknowledged=true,checking=false,sleep_submitted=true},{})
 retained.event("lock_and_suspend");assert(#retained.calls==0)
 local p=boot("shell/polkit/polkit.luau",{}, {answer="secret"})
