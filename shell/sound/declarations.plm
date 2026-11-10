@@ -51,4 +51,7 @@ part SoundState {
  image sound_mic = file "mic.svg", 16, 16
  image sound_mic_off = file "mic-off.svg", 16, 16
  image sound_muted = file "muted.svg", 16, 16
+ image sound_glyph_x = file "../service-assets/volume-x-filled.svg", 14, 14
+ image sound_glyph_1 = file "../service-assets/volume-1-filled.svg", 14, 14
+ image sound_glyph_2 = file "../service-assets/volume-2-filled.svg", 14, 14
 }

@@ -1,0 +1,4 @@
+<!-- j2bar filled variant of Lucide volume-2; ISC, see LICENSE. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+  <path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M15.3 8.3a6 6 0 0 1 0 7.4l1.4-1.4a4 4 0 0 0 0-4.6z"/><path d="M18.7 4.9a10 10 0 0 1 0 14.2l1.4-1.4a8 8 0 0 0 0-11.4z"/>
+</svg>

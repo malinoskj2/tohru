@@ -27,7 +27,26 @@ scene Tohru {
  event setting_wallpaper_enabled ->
  event setting_corner_size ->
  event setting_output ->
- box { from: 100, 0; size: screen.width - 200, 31; corner: 10; color: #160e14; opacity: 70% }
+ body {
+  gradient: 0, 0 to 0, 31, #140a1e, #140a1e
+  opacity: 14%
+  glass: 100%
+  lens: false
+  highlight: 0%
+  box { from: 100, 0; size: screen.width - 200, 31; corner: 10 }
+  box { from: 100, 0; size: screen.width - 200, 21 }
+ }
+ path {
+  stroke: 1; color: #ffffff; opacity: 24%
+  move 96.37, 0.5
+  curve 100.5, 7.5 via 100.5, 2.77
+  line 100.5, 21
+  curve 110, 30.5 via 100.5, 30.5
+  line screen.width - 110, 30.5
+  curve screen.width - 100.5, 21 via screen.width - 100.5, 30.5
+  line screen.width - 100.5, 7.5
+  curve screen.width - 96.37, 0.5 via screen.width - 100.5, 2.77
+ }
  include "bar/contents.plm"
  include "bar/workspace.plm"
  include "services.plm"

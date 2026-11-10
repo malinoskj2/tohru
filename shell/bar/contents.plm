@@ -12,16 +12,11 @@ part BarContents {
         move: (screen.width - bar_title_width) / 2, 0
         show: bar_title_limit > 0
         image bar_app_icon { at: 0, 8.5; size: 14, 14; show: bar_title_icon }
-        text bar_title { at: bar_title_lead, 16.5; anchor: left center; width: max(1, bar_title_limit - bar_title_lead); lines: 1; tight: true; size: 13; weight: 500; color: #cdd6f4; measure: bar_title_measure }
+        text bar_title { at: bar_title_lead, 14.5; anchor: left center; width: max(1, bar_title_limit - bar_title_lead); lines: 1; tight: true; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_title_measure }
     }
-    // Native-selected MPRIS is display-only, present only during playback.
-    text bar_media { at: screen.width - bar_media_right_inset, 16.5; anchor: right center; width: max(1, clamp(bar_media_cap, 0, 180)); lines: 1; tight: true; measure: bar_media_measure; size: 13; color: #cdd6f4; show: bar_playing and bar_media_cap > 0 }
-    zone box bar_clock_hit { from: screen.width - 296, 4.5; size: 186, 22; cursor: pointer }
-    prop bar_clock_hover = 0 ~140ms
-    box { from: screen.width - 296, 4.5; size: 186, 22; corner: 7; color: #cdd6f4; opacity: bar_clock_hover * 8% }
-    text bar_date { at: screen.width - 294, 16.5; anchor: left center; size: 13; color: #cdd6f4 }
-    text bar_time { at: screen.width - 112, 16.5; anchor: right center; size: 13; color: #cdd6f4 }
-    on enter bar_clock_hit { bar_clock_hover: 1 ~140ms }
-    on leave bar_clock_hit { bar_clock_hover: 0 ~140ms }
+    zone box bar_clock_hit { from: clock_x, 4.5; size: clock_w, 22; corner: 7; cursor: pointer }
+    box { from: clock_x, 4.5; size: clock_w, 22; corner: 7; color: #ffffff; opacity: max(bar_clock_hit.hover * 10%, bar_clock_hit.pressed * 16%) }
+    text bar_date { at: clock_x + 7, 14.5; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_date_measure }
+    text bar_time { at: clock_x + 17 + bar_date_measure.width, 14.5; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_time_measure }
     on press bar_clock_hit { emit calendar_toggle }
 }

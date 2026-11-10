@@ -1,0 +1,4 @@
+<!-- j2bar filled variant of Lucide wifi-off; ISC, see LICENSE. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+  <defs><mask id="cut"><rect width="24" height="24" fill="white"/><path d="m2 2 20 20" fill="none" stroke="black" stroke-width="4"/></mask></defs><g mask="url(#cut)"><path d="M1.5 7a16 16 0 0 1 21 0L21 8.8a13.8 13.8 0 0 0-18 0Z"/><path d="M5 11a10.5 10.5 0 0 1 14 0l-1.5 1.8a8.2 8.2 0 0 0-11 0Z"/><path d="M8.5 15a5.5 5.5 0 0 1 7 0L14 16.8a3.2 3.2 0 0 0-4 0Z"/><circle cx="12" cy="19" r="1.5"/></g><path d="m2 1 21 21-1 1L1 2Z"/>
+</svg>

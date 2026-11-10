@@ -1,8 +1,10 @@
 part SoundView {
- let sound_button_x = screen.width - 324
- box sound_button { at: sound_button_x, 15.5; size: 28, 27; corner: 13.5; color: #89dceb; opacity: sound_open * 18%; cursor: pointer }
- image sound_speaker { at: sound_button_x - 8, 7.5; size: 16, 16; tint: #cdd6f4; show: not audio.muted }
- image sound_muted { at: sound_button_x - 8, 7.5; size: 16, 16; tint: #cdd6f4; show: audio.muted }
+ let sound_button_x = sound_x + 12
+ zone box sound_button { from: sound_x, 4.5; size: 24, 22; corner: 7; cursor: pointer; label: "Sound" }
+ box { from: sound_x, 4.5; size: 24, 22; corner: 7; color: #ffffff; opacity: max(sound_open * 16%, max(sound_button.hover * 10%, sound_button.pressed * 16%)) }
+ image sound_glyph_x { at: sound_x + 5, 8.5; size: 14, 14; tint: #ffffff; opacity: 92%; show: audio.muted or audio.volume < 0.005 }
+ image sound_glyph_1 { at: sound_x + 5, 8.5; size: 14, 14; tint: #ffffff; opacity: 92%; show: not audio.muted and audio.volume >= 0.005 and audio.volume < 0.5 }
+ image sound_glyph_2 { at: sound_x + 5, 8.5; size: 14, 14; tint: #ffffff; opacity: 92%; show: not audio.muted and audio.volume >= 0.5 }
  on press sound_button { emit sound_toggle }
  on scroll sound_button { emit audio_step(wheel) }
  // Native popup position is in the parent bar's coordinates and slides to fit.

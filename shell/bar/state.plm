@@ -14,8 +14,8 @@ part BarState {
     image bar_mark = file "mooncoil.svg", 15, 15
     // Root-owned measured allocation inputs; these defaults preserve private scenes.
     prop bar_title_cap = 360 ~0ms
-    prop bar_media_right_inset = 408 ~0ms
-    prop bar_media_cap = 180 ~0ms
     measure bar_media_measure
     measure bar_title_measure
+    measure bar_date_measure
+    measure bar_time_measure
 }
