@@ -11,7 +11,8 @@ custom decoder, screenshot command wrapper or daemon is introduced. Full native 
   foundation dependencies and declared Rust1.85 MSRV remain unchanged.
 - Apply patches in this order: wallpaper/image-reset.patch, wallpaper/fit.patch,
   capture/native.patch, capture/layout-link.patch, capture/image-lifecycle.patch,
-  then capture/output-events.patch. Install native.rs as
+  then capture/output-events.patch and patches/0007-capture-assembly.patch, at the
+  positions runtime/prepare.sh and nix/default.nix give them. Install native.rs as
   `src/platform/tohru_capture/native.rs`, and clipboard_owner.rs alongside it.
   No root/common file is edited concurrently by W.
 - Add `tohru-capture-clipboard` as a bin in the **existing patched native runtime**,
