@@ -73,6 +73,13 @@ on("fixture_bluetooth", function() network.close(); about.close(); info.close();
 on("fixture_info", function() network.close(); bluetooth.close(); about.close(); info.open(0) end)
 on("fixture_about", function() network.close(); bluetooth.close(); info.close(); about.open() end)
 ''')
+    # One-shot wtype devices leave the headless seat keyboardless between calls,
+    # which blurs the popup; a persistent keyboard keeps focus across them.
+    import importlib.util
+    spec=importlib.util.spec_from_file_location('launcher_keyboard',root/'tests/launcher/lifecycle.py')
+    lifecycle=importlib.util.module_from_spec(spec);spec.loader.exec_module(lifecycle)
+    start([str(lifecycle.build_keyboard(root,evidence,env)/'keyboard'),env['XDG_RUNTIME_DIR']],'keyboard',stdin=subprocess.PIPE)
+    wait_for(lambda:'ready\n' in (evidence/'keyboard.log').read_text(),'persistent private keyboard ready')
     app=start([runtime,'--scene',str(entry),'--answer-as','features','--no-hud','--stall','0'],'features',{'TOHRU_SHELL':'1','WAYLAND_DEBUG':'1'})
     wait_for(lambda:say('features','get net_rows.count')=='3','real native network catalog')
     expect('features','bt.present','true');expect('features','bt_devices.count','1')

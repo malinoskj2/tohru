@@ -13,7 +13,14 @@ def verify(root, runtime, evidence, env, start, say, expect, wait_for, icons_onl
     scene = scene_dir / 'composed.plm'
     if icons_only:
         # Three affected bar-only SVG captures do not need calendar/scalar patch.
-        scene.write_text('scene BarIcons { surface { size: full, 31; anchor: top; screens: all } permissions { services: "window", "apps", "media", "clock" } include "bar/state.plm" box { from: 100, 0; size: screen.width - 200, 31; corner: 10; color: #160e14; opacity: 70% } include "bar/contents.plm" }')
+        scene.write_text('''scene BarIcons {
+    surface { size: full, 31; anchor: top; screens: all }
+    permissions { services: "window", "apps", "media", "clock" }
+    include "bar/state.plm"
+    box { from: 100, 0; size: screen.width - 200, 31; corner: 10; color: #160e14; opacity: 70% }
+    include "bar/contents.plm"
+}
+''')
         logic = scene_dir / 'composed.luau'
         logic.write_text('require("bar/controller")()\n')
     else:

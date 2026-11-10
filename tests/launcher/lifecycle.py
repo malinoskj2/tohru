@@ -64,6 +64,17 @@ def escape_presses(log):
     return len(re.findall(r'wl_keyboard[#@]\d+\.key\(\d+, \d+, 1, 1\)', log))
 
 
+def build_keyboard(root,evidence,env):
+    build=evidence/'keyboard-build';build.mkdir()
+    def build_command(command):
+        subprocess.run(command,env=env,text=True,capture_output=True,timeout=30,check=True,close_fds=True)
+    build_command(['wayland-scanner','client-header',str(root/'tests/launcher/virtual-keyboard.xml'),str(build/'virtual-keyboard.h')])
+    build_command(['wayland-scanner','private-code',str(root/'tests/launcher/virtual-keyboard.xml'),str(build/'virtual-keyboard.c')])
+    flags=subprocess.run(['pkg-config','--cflags','--libs','wayland-client','xkbcommon'],env=env,text=True,capture_output=True,timeout=10,check=True,close_fds=True).stdout
+    build_command(['cc','-std=c11','-Wall','-Wextra','-Werror','-I'+str(build),str(root/'tests/launcher/keyboard.c'),str(build/'virtual-keyboard.c'),'-o',str(build/'keyboard'),*shlex.split(flags)])
+    return build
+
+
 def verify(root,runtime,evidence,env,start,say,expect,wait_for):
     scene=evidence/'launcher-scene'
     shutil.copytree(root/'shell/launcher',scene)
@@ -72,13 +83,7 @@ def verify(root,runtime,evidence,env,start,say,expect,wait_for):
     (apps/'fixture.desktop').write_text('[Desktop Entry]\nType=Application\nName=Fixture Editor\nExec=/bin/true\nCategories=Utility;\n')
     # Tiny test-only protocol client, not a runtime build. No display is opened
     # by generation/compilation; all child owners below use the reviewed start.
-    build=evidence/'keyboard-build';build.mkdir()
-    def build_command(command):
-        subprocess.run(command,env=env,text=True,capture_output=True,timeout=30,check=True,close_fds=True)
-    build_command(['wayland-scanner','client-header',str(root/'tests/launcher/virtual-keyboard.xml'),str(build/'virtual-keyboard.h')])
-    build_command(['wayland-scanner','private-code',str(root/'tests/launcher/virtual-keyboard.xml'),str(build/'virtual-keyboard.c')])
-    flags=subprocess.run(['pkg-config','--cflags','--libs','wayland-client','xkbcommon'],env=env,text=True,capture_output=True,timeout=10,check=True,close_fds=True).stdout
-    build_command(['cc','-std=c11','-Wall','-Wextra','-Werror','-I'+str(build),str(root/'tests/launcher/keyboard.c'),str(build/'virtual-keyboard.c'),'-o',str(build/'keyboard'),*shlex.split(flags)])
+    build=build_keyboard(root,evidence,env)
     log_path=evidence/'launcher-lifecycle.log'
     app=start([runtime,'--scene',str(scene/'entry.plm'),'--answer-as','launcher','--no-hud','--stall','0'],'launcher-lifecycle',{'WAYLAND_DEBUG':'1'})
     wait_for(lambda:say('launcher','get screen.0.name')=='HEADLESS-1','native bootstrap output name')
