@@ -52,7 +52,27 @@ Then, in your Home Manager configuration:
 
 `systemd.enable` starts the bar, session menu, launcher and notification daemon as user services with `graphical-session.target`. Your session must import `WAYLAND_DISPLAY`, `PATH` and `XDG_DATA_DIRS` into the systemd user manager before that target starts, and no other notification daemon may run. See [docs/nix.md](docs/nix.md) for every option and for loading the Hyprland plugin.
 
-### Without Nix
+### Without Nix, from a release
+
+Each release has a prebuilt x86_64 tarball with the patched Pleamar runtime, the scenes and the `bin/` scripts. Check it, unpack it and run it from there:
+
+```sh
+curl -LO https://github.com/malinoskj2/tohru/releases/latest/download/tohru-x86_64-linux.tar.gz
+curl -LO https://github.com/malinoskj2/tohru/releases/latest/download/SHA256SUMS
+sha256sum --check SHA256SUMS
+gh attestation verify tohru-x86_64-linux.tar.gz --repo malinoskj2/tohru
+tar -xzf tohru-x86_64-linux.tar.gz
+
+export PATH="$PWD/tohru/bin:$PATH"
+tohru-run &
+tohru-session-run &
+tohru-launcher-run &
+tohru-notifications-run &   # only if no other notification daemon runs
+```
+
+It needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12 or later), libxkbcommon, linux-pam, libwayland-client, libwayland-egl, libEGL, a Vulkan loader and driver, and `setsid` and `sh` on `PATH`. The Hyprland plugin is not included.
+
+### Without Nix, from source
 
 You need a recent stable Rust (1.85 at minimum), a C and C++ compiler, `pkg-config`, the development files for fontconfig, wayland, libxkbcommon, linux-pam and libffi, plus `curl`, `git`, `tar` and `sha256sum`. At run time you need a Vulkan loader, libglvnd, and `setsid` and `sh` on `PATH`.
 
@@ -131,6 +151,7 @@ Run `tohru help` for the full list, including per-app volume, output selection a
 | `hyprland/` | The optional `tohru-hyprland` compositor plugin (C++) |
 | `nix/`, `flake.nix`, `default.nix` | Nix packaging and the Home Manager module |
 | `tests/`, `tools/` | Development tests and reference tooling |
+| `.github/` | CI and release workflows and the scripts they share |
 
 ## License and credits
 

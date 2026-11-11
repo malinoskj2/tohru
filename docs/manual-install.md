@@ -1,6 +1,6 @@
 # Building and running without Nix
 
-Tohru runs on a patched Pleamar 0.7.27. Stock Pleamar will not run the bar, so you build the runtime from this repository first. This path is less tested than the Nix package.
+Tohru runs on a patched Pleamar 0.7.27. Stock Pleamar will not run the bar, so you either download it with a Tohru release or build it from this repository. This path is less tested than the Nix package.
 
 ## Requirements
 
@@ -17,6 +17,25 @@ Run:
 - A Vulkan loader and libglvnd. Development used an NVIDIA GPU; other GPUs are untested.
 - `setsid` (util-linux) and `sh` on `PATH`: Pleamar launches applications through `setsid -f sh -c`.
 - For the popups to show anything: PulseAudio or PipeWire's PulseAudio server, NetworkManager, and BlueZ.
+
+## Use a release
+
+Instead of building the runtime, you can download it. Each release has `tohru-x86_64-linux.tar.gz`, built on Ubuntu 22.04 by the repository's release workflow. It unpacks to `tohru/`: the patched `pleamar` binary next to the scripts in `bin/`, the scenes in `shell/`, and the licences of everything compiled into the binary in `LICENSE` and `licenses/`.
+
+```sh
+curl -LO https://github.com/malinoskj2/tohru/releases/latest/download/tohru-x86_64-linux.tar.gz
+curl -LO https://github.com/malinoskj2/tohru/releases/latest/download/SHA256SUMS
+sha256sum --check SHA256SUMS
+gh attestation verify tohru-x86_64-linux.tar.gz --repo malinoskj2/tohru
+tar -xzf tohru-x86_64-linux.tar.gz
+export PATH="$PWD/tohru/bin:$PATH"
+```
+
+`sha256sum` only shows that the download is intact. `gh attestation verify` (the GitHub CLI) checks the tarball's build-provenance attestation, which shows that this repository's release workflow built it and from which commit.
+
+The binary needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 or later), libstdc++, libxkbcommon and linux-pam. It loads libwayland-client, libwayland-egl, libEGL (from libglvnd or Mesa) and the Vulkan loader, `libvulkan.so.1`, while it runs. On Debian and Ubuntu these are `libxkbcommon0 libpam0g libwayland-client0 libwayland-egl1 libegl1 libvulkan1`, plus your GPU's Vulkan driver.
+
+With `tohru/bin` on `PATH` the scripts find `pleamar` there, so continue at [Run it](#run-it) without its `TOHRU_RUNTIME` line. The release has no Hyprland plugin: the plugin loads only into the exact Hyprland build it was compiled against, so build it for yours as described under [Hyprland plugin](#hyprland-plugin).
 
 ## Build the runtime
 
