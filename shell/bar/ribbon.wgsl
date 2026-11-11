@@ -20,7 +20,7 @@ fn wave(s: Shader, x: f32) -> vec2<f32> {
 }
 fn bead(s: Shader, xx: f32) -> vec2<f32> {
  let resting = s.a.w < 0.02 && abs(s.a.y) < 1.0;
- if resting { return vec2<f32>(wave(s,s.a.x).x,s.a.z); }
+ if resting { return vec2<f32>(wave(s,s.a.x).x,s.a.z*cap(s,xx)); }
  let behind = s.a.x-s.d.y; let ahead = s.d.z-s.a.x;
  var u = (xx-s.a.x)/ahead;
  if xx < s.a.x { u = (xx-s.a.x)/behind; }
