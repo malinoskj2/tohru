@@ -1,0 +1,92 @@
+name: Runtime
+
+on:
+  workflow_call:
+    inputs:
+      cache:
+        description: Restore and save the cargo build cache
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: "1.90.0"
+  CARGO_ABOUT_VERSION: "0.9.3"
+  CARGO_ABOUT_SHA256: 3ad1e94ea1e63d69d1961f4fb15ccbbe9575d906111f96d2cb4dce6df48f71b4
+
+jobs:
+  runtime:
+    name: Build, test and package (Ubuntu 22.04)
+    runs-on: ubuntu-24.04
+    # glibc 2.35, so the binary runs on Ubuntu 22.04, Debian 12 and newer distributions.
+    container: ubuntu:22.04@sha256:076e7bf82319619f28dd0aa9c02ab34b055ad37100395b4f49a2ffba04fb5e11
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install build packages
+        run: .github/scripts/ubuntu-deps.sh
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Prepare the patched Pleamar tree
+        run: ./runtime/pleamar/prepare.sh
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: inputs.cache
+        with:
+          workspaces: .tmp/pleamar-runtime -> target
+
+      - name: Build pleamar
+        run: cargo build --release --locked --manifest-path .tmp/pleamar-runtime/Cargo.toml --bin pleamar
+
+      - name: Test Tohru's runtime additions
+        run: cargo test --release --locked --manifest-path .tmp/pleamar-runtime/Cargo.toml --lib tohru_
+
+      - name: Check the scenes
+        run: .github/scripts/check-scenes.sh .tmp/pleamar-runtime/target/release/pleamar
+
+      - name: Check the launcher namespace parser
+        run: python3 tests/launcher/namespace.py --runtime .tmp/pleamar-runtime/target/release/pleamar
+
+      - name: Check the launcher close phase against the pinned source
+        run: python3 tests/launcher/phase.py --source .tmp/pleamar-runtime
+
+      - name: Install cargo-about
+        run: |
+          archive=cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl
+          curl --fail --location --silent --show-error -o "$RUNNER_TEMP/$archive.tar.gz" \
+            "https://github.com/EmbarkStudios/cargo-about/releases/download/$CARGO_ABOUT_VERSION/$archive.tar.gz"
+          printf '%s  %s\n' "$CARGO_ABOUT_SHA256" "$RUNNER_TEMP/$archive.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/$archive.tar.gz" -C "$RUNNER_TEMP" --no-same-owner
+          install -m 755 "$RUNNER_TEMP/$archive/cargo-about" "$HOME/.cargo/bin/cargo-about"
+
+      - name: Package
+        env:
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+        run: .github/scripts/package.sh .tmp/pleamar-runtime .tmp/pleamar-runtime/target/release/pleamar dist "$VERSION"
+
+      - name: Smoke-test the package
+        run: |
+          mkdir "$RUNNER_TEMP/unpacked"
+          tar -xzf dist/tohru-x86_64-linux.tar.gz -C "$RUNNER_TEMP/unpacked"
+          cd "$RUNNER_TEMP/unpacked/tohru"
+          if ldd bin/pleamar | grep 'not found'; then exit 1; fi
+          PATH="$PWD/bin:$PATH" bin/tohru help >/dev/null
+          bin/pleamar --check shell/bar.plm
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tohru-x86_64-linux
+          path: dist/tohru-x86_64-linux.tar.gz
+          if-no-files-found: error
+          retention-days: 14
