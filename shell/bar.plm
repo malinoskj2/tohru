@@ -13,6 +13,7 @@ scene Tohru {
  include "osd/state.plm"
  include "corners/state.plm"
  fact mooncoil = false
+ shader bar_fill = file "bar/fill.wgsl"
  text settings_status = "{}"
  text settings_error = ""
  text routing_error = ""
@@ -31,6 +32,8 @@ scene Tohru {
   box { from: 100, 0; size: screen.width - 200, 31; corner: 10 }
   box { from: 100, 0; size: screen.width - 200, 21 }
  }
+ // The box starts above the screen so only its bottom corners show.
+ shader bar_fill { at: 100, -10; size: screen.width - 200, 41; corner: 10; values: 0.18, 0.06, 9, 0.14 * 0.36; colors: #140a1e, #140a1e }
  path {
   // Pleamar firms up light edges; 0.55 at 27.65% lands on j2bar's linear 1px hairline at 24%.
   stroke: 0.55; color: #ffffff; opacity: 27.65%
