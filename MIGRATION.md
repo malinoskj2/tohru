@@ -48,10 +48,14 @@ Accepted differences from j2bar that stay:
       wallpaper, video, idle, capture), with their patch rebases.
 - [x] Session menu Lock and Sleep call `loginctl lock-session` (and suspend for
       Sleep) so hyprlock, through hypridle's `lock_cmd`, does the locking.
-- [ ] Bar visual parity with j2bar (started: shape, row layout, glyphs, SF Pro
-      Text). Still missing: notification bell, adaptive light/dark glass.
-- [ ] Bar output policy: acceptance row 03 asks for one bar on a preferred output
-      with focused/first fallback; Tohru currently draws `screens: all`. Pick one.
+- [ ] Bar visual parity with j2bar. Matched against j2bar on the live desktop:
+      31px height, outline (flares, bottom corners, hairline weight at scale 1),
+      icons and text on j2bar's pixel rows, rail width. Still missing:
+      notification bell, adaptive light/dark glass, tabular numerals in the
+      clock (the date is 4–5px narrower, which shifts the tray), Pleamar's text
+      rasteriser against Pango's, and a glass fill comparison.
+- [x] Bar output policy: one bar on `bar.preferred_output`, every output while it
+      is empty, no focused/first fallback.
 - [ ] CLI gap against current keybinds (section 4): launcher toggle.
 - [ ] Process supervision: Tohru is several scenes (bar root, session menu,
       launcher, notifications, Settings on demand). Nothing
@@ -195,8 +199,13 @@ How Tohru settings work:
   Settings is a separate process, so its overrides live there; it forwards
   them to the bar, which then holds its own until it exits.
 - Keys left after removals #3, #5 and #6: `appearance.palette`,
-  `appearance.corners`, `appearance.corner_size` (1–100), `bar.mooncoil`.
-  `bar.preferred_output` is accepted but ignored (bars use every output).
+  `appearance.corners`, `appearance.corner_size` (1–100), `bar.mooncoil`,
+  `bar.preferred_output`. The bar, its popups and the volume display show only on
+  the preferred output, and the workspace rail counts only its workspaces; empty
+  means every output with one merged rail. Corners stay on every output.
+
+- [ ] Set `programs.tohru.settings.bar.preferred_output` to the main monitor
+      (`DP-2` on `home`), where j2bar shows today.
 
 - [ ] Translate the values still in use from `~/.config/j2bar/config.toml` into
       `programs.tohru.settings` (Nix-managed) or `~/.config/tohru/config.toml`.
@@ -220,7 +229,8 @@ left untouched.
 Every retained row of [acceptance.md](docs/reference/acceptance.md) still needs
 a live check. Things only the real session can prove:
 
-- Bar on each monitor, hotplug and reconnect, rotation and fractional scale.
+- Bar on the preferred output only, and on each monitor with it unset; hotplug
+  and reconnect, rotation and fractional scale.
 - Glass and adaptive ink against j2bar screenshots over the same wallpaper.
 - hyprlock: session menu Lock and Sleep, Super+Shift+Escape, wrong password,
   lock before sleep. hyprpolkitagent prompts with real PAM.
