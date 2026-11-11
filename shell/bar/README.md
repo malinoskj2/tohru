@@ -26,7 +26,7 @@ accepted cancellable native60Hz timers only while moving, cancel at rest/error.
 
 Checks: `lua tests/bar/controllers.lua`; `pleamar --check shell/bar/entry.plm`;
 exclusive private GPU integration `python3 tests/bar/native.py --runtime PATH`
-after sourcing `runtime/dev-env.sh` and supplying driver libraries as documented
+after sourcing `runtime/pleamar/dev-env.sh` and supplying driver libraries as documented
 in runtime/README.md. The runner owns and stops its compositor/apps/private bus.
 
 This is usable native service content, not glass/font/layout/physical-output or

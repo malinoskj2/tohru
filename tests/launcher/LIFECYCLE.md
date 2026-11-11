@@ -4,7 +4,7 @@ Requires coordinator source assessment, cleared runner cleanup/isolation review,
 shared patched runtime and explicit exclusive GPU/private-display allocation.
 No heavy build needed. The unchanged source-only/CPU checks are not this run.
 
-    source runtime/dev-env.sh
+    source runtime/pleamar/dev-env.sh
     # Include installed wayland-scanner, cc/pkg-config and known setsid/sh in PATH.
     TOHRU_SHELL=1 python3 -B tests/bar/native.py --lifecycle-only --runtime ABS_PATCHED_RUNTIME
 

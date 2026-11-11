@@ -1,7 +1,7 @@
 #![deny(unsafe_code)]
 use std::time::Instant;
 
-use super::workspace_motion::{MAX_FRAME, Rng, SETTLE_ENERGY, STEP};
+use super::motion::{MAX_FRAME, Rng, SETTLE_ENERGY, STEP};
 
 /// Width of one workspace's slot along the ribbon.
 pub(crate) const SLOT: f32 = 16.0;

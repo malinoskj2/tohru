@@ -38,7 +38,7 @@ The exact reviewed twelve-slot240Hz rail is published at native60Hz while moving
 The controller resets it on open and cancels its timer on close/rest/error.
 State includes rail declarations; the popup includes the shared shader asset.
 S must provide tohru_workspace observe/tick/reset as documented in
-../../runtime/workspace/README.md and the authorized16-scalar shader patch.
+../../runtime/src/workspace/README.md and the authorized16-scalar shader patch.
 Native glass/frost/refraction/ripple provide the accepted visual approximation;
 physical output/visual review remains coordinator scope.
 

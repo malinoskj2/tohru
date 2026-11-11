@@ -1,17 +1,16 @@
 //! Exact retained ribbon physics. Native services observe workspaces; this module
 //! owns only motion and bounded shader publication, with no I/O, threads or timers.
-#![deny(unsafe_code)]
 
-mod workspace_motion;
-mod workspace_track;
+mod motion;
+mod track;
 
 use std::time::Instant;
-use workspace_track::{Track, slots_for};
+use track::{Track, slots_for};
 
-pub const ROW_HEIGHT: f32 = workspace_track::ROW;
-pub const SIDE_PADDING: f32 = workspace_track::PAD;
-pub const SHADER_HEIGHT: f32 = workspace_track::HEIGHT;
-pub const CENTER_Y: f32 = workspace_track::CENTER;
+pub const ROW_HEIGHT: f32 = track::ROW;
+pub const SIDE_PADDING: f32 = track::PAD;
+pub const SHADER_HEIGHT: f32 = track::HEIGHT;
+pub const CENTER_Y: f32 = track::CENTER;
 
 /// Whether native timer publication is needed after publishing this sample.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

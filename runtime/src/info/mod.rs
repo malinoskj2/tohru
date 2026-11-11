@@ -1,6 +1,5 @@
 //! Bounded, read-only public Linux information for About and information pages.
 //! Called only on page open/explicit refresh. No commands, caller paths or polling.
-#![deny(unsafe_code)]
 
 mod read;
 mod storage;
@@ -115,5 +114,4 @@ fn collect(root: &Path) -> Snapshot {
 }
 
 #[cfg(test)]
-#[path = "../../tests/info/snapshot.rs"]
 mod tests;

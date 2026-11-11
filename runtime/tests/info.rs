@@ -1,6 +1,5 @@
-//! Exercise the real feature module under the package's nested module layout.
-#[path = "../runtime/info/mod.rs"]
-pub mod info;
+//! Exercise the public snapshot through the package.
+use tohru_shell::info;
 
 #[test]
 fn public_snapshot_preserves_bounded_partial_observation_contract() {

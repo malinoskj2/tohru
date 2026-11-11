@@ -1,23 +1,28 @@
 # Runtime source and patches
 
+This folder is the `tohru-shell` Rust package (`Cargo.toml`, `src/`, `tests/`)
+and, under `pleamar/`, everything that goes into the Pleamar build: the pin, the
+patches, the Luau bindings, its lock file and the preparation script.
+
 Pleamar 0.7.27 is fetched at dc902feb0ee9058b7db7c2bc2c9d59d9f655fd86;
-`pin.json` records the archive SHA256 and upstream repository. Upstream HEAD
+`pleamar/pin.json` records the archive SHA256 and upstream repository. Upstream HEAD
 was checked on 2026-11-07 and still matched. No prototype vendor is copied.
 Upstream's BSD-3-Clause license/THIRD-PARTY notices remain in its source archive.
 The shell's own initial settings implementation is MIT.
 
-`0001-shell-settings.patch` adds the focused `tohru-shell` path dependency and
-one binding installation hook, gated by TOHRU_SHELL=1 and excluding plugins.
-`settings_luau.rs` owns the process singleton and Luau boundary. Additional narrow
-patches cover workspace shader scalars/API;
-exact applied lists live in prepare.sh and nix/default.nix.
-`Cargo.lock` starts from the pinned upstream lock and adds only anyhow, the local
-library, and toml_writer (needed for comment-preserving TOML writes). The library
-uses upstream's already selected toml_edit 0.25.15 and serde_json 1.0.151.
+`pleamar/patches/0001-shell-settings.patch` adds the focused `tohru-shell` path
+dependency and one binding installation hook, gated by TOHRU_SHELL=1 and excluding
+plugins. `pleamar/bindings/settings_luau.rs` owns the process singleton and Luau
+boundary. Additional narrow patches cover workspace shader scalars/API;
+`pleamar/prepare.sh` applies every patch in `pleamar/patches/` in name order and
+nix/default.nix lists the same files.
+`pleamar/Cargo.lock` starts from the pinned upstream lock and adds only anyhow, the
+local library, and toml_writer (needed for comment-preserving TOML writes). The
+library uses upstream's already selected toml_edit 0.25.15 and serde_json 1.0.151.
 
 ```sh
-./runtime/prepare.sh
-source runtime/dev-env.sh # only needed for native headers in the supplied sandbox
+./runtime/pleamar/prepare.sh
+source runtime/pleamar/dev-env.sh # only needed for native headers in the supplied sandbox
 cargo test --release --locked --manifest-path .tmp/pleamar-runtime/Cargo.toml --lib tohru_settings:: --jobs 1
 cargo build --release --locked --manifest-path .tmp/pleamar-runtime/Cargo.toml --bin pleamar --jobs 1
 .tmp/pleamar-runtime/target/release/pleamar --check shell/bar.plm

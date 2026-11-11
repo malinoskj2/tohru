@@ -20,7 +20,7 @@ minute date/time; power displays native battery presence/percent/charging only.
 The optional outputs getter returns at most8 native {name,width,height} records;
 these must be actual logical output facts, not a Settings window's dimensions.
 Absent getter yields Unknown (native display API limit accepted). No custom
-monitor observer or scale inference. Source/runtime mapping in runtime/info/README.
+monitor observer or scale inference. Source/runtime mapping in runtime/src/info/README.
 
 Presentation has at most256 cached rows and8 rendered rows, native keyboard
 Up/Down/PageUp/PageDown and paging buttons. Native facts/texts retain the cached

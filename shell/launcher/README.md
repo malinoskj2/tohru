@@ -5,7 +5,7 @@ Open via `--say tohru-launcher 'emit launcher_open'`; native events also include
 launcher_toggle/launcher_close. It uses native apps discovery, native apps.launch,
 native scene-local files and native widget input. It has no compositor/plugin
 command and works independently of optional launcher recession. The optional exact namespace affects only compositor recession; its narrow native
-property patch is runtime/launcher/namespace.patch.
+property patch is runtime/pleamar/patches/0005-launcher-namespace.patch.
 
 Implemented here: responsive3–8-column72px grid, Home plus the source's six
 categories/precedence, pin order and separate pinned/application sections,

@@ -1,14 +1,13 @@
 { lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage
 , fontconfig, wayland, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3 }:
 let
-  pin = builtins.fromJSON (builtins.readFile ../runtime/pin.json);
+  pin = builtins.fromJSON (builtins.readFile ../runtime/pleamar/pin.json);
   # Keep documentation/flake/test changes from rebuilding the full runtime.
   foundationSource = lib.fileset.toSource {
     root = ../.;
-    fileset = lib.fileset.unions [ ../Cargo.toml ../Cargo.lock ../src ../runtime/settings_luau.rs ../runtime/workspace_luau.rs
-      ../runtime/workspace/mod.rs ../runtime/workspace/workspace_motion.rs ../runtime/workspace/workspace_track.rs
-      ../runtime/info_luau.rs ../runtime/info/mod.rs ../runtime/info/read.rs ../runtime/info/storage.rs ../runtime/info/system.rs ../tests/info/snapshot.rs ../tests/info.rs ../tests/settings.rs
-        ../tests/runtime/role-install.rs ../LICENSE ];
+    fileset = lib.fileset.unions [ ../runtime/Cargo.toml ../runtime/Cargo.lock
+      (lib.fileset.fileFilter (file: file.hasExt "rs") ../runtime/src) ../runtime/tests
+      ../runtime/pleamar/bindings ../runtime/pleamar/tests/role-install.rs ../LICENSE ];
   };
   source = lib.fileset.toSource {
     root = ../.;
@@ -18,28 +17,21 @@ let
     pname = "pleamar-tohru";
     version = pin.version;
     src = fetchurl { url = pin.archive; hash = pin.hash; };
-    cargoLock.lockFile = ../runtime/Cargo.lock;
-    patches = [ ../runtime/patches/0001-shell-settings.patch
-      ../runtime/workspace/shader-inputs.patch ../runtime/patches/0004-workspace-binding.patch
-      ../runtime/launcher/namespace.patch ../runtime/patches/0006-info-binding.patch
-        ../runtime/patches/0010-key-rule-order.patch ../runtime/patches/0011-focus-round.patch ];
+    cargoLock.lockFile = ../runtime/pleamar/Cargo.lock;
+    patches = map (name: ../runtime/pleamar/patches + "/${name}") [
+      "0001-shell-settings.patch" "0002-shader-inputs.patch" "0004-workspace-binding.patch"
+      "0005-launcher-namespace.patch" "0006-info-binding.patch" "0010-key-rule-order.patch"
+      "0011-focus-round.patch" ];
     postPatch = ''
       mkdir foundation
-      cp ${foundationSource}/Cargo.toml foundation/
-      cp ${foundationSource}/Cargo.lock foundation/
-      cp -r ${foundationSource}/src foundation/
-      mkdir -p foundation/runtime
-      cp -r ${foundationSource}/runtime/workspace foundation/runtime/
-      cp -r ${foundationSource}/runtime/info foundation/runtime/
-      mkdir -p foundation/tests/info
-      cp ${foundationSource}/tests/info/snapshot.rs foundation/tests/info/
-      cp ${foundationSource}/tests/info.rs ${foundationSource}/tests/settings.rs foundation/tests/
-      cp ${foundationSource}/runtime/settings_luau.rs src/tohru_settings.rs
-      cp ${foundationSource}/runtime/workspace_luau.rs src/tohru_workspace.rs
-      cp ${foundationSource}/runtime/info_luau.rs src/tohru_info.rs
+      cp ${foundationSource}/runtime/Cargo.toml ${foundationSource}/runtime/Cargo.lock foundation/
+      cp -r ${foundationSource}/runtime/src ${foundationSource}/runtime/tests foundation/
+      for binding in settings workspace info; do
+        cp ${foundationSource}/runtime/pleamar/bindings/''${binding}_luau.rs src/tohru_$binding.rs
+      done
       mkdir -p tests/runtime
-      cp ${foundationSource}/tests/runtime/role-install.rs tests/runtime/
-      cp ${../runtime/Cargo.lock} Cargo.lock
+      cp ${foundationSource}/runtime/pleamar/tests/role-install.rs tests/runtime/
+      cp ${../runtime/pleamar/Cargo.lock} Cargo.lock
     '';
     nativeBuildInputs = [ pkg-config makeWrapper ];
     nativeCheckInputs = [ python3 ];

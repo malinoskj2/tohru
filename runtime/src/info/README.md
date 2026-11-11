@@ -1,7 +1,7 @@
 # Public read-only information snapshots
 
 Existing-package integration only: S adds the module to the existing library,
-copies runtime/info in preparation, and exposes `tohru_info.snapshot()` with no
+copies runtime/src in preparation, and exposes `tohru_info.snapshot()` with no
 arguments. No new crate/dependency, IPC, service backend, helper or commands.
 The typed Rust API is `snapshot() -> Snapshot`; Luau table keys match Rust fields.
 Options become nil, u64 observations remain exact in Rust (Luau numeric precision
@@ -43,10 +43,10 @@ blocking on substituted FIFOs/devices; no unsafe/FFI or arbitrary UI paths.
 
 Checks (lightweight, no runtime build/GPU; Cargo entry verifies nested module layout):
 
-    CARGO_TARGET_DIR=.tmp/b-info-target cargo test --locked --offline --test info --jobs 1
-    CARGO_TARGET_DIR=.tmp/b-info-target cargo clippy --locked --offline --test info --jobs 1 -- -Dwarnings
+    cargo test --locked --offline --manifest-path runtime/Cargo.toml info --jobs 1
+    cargo clippy --locked --offline --manifest-path runtime/Cargo.toml --all-targets --jobs 1 -- -Dwarnings
 
-    rustfmt --check --edition 2024 runtime/info/*.rs tests/info.rs tests/info/snapshot.rs
+    rustfmt --check --edition 2024 runtime/src/info/*.rs runtime/tests/info.rs
 
 IssueKind uses the existing package thiserror derive for typed adapter diagnostics;
 no new dependency/manifest edit. Verify through Cargo, which supplies the existing

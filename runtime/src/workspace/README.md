@@ -18,7 +18,7 @@ publication is a fixed array, with no sample allocation or CPU geometry rebuild.
 CPU geometry remains test-only as an independent reference for shape/rest values.
 The canonical replay helper is test-only, never a production unbounded loop.
 
-`shader-inputs.patch` is a **proposed isolated integration patch**, against clean
+`../../pleamar/patches/0002-shader-inputs.patch` is a **proposed isolated integration patch**, against clean
 Pleamar dc902feb0ee9058b7db7c2bc2c9d59d9f655fd86. It extends direct scene shader
 values from8 to16 (s.a–s.d), Element stride64→72 floats and two extra vec4 fields.
 It does not alter group shader limits, frame subscriptions, startup, services or
@@ -38,8 +38,8 @@ sample alpha automatically. Full visual parity/dynamic-width shader pixels still
 require native build/render comparison after shared patch integration.
 
 S wiring request (do not implement a second package): expose this module from
-the existing library with `#[path = "../runtime/workspace/mod.rs"] pub mod workspace;`
-and copy runtime/workspace into the prepared foundation library path. A narrow
+the existing library with `pub mod workspace;`
+and copy runtime/src into the prepared foundation library path. A narrow
 binding should retain one Indicator per workspace/calendar role, accept native
 observations, advance from monotonic Instant, publish shape/color and moving status.
 The feature rail-publisher starts at most one native every(1000/60) callback,
@@ -51,10 +51,8 @@ crate dependency is needed for this module or approved scalar ABI extension.
 Checked CPU commands from repository root:
 
 ```sh
-rustfmt --check --edition 2024 runtime/workspace/*.rs
-rustc --edition 2024 --crate-type lib -D warnings runtime/workspace/mod.rs -o .tmp/libworkspace.rlib
-rustc --edition 2024 --test -D warnings runtime/workspace/mod.rs -o .tmp/workspace-tests
-.tmp/workspace-tests
+rustfmt --check --edition 2024 runtime/src/workspace/*.rs
+cargo test --locked --offline --manifest-path runtime/Cargo.toml workspace --jobs 1
 ```
 
 15 tests pass: canonical replay render-cadence independence, interruption/seed,

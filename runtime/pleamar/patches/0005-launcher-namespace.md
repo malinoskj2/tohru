@@ -1,6 +1,6 @@
 # Optional launcher namespace
 
-namespace.patch is against exact clean pin dc902feb0ee9058b7db7c2bc2c9d59d9f655fd86.
+0005-launcher-namespace.patch is against exact clean pin dc902feb0ee9058b7db7c2bc2c9d59d9f655fd86.
 S applies once after other shared patches and builds the existing package/runtime.
 It adds only optional STATIC layer_namespace quoted property to Surface, native
 language vocabulary/compiler and existing create_layer_surface argument. Unset

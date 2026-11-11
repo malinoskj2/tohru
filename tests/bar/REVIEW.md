@@ -23,7 +23,7 @@ mkdir -p .tmp/pointer-build
 # use installed wayland-scanner; sandbox currently has it in the Nix store
 wayland-scanner client-header tests/bar/virtual-pointer.xml .tmp/pointer-build/virtual-pointer.h
 wayland-scanner private-code tests/bar/virtual-pointer.xml .tmp/pointer-build/virtual-pointer.c
-source runtime/dev-env.sh
+source runtime/pleamar/dev-env.sh
 cc -std=c11 -Wall -Wextra -Werror $(pkg-config --cflags wayland-client) -I.tmp/pointer-build tests/bar/pointer.c .tmp/pointer-build/virtual-pointer.c $(pkg-config --libs wayland-client) -o .tmp/pointer-build/pointer
 ```
 

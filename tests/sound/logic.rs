@@ -5,7 +5,7 @@ use mlua::Lua;
 mod osd;
 
 
-#[path = "../../runtime/workspace_luau.rs"]
+#[path = "../../runtime/pleamar/bindings/workspace_luau.rs"]
 mod actual_workspace_binding;
 
 fn controller() -> Lua {

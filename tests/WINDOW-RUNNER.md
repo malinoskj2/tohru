@@ -13,7 +13,7 @@ CPU readiness checks:
 
 ```sh
 python3 tests/isolation.py
-source runtime/dev-env.sh
+source runtime/pleamar/dev-env.sh
 mkdir -p .tmp/s-pointer-build
 wayland-scanner client-header tests/bar/virtual-pointer.xml .tmp/s-pointer-build/virtual-pointer.h
 wayland-scanner private-code tests/bar/virtual-pointer.xml .tmp/s-pointer-build/virtual-pointer.c
@@ -47,7 +47,7 @@ Every run checks writable/managed settings reload and bar process restart.
 The persistent keyboard keeps the seat's keyboard bound while one-shot wtype
 devices come and go; without it wtype's keys arrive before the app binds them.
 Ctrl+F and the query are one wtype burst, so keys typed right after the shortcut
-must reach search (runtime/patches/0010-key-rule-order.patch).
+must reach search (runtime/pleamar/patches/0010-key-rule-order.patch).
 Ctrl+F evidence types the query through the virtual keyboard and checks the live
 input text before Return; no IPC search setter can bypass a failed focus action.
 The evidence-only Settings clone adds a second real native input. Focus starts on
