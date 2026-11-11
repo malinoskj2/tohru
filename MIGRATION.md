@@ -50,12 +50,11 @@ Accepted differences from j2bar that stay:
       Sleep) so hyprlock, through hypridle's `lock_cmd`, does the locking.
 - [ ] Bar visual parity with j2bar. Matched against j2bar on the live desktop:
       31px height, outline (flares, bottom corners, hairline weight at scale 1),
-      icons and text on j2bar's pixel rows, rail width, clock padding, and the
-      body tint over flat backgrounds. Still missing: notification bell, adaptive
-      light/dark glass, tabular numerals in the clock (the date is about 4px
-      narrower, which shifts the tray), Pleamar's text rasteriser against
-      Pango's, and the body over a blurred wallpaper, where Tohru still reads
-      lighter.
+      icons and text on j2bar's pixel rows, rail width, clock padding, the body
+      tint, and the switcher (rail, lit segment with its rounded ends, glow).
+      Still missing: notification bell, adaptive light/dark glass, tabular
+      numerals in the clock (the date is about 4px narrower, which shifts the
+      tray), and Pleamar's text rasteriser against Pango's.
 - [x] Bar output policy: one bar on `bar.preferred_output`, every output while it
       is empty, no focused/first fallback.
 - [ ] CLI gap against current keybinds (section 4): launcher toggle.
