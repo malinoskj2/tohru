@@ -9,9 +9,11 @@ read permissions `window`, `apps`, `media`, `clock`. Forward the existing
 process-owned `bar.mooncoil` setting to `fact.bar_mooncoil`; do not create a
 second settings owner. Compose `calendar/state.plm` + `calendar/popup.plm` and its controller in
 this same root scene (see ../calendar/README.md), preserving the native click
-serial. Only `session_toggle` needs routing to its independently owned role. Accepted output policy is now native `screens: all`: the bar appears on every
-output. Root owns this layout and the 31px reservation; no preferred/focused-first
-selection adapter or reconnect-selection policy is retained.
+serial. Only `session_toggle` needs routing to its independently owned role. The bar follows `bar.preferred_output`:
+`workspace.luau` writes that monitor, or every monitor the workspace report names
+while it is empty, to the `bar_outputs` text the root surface follows. With one
+preferred monitor the rail counts only its workspaces. Root owns this layout and
+the 31px reservation; there is no focused-first fallback.
 
 Source mapping: j2bar `bar.rs` / `bar/providers.rs` (100px inset, 14px app icon,
 360px centered title limit, 180px playing-only media, 12-hour default clock),

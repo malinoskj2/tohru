@@ -16,7 +16,8 @@ Initial source-mapped dimensions: 800x800 window, 220px sidebar, 30px navigation
 rows, source 15/13/11px typography. Categories are Bar, Appearance and
 System. Corner size is edited on the Appearance page. Nix-managed
 rows describe temporary process edits; unmanaged edits persist through the
-writable TOML owner. Deprecated preferred_output is not offered as a control.
+writable TOML owner. `bar.preferred_output` is shown on the Bar page but not offered
+as a control.
 
 Search matches setting title/detail/key literally, with 15 result slots and 256
 query bytes processed. Back/Forward retains at most 64 routes and truncates stale

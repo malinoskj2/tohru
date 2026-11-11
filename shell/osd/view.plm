@@ -2,7 +2,7 @@ part VolumeOsdView {
     // Native spring/velocity approximation of the retained Jelly entrance.
     surface volume_osd {
         size: 100, 260; anchor: right; margin: 20; level: overlay; reserve: -1
-        screens: all; keyboard: none
+        screens: bar_outputs; keyboard: none
         prop osd_seen = 0 ~spring(175, 8.5)
         follow osd_seen = if(osd_open, 1, 0)
         prop osd_fill = 0 ~spring(170, 13.04)

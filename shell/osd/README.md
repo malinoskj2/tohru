@@ -23,7 +23,7 @@ replace the timer, identical reports do not extend it. Reload retains observatio
 facts and visible state, clears stale hover and rearms one finite hold. There is
 no recurring publication timer, extra audio stream, Rust module or runtime patch.
 
-The native100×260 right-centred overlay surface appears on every output, takes
+The native100×260 right-centred overlay surface appears on the bar's outputs, takes
 no keyboard/reservation and has only the visible44×200 vessel as an input zone.
 The native surface remains allocated while the scene lives; drawing and input
 hide at rest. Exact unmap/free and driver-idle claims are not made. Native spring

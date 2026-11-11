@@ -1,11 +1,12 @@
 -- Settings ownership is in Rust, outside this reloadable VM.
+local make_rail = require("calendar/rail-publisher")
+local workspace = require("bar/workspace")(make_rail, tohru_workspace)
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
     fact.corners = settings["appearance.corners"].value
     fact.corner_size = settings["appearance.corner_size"].value
-    settings["bar.preferred_output"].deprecated = true
-    settings["bar.preferred_output"].effective = false
+    workspace.prefer(settings["bar.preferred_output"].value)
     text.settings_status = json.encode({schema = 7, settings = settings})
 end
 local function change(operation)
@@ -35,7 +36,7 @@ on("setting_corner_size", function(n)
     change(function() return tohru_settings.set("appearance.corner_size", n) end)
 end)
 on("setting_output", function()
-    text.settings_error = "bar.preferred_output is deprecated and ignored: bars use every output"
+    change(function() return tohru_settings.set("bar.preferred_output", text.output_request) end)
 end)
 
 local osd = require("osd/controller")()
@@ -44,8 +45,6 @@ on("sound_open_request", osd.hide)
 on("sound_toggle", function() if fact.sound_open then osd.hide() end end)
 
 require("bar/controller")()
-local make_rail = require("calendar/rail-publisher")
-require("bar/workspace")(make_rail, tohru_workspace)
 local calendar_rail = make_rail(tohru_workspace, "calendar", "cal_rail_")
 local calendar = require("calendar/controller")(calendar_rail)
 local network = require("network/controller")()

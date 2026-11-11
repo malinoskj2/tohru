@@ -52,10 +52,9 @@ serial has no native outside grab and may require Escape. This native behavior
 is accepted (MIGRATION.md, accepted differences); outside-click parity is not claimed.
 No layer catcher, serial workaround or native patch added.
 
-User accepted native every-output bars, superseding preferred single-output
-policy. Root now uses screens:all, which also permits native root popup compilation;
-no singleton-each compiler fix. bar.preferred_output is deprecated/inert legacy
-configuration; preserve old TOML instead of deleting it. No fallback selector.
+The root surface follows the `bar_outputs` text, one surface with one state on the
+monitors it names, which permits native root popup compilation; no singleton-each
+compiler fix. `bar.preferred_output` names the monitor; empty means every output.
 
 The accepted native OSD approximation uses44×200 glass/spring/velocity/fill and
 1600ms hold. It reports output/microphone levels, mute and native device names;

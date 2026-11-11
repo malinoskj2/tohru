@@ -28,8 +28,9 @@ TOHRU_RUNTIME="$PWD/.tmp/pleamar-runtime/target/release/pleamar" ./bin/tohru-run
 Run only in an explicitly selected private display/bus during development.
 Pleamar normally refreshes editor skills in HOME on launch; use a private HOME
 and XDG directories in tests. Do not point test commands at a live desktop.
-The ordinary root uses native bars on every output with same-process sound,
-calendar, Settings and corner parts. `bar.preferred_output` is preserved but inert;
+The ordinary root shows the bar, its popups and the volume display on
+`bar.preferred_output`, or on every output while that is empty, with same-process
+sound, calendar, Settings and corner parts. Corners stay on every output.
 `appearance.corners`, its bounded size and `bar.mooncoil` control actual parts.
 Exact native lifecycle/input/driver evidence is recorded by candidate in S.md;
 source/compiler checks do not imply physical-display or visual/performance parity.

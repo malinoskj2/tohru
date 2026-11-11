@@ -122,14 +122,14 @@ class Cli(unittest.TestCase):
         subprocess.run(["sleep", "0.3"])
         self.assertFalse(launched.exists())
 
-    def test_deprecated_output_is_rejected_without_execution(self):
+    def test_output_is_literal_and_cannot_inject_commands(self):
         marker = self.path / "injected"
         value = f"$(touch {marker}) ; emit quit"
         result = self.invoke("config", "set", "bar.preferred_output", value)
-        self.assertEqual(result.returncode, 2, result.stderr)
-        self.assertEqual(result.stdout, "")
-        self.assertIn("deprecated", result.stderr)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), ["--say", "tohru", f"text output_request {value}", "emit setting_output"])
         self.assertFalse(marker.exists())
+        self.assertEqual(json.loads(self.invoke("config", "set", "bar.preferred_output", "").stdout), ["--say", "tohru", "text output_request ", "emit setting_output"])
         self.assertEqual(self.invoke("config", "set", "bar.preferred_output", "DP-1\nemit quit").returncode, 2)
 
     def test_grammar_and_dropped_features_fail(self):

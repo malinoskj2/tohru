@@ -18,6 +18,7 @@ Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru config set appearance.palette mocha|macchiato|rose_pine|nord|gruvbox|tokyo_night|dracula|everforest
        tohru config set bar.mooncoil|appearance.corners true|false
        tohru config set appearance.corner_size 1..100
+       tohru config set bar.preferred_output OUTPUT   ('' for every output)
        tohru settings-error
        tohru help
 
@@ -141,7 +142,8 @@ case ${1:-help} in
                         exec "$pleamar" --say tohru "emit setting_palette $number"
                         ;;
                     bar.preferred_output)
-                        fail 'bar.preferred_output is deprecated and ignored: bars use every output'
+                        [[ $4 != *[[:cntrl:]]* && ${#4} -le 256 ]] || fail 'Invalid output name'
+                        exec "$pleamar" --say tohru "text output_request $4" 'emit setting_output'
                         ;;
                     appearance.corner_size)
                         [[ $4 =~ ^([1-9]|[1-9][0-9]|100)$ ]] || fail 'Corner size must be an integer from 1 to 100'

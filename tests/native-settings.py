@@ -169,7 +169,7 @@ def main():
     config = evidence / "config"
     (config / "tohru").mkdir(parents=True)
     user = config / "tohru/config.toml"
-    user.write_text("# preserve me\n[future]\nvalue = 42\n[bar]\npreferred_output = 'DP-LEGACY'\n[appearance]\ncorners = false\n")
+    user.write_text("# preserve me\n[future]\nvalue = 42\n[bar]\npreferred_output = 'HEADLESS-1'\n[appearance]\ncorners = false\n")
     managed = evidence / "managed.toml"
     managed.write_text("[bar]\nmooncoil = false\n")
     scene = evidence / "scene"
@@ -453,8 +453,10 @@ def main():
         cli("config", "set", "appearance.corners", "true")
         expect("appearance.corners", True, "user")
         assert "# preserve me" in user.read_text() and "value = 42" in user.read_text()
-        assert cli("config", "set", "bar.preferred_output", "DP-TEST", check=False).returncode == 2
-        expect("bar.preferred_output", "DP-LEGACY", "user")
+        cli("config", "set", "bar.preferred_output", "")
+        expect("bar.preferred_output", "", "user")
+        cli("config", "set", "bar.preferred_output", "HEADLESS-1")
+        expect("bar.preferred_output", "HEADLESS-1", "user")
         managed.write_text("[bar]\nmooncoil = 'invalid'\n")
         cli("config", "reload")
         wait_for(lambda: cli("settings-error").stdout.strip(), "invalid reload error")
@@ -470,7 +472,7 @@ def main():
         app = None
         launch("restart")
         settings = expect("appearance.corners", True, "user")
-        expect("bar.preferred_output", "DP-LEGACY", "user")
+        expect("bar.preferred_output", "HEADLESS-1", "user")
         assert not settings["bar.mooncoil"]["runtime_override"]
         summary = {"result": "passed", "runtime": str(args.runtime.resolve()), "app_adapter": "NVIDIA GeForce RTX 5090 / Vulkan", "compositor_adapter": "NVIDIA GeForce RTX 5090 / GLES2", "screenshot": str(screenshot), "checks": ["native CLI", "managed override", "config reload", "actual logic VM reload", "unmanaged persistence", "unknown/comment preservation", "invalid reload atomicity", "process restart reset"], "sound_checks": args.sound, "settings_process_checks": args.settings, "pointer_checks": bool(args.pointer), "performance_acceptance": False}
         (evidence / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")

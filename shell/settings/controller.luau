@@ -28,10 +28,11 @@ return function(applied)
         local mooncoil = snapshot["bar.mooncoil"]
         local managed_detail = mooncoil.managed and "Nix managed · runtime edits last until shell exits" or "Saved in writable config.toml"
         if mooncoil.runtime_override then managed_detail = "Nix managed · temporary runtime override is active" end
+        local output = snapshot["bar.preferred_output"].value
         local catalog = {
             {page=1, key="bar.mooncoil", title="Mooncoil mark", detail=managed_detail,
              value=mooncoil.value, editable=true, managed=mooncoil.managed, temporary=mooncoil.runtime_override},
-            {page=1, title="Outputs", detail="Native bar is shown on every output", editable=false},
+            {page=1, title="Outputs", detail=output ~= "" and "Bar is shown on " .. output or "Bar is shown on every output", editable=false},
             {page=2, key="appearance.corners", title="Screen corners", detail="Native corner overlays on every output",
              value=snapshot["appearance.corners"].value, editable=true, managed=snapshot["appearance.corners"].managed,
              temporary=snapshot["appearance.corners"].runtime_override},

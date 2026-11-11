@@ -16,7 +16,7 @@ from root Lua panel coordination, because native Lua `emit` reaches render
 rules and does not redispatch Lua event handlers. Native calendar_* events
 remain the UI/IPC entry points.
 Give the root `keyboard: exclusive while cal_open`, permissions
-`window`, `apps`, `media`, `clock`, and native `screens: all` as accepted.
+`window`, `apps`, `media`, `clock`, and the root's text-driven `screens:`.
 The popup receives the root clock-button's real press serial directly; do not
 start another visible calendar bar or forward the click across processes.
 The native parser accepts this composition, including the shared calendar_toggle

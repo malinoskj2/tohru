@@ -7,6 +7,7 @@ part WorkspaceRailState {
     fact ws_g = 0.702
     fact ws_b = 0.529
     text ws_error = ""
+    text bar_outputs = ""
     repeat i in 0..16 { fact ws_v.$i = 0 }
     repeat i in 1..11 { fact ws_advertised.$i = false }
     fact ws_available = false
