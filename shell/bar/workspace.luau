@@ -1,6 +1,5 @@
-return function(make_rail, binding)
+return function(rail)
     local available, report, preferred = {}, nil, ""
-    local rail = make_rail(binding, "workspace", "ws_")
     local function publish()
         -- One preferred monitor shows only its own workspaces; otherwise the rail spans them all.
         local output = preferred:find(",", 1, true) and "" or preferred
@@ -27,7 +26,7 @@ return function(make_rail, binding)
         -- Unset means every monitor, and only the workspace report names them.
         table.sort(monitors)
         text.bar_outputs = preferred ~= "" and preferred or table.concat(monitors, ", ")
-        if report then rail.observe(highest, active) end
+        if report then rail.observe(math.min(highest, 10), active) end
     end
     fact.ws_available = sys.watch("workspaces", function(value)
         report = value
@@ -41,7 +40,6 @@ return function(make_rail, binding)
         text.ws_error = ok and "" or tostring(err)
     end)
     return {
-        stop = rail.stop,
         prefer = function(value)
             preferred = type(value) == "string" and value or ""
             publish()

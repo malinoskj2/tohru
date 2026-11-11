@@ -1,7 +1,6 @@
 -- Gregorian date arithmetic is interaction policy; the native clock supplies today.
 return function(rail)
     -- Inject from the actual entry: native require resolves relative to that entry.
-    local rail_ready = rail ~= nil and fact.cal_rail_ready == true
     local today, selected, year, month
     if (fact.cal_year or 0) > 0 then
         year, month = fact.cal_year, fact.cal_month
@@ -44,7 +43,7 @@ return function(rail)
         model.cal_days = days
         fact.cal_year, fact.cal_month, fact.cal_weeks = year, month, weeks
         fact.cal_selected_year, fact.cal_selected_month, fact.cal_selected_day = selected.year, selected.month, selected.day
-        if rail_ready and fact.cal_open then rail.observe(12, month) end
+        if rail and fact.cal_open then rail.observe(12, month) end
         fact.cal_current = year == today.year and month == today.month
         text.cal_title = months[month] .. " " .. tostring(year)
         text.cal_footer = string.format("%s %d %s", weekdays[weekday(selected.year, selected.month, selected.day) + 1], selected.day, short[selected.month])
@@ -63,12 +62,11 @@ return function(rail)
         if not year then reset() else publish() end
     end)
     local function open()
-        rail_ready = rail and rail.reset() == true or false
-        fact.cal_rail_ready = rail_ready
+        if rail then rail.reset() end
         fact.cal_open = true
         reset()
     end
-    local function close() fact.cal_open = false; rail_ready = false; fact.cal_rail_ready = false; if rail then rail.stop() end end
+    local function close() fact.cal_open = false end
     local function toggle() if fact.cal_open then close() else open() end end
     on("fact:cal_open", function(visible) if visible then open() else close() end end)
     on("calendar_toggle", toggle)
@@ -95,6 +93,6 @@ return function(rail)
         year, month = day.year, day.month
         publish()
     end)
-    if fact.cal_open and rail_ready and month then rail.observe(12, month) end
+    if fact.cal_open and rail and month then rail.observe(12, month) end
     return {open = open, close = close, toggle = toggle}
 end

@@ -1,6 +1,6 @@
 -- Settings ownership is in Rust, outside this reloadable VM.
-local make_rail = require("calendar/rail-publisher")
-local workspace = require("bar/workspace")(make_rail, tohru_workspace)
+local make_rail = require("bar/rail")
+local workspace = require("bar/workspace")(make_rail(0))
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
@@ -45,8 +45,7 @@ on("sound_open_request", osd.hide)
 on("sound_toggle", function() if fact.sound_open then osd.hide() end end)
 
 require("bar/controller")()
-local calendar_rail = make_rail(tohru_workspace, "calendar", "cal_rail_")
-local calendar = require("calendar/controller")(calendar_rail)
+local calendar = require("calendar/controller")(make_rail(1))
 local network = require("network/controller")()
 local bluetooth = require("bluetooth/controller")()
 local info = require("info/controller")(tohru_info.snapshot)

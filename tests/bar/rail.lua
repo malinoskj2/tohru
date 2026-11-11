@@ -1,40 +1,35 @@
-local timers, cancelled, calls = {}, {}, {}
-_G.fact, _G.text = {}, {}
-_G.every = function(ms, fn) assert(ms == 1000 / 60); timers[#timers + 1] = fn; return #timers end
-_G.cancel = function(id) cancelled[id] = true end
-local moving = false
-local ticks = 0
-local function sample()
-    return {shape = {8,0,2,0,8,0,0,8,4,0,1,0.5,0,0,16,4.5}, color = {1,0.5,0,1}, width = 80, moving = moving}
+_G.fact = {}
+for _, r in ipairs({0, 1}) do
+    for key, value in pairs({present = false, goal = 8, serial = 0, land = 0}) do fact["rail." .. key .. "." .. r] = value end
 end
-local binding = {
-    observe = function(role, highest, active) calls[#calls+1]={role,highest,active}; return sample() end,
-    tick = function(role) assert(role == "workspace"); ticks = ticks + 1; return sample() end,
-    reset = function(role) calls[#calls+1]={role,"reset"}; moving=false; return sample() end,
-}
-local rail = assert(loadfile("shell/calendar/rail-publisher.luau"))()(binding,"workspace","ws_")
-rail.observe(5,1)
-assert(#timers == 0 and fact.ws_r == 1 and fact.ws_g == 0.5 and not fact.ws_moving)
-moving=true; rail.observe(5,5); rail.observe(5,2)
-assert(#timers == 1 and fact.ws_moving and rail.active())
-moving=false; timers[1]()
-assert(cancelled[1] and not fact.ws_moving and not rail.active())
-moving=true; rail.observe(5,4)
-assert(#timers == 2)
-local before_stale = ticks
-timers[1]()
-assert(ticks == before_stale and #timers == 2 and rail.active(), "old callback must not tick a newer moving owner")
-rail.stop(); assert(cancelled[2] and not rail.active())
--- A callback copied out of the native due list before cancel is now stale.
-timers[2]();assert(#timers==2 and not fact.ws_moving and not rail.active())
-moving=true; rail.observe(5,3)
-rail.reset(); assert(cancelled[3] and calls[#calls][2] == "reset")
-binding.tick = function() error("binding failed") end
-moving=true; rail.observe(5,4); timers[4]()
-assert(cancelled[4] and text.ws_error:find("binding failed",1,true))
-print("Native60Hz publication has one timer, rest/error/close cancellation and event resume")
-
-binding.reset = nil
-assert(rail.reset() == false and text.ws_error ~= "")
-
-print("Cancelled queued rail callback cannot republish/rearm after stop")
+local rail = assert(loadfile("shell/bar/rail.luau"))()(0)
+rail.observe(5, 2)
+assert(fact["rail.slots.0"] == 5 and fact["rail.present.0"] and fact["rail.goal.0"] == 24)
+assert(fact["rail.land.0"] == 1 and fact["rail.serial.0"] == 0, "a bead that appears lands")
+rail.observe(5, 2)
+assert(fact["rail.land.0"] == 1 and fact["rail.serial.0"] == 0, "an unchanged slot changes nothing")
+for _, slot in ipairs({3, 4, 5, 1, 2}) do
+    rail.observe(5, slot)
+    assert(fact["rail.kind.0"] >= 0 and fact["rail.kind.0"] <= 4 and fact["rail.kind.0"] == math.floor(fact["rail.kind.0"]))
+    assert(fact["rail.draw.0"] >= 0.8 and fact["rail.draw.0"] <= 1.25)
+    assert(fact["rail.reach.0"] >= 9 and fact["rail.reach.0"] <= 16)
+    assert(fact["rail.life.0"] >= 0.38 and fact["rail.life.0"] <= 0.6)
+end
+assert(fact["rail.serial.0"] == 5 and fact["rail.land.0"] == 1)
+rail.observe(10, 11)
+assert(not fact["rail.present.0"] and fact["rail.slots.0"] == 10, "a slot past the rail hides the bead")
+rail.observe(10, 7)
+assert(fact["rail.land.0"] == 2 and fact["rail.goal.0"] == 104)
+local reloaded = assert(loadfile("shell/bar/rail.luau"))()(0)
+reloaded.observe(10, 7)
+assert(fact["rail.land.0"] == 2 and fact["rail.serial.0"] == 5, "a reloaded logic picks up the slot on screen")
+reloaded.observe(10, 3)
+assert(fact["rail.serial.0"] == 6)
+reloaded.reset()
+assert(not fact["rail.present.0"])
+reloaded.observe(10, 3)
+assert(fact["rail.land.0"] == 3)
+local months = assert(loadfile("shell/bar/rail.luau"))()(1)
+months.observe(12, 12)
+assert(fact["rail.goal.1"] == 184 and fact["rail.land.1"] == 1 and fact["rail.serial.0"] == 6)
+print("Rail goals, landing, per-switch draws and reload passed")

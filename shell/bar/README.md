@@ -21,8 +21,22 @@ Source mapping: j2bar `bar.rs` / `bar/providers.rs` (100px inset, 14px app icon,
 Pinned services: window title/class + apps id/StartupWMClass/icon; native MPRIS
 selection, no commands or controls; clock numeric fields on minute changes.
 The native apps service itself checks catalog signatures every two seconds;
-the service content adds no polling/frame handlers. Exact rails publish with
-accepted cancellable native60Hz timers only while moving, cancel at rest/error.
+the service content adds no polling/frame handlers.
+
+Workspace rail: `rail-state.plm` declares two rails in one `repeat` (0 the
+workspaces, 1 the calendar's months) as Pleamar springs, `follow`s on `vel()`
+and a `spin` clock that stops once the wave has died out, so nothing draws at
+rest. `rail.luau` only sets a rail's goal and j2bar's per-switch random draws
+(spring choice, swell gain, crest reach, wave life); the scene's `on change`
+rules start each switch. `ribbon.wgsl` takes upstream Pleamar's eight values:
+the bead's rounding rides in the integer part of its half-height and the
+wave's direction in the sign of its phase; bead extent, glow, wash width and
+chop are derived in the shader. Differences from j2bar's `track.rs`: the
+springs are integrated per frame rather than at a fixed 240 Hz, the wash is a
+spring approximation of its first-order decay, its width grows with the
+wave's life rather than its gain, and the chop has no random phase. Pleamar's
+Hyprland service coalesces workspace events for 50 ms, so the rail starts a
+few frames after j2bar's.
 
 Checks: `lua tests/bar/controllers.lua`; `pleamar --check shell/bar/entry.plm`;
 exclusive private GPU integration `python3 tests/bar/native.py --runtime PATH`
@@ -30,7 +44,7 @@ after sourcing `runtime/pleamar/dev-env.sh` and supplying driver libraries as do
 in runtime/README.md. The runner owns and stops its compositor/apps/private bus.
 
 This is usable native service content, not glass/font/layout/physical-output or
-performance acceptance. Exact workspace and final root service assembly use shared S binding/patch hooks.
+performance acceptance.
 Native desktop discovery/launch/Identity
 limitations are accepted; this feature does not implement a custom
 catalog. The mark's original asset is retained, its exact glass/glow still awaits
@@ -59,7 +73,7 @@ root narrow-output layout/visual acceptance; S owns those measured formulas.
 
 Workspace cells are native advertised-only: `ws_advertised.1..10` updates from the
 native list, absent cells have a native dim treatment/no hit target, and Lua also
-rejects stale/unadvertised activation. Exact5..10 physics/scalars stay unchanged.
+rejects stale/unadvertised activation. The rail spans 5 to 10 slots.
 Pinned generic ext-workspace can only activate advertised handles; it has no
 create-workspace command. Coordinator accepted this native UI behavior instead
 of a Sway IPC/create adapter; no compositor detection/poll or backend fork. Native

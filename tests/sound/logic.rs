@@ -4,10 +4,6 @@ use mlua::Lua;
 #[path = "../osd/logic.rs"]
 mod osd;
 
-
-#[path = "../../runtime/pleamar/bindings/workspace_luau.rs"]
-mod actual_workspace_binding;
-
 fn controller() -> Lua {
     let lua = Lua::new();
     lua.load(r#"
@@ -200,15 +196,11 @@ fn command_error_has_a_visible_panel_boundary() {
 
 #[test]
 fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
-    let _guard = actual_workspace_binding::TEST_LOCK.lock().unwrap();
     let lua = Lua::new();
-    actual_workspace_binding::install(&lua).unwrap();
-    lua.load("tohru_workspace.reset('workspace'); tohru_workspace.reset('calendar')")
-        .exec()
-        .unwrap();
     lua.load(r#"
         fact={['audio.volume']=0.2, ['audio.muted']=false, ['sound_outputs.count']=1,
               sound_open=false, sound_dragging=false, cal_open=false}
+        for r=0,1 do for key,value in pairs({present=false,goal=8,land=0,serial=0}) do fact['rail.'..key..'.'..r]=value end end
         text,model,handlers,timers,calls,modules={},{},{},{},{},{}
         local model_rows={}
         model=setmetatable({}, {__index=function(_,key)return model_rows[key]end,
@@ -226,7 +218,6 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
             for _,callback in ipairs(handlers[name] or {}) do callback(value) end
         end
         function after(ms,callback) timers[1]=callback; return 1 end
-        function every(ms,callback) assert(ms==1000/60); timers[2]=callback; return 2 end
         function cancel(id) timers[id]=nil end
         -- Match native direction: emit and fact writes do NOT call Lua handlers.
         function emit(name) table.insert(calls,{render_only=name}) end
@@ -289,10 +280,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
             "calendar/controller",
             include_str!("../../shell/calendar/controller.luau"),
         ),
-        (
-            "calendar/rail-publisher",
-            include_str!("../../shell/calendar/rail-publisher.luau"),
-        ),
+        ("bar/rail", include_str!("../../shell/bar/rail.luau")),
         (
             "bar/workspace",
             include_str!("../../shell/bar/workspace.luau"),
@@ -315,10 +303,10 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         dispatch('sound_open_request'); assert(not fact.osd_open)
         dispatch('panel_close')
         dispatch('calendar_open'); assert(fact.cal_open and not fact.sound_open)
-        assert(text.cal_rail_error=='' and not fact.cal_rail_moving and fact.cal_rail_present)
-        dispatch('calendar_next'); assert(fact.cal_rail_moving and timers[2])
-        dispatch('calendar_close'); assert(timers[2]==nil)
-        dispatch('calendar_open'); assert(not fact.cal_rail_moving and text.cal_rail_error=='')
+        assert(fact['rail.present.1'] and fact['rail.land.1']==1)
+        dispatch('calendar_next'); assert(fact['rail.serial.1']==1)
+        dispatch('calendar_close'); dispatch('calendar_open')
+        assert(fact['rail.land.1']==2 and fact['rail.serial.1']==1)
         dispatch('sound_open_request'); assert(fact.sound_open and not fact.cal_open)
         fact.sound_dragging=true; dispatch('audio_set',0.8)
         dispatch('calendar_open')

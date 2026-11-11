@@ -378,8 +378,7 @@ def main():
             logic.write_text(logic.read_text() + "\n-- visible calendar native VM reload\n")
             wait_for(lambda: (evidence / "app-first.log").read_text().count("bar.luau running") > loads, "actual visible calendar VM replacement")
             assert native("get cal_open") == "true" and native("get cal_month") == str(retained_month)
-            assert native("get cal_rail_error") == ""
-            wait_for(lambda: native("get cal_rail_moving") == "false", "retained rail settles after VM replacement", timeout=20)
+            assert native("get rail.present.1") == "true", "month rail bead lost in VM replacement"
             cli("panel", "close")
         if args.settings:
             def ui(command):

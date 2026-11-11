@@ -6,11 +6,10 @@ This entry is test-only. Click Calendar; Escape closes it. Its native events are
 
 Production composition (S): include `bar/state.plm`, `calendar/state.plm`,
 `bar/contents.plm` and `calendar/popup.plm` in the SAME root scene; initialize
-`require("bar/controller")()` and `require("calendar/controller")(rail)` once.
-Construct rail with `require("calendar/rail-publisher")(tohru_workspace,"calendar","cal_rail_")`
-from root. Native require is entry-relative, not module-relative; private entry
-uses `require("rail-publisher")` explicitly. A failed reset prevents observations
-until the next open attempt so its error remains visible.
+`require("bar/controller")()` and `require("calendar/controller")(rail)` once,
+with `rail = require("bar/rail")(1)`, and include `bar/rail-state.plm`. Native
+require is entry-relative and cannot climb out of the entry's folder, so the
+private entry runs the controller without a rail: the ribbon shows, the bead does not.
 The calendar initializer returns `{open, close, toggle}` callables: use these
 from root Lua panel coordination, because native Lua `emit` reaches render
 rules and does not redispatch Lua event handlers. Native calendar_* events
@@ -34,19 +33,12 @@ CLI-open after idle may require Escape; native click grab and Escape behavior
 are accepted. Actual same-root input/grab/outside dismissal and stable VM reload
 are recorded in progress/B.md. No cross-process catcher is used.
 
-The exact reviewed twelve-slot240Hz rail is published at native60Hz while moving.
-The controller resets it on open and cancels its timer on close/rest/error.
-State includes rail declarations; the popup includes the shared shader asset.
-S must provide tohru_workspace observe/tick/reset as documented in
-../../runtime/src/workspace/README.md and the authorized16-scalar shader patch.
+The month rail is the workspace rail's twin (rail 1 in `../bar/rail-state.plm`,
+see ../bar/README.md), stretched to twelve slots with the palette spread across
+the year. Each open resets it, so the bead lands on the month without moving.
 Native glass/frost/refraction/ripple provide the accepted visual approximation;
 physical output/visual review remains coordinator scope.
 
-Visible logic reload retains cal_year/month/selected date facts and cal_rail_ready.
-It rearms the process-owned Indicator through observe without resetting date or
-physics; failed reset readiness remains false until explicit open succeeds.
-
-The publisher generation guard ignores a native callback copied before cancel
-if it arrives after stop/reset/rest/error. Cancellation cannot let stale motion
-rearm publication. Its optional active() method reports owned timer-handle state
-for private lifecycle evidence; production does not poll it.
+Visible logic reload retains cal_year/month/selected date facts. The rail's
+springs live in the scene, so they carry on; the new logic reads the slot on
+screen back from the rail's facts instead of landing the bead again.

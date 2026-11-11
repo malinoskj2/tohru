@@ -100,12 +100,12 @@ watches.media({playing = false, players = {}})
 assert(not fact.bar_playing)
 print("Q-B-1/Q-B-2 regression fixtures passed")
 
--- The real calendar controller owns publication only while visible.
+-- The real calendar controller drives the month rail only while visible.
 events, watches = environment()
 local rail_calls = {}
 local rail = {}
-for _, operation in ipairs({"observe", "reset", "stop"}) do
-    rail[operation] = function(...) rail_calls[#rail_calls + 1] = {operation, ...}; return true end
+for _, operation in ipairs({"observe", "reset"}) do
+    rail[operation] = function(...) rail_calls[#rail_calls + 1] = {operation, ...} end
 end
 calendar = assert(loadfile("shell/calendar/controller.luau"))()(rail)
 watches.clock({year = 2026, month = 11, day = 7})
@@ -115,29 +115,17 @@ assert(rail_calls[1][1] == "reset" and rail_calls[2][1] == "observe" and rail_ca
 events.calendar_month(12)
 assert(rail_calls[#rail_calls][3] == 12)
 calendar.close()
-assert(rail_calls[#rail_calls][1] == "stop")
 local count = #rail_calls
 watches.clock({year = 2026, month = 12, day = 8})
 assert(#rail_calls == count)
 calendar.open()
 assert(rail_calls[count + 1][1] == "reset" and rail_calls[count + 2][3] == 12)
-events["fact:cal_open"](false)
-assert(rail_calls[#rail_calls][1] == "stop")
-print("Calendar publication lifecycle passed")
+print("Calendar rail lifecycle passed")
 
--- A failed reset must remain visible; observe must not erase its error.
-local failed_reset, observed = 0, 0
-events, watches = environment()
-calendar = assert(loadfile("shell/calendar/controller.luau"))()({reset = function() failed_reset = failed_reset + 1; return false end, observe = function() observed = observed + 1 end, stop = function() end})
-watches.clock({year = 2026, month = 11, day = 7})
-calendar.open(); events.calendar_next(); watches.clock({year = 2026, month = 11, day = 8})
-assert(failed_reset == 1 and observed == 0)
-print("Failed rail reset is not masked by a following observation")
-
--- Visible VM reload retains date facts and the process-owned Rust Indicator.
+-- Visible VM reload retains the date facts and observes the month again without a reset.
 events,watches=environment()
-local resets,observations,stops=0,{},0
-rail={reset=function()resets=resets+1;return true end,observe=function(_,active)observations[#observations+1]=active;return true end,stop=function()stops=stops+1 end}
+local resets,observations=0,{}
+rail={reset=function()resets=resets+1 end,observe=function(_,active)observations[#observations+1]=active end}
 calendar=assert(loadfile("shell/calendar/controller.luau"))()(rail)
 watches.clock({year=2026,month=11,day=7});calendar.open();events.calendar_month(2)
 local retained_year,retained_month=fact.cal_year,fact.cal_month
@@ -149,6 +137,5 @@ calendar=assert(loadfile("shell/calendar/controller.luau"))()(rail)
 assert(resets==1 and observations[#observations]==2 and fact.cal_open)
 watches.clock({year=2026,month=11,day=8});assert(fact.cal_year==retained_year and fact.cal_month==2)
 events.calendar_next();assert(observations[#observations]==3)
-calendar.close();assert(stops==1 and not fact.cal_rail_ready)
-calendar.open();assert(resets==2 and fact.cal_month==11 and fact.cal_rail_ready)
-print("Visible calendar reload rearms without resetting retained month/physics; close/reopen works")
+calendar.close();calendar.open();assert(resets==2 and fact.cal_month==11)
+print("Visible calendar reload keeps the month and the rail; close/reopen works")
