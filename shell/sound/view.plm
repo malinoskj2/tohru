@@ -1,7 +1,7 @@
 part SoundView {
  let sound_button_x = sound_x + 12
- zone box sound_button { from: sound_x, 4.5; size: 24, 22; corner: 7; cursor: pointer; label: "Sound" }
- box { from: sound_x, 4.5; size: 24, 22; corner: 7; color: #ffffff; opacity: max(sound_open * 16%, max(sound_button.hover * 10%, sound_button.pressed * 16%)) }
+ zone box sound_button { from: sound_x, 4; size: 24, 22; corner: 7; cursor: pointer; label: "Sound" }
+ box { from: sound_x, 4; size: 24, 22; corner: 7; color: #ffffff; opacity: max(sound_open * 16%, max(sound_button.hover * 10%, sound_button.pressed * 16%)) }
  image sound_glyph_x { at: round(sound_x + 5), 8; size: 14, 14; tint: #ffffff; opacity: 92%; show: audio.muted or audio.volume < 0.005 }
  image sound_glyph_1 { at: round(sound_x + 5), 8; size: 14, 14; tint: #ffffff; opacity: 92%; show: not audio.muted and audio.volume >= 0.005 and audio.volume < 0.5 }
  image sound_glyph_2 { at: round(sound_x + 5), 8; size: 14, 14; tint: #ffffff; opacity: 92%; show: not audio.muted and audio.volume >= 0.5 }
