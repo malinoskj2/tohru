@@ -5,7 +5,10 @@ Tohru while keeping the behavior we still want. Scope decisions come from
 [docs/reference/acceptance.md](docs/reference/acceptance.md); later decisions
 recorded here override it.
 
-Status: draft, started 2026-11-10. Nothing below has been done yet.
+Status: cut over on `home` on 2026-11-11. j2bar is stopped and Tohru runs from
+its user units; the `~/nix` commit is local and Home Manager was activated
+directly, so the next `nixos-rebuild switch` brings the system profile (and the
+new packages on `PATH`) up to date. What is still open is unchecked below.
 
 ## 1. Scope changes since the acceptance inventory
 
@@ -63,10 +66,10 @@ Accepted differences from j2bar that stay:
       wrapper in `bin/`, and `programs.tohru.systemd.enable` starts them as user
       services bound to `graphical-session.target`, restarting on failure. The
       units have not run under a real systemd session yet.
-- [ ] Notifications: Tohru must be the only `org.freedesktop.Notifications`
+- [x] Notifications: Tohru must be the only `org.freedesktop.Notifications`
       owner; verify banner text and the placeholder sound.
-- [ ] Polkit: hyprpolkitagent is the only polkit agent (stop j2bar polkit-agent).
-- [ ] Effects plugin: fix the first-pass `hl.animation` ordering (its animation calls run before
+- [x] Polkit: hyprpolkitagent is the only polkit agent (stop j2bar polkit-agent).
+- [x] Effects plugin: fix the first-pass `hl.animation` ordering (its animation calls run before
       `hl.plugin.load` registers them, so they only apply after a reload),
       run its visual/unload/damage checks in a nested Hyprland, then move
       `hyprland/` to its own repository as planned.
@@ -99,62 +102,65 @@ Every role is its own process and can restart on its own. Scenes talk with
 
 Remove j2bar:
 
-- [ ] `flake.nix`: drop the `j2bar` input (`git+file:///home/jesse/projects/j2bar`)
+- [x] `flake.nix`: drop the `j2bar` input (`git+file:///home/jesse/projects/j2bar`)
       and add a `tohru` input.
-- [ ] `hosts/common/optional/j2bar.nix`: replace with a Tohru module
+- [x] `hosts/common/optional/j2bar.nix`: replace with a Tohru module
       (`programs.tohru`, managed settings, units). Keep `programs.hyprlock.enable`;
       hyprlock is the locker. Add a hyprlock config that resembles j2bar's lock
       screen (wallpaper, clock, avatar/name, password field).
-- [ ] `hosts/home/configuration.nix`, `hosts/mac-vm/configuration.nix`: swap the
+- [x] `hosts/home/configuration.nix`, `hosts/mac-vm/configuration.nix`: swap the
       import. Keep NetworkManager enabled; Tohru's network service also uses it.
-- [ ] `users/jesse/hyprland-desktop/j2bar.nix`: drop `J2BAR_BIN` and the plugin
+- [x] `users/jesse/hyprland-desktop/j2bar.nix`: drop `J2BAR_BIN` and the plugin
       package; keep the `.wallpapers/video` link for mpvpaper.
-- [ ] `users/jesse/hyprland-desktop/hyprland/default.nix`: replace `nix.j2bar`
+- [x] `users/jesse/hyprland-desktop/hyprland/default.nix`: replace `nix.j2bar`
       and `nix.j2barPlugin` with the Tohru CLI and
       `${programs.tohru.hyprlandPlugin.package}/lib/libtohru-hyprland.so`.
-- [ ] `users/jesse/hyprland-desktop/hyprland/look.lua`: load `libtohru-hyprland.so`
+- [x] `users/jesse/hyprland-desktop/hyprland/look.lua`: load `libtohru-hyprland.so`
       instead of `libj2bar-hyprland.so`; move `programs.j2bar.settings.effects`
       policy to the new plugin's configuration.
-- [ ] `hosts/home/gaming.nix`: remove `j2bar.gameEngine.enable` and every
+- [x] `hosts/home/gaming.nix`: remove `j2bar.gameEngine.enable` and every
       `j2bar game-run -- %command%` Steam launch option (game behavior is
       dropped).
-- [ ] Docs in `~/nix` that describe j2bar (`CLAUDE.md`, `README.md`,
+- [x] Docs in `~/nix` that describe j2bar (`CLAUDE.md`, `README.md`,
       `docs/updating.md`, `docs/design.md`, `docs/game-latency.md`,
       `docs/mac-vm.md`, `docs/complexity-review.md`).
 
 Wallpaper:
 
-- [ ] Still images: set them in the Hyprland configuration directly. Confirm the
+- [x] Still images: set them in the Hyprland configuration directly. Confirm the
       mechanism (hyprpaper launched from Hyprland config, or whatever the pinned
-      Hyprland offers natively) and per-monitor assignment.
-- [ ] Video: enable `wallpaper.launcher.enable` (`users/jesse/hyprland-desktop/wallpaper.nix`),
+      Hyprland offers natively) and per-monitor assignment. Not needed: both
+      monitors play videos, and Hyprland's own background is black.
+- [x] Video: enable `wallpaper.launcher.enable` (`users/jesse/hyprland-desktop/wallpaper.nix`),
       which runs mpvpaper per output through `wallpaper-outputs` and `wallpaper@`.
-- [ ] `pkgs/wallpaper-autopause`: it reads `j2bar msg status | .locked` to pause
+- [x] `pkgs/wallpaper-autopause`: it reads `j2bar msg status | .locked` to pause
       behind the lock screen. Point it at hyprlock's state (`pidof hyprlock`,
-      or logind's `LockedHint`).
-- [ ] `pkgs/wallpaper-select`: it uses `j2bar dmenu`, which is dropped. Replace
+      or logind's `LockedHint`). It reads `LockedHint`, which `session-lock`
+      (hyprlock's wrapper in `~/nix`) sets and clears.
+- [x] `pkgs/wallpaper-select`: it uses `j2bar dmenu`, which is dropped. Replace
       the picker (e.g. a small Tohru launcher mode, fuzzel/rofi) or drop the script.
-- [ ] `pkgs/wallpaper-randomize`: check for j2bar references.
+      Dropped; nothing bound it.
+- [x] `pkgs/wallpaper-randomize`: check for j2bar references.
 
 Screenshots (grimblast):
 
-- [ ] Add `grimblast` (pulls in grim, slurp, hyprpicker, wl-clipboard,
+- [x] Add `grimblast` (pulls in grim, slurp, hyprpicker, wl-clipboard,
       libnotify) to the Hyprland desktop packages.
-- [ ] Set `XDG_SCREENSHOTS_DIR` in the session environment and create it.
-- [ ] Result notifications come through `notify-send`, so Tohru's notification
+- [x] Set `XDG_SCREENSHOTS_DIR` in the session environment and create it.
+- [x] Result notifications come through `notify-send`, so Tohru's notification
       daemon must be running.
 
 Idle (hypridle):
 
-- [ ] Enable `services.hypridle` in Home Manager.
-- [ ] `general`: `lock_cmd = pidof hyprlock || hyprlock`, `before_sleep_cmd = loginctl lock-session`
+- [x] Enable `services.hypridle` in Home Manager.
+- [x] `general`: `lock_cmd = pidof hyprlock || hyprlock`, `before_sleep_cmd = loginctl lock-session`
       (lock before sleep), `after_sleep_cmd = hyprctl dispatch dpms on`; leave
       `ignore_dbus_inhibit` off so video players and `systemd-inhibit` still block idle.
-- [ ] Listeners matching the old timeouts (Tohru defaults: lock 30 min,
+- [x] Listeners matching the old timeouts (Tohru defaults: lock 30 min,
       suspend 2 h; j2bar's values are in `~/.config/j2bar/config.toml`):
       lock → `loginctl lock-session`; screen off → `hyprctl dispatch dpms off`
       with `on-resume = hyprctl dispatch dpms on`; suspend → `systemctl suspend`.
-- [ ] Gaps to accept or replace: hypridle has no pre-action fade and no
+- [x] Gaps to accept or replace: hypridle has no pre-action fade and no
       caffeine toggle (use `systemd-inhibit --what=idle` from a keybind, or
       drop), and it has one set of timeouts rather than separate locked and
       unlocked ones (approximate by a shorter screen-off listener that checks
@@ -162,7 +168,7 @@ Idle (hypridle):
 
 Polkit (hyprpolkitagent):
 
-- [ ] Enable `services.hyprpolkitagent` in Home Manager (a user service bound to
+- [x] Enable `services.hyprpolkitagent` in Home Manager (a user service bound to
       `graphical-session.target`), and remove `j2bar polkit-agent` so it is the
       only agent.
 
@@ -206,13 +212,13 @@ How Tohru settings work:
   the preferred output, and the workspace rail counts only its workspaces; empty
   means every output with one merged rail. Corners stay on every output.
 
-- [ ] Set `programs.tohru.settings.bar.preferred_output` to the main monitor
+- [x] Set `programs.tohru.settings.bar.preferred_output` to the main monitor
       (`DP-2` on `home`), where j2bar shows today.
 
-- [ ] Translate the values still in use from `~/.config/j2bar/config.toml` into
+- [x] Translate the values still in use from `~/.config/j2bar/config.toml` into
       `programs.tohru.settings` (Nix-managed) or `~/.config/tohru/config.toml`.
       Effects settings go to the effects plugin, not Tohru.
-- [ ] Start fresh for launcher pins/history and other mutable state (row 40).
+- [x] Start fresh for launcher pins/history and other mutable state (row 40).
       Leave `~/.config/j2bar` and j2bar's state in place for rollback.
 
 ## 6. Cutover
@@ -227,6 +233,13 @@ Rollback: revert the `~/nix` commit and switch; j2bar's config and state were
 left untouched.
 
 ## 7. Verification on the real session
+
+Checked on `home` on 2026-11-11: bar on DP-2 only; launcher (with window
+recession) and session menu through the commands their keybinds run; bar popups and the
+session menu open on DP-2 from the CLI; a `notify-send` banner, with Tohru the
+only notification owner; hyprpolkitagent the only polkit agent; volume up/down;
+grimblast saving an output; both video wallpapers; the plugin's effects and its
+animation leaves from a cold Hyprland start (in a nested instance).
 
 Every retained row of [acceptance.md](docs/reference/acceptance.md) still needs
 a live check. Things only the real session can prove:

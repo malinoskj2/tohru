@@ -74,14 +74,13 @@ export TOHRU_RUNTIME="$PWD/.tmp/pleamar-runtime/target/release/pleamar"
 
 **This is experimental. A lot of it is untested, and some of it is known to be broken.** Expect to read the source when something goes wrong.
 
-- It has not been used as a daily driver yet. It has only been exercised on a private, headless test display.
-- The systemd user units and the launch wrappers for the session menu, launcher and notifications are brand new.
-- Running the notification daemon as the sole `org.freedesktop.Notifications` owner has not been verified on a real session.
+- It has only just replaced j2bar on one NixOS desktop (two monitors, NVIDIA). The systemd user units and the notification daemon run there; most panels have only had a short check.
 - The bar's Information and About buttons never show: their switches are not wired up. The popups still open with `tohru panel toggle info|about`.
 - There is no notification bell and no adaptive light/dark glass. Clock and text rendering differ slightly from j2bar, the reference design.
 - Popups opened from the CLI, without a pointer click, may need Escape to close.
 - The workspace switcher can only switch to workspaces the compositor already reports. It cannot create one.
-- The Hyprland plugin's animation settings only apply after a compositor reload. Its visual, unload and damage checks have not been done.
+- The Hyprland plugin registers its animation leaves only once it is loaded, which at startup is after your configuration runs. Set them as shown in `hyprland/examples/effects.lua`. Its unload and damage checks have not been done.
+- The launcher's glass shows grainy, rainbow-tinted distortion on the reference machine.
 - The Settings window's size and placement are unresolved: it renders 800 px wide whatever size it gets.
 - The native test suites have not been re-run since the bar layout changed and the repository was restructured. Several need updating.
 - There is no screen locker, idle handling, polkit agent, wallpaper or screenshot tool. Use hyprlock, hypridle, hyprpolkitagent, and grimblast or similar.

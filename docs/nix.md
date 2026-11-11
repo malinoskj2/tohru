@@ -110,7 +110,7 @@ With Home Manager, the path is `"${config.programs.tohru.hyprlandPlugin.package}
 
 The plugin reads the `plugin:hyprfocus`, `plugin:hyprbars`, `plugin:hyprsheet` and `plugin:hyprrecede` settings. `hyprland/examples/effects.lua` has j2bar's defaults for all four. They are source defaults, not a verified live configuration. Do not load it next to hyprland-plugins' hyprfocus or hyprbars, or j2bar's plugin: they share hooks and config keys.
 
-Known problems: its animation settings only apply after a compositor reload, and its visual, unload and damage checks have not been done. See `hyprland/README.md` and `hyprland/VALIDATION.md`.
+Its animation leaves (`hyprfocusIn`, `hyprsheetIn`, `hyprrecedeTilt` and the rest) exist only once the plugin is loaded. At startup that is after your configuration has run, and `hl.animation` on an unknown leaf raises an error that stops the rest of the file. `hyprland/examples/effects.lua` sets them through `pcall` and again on `hyprland.start`. Its unload and damage checks have not been done. See `hyprland/README.md` and `hyprland/VALIDATION.md`.
 
 `hyprland/` also has its own standalone flake (`nix build path:./hyprland`).
 
