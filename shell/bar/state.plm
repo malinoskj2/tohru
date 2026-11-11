@@ -8,6 +8,8 @@ part BarState {
     fact bar_has_icon = false
     fact bar_playing = false
     fact bar_mooncoil = false
+    fact bar_info_button = false
+    fact bar_about_button = false
     event calendar_toggle ->
     event session_toggle ->
     image bar_app_icon = from bar_icon, 14, 14
