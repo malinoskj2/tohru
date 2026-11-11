@@ -313,6 +313,14 @@ def main():
         def native(command):
             return request("tohru", command)
 
+        def zone_center(name):
+            for surface in json.loads(native("describe json")):
+                for node in surface["nodes"]:
+                    if node.get("name") == name:
+                        x, y, w, h = node["box"]
+                        return x + w // 2, y + h // 2
+            raise AssertionError(f"no zone {name} on the bar")
+
         def settings_alive():
             try:
                 os.kill(int(settings_pid.read_text()), 0)
@@ -329,11 +337,13 @@ def main():
                 return value if abs(value.get("volume", -10) - volume) < 0.015 and value.get("muted") == muted else None
             wait_for(lambda: audio_matches(0.5, False), "private native audio report")
             if pointer:
-                click(956, 16)
+                click(*zone_center("sound_button"))
                 wait_for(lambda: native("get sound_open") == "true", "actual bar sound click")
                 wait_for(lambda: ".grab(" in (evidence / "app-first.log").read_text(), "native sound popup pointer grab")
                 click(400, 300)
                 wait_for(lambda: native("get sound_open") == "false", "native click-open outside dismissal")
+                # Pleamar grabs for any popup opened within 1.5 s of a press, reusing that press's serial.
+                time.sleep(1.6)
             cli("audio", "volume", "up")
             wait_for(lambda: audio_matches(0.55, False), "5 percent native step")
             cli("audio", "mute", "toggle")
