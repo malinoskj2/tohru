@@ -56,7 +56,8 @@ assert builtins.all (name:
   (builtins.attrNames roles);
 assert targets serviced "graphical-session.target";
 assert targets retargeted "hyprland-session.target";
-assert serviced.systemd.user.services.tohru-bar.Service.Environment == [ "TOHRU_MANAGED_CONFIG=${managed}" ];
+assert builtins.all (name: serviced.systemd.user.services.${name}.Service.Environment
+  == [ "TOHRU_MANAGED_CONFIG=${managed}" ]) (builtins.attrNames roles);
 assert serviced.systemd.user.services.tohru-launcher.Service.KillMode == "process";
 assert builtins.all (name: !(serviced.systemd.user.services.${name}.Service ? KillMode))
   [ "tohru-bar" "tohru-session" "tohru-notifications" ];

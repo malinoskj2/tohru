@@ -19,6 +19,7 @@ let
     };
     Service = {
       ExecStart = "${cfg.package}/bin/${program}";
+      Environment = [ "TOHRU_MANAGED_CONFIG=${managed}" ];
       Restart = "on-failure";
       RestartSec = 2;
     };
@@ -69,9 +70,7 @@ in {
     }
     (lib.mkIf cfg.systemd.enable {
       systemd.user.services = {
-        tohru-bar = service "Tohru bar" "tohru-run" {
-          Service.Environment = [ "TOHRU_MANAGED_CONFIG=${managed}" ];
-        };
+        tohru-bar = service "Tohru bar" "tohru-run" { };
         tohru-session = service "Tohru session menu" "tohru-session-run" { };
         # Launched applications stay in this unit's cgroup; restarting the launcher must not kill them.
         tohru-launcher = service "Tohru application launcher" "tohru-launcher-run" {

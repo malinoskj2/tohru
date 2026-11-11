@@ -75,7 +75,7 @@ With `systemd.enable`, the module defines four user services:
 | `tohru-launcher` | `tohru-launcher-run` |
 | `tohru-notifications` | `tohru-notifications-run` |
 
-Each is `WantedBy`, `PartOf` and `After` the configured target, restarts on failure after 2 seconds, and only starts when `WAYLAND_DISPLAY` is in the user manager's environment. `tohru-bar` gets `TOHRU_MANAGED_CONFIG` in its unit environment. `tohru-launcher` uses `KillMode=process`, so restarting it does not kill applications it launched. Settings is not a service; it starts on demand.
+Each is `WantedBy`, `PartOf` and `After` the configured target, restarts on failure after 2 seconds, and only starts when `WAYLAND_DISPLAY` is in the user manager's environment. Each gets `TOHRU_MANAGED_CONFIG` in its unit environment. `tohru-launcher` uses `KillMode=process`, so restarting it does not kill applications it launched. Settings is not a service; it starts on demand.
 
 The services inherit the systemd user manager's environment. Your compositor session must import `WAYLAND_DISPLAY`, plus the `PATH` and `XDG_DATA_DIRS` the launcher uses to find and start applications, before the target starts. UWSM does this, or run this from your compositor's startup:
 
