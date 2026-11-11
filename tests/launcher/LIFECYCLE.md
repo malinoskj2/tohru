@@ -8,8 +8,8 @@ No heavy build needed. The unchanged source-only/CPU checks are not this run.
     # Include installed wayland-scanner, cc/pkg-config and known setsid/sh in PATH.
     TOHRU_SHELL=1 python3 -B tests/bar/native.py --lifecycle-only --runtime ABS_PATCHED_RUNTIME
 
-Uses reviewed runner ownership/private session bootstrap plus ad58142 fixed
-system-bus containment and e4e09ab kill/reap-on-terminate-failure. All runtime/CLI
+Uses reviewed runner ownership/private session bootstrap plus 44fd9a6 fixed
+system-bus containment and 0ecc728 kill/reap-on-terminate-failure. All runtime/CLI
 children use exact private PLEAMAR_SOCKETS and named Wayland; session override
 and outside/symlink system endpoints rejected. No host network/radio/bus/desktop,
 external app launch, portal, role owner, media or audio. Default private system

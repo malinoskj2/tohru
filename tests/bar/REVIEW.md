@@ -3,7 +3,7 @@
 Requires coordinator GPU allocation. This is a targeted check after Q-B1/2/3 and
 same-root composition changes; it does not rerun broad bar/calendar acceptance.
 Private bus/bootstrap/IPC/Wayland selectors use the independently reviewed
-777022a runner helpers. Native payload CPU fixtures separately cover empty
+9f5c3ac runner helpers. Native payload CPU fixtures separately cover empty
 window payload and native Identity/alias boundaries.
 
 The persistent virtual pointer fixture is test-only, using the standard

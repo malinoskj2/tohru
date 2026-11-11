@@ -1,7 +1,7 @@
 # Exact workspace port reference
 
 These nine files are byte-identical excerpts of the deleted prototype at
-`89fee46efc9ade2313e67c8ebb3ff016149e6f51`, not a runtime, supported API or build
+`9119cfc23911e7c29bee66ee0ad459c303bbce5e`, not a runtime, supported API or build
 package. `provenance.json` records original paths, byte lengths and SHA-256;
 `test_tooling.py` verifies the files against both manifest and Git source blobs.
 The complete prototype and dependency locks remain in Git history.
@@ -36,8 +36,8 @@ No Cargo manifest or executable is provided here deliberately. To inspect any
 removed file without restoring a vendor tree:
 
 ```sh
-git show 89fee46efc9ade2313e67c8ebb3ff016149e6f51:prototypes/pleamar/UPSTREAM.md
-git show 89fee46efc9ade2313e67c8ebb3ff016149e6f51:prototypes/pleamar/vendor/pleamar/Cargo.lock
+git show 9119cfc23911e7c29bee66ee0ad459c303bbce5e:prototypes/pleamar/UPSTREAM.md
+git show 9119cfc23911e7c29bee66ee0ad459c303bbce5e:prototypes/pleamar/vendor/pleamar/Cargo.lock
 ```
 
 Preservation checks prove byte identity, not a new Rust build/test or GPU run.

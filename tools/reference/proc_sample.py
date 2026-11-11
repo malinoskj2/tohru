@@ -1,6 +1,6 @@
 """Linux /proc sampler retained from prototype history; CPU/memory only.
 
-Source: 89fee46efc9ade2313e67c8ebb3ff016149e6f51:prototypes/benchmark_gpu.py
+Source: 9119cfc23911e7c29bee66ee0ad459c303bbce5e:prototypes/benchmark_gpu.py
 The sample function is byte-identical to that source, extracted without changes.
 """
 from pathlib import Path

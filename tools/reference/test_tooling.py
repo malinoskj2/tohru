@@ -53,7 +53,7 @@ class ToolingChecks(unittest.TestCase):
     def test_workspace_fixture_matches_original_git_blobs(self):
         fixture = HERE / 'fixtures/workspace'
         manifest = json.loads((fixture / 'provenance.json').read_text())
-        self.assertEqual(manifest['source_commit'], '89fee46efc9ade2313e67c8ebb3ff016149e6f51')
+        self.assertEqual(manifest['source_commit'], '9119cfc23911e7c29bee66ee0ad459c303bbce5e')
         self.assertEqual(len(manifest['files']), 9)
         for entry in manifest['files']:
             with self.subTest(file=entry['file']):
@@ -73,7 +73,7 @@ class ToolingChecks(unittest.TestCase):
 
     def test_standalone_sampler_matches_historical_function(self):
         original = subprocess.check_output(['git', 'show',
-            '89fee46efc9ade2313e67c8ebb3ff016149e6f51:prototypes/benchmark_gpu.py'], cwd=HERE, text=True)
+            '9119cfc23911e7c29bee66ee0ad459c303bbce5e:prototypes/benchmark_gpu.py'], cwd=HERE, text=True)
         current = (HERE / 'proc_sample.py').read_text()
         def function(source):
             node = next(n for n in ast.parse(source).body
