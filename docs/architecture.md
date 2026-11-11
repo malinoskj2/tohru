@@ -15,7 +15,7 @@ Each role is its own `pleamar` process, started by a wrapper in `bin/`. Each can
 | `tohru` | `shell/bar.plm` | `tohru-run` | Bar, all popups, volume OSD and screen corners in one process. Sets `TOHRU_SHELL=1` |
 | `tohru-session` | `shell/session/menu.plm` | `tohru-session-run` | Session menu, on the bar's output. Sets `TOHRU_SHELL=1` to read it |
 | `tohru-launcher` | `shell/launcher/entry.plm` | `tohru-launcher-run` | Launcher, a full-screen layer named `tohru-launcher-backdrop` |
-| `tohru-notifications` | `shell/notifications/notifications.plm` | `tohru-notifications-run` | Owns `org.freedesktop.Notifications`; must be the only notification daemon |
+| `tohru-notifications` | `shell/notifications/notifications.plm` | `tohru-notifications-run` | Owns `org.freedesktop.Notifications`; must be the only notification daemon. Keeps whether something arrived unseen (saved across restarts) and Do Not Disturb (not saved) |
 | `tohru-settings` | `shell/settings/settings.plm` | `tohru-settings-run` | Settings window, started on demand. Sets `TOHRU_SHELL=1` |
 
 The wrappers run `pleamar --scene <scene> --no-hud --stall 0 --answer-as <role>`. The role name is what other processes and the CLI address.
@@ -28,6 +28,7 @@ Processes send each other requests with `pleamar --say <role> "<request>"`, or f
 
 - The `tohru` CLI is a shell script that turns each command into a `--say` request. For example `tohru launcher toggle` sends `emit launcher_toggle` to `tohru-launcher`, and `tohru status --json` sends `get settings_status` to `tohru`.
 - The bar sends `emit menu_toggle` to `tohru-session` when its session button is used, and power warnings to `tohru-notifications`.
+- The bell: the bar sends `emit notices_seen` (left click), `emit notices_dnd 2` (right click, toggle) and, when it starts, `emit notices_report` to `tohru-notifications`, which answers each change with `emit notices_state N` to `tohru` (1 unread, 2 Do Not Disturb, added).
 - Settings sends `emit config_reload` and `setting_*` events to `tohru` after each accepted edit.
 
 Requests report that Pleamar accepted them, not that the action finished. If no Tohru process runs on the caller's display, Pleamar may route the request to one on another display, with a warning.
@@ -46,6 +47,8 @@ Requests report that Pleamar accepted them, not that the action finished. If no 
 | `0010-key-rule-order` | Keys that arrive in the same frame as a key that triggers a rule, such as typing right after Ctrl+F, are handled after the rule has acted |
 | `0011-focus-round` | A keyboard leave and enter in the same frame, such as a popup grab moving focus between Tohru's own surfaces, no longer counts as losing focus |
 | `0012-popup-root-parent` | Until the pointer enters one of its surfaces, a scene's popups hang from its main surface instead of whichever surface mapped first (such as a screen corner on another monitor) |
+| `0020-backdrop-bright-share` | Adds an optional `bright: fact` popup property. After each capture its lens takes in, the card counts the cells of a 16 × 16 grid over the popup's glass whose Rec. 709 luma is over 55 %, and only that count is read back into the fact (0 to 1). It returns to 0 when the popup opens. The panels and the session menu use it for j2bar's light and dark glass |
+| `0021-card-capture-without-shm` | When the compositor offers its captures in a shared-memory format Pleamar cannot read (a headless Sway offers 24-bit BGR888) but also offers a dmabuf, the next capture goes onto the card instead of none ever arriving. Without it no lens glass works on such a Sway |
 
 Numbers 0003 and 0007 to 0009 belonged to features that were removed.
 

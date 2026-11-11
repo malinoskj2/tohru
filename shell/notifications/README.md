@@ -8,7 +8,14 @@ Native name replacement/queue policy is retained, so development must use privat
 buses/endpoints. No old notification daemon/policy implementation is ported.
 
 Accepts native internal expiration history (50 entries), without any
-history/unread/DND UI or history subscription. Presentation is transient title/body
+history UI or history subscription. For the bar's bell it keeps two facts:
+`unread`, set by a new ID that is not low urgency (a replacement keeps whether
+it was seen) and cleared only by `notices_seen`, saved to `notices.json` in
+its Pleamar files folder; and `dnd`, from `notices_dnd 0|1|2` (off, on,
+toggle), not saved. Each change, and `notices_report`, says
+`emit notices_state N` to `tohru` (1 unread, 2 Do Not Disturb). Under Do Not
+Disturb notices get no banner and no tone and still count as unread; turning
+it on removes the banners showing; power warnings bypass it. Presentation is transient title/body
 text in four plain banners, six seconds maximum, removed earlier on native close.
 No app/content filters, buttons, inline reply, hover pause or countdown. Exactly
 one fixed native sine tone (880Hz/80ms) is requested for each observed new/changed

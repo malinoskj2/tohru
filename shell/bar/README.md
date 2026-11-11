@@ -65,3 +65,14 @@ create-workspace command. Coordinator accepted this native UI behavior instead
 of a Sway IPC/create adapter; no compositor detection/poll or backend fork. Native
 Hyprland focus semantics remain unchanged when native actions are invoked; the
 bar does not infer extra capabilities from environment variables or row counts.
+
+Bell (`bell.plm`, `bell.luau`): j2bar's tray button left of the volume, Lucide
+bell-filled/bell-off-filled at 14px. The unread mark is j2bar's 4px pink square
+3px in from the button's top right with its two glows; Do Not Disturb shows
+bell-off at 38% and hides the mark. Left click marks seen, right click toggles
+Do Not Disturb; `tohru-notifications` owns both states (see
+../notifications/README.md). Panel ink (`../panel-ink.plm`): every popup says
+`bright: panel_bright` (patch 0020) and draws with the `ink_*` colours, which
+mix Mocha to j2bar's light ink and Latte as `panel_light` turns, with j2bar's
+55%/45% hysteresis and a 35–65% smoothstep. Checks: `lua tests/bar/controllers.lua`,
+`python3 tests/bar/panel-ink.py --runtime PATH` (hysteresis needs a compositor).

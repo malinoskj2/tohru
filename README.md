@@ -76,7 +76,7 @@ export TOHRU_RUNTIME="$PWD/.tmp/pleamar-runtime/target/release/pleamar"
 
 - It has only just replaced j2bar on one NixOS desktop (two monitors, NVIDIA). The systemd user units and the notification daemon run there; most panels have only had a short check.
 - The bar's Information and About buttons never show: their switches are not wired up. The popups still open with `tohru panel toggle info|about`.
-- There is no notification bell and no adaptive light/dark glass. Clock and text rendering differ slightly from j2bar, the reference design.
+- Clock and text rendering differ slightly from j2bar, the reference design. On light panels the calendar's month rail still draws its dark-glass track, which barely shows.
 - Popups opened from the CLI, without a pointer click, may need Escape to close.
 - The workspace switcher can only switch to workspaces the compositor already reports. It cannot create one.
 - The Hyprland plugin registers its animation leaves only once it is loaded, which at startup is after your configuration runs. Set them as shown in `hyprland/examples/effects.lua`. Its unload and damage checks have not been done.
@@ -99,6 +99,7 @@ The `tohru` command sends requests to the running processes. It reports that a r
 | `tohru launcher toggle` | Open or close the launcher |
 | `tohru panel toggle sound` | Toggle a popup: `sound`, `calendar`, `network`, `bluetooth`, `info`, `about` |
 | `tohru panel close` | Close the open popup |
+| `tohru notifications dnd toggle` | Turn Do Not Disturb on or off (also `on`, `off`; right-click the bell) |
 | `tohru settings open` | Open Settings, starting it if needed |
 
 For example, in a Hyprland 0.56 Lua configuration:
@@ -110,6 +111,8 @@ hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("tohru audio volume up"), { lock
 hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("tohru audio volume down"), { locked = true, repeating = true })
 hl.bind("XF86AudioMute", hl.dsp.exec_cmd("tohru audio mute toggle"), { locked = true })
 ```
+
+The bell in the bar shows a dot while a notification has arrived unseen; clicking it marks them seen (`tohru notifications seen`). Panels switch to light glass over bright windows and back, as j2bar's do.
 
 Run `tohru help` for the full list, including per-app volume, output selection and `tohru config set`.
 

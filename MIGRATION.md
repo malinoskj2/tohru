@@ -23,7 +23,8 @@ new packages on `PATH`) up to date. What is still open is unchecked below.
 | Region screenshot (row 28) | Remove from Tohru | grimblast (hyprwm/contrib): `grimblast --notify --freeze copysave area` |
 
 Already dropped by the acceptance inventory and still dropped: dmenu picker
-(06), notification history/DND/styling (07, 08), balance/peak meter/overdrive
+(06), notification history and styling (07, 08; Do Not Disturb came back with
+the bell), balance/peak meter/overdrive
 (10), network rates and VPN/Ethernet administration (12, 13), timezone editing
 (19), user/storage/generation administration (21), Assistant (22), power
 profiles and brightness (29), all game behavior (30, 31), Lua plugin API (37),
@@ -37,8 +38,11 @@ Accepted differences from j2bar that stay:
 - Popups opened from the CLI (no pointer click) may need Escape to close;
   outside-click dismissal relies on the click's popup grab.
 - Launcher search uses a simple fuzzy matcher and Pleamar's app catalog.
-- Notifications are transient text plus one placeholder sound; Pleamar keeps
-  its own internal expiry bookkeeping but no history, unread or DND UI.
+- Notifications are transient text plus one placeholder sound, with no
+  history UI. The bar's bell shows whether a notification arrived unseen
+  (saved across restarts) and Do Not Disturb, as j2bar's does; Do Not Disturb
+  shows no OSD when toggled, and power warnings are the only notices that
+  bypass it (there are no per-app filters).
 - Network errors are as detailed as NetworkManager reports through Pleamar;
   requests report acceptance, not completion.
 - `tohru` CLI commands report that Pleamar accepted the request, not that the
@@ -55,9 +59,15 @@ Accepted differences from j2bar that stay:
       31px height, outline (flares, bottom corners, hairline weight at scale 1),
       icons and text on j2bar's pixel rows, rail width, clock padding, the body
       tint, and the switcher (rail, lit segment with its rounded ends, glow).
-      Still missing: notification bell, adaptive light/dark glass, tabular
-      numerals in the clock (the date is about 4px narrower, which shifts the
-      tray), and Pleamar's text rasteriser against Pango's.
+      Notification bell (left click marks seen, right click toggles Do Not
+      Disturb, j2bar's 4px unread mark and glow) and adaptive light/dark glass
+      are done. j2bar's adaptive ink is on its panels, not the bar, which stays
+      dark there too: the panels and the session menu turn light above 55%
+      bright and dark below 45% (patch 0020), and the calendar's month rail
+      keeps its dark-glass track until the rail shader takes an ink.
+      Still missing: tabular numerals in the clock (the date is about 4px
+      narrower, which shifts the tray), and Pleamar's text rasteriser against
+      Pango's.
 - [x] Bar output policy: one bar on `bar.preferred_output`, every output while it
       is empty, no focused/first fallback.
 - [x] CLI gap against current keybinds (section 4): `tohru launcher toggle|open|close`.
