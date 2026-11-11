@@ -98,14 +98,19 @@ Accepted differences from j2bar that stay:
 - [x] Settings window: it lays out at whatever size the compositor gives it
       (tiled or floating). It asks for 760×640, which Pleamar also makes its
       minimum size; no window rule is needed.
-- [ ] Re-run the private native checks that survive the removals against
-      `nix build --print-out-paths .#pleamar-runtime` (they own a private Sway,
-      bus and Pulse; see `tests/WINDOW-RUNNER.md`):
-      `tests/native-settings.sh --settings --sound --pointer --keyboard --wtype`
-      (`--pointer` coordinates need the new bar layout), `tests/bar/native.py` in every mode
-      (needs `setsid`, `wayland-scanner`, xkbcommon pkg-config; update for the
-      new bar layout), and `tests/session/native.sh` with `--notifications`
-      (its fake `systemctl`/`loginctl` log must show Lock and Sleep commands).
+- [x] Re-run the private native checks (they own a private Sway, bus and
+      Pulse; see `tests/WINDOW-RUNNER.md`). All passed on 2026-11-11 against
+      the runtime with patches up to 0014:
+      `tests/native-settings.sh --settings --sound --pointer --keyboard --wtype`,
+      `tests/bar/native.py` in every mode, and `tests/session/native.sh
+      --notifications` (Lock logs `loginctl lock-session`; Sleep logs it, then
+      `systemctl suspend`). Clicks now find zones by name through
+      `describe json` instead of fixed coordinates. Intermittent: in one of
+      two runs, `--services-only` passed every check but its closing `quit`
+      took longer than 10 s, and `--rails-only` timed out waiting for
+      `ws_available` once. The CPU-only suites (`tests/*.lua` with Lua 5.4,
+      `tests/cli.py`, `cargo test --manifest-path tests/rust/Cargo.toml`)
+      pass too.
 
 ### Roles and processes
 
