@@ -54,7 +54,7 @@ Then, in your Home Manager configuration:
 
 ### Without Nix
 
-You need a recent stable Rust (1.85 at minimum), a C and C++ compiler, `pkg-config`, the development files for fontconfig, wayland, libxkbcommon, linux-pam and libffi, plus `curl`, `git`, `tar` and `sha256sum`. At run time you need a Vulkan loader, libglvnd, and `setsid` and `sh` on `PATH`.
+You need Rust 1.90 or newer, a C and C++ compiler, `pkg-config`, the development files for fontconfig, wayland, libxkbcommon, linux-pam and libffi, plus `curl`, `git`, `tar`, `base64` and `sha256sum`. At run time you need a Vulkan loader, libglvnd, and `setsid` and `sh` on `PATH`.
 
 ```sh
 git clone https://github.com/malinoskj2/tohru && cd tohru

@@ -6,7 +6,7 @@ Tohru runs on a patched Pleamar 0.7.27. Stock Pleamar will not run the bar, so y
 
 Build:
 
-- A recent stable Rust toolchain. Both crates use edition 2024, so 1.85 is the minimum; Pleamar's dependencies may need a newer one.
+- Rust 1.90 or newer. Pleamar's locked dependencies need it (cosmic-text needs 1.89, ordered-float 1.90); the `tohru-shell` library on its own builds and passes its tests with 1.85, its declared `rust-version`.
 - A C and C++ compiler: Pleamar builds Luau from source.
 - `pkg-config` and the development files for fontconfig, wayland, libxkbcommon, linux-pam and libffi.
 - `curl`, `git`, `tar`, `base64` and `sha256sum` for `prepare.sh`.
