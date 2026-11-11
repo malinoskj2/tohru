@@ -55,6 +55,10 @@ Accepted differences from j2bar that stay:
       31px height, outline (flares, bottom corners, hairline weight at scale 1),
       icons and text on j2bar's pixel rows, rail width, clock padding, the body
       tint, and the switcher (rail, lit segment with its rounded ends, glow).
+      The switcher's motion now runs on Pleamar springs, with no Rust physics or
+      shader-input patch; side-by-side recordings against j2bar on 2026-11-11
+      match apart from a start 50 to 100 ms later (Pleamar's Hyprland event
+      coalescing).
       Still missing: notification bell, adaptive light/dark glass, tabular
       numerals in the clock (the date is about 4px narrower, which shifts the
       tray), and Pleamar's text rasteriser against Pango's.

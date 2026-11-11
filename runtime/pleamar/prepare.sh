@@ -18,7 +18,7 @@ done
 mkdir "$destination/foundation"
 cp "$package/Cargo.toml" "$package/Cargo.lock" "$destination/foundation/"
 cp -r "$package/src" "$package/tests" "$destination/foundation/"
-for binding in settings workspace info; do
+for binding in settings info; do
     cp "$here/bindings/${binding}_luau.rs" "$destination/src/tohru_$binding.rs"
 done
 mkdir -p "$destination/tests/runtime"

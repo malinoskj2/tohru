@@ -79,6 +79,7 @@ export TOHRU_RUNTIME="$PWD/.tmp/pleamar-runtime/target/release/pleamar"
 - There is no notification bell and no adaptive light/dark glass. Clock and text rendering differ slightly from j2bar, the reference design.
 - Popups opened from the CLI, without a pointer click, may need Escape to close.
 - The workspace switcher can only switch to workspaces the compositor already reports. It cannot create one.
+- The workspace switcher's motion is j2bar's rebuilt from Pleamar springs, not a replay of its equations. It starts 50 to 100 ms after the switch, because Pleamar gathers Hyprland's workspace events for 50 ms before reporting them.
 - The Hyprland plugin registers its animation leaves only once it is loaded, which at startup is after your configuration runs. Set them as shown in `hyprland/examples/effects.lua`. Its unload and damage checks have not been done.
 - The launcher's glass shows grainy, rainbow-tinted distortion on the reference machine.
 - The Settings window's size and placement are unresolved: it renders 800 px wide whatever size it gets.
@@ -126,7 +127,7 @@ Run `tohru help` for the full list, including per-app volume, output selection a
 |---|---|
 | `shell/` | The Pleamar scenes: `bar.plm` (root) and one folder per feature |
 | `bin/` | The `tohru` CLI and the launch wrappers |
-| `runtime/` | The `tohru-shell` Rust library (settings, system info, workspace rail physics) |
+| `runtime/` | The `tohru-shell` Rust library (settings, system info) |
 | `runtime/pleamar/` | The Pleamar pin, patches, Luau bindings and `prepare.sh` |
 | `hyprland/` | The optional `tohru-hyprland` compositor plugin (C++) |
 | `nix/`, `flake.nix`, `default.nix` | Nix packaging and the Home Manager module |
@@ -136,7 +137,7 @@ Run `tohru help` for the full list, including per-app volume, output selection a
 
 Tohru is MIT licensed ([LICENSE](LICENSE)).
 
-- [Pleamar](https://github.com/k4ditano/pleamar) is BSD-3-Clause. Its source is fetched at build time and its license and third-party notices are installed with the runtime. `runtime/src/workspace/PLEAMAR-LICENSE` and `tools/reference/fixtures/workspace/PLEAMAR-LICENSE` carry its notice for the workspace rail code, which was first written inside a vendored Pleamar tree.
-- The `J2BAR-LICENSE` files (`shell/bar/`, `shell/corners/`, `shell/sound/`, `runtime/src/workspace/`, `tools/reference/fixtures/workspace/`) are j2bar's MIT notice for layouts, assets, shaders and motion code ported from j2bar.
+- [Pleamar](https://github.com/k4ditano/pleamar) is BSD-3-Clause. Its source is fetched at build time and its license and third-party notices are installed with the runtime. `tools/reference/fixtures/workspace/PLEAMAR-LICENSE` carries its notice for the reference workspace rail code, which was first written inside a vendored Pleamar tree.
+- The `J2BAR-LICENSE` files (`shell/bar/`, `shell/corners/`, `shell/sound/`, `tools/reference/fixtures/workspace/`) are j2bar's MIT notice for layouts, assets, shaders and motion code ported from j2bar.
 - `shell/sound/LICENSE.LUCIDE` and `shell/service-assets/LICENSE` are the ISC license for icons from, or based on, [Lucide](https://lucide.dev).
 - The Hyprland plugin is MIT (`hyprland/LICENSE`). Its `focus/` and `bars/` components derive from [hyprwm/hyprland-plugins](https://github.com/hyprwm/hyprland-plugins) v0.56.0, under BSD-3-Clause (`hyprland/UPSTREAM-LICENSE`). See `hyprland/UPSTREAM.md` for provenance.

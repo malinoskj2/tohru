@@ -1,15 +1,21 @@
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -10,3 +10,5 @@
-
+@@ -8,6 +8,8 @@
+ //! monitor, their scale and the mouse); the logic one, which decides; and the render one, which is the
+ //! only one that animates.
+ 
 +#[cfg(feature = "luau")]
 +mod tohru_info;
  #[cfg(feature = "luau")]
- mod tohru_workspace;
+ mod tohru_settings;
+ pub mod scene;
 --- a/src/logic_luau.rs
 +++ b/src/logic_luau.rs
-@@ -1394,3 +1394,4 @@
+@@ -1392,6 +1392,7 @@ impl LuauScript {
+ 
+         if self.prefix.is_none() && std::env::var("TOHRU_SHELL").as_deref() == Ok("1") {
              crate::tohru_settings::install(&lua)?;
-             crate::tohru_workspace::install(&lua)?;
 +            crate::tohru_info::install(&lua)?;
          }
+ 
+         // The sandbox, last of all: from here on the globals are not touched.

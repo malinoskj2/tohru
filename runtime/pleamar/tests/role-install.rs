@@ -109,7 +109,7 @@ fn tohru_role_child(case: &str) {
             .lua
             .as_ref()
             .expect("disabled/plugin loads without shell TOML");
-        for name in ["tohru_settings", "tohru_workspace", "tohru_info"] {
+        for name in ["tohru_settings", "tohru_info"] {
             assert!(
                 matches!(
                     lua.globals().get::<mlua::Value>(name).unwrap(),

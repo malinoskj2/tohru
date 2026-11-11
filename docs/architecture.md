@@ -39,24 +39,21 @@ Requests report that Pleamar accepted them, not that the action finished. If no 
 | Patch | Change |
 |---|---|
 | `0001-shell-settings` | Adds the `tohru-shell` library as a dependency and installs the `tohru_settings` Luau global, only when `TOHRU_SHELL=1` |
-| `0002-shader-inputs` | Raises the number of values a scene can pass to a shader from 8 to 16, for the workspace switcher's ribbon shader |
-| `0004-workspace-binding` | Installs the `tohru_workspace` Luau global |
 | `0005-launcher-namespace` | Adds an optional static `layer_namespace` surface property. The launcher uses it so the Hyprland plugin can match its layer. Without it, layers are named `pleamar` |
 | `0006-info-binding` | Installs the `tohru_info` Luau global |
 | `0010-key-rule-order` | Keys that arrive in the same frame as a key that triggers a rule, such as typing right after Ctrl+F, are handled after the rule has acted |
 | `0011-focus-round` | A keyboard leave and enter in the same frame, such as a popup grab moving focus between Tohru's own surfaces, no longer counts as losing focus |
 | `0012-popup-root-parent` | Until the pointer enters one of its surfaces, a scene's popups hang from its main surface instead of whichever surface mapped first (such as a screen corner on another monitor) |
 
-Numbers 0003 and 0007 to 0009 belonged to features that were removed.
+Numbers 0002 to 0004 and 0007 to 0009 belonged to features that were removed or moved into the scenes.
 
 ## Luau bindings and the Rust library
 
-The bindings in `runtime/pleamar/bindings/` are copied into the Pleamar source as `src/tohru_settings.rs`, `src/tohru_workspace.rs` and `src/tohru_info.rs`. They wrap the `tohru-shell` crate in `runtime/`:
+The bindings in `runtime/pleamar/bindings/` are copied into the Pleamar source as `src/tohru_settings.rs` and `src/tohru_info.rs`. They wrap the `tohru-shell` crate in `runtime/`:
 
 | Global | Module | Purpose |
 |---|---|---|
 | `tohru_settings` | `runtime/src/settings.rs` | Layered TOML settings: defaults, writable file, managed file, runtime overrides. Writes keep comments and unknown keys. Lives outside the Luau state, so it survives logic reloads |
-| `tohru_workspace` | `runtime/src/workspace/` | Spring physics for the workspace switcher, stepped at a fixed 1/240 s and stopped at rest |
 | `tohru_info` | `runtime/src/info/` | Read-only snapshot for the information popup: OS, kernel, CPU, GPUs, memory, uptime, accounts, disks and system generation |
 
 ## Hyprland plugin

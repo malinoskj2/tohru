@@ -13,7 +13,7 @@ The shell's own initial settings implementation is MIT.
 `pleamar/patches/0001-shell-settings.patch` adds the focused `tohru-shell` path
 dependency and one binding installation hook, gated by TOHRU_SHELL=1 and excluding
 plugins. `pleamar/bindings/settings_luau.rs` owns the process singleton and Luau
-boundary. Additional narrow patches cover workspace shader scalars/API;
+boundary. Further narrow patches add the info binding and input/popup fixes;
 `pleamar/prepare.sh` applies every patch in `pleamar/patches/` in name order and
 nix/default.nix lists the same files.
 `pleamar/Cargo.lock` starts from the pinned upstream lock and adds only anyhow, the
@@ -76,8 +76,7 @@ CPU-only CLI checks: `python3 tests/cli.py`.
 
 Remaining gates: Nix package build, Home Manager evaluation with a real consumer,
 Hyprland runtime validation, preferred/focused/first-output fallback and reconnect,
-hotplug/scaling/rotation, exact 240Hz workspace motion and stop-at-rest frame
-integration (native API decision pending), full retained bar contents and 1:1
+hotplug/scaling/rotation, full retained bar contents and 1:1
 visuals, native glass review, and all performance/presentation/soak gates.
 No notifications, authentication or other singleton services
 are activated by this foundation. Native frame/namespace/notification gaps stay
