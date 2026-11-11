@@ -56,7 +56,27 @@ local function choose(index)
 end
 -- Reload cancels an unfinished confirmation; never resumes destructive intent.
 clear()
-local function open() clear(); text.error = ""; fact.selected = 1; fact.open = true end
+-- Opens under the bar: on its preferred output, or else the focused one. The surface moves only
+-- while the menu is closed, and is placed at start so the first open has one to draw on.
+local focused, preferred = "", ""
+local function refresh()
+    if not tohru_settings then return end
+    local ok, settings = pcall(tohru_settings.reload)
+    if not ok then return end
+    local value = settings["bar.preferred_output"].value or ""
+    preferred = value:find(",", 1, true) and "" or value
+end
+local function settle()
+    local output = preferred ~= "" and preferred or focused
+    if output ~= "" and output ~= text.session_output then text.session_output = output end
+end
+sys.watch("window", function(value)
+    focused = value.monitor or ""
+    if not fact.open then settle() end
+end)
+refresh()
+settle()
+local function open() clear(); refresh(); settle(); text.error = ""; fact.selected = 1; fact.open = true end
 on("menu_open", open)
 on("menu_toggle", function() if fact.open then close() else open() end end)
 on("menu_close", close)

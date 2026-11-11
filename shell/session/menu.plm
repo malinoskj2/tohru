@@ -1,7 +1,7 @@
 language 0.4
 scene TohruSession {
-    surface { size: 1, 1; anchor: top_left; keyboard: exclusive while open }
-    permissions { run: "loginctl lock-session", "systemctl suspend"; services: "session.reboot", "session.poweroff", "session.logout" }
+    surface { size: 1, 1; anchor: top_left; screens: session_output; keyboard: exclusive while open }
+    permissions { run: "loginctl lock-session", "systemctl suspend"; services: "window", "session.reboot", "session.poweroff", "session.logout" }
     fact open = false
     fact selected = 1
     fact confirming = 0
@@ -10,6 +10,7 @@ scene TohruSession {
     text accept = ""
     text error = ""
     text status = ""
+    text session_output = ""
     event menu_open ->
     event menu_toggle ->
     event menu_close ->
