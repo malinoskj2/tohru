@@ -1,30 +1,9 @@
---- a/src/scene.rs
-+++ b/src/scene.rs
-@@ -148,6 +148,8 @@
-     /// `.desktop` file is called, so the dock gives it its icon and groups its
-     /// windows. Without it, "pleamar", like every other.
-     pub app_id: Option<String>,
-+    /// Static layer-shell namespace. None preserves the native "pleamar" default.
-+    pub layer_namespace: Option<String>,
-     /// If it is the lock screen: a surface that does NOT exist until its
-     /// `open:` becomes true, and that, once it exists, has the session really
-     /// locked —the compositor guarantees it, not the drawing—, on all
-@@ -207,7 +209,7 @@
- impl Default for Surface {
-     fn default() -> Self {
-         // Neutral: full width, at the top, on all monitors. Whatever the scene asks for wins.
--        Surface { name: String::new(), instance: 0, origin: (0.0, 0.0), open: None, window: None, app_id: None, lock_screen: false, width: 0, size_props: None, cursor_props: None, height: 40, anchor: SurfaceAnchor::Top, anchor_from: None, level_while: None, margin: [0; 4], level: Level::Above, exclusive_zone: 0, reserve_while: None, max_fps: 0, rate_said: false, rate_while: Vec::new(), screens: Screens::All, screens_from: None, keyboard: Keyboard::Never, keyboard_while: false, keyboard_said: false, keyboard_when: None, right_click_quits: true, hidden_from_captures: false, agent_hidden: false }
-+        Surface { name: String::new(), instance: 0, origin: (0.0, 0.0), open: None, window: None, app_id: None, layer_namespace: None, lock_screen: false, width: 0, size_props: None, cursor_props: None, height: 40, anchor: SurfaceAnchor::Top, anchor_from: None, level_while: None, margin: [0; 4], level: Level::Above, exclusive_zone: 0, reserve_while: None, max_fps: 0, rate_said: false, rate_while: Vec::new(), screens: Screens::All, screens_from: None, keyboard: Keyboard::Never, keyboard_while: false, keyboard_said: false, keyboard_when: None, right_click_quits: true, hidden_from_captures: false, agent_hidden: false }
-     }
- }
- 
 --- a/src/language/compiler.rs
 +++ b/src/language/compiler.rs
-@@ -4868,6 +4868,17 @@
-                 return Err(CompileError::at(n.line, n.col, "an app_id is letters, digits, `.`, `_` and `-`, as a `.desktop` file is named: `app_id: \"org.me.notes\"`"));
+@@ -4869,6 +4869,17 @@ impl<'a> Compiler<'a> {
              }
              s.app_id = Some(id);
-+        }
+         }
 +        if let Some(c) = p.get_mut("layer_namespace") {
 +            let namespace = c.string()?;
 +            c.expect_end()?;
@@ -35,12 +14,13 @@
 +                return Err(CompileError::at(n.line, n.col, "layer_namespace is 1 to 128 ASCII letters, digits, `.`, `_` or `-`"));
 +            }
 +            s.layer_namespace = Some(namespace);
-         }
++        }
          if s.window.is_some() && s.width == 0 {
              return Err(CompileError::at(n.line, n.col, "a window says how wide it is: `full` is for a panel, which is as wide as its monitor"));
+         }
 --- a/src/language/vocabulary.rs
 +++ b/src/language/vocabulary.rs
-@@ -18,7 +18,7 @@
+@@ -18,7 +18,7 @@ pub const LIBRARY_STATEMENTS: &[&str] = &["let", "spring", "component", "permiss
  
  /// Which properties each element accepts. `shape` are the ones common to all shapes.
  pub const PROPERTIES: &[(&str, &[&str])] = &[
@@ -49,9 +29,55 @@
      ("permissions", &["run", "services", "env"]),
      ("blur", &["passes", "values", "reach"]),
      ("shape", &["rotate", "stroke", "color", "opacity", "blend", "glass", "lens", "shine", "refraction", "dispersion", "dome", "ripple", "frost", "smoke", "milk", "tint", "vivid", "mirror", "highlight", "active", "show", "cursor", "carries", "carry_icon", "grow", "label", "agent", "role", "value", "checked", "selected", "handle", "yields", "place"]),
+--- a/src/platform/hyprland.rs
++++ b/src/platform/hyprland.rs
+@@ -40,15 +40,15 @@ fn monitors() -> Vec<(String, i64, i64, i64)> {
+ }
+ 
+ /// Where a layer of this process really is on its monitor, in logical
+-/// pixels: it looks it up by monitor, name (`pleamar`) and size. It's what
++/// pixels: it looks it up by monitor, namespace and size. It's what
+ /// the layer protocol doesn't know when another bar pushes the others aside.
+-pub fn layer_position(monitor: &str, size: (u32, u32)) -> Option<(i32, i32)> {
++pub fn layer_position(monitor: &str, namespace: &str, size: (u32, u32)) -> Option<(i32, i32)> {
+     let me = std::process::id() as i64;
+     let (_, mx, my, _) = monitors().into_iter().find(|m| m.0 == monitor)?;
+     let layers = json("j/layers")?;
+     let levels = layers.get(monitor)?.get("levels")?.as_object()?.clone();
+     levels.values().filter_map(|n| n.as_array()).flatten().find_map(|c| {
+-        let is_it = c["pid"].as_i64() == Some(me) && c["namespace"].as_str() == Some("pleamar") && c["w"].as_i64() == Some(size.0 as i64) && c["h"].as_i64() == Some(size.1 as i64);
++        let is_it = c["pid"].as_i64() == Some(me) && c["namespace"].as_str() == Some(namespace) && c["w"].as_i64() == Some(size.0 as i64) && c["h"].as_i64() == Some(size.1 as i64);
+         is_it.then(|| Some(((c["x"].as_i64()? - mx) as i32, (c["y"].as_i64()? - my) as i32)))?
+     })
+ }
 --- a/src/platform/wayland.rs
 +++ b/src/platform/wayland.rs
-@@ -1292,7 +1292,7 @@
+@@ -399,8 +399,8 @@ struct BackdropTarget {
+ 
+ /// How to know where a surface is on its monitor.
+ enum BackdropKind {
+-    /// A layer: by the layer-shell rules, and if it's Hyprland, by asking it.
+-    Layer,
++    /// A layer: by the layer-shell rules, and if it's Hyprland, by asking it under its namespace.
++    Layer(String),
+     /// A normal window: only by asking, since anyone can move it.
+     Window,
+     /// A popup: wherever its parent is, plus where the compositor put it.
+@@ -443,10 +443,10 @@ impl BackdropTarget {
+         if due && super::hyprland::is_present() {
+             *self.last_asked.lock().unwrap() = Some(std::time::Instant::now());
+             let size = *self.size.lock().unwrap();
+-            match self.kind {
+-                BackdropKind::Layer => {
++            match &self.kind {
++                BackdropKind::Layer(namespace) => {
+                     let name = self.output.lock().unwrap().as_ref().map(|s| s.1.clone());
+-                    if let Some(position) = name.and_then(|n| super::hyprland::layer_position(&n, size)) {
++                    if let Some(position) = name.and_then(|n| super::hyprland::layer_position(&n, namespace, size)) {
+                         *self.position.lock().unwrap() = Some(position);
+                     }
+                 }
+@@ -1292,7 +1292,7 @@ impl State {
                  self.placed.push(Placed { id, which, role, output: output.clone(), viewport, _fractional_scale: fractional_scale, scale: 1.0, size: (0, 0), pending: Some((surface, name.clone(), mhz)), backdrop });
                  continue;
              }
@@ -60,3 +86,32 @@
              let reserves = p.exclusive_zone > 0 || p.reserve_while.is_some();
              let mut stretch = Stretch { width: p.width == 0, height: p.height == 0, monitor: if reserves { info.logical_size } else { None }, edges: Anchor::empty(), screen: info.logical_size, extra_height: height - p.height };
              let (edges, size) = placement(said.anchor.unwrap_or(p.anchor), stretch, (p.width, height));
+@@ -1304,7 +1304,7 @@ impl State {
+             layer.set_margin(margin[0], margin[1], margin[2], margin[3]);
+             let id = next_surface_id();
+             let output_name = self.outputs.info(output).and_then(|i| i.name).unwrap_or_default();
+-            let backdrop = BackdropTarget::new(id, Some((output.clone(), output_name)), BackdropKind::Layer);
++            let backdrop = BackdropTarget::new(id, Some((output.clone(), output_name)), BackdropKind::Layer(p.layer_namespace.clone().unwrap_or_else(|| "pleamar".into())));
+             backdrop.place(edges, margin);
+             // Noted down, in case the scene moves it to another edge while running,
+             // or a reload gives it another size, edge, margin, room or level.
+--- a/src/scene.rs
++++ b/src/scene.rs
+@@ -148,6 +148,8 @@ pub struct Surface {
+     /// `.desktop` file is called, so the dock gives it its icon and groups its
+     /// windows. Without it, "pleamar", like every other.
+     pub app_id: Option<String>,
++    /// Static layer-shell namespace. None preserves the native "pleamar" default.
++    pub layer_namespace: Option<String>,
+     /// If it is the lock screen: a surface that does NOT exist until its
+     /// `open:` becomes true, and that, once it exists, has the session really
+     /// locked —the compositor guarantees it, not the drawing—, on all
+@@ -207,7 +209,7 @@ pub enum Keyboard {
+ impl Default for Surface {
+     fn default() -> Self {
+         // Neutral: full width, at the top, on all monitors. Whatever the scene asks for wins.
+-        Surface { name: String::new(), instance: 0, origin: (0.0, 0.0), open: None, window: None, app_id: None, lock_screen: false, width: 0, size_props: None, cursor_props: None, height: 40, anchor: SurfaceAnchor::Top, anchor_from: None, level_while: None, margin: [0; 4], level: Level::Above, exclusive_zone: 0, reserve_while: None, max_fps: 0, rate_said: false, rate_while: Vec::new(), screens: Screens::All, screens_from: None, keyboard: Keyboard::Never, keyboard_while: false, keyboard_said: false, keyboard_when: None, right_click_quits: true, hidden_from_captures: false, agent_hidden: false }
++        Surface { name: String::new(), instance: 0, origin: (0.0, 0.0), open: None, window: None, app_id: None, layer_namespace: None, lock_screen: false, width: 0, size_props: None, cursor_props: None, height: 40, anchor: SurfaceAnchor::Top, anchor_from: None, level_while: None, margin: [0; 4], level: Level::Above, exclusive_zone: 0, reserve_while: None, max_fps: 0, rate_said: false, rate_while: Vec::new(), screens: Screens::All, screens_from: None, keyboard: Keyboard::Never, keyboard_while: false, keyboard_said: false, keyboard_when: None, right_click_quits: true, hidden_from_captures: false, agent_hidden: false }
+     }
+ }
+ 
