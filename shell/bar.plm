@@ -32,15 +32,20 @@ scene Tohru {
   box { from: 100, 0; size: screen.width - 200, 21 }
  }
  path {
-  stroke: 1; color: #ffffff; opacity: 24%
-  move 96.37, 0.5
-  curve 100.5, 7.5 via 100.5, 2.77
+  // Pleamar firms up light edges; 0.55 at 27.65% lands on j2bar's linear 1px hairline at 24%.
+  stroke: 0.55; color: #ffffff; opacity: 27.65%
+  move 92.5, -0.5
+  curve 98.157, 1.843 via 95.814, -0.5
+  curve 100.5, 7.5 via 100.5, 4.186
   line 100.5, 21
-  curve 110, 30.5 via 100.5, 30.5
+  curve 103.283, 27.717 via 100.5, 24.935
+  curve 110, 30.5 via 106.065, 30.5
   line screen.width - 110, 30.5
-  curve screen.width - 100.5, 21 via screen.width - 100.5, 30.5
+  curve screen.width - 103.283, 27.717 via screen.width - 106.065, 30.5
+  curve screen.width - 100.5, 21 via screen.width - 100.5, 24.935
   line screen.width - 100.5, 7.5
-  curve screen.width - 96.37, 0.5 via screen.width - 100.5, 2.77
+  curve screen.width - 98.157, 1.843 via screen.width - 100.5, 4.186
+  curve screen.width - 92.5, -0.5 via screen.width - 95.814, -0.5
  }
  include "bar/contents.plm"
  include "bar/workspace.plm"
