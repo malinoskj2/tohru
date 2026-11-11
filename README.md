@@ -79,7 +79,6 @@ export TOHRU_RUNTIME="$PWD/.tmp/pleamar-runtime/target/release/pleamar"
 - A popup opened from the CLI (a keybind) closes with Escape or `tohru panel close`, not with a click outside it. Closing on an outside click needs an xdg_popup grab, which needs the serial of a real input event; a grab made without one, tried in a nested Hyprland 0.56.2, left Hyprland closing every later popup the moment it opened.
 - The workspace switcher can only switch to workspaces the compositor already reports. It cannot create one.
 - The Hyprland plugin registers its animation leaves only once it is loaded, which at startup is after your configuration runs. Set them as shown in `hyprland/examples/effects.lua`. Its unload and damage checks have not been done.
-- The Settings window's size and placement are unresolved: it renders 800 px wide whatever size it gets.
 - The native test suites have not been re-run since the bar layout changed and the repository was restructured. Several need updating.
 - There is no screen locker, idle handling, polkit agent, wallpaper or screenshot tool. Use hyprlock, hypridle, hyprpolkitagent, and grimblast or similar.
 - x86_64-linux only. ARM is untested. Only tested with an NVIDIA GPU. Non-NixOS distributions are untested.

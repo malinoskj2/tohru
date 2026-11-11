@@ -76,8 +76,9 @@ Accepted differences from j2bar that stay:
       `hl.plugin.load` registers them, so they only apply after a reload),
       run its visual/unload/damage checks in a nested Hyprland, then move
       `hyprland/` to its own repository as planned.
-- [ ] Settings window: decide whether it floats or tiles (it renders 800 px wide
-      inside whatever size the compositor gives it).
+- [x] Settings window: it lays out at whatever size the compositor gives it
+      (tiled or floating). It asks for 760×640, which Pleamar also makes its
+      minimum size; no window rule is needed.
 - [ ] Re-run the private native checks that survive the removals against
       `nix build --print-out-paths .#pleamar-runtime` (they own a private Sway,
       bus and Pulse; see `tests/WINDOW-RUNNER.md`):
