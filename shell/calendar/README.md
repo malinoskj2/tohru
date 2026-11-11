@@ -1,52 +1,43 @@
-# Calendar interaction slice
+# Calendar
 
-Private entry: `pleamar --scene shell/calendar/entry.plm --answer-as tohru-calendar --stall 0`.
-This entry is test-only. Click Calendar; Escape closes it. Its native events are
-`calendar_toggle`, `calendar_open`, `calendar_close`.
+A month calendar that opens from the bar's clock. It runs in the bar process; the popup hangs from the bar surface.
 
-Production composition (S): include `bar/state.plm`, `calendar/state.plm`,
-`bar/contents.plm` and `calendar/popup.plm` in the SAME root scene; initialize
-`require("bar/controller")()` and `require("calendar/controller")(rail)` once.
-Construct rail with `require("calendar/rail-publisher")(tohru_workspace,"calendar","cal_rail_")`
-from root. Native require is entry-relative, not module-relative; private entry
-uses `require("rail-publisher")` explicitly. A failed reset prevents observations
-until the next open attempt so its error remains visible.
-The calendar initializer returns `{open, close, toggle}` callables: use these
-from root Lua panel coordination, because native Lua `emit` reaches render
-rules and does not redispatch Lua event handlers. Native calendar_* events
-remain the UI/IPC entry points.
-Give the root `keyboard: exclusive while cal_open`, permissions
-`window`, `apps`, `media`, `clock`, and the root's text-driven `screens:`.
-The popup receives the root clock-button's real press serial directly; do not
-start another visible calendar bar or forward the click across processes.
-The native parser accepts this composition, including the shared calendar_toggle
-event declaration. Root calendar CLI actions should target `tohru` with
-`emit calendar_open` / `calendar_close` / `calendar_toggle`; S owns that mapping.
-Both controllers use the same native process-owned clock hub in this composition.
+## Files
 
-The Gregorian month grid, adjacent-month selection, previous/next navigation,
-12-month choice, Today action, Sunday-start week number and selected-date footer
-follow j2bar `src/panel/calendar.rs` (MIT, notice in ../bar/J2BAR-LICENSE).
-Every open resets to today; clock changes update today's marker without losing
-an already open view/selection. No shell process/date polling is used.
+| File | Contents |
+|---|---|
+| `state.plm` | Facts, texts, the `cal_days` model (up to 42 days) and the calendar events |
+| `popup.plm` | The 320 px popup at `screen.width - 430, 36`: month title, previous and next, day grid, selected date and week number |
+| `controller.luau` | Date arithmetic, navigation and selection. Returns `{open, close, toggle}` |
+| `rail.plm`, `rail-state.plm`, `rail-publisher.luau` | The row of twelve month cells, drawn with the workspace switcher's ribbon shader and `tohru_workspace` physics |
+| `entry.plm`, `entry.luau` | A standalone scene with a Calendar button, for development |
 
-CLI-open after idle may require Escape; native click grab and Escape behavior
-are accepted. Actual same-root input/grab/outside dismissal and stable VM reload
-are recorded in progress/B.md. No cross-process catcher is used.
+## How it is wired
 
-The exact reviewed twelve-slot240Hz rail is published at native60Hz while moving.
-The controller resets it on open and cancels its timer on close/rest/error.
-State includes rail declarations; the popup includes the shared shader asset.
-S must provide tohru_workspace observe/tick/reset as documented in
-../../runtime/src/workspace/README.md and the authorized16-scalar shader patch.
-Native glass/frost/refraction/ripple provide the accepted visual approximation;
-physical output/visual review remains coordinator scope.
+`shell/bar.plm` includes `calendar/state.plm` and `calendar/popup.plm`. `shell/bar.luau` builds the month row with `require("calendar/rail-publisher")(tohru_workspace, "calendar", "cal_rail_")` and passes it to `require("calendar/controller")`. It uses the returned functions to close the calendar when another popup opens.
 
-Visible logic reload retains cal_year/month/selected date facts and cal_rail_ready.
-It rearms the process-owned Indicator through observe without resetting date or
-physics; failed reset readiness remains false until explicit open succeeds.
+| Event | Effect |
+|---|---|
+| `calendar_toggle`, `calendar_open`, `calendar_close` | Toggle, open or close. The clock sends `calendar_toggle`; `tohru panel toggle calendar` and `tohru panel open calendar` send the first two |
+| `calendar_previous`, `calendar_next`, `calendar_today` | Change month, or go back to the current one |
+| `calendar_month <1..12>` | Jump to that month of the year being viewed |
+| `calendar_day <index>` | Select a day in the grid, including days of the adjacent months |
 
-The publisher generation guard ignores a native callback copied before cancel
-if it arrives after stop/reset/rest/error. Cancellation cannot let stale motion
-rearm publication. Its optional active() method reports owned timer-handle state
-for private lifecycle evidence; production does not poll it.
+The `clock` service supplies today's date. Every open resets the view to today. A date change moves the today marker without changing the month being viewed. Weeks start on Sunday; the footer shows the selected date and its week number. The layout follows j2bar's calendar.
+
+Facts survive a logic reload, so the viewed month and the selection stay put.
+
+## Running and tests
+
+```sh
+lua tests/bar/controllers.lua        # calendar controller, including reload
+lua tests/bar/rail.lua               # month-row timer
+pleamar --check shell/calendar/entry.plm
+TOHRU_SHELL=1 pleamar --scene shell/calendar/entry.plm --answer-as tohru-calendar
+```
+
+Run the Lua tests from the repository root with Lua 5.4. Without `TOHRU_SHELL=1` the standalone scene has no `tohru_workspace` and skips the month-row motion.
+
+## Known limitations
+
+When opened from the CLI, the calendar closes with Escape or `tohru panel close`, not with a click outside it.

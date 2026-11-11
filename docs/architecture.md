@@ -41,7 +41,7 @@ Requests report that Pleamar accepted them, not that the action finished. If no 
 | `0001-shell-settings` | Adds the `tohru-shell` library as a dependency and installs the `tohru_settings` Luau global, only when `TOHRU_SHELL=1` |
 | `0002-shader-inputs` | Raises the number of values a scene can pass to a shader from 8 to 16, for the workspace switcher's ribbon shader |
 | `0004-workspace-binding` | Installs the `tohru_workspace` Luau global |
-| `0005-launcher-namespace` | Adds an optional static `layer_namespace` surface property. The launcher uses it so the Hyprland plugin can match its layer. Without it, layers are named `pleamar` |
+| `0005-launcher-namespace` | Adds an optional static `layer_namespace` surface property. The launcher uses it so the Hyprland plugin can match its layer. Without it, layers are named `pleamar`. It also makes Pleamar's lookup of where a layer sits on Hyprland match the layer's own namespace, which places the launcher's glass capture correctly under the bar's exclusive zone |
 | `0006-info-binding` | Installs the `tohru_info` Luau global |
 | `0010-key-rule-order` | Keys that arrive in the same frame as a key that triggers a rule, such as typing right after Ctrl+F, are handled after the rule has acted |
 | `0011-focus-round` | A keyboard leave and enter in the same frame, such as a popup grab moving focus between Tohru's own surfaces, no longer counts as losing focus |

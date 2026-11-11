@@ -22,7 +22,7 @@ hl.config({ plugin = {
         min_size = { 700, 450 }, dip = 0.99,
     },
     hyprrecede = {
-        -- Optional proposed shell adapter namespace; see LAUNCHER-CONTRACT.md.
+        -- The launcher's backdrop layer.
         namespace = "^tohru-launcher-backdrop$",
         angle = 16, scale = 0.86, perspective = 1400, shade = 0.62, blur = 1,
     },

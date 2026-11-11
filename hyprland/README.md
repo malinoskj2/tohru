@@ -1,118 +1,62 @@
 # tohru-hyprland
 
-Independent optional Hyprland plugin extracted for Pleamar migration phase 4:
-render-only focus dips, thin application titlebars with double-click maximize,
-parent-attached file chooser sheets, and launcher-triggered tilt/shrink/shade/blur.
-No shell process/library is linked. No legacy glass, panel orchestration, game
-policy, shell service or IPC server is included. The portable launcher and shell
-must work without this plugin and on Sway.
+An optional Hyprland plugin, `libtohru-hyprland.so`, with four window effects ported from j2bar. It does not link to or talk to the shell, and the shell works without it.
 
-The coordinator will move this directory into its own repository and integrate
-its package/configuration in Nix. No desktop configuration has been activated.
+| Effect | Config group | Source | What it does |
+|---|---|---|---|
+| Focus dips | `plugin:hyprfocus` | `focus/` | Animates the window that gains focus: `none`, `flash`, `shrink`, `slide`, or a comma-separated combination. `shrink` is drawn only; the client is not resized |
+| Titlebars | `plugin:hyprbars` | `bars/` | Thin titlebars with buttons. Double-click runs `on_double_click` |
+| File chooser sheets | `plugin:hyprsheet` | `sheet.cpp` | Attaches matching dialogs (by default `xdg-desktop-portal-gtk`) to their parent window |
+| Recession | `plugin:hyprrecede` | `recede.cpp` | Tilts, shrinks, shades and blurs the windows on a monitor while a matching layer is open on it |
 
-## Build
+`main.cpp` combines them, and registers `hyprctl desktop-effects-capabilities`, which prints the plugin's capabilities and the Hyprland build hash as JSON. `focus/` and `bars/` derive from hyprland-plugins v0.56.0; `UPSTREAM.md` and `source-manifest.json` record where every file came from.
 
-Requires Linux, a C++23 GCC toolchain (`-fno-gnu-unique`), make and pkg-config,
-plus the **exact candidate compositor's** Hyprland development headers and
-transitive dependencies: pixman, libdrm, pangocairo, libinput, libudev,
-wayland-server, xkbcommon and Lua (reviewed headers use 5.5.0).
+## Compatibility
 
-```sh
-cd hyprland
-make check
-make check-deps
-make check-abi
-make -j1
-make install PREFIX=/desired/staging/prefix
-```
+The plugin is built for Hyprland 0.56.2 and nothing else. On load it compares the build hash of the headers it was compiled against with the running compositor's, and refuses to load if they differ, so it must be built against the exact Hyprland derivation you run, including any local patches. `package.nix` also fails to evaluate for any other Hyprland version.
 
-With Nix, the standalone flake pins the reference nixpkgs and upstream Hyprland:
+Do not load it next to hyprland-plugins' hyprfocus or hyprbars, or j2bar's plugin. They use the same hooks and config keys.
+
+## Building
+
+With Nix, from the repository root:
 
 ```sh
-nix build path:./hyprland
-nix develop path:./hyprland -c make -C hyprland -j1  # when invoked from tohru root
+nix build .#tohru-hyprland        # against the flake's pinned Hyprland 0.56.2
+nix build path:./hyprland         # the standalone flake in this folder
+nix develop path:./hyprland -c make -C hyprland -j1
 ```
 
-From the extracted standalone repository use `nix build .` and
-`nix develop -c make -j1`. Flake dev-shell cwd is the caller's cwd.
-For the candidate session with existing compositor patches, call `package.nix`
-with that exact compositor derivation rather than assuming equal version strings
-are sufficient:
+To build against your own compositor derivation:
 
 ```nix
-pkgs.callPackage ./hyprland/package.nix {
-  hyprland = candidateHyprland;
-}
+pkgs.callPackage ./hyprland/package.nix { hyprland = myHyprland; }
 ```
 
-No compositor is built or launched by `make`. Nix may need dependency builds;
-coordinate them before invoking a build in a shared worker environment. The
-current source has compiled against existing Hyprland 0.56.2 development outputs;
-see VALIDATION.md for evidence and remaining gates. See UPSTREAM.md for the exact
-source revision, API hash, licenses and local-patch caveat.
+Without Nix you need a C++23 GCC toolchain, `make`, `pkg-config`, and the development files for that exact Hyprland plus pixman, libdrm, pangocairo, libinput, libudev, wayland-server, xkbcommon and Lua.
 
-## Private candidate use
+| Target | Does |
+|---|---|
+| `make` | Builds `libtohru-hyprland.so` |
+| `make check-deps` | Checks that `pkg-config` finds every dependency |
+| `make check` | Checks copied sources against `source-manifest.json`, and runs the focus-restoration and sheet tests in `tests/` |
+| `make check-abi` | Checks the build-hash comparison against a fake host |
+| `make install PREFIX=...` | Installs `lib/libtohru-hyprland.so` and the licenses |
 
-Only use a disposable compositor session with a private display/bus. Explicitly
-select that instance for every command. **Never load this beside the old bundled
-j2bar plugin, hyprfocus, hyprbars, hyprsheet or hyprrecede**: they share hooks,
-config keys and rule/decorations/animation ownership. Keep the old desktop's
-plugin selection intact. Nix owns permanent loading, rules and animation config.
+The Nix package runs `make check-abi check-focus check-sheet` as its check phase.
 
-After compositor startup, with no matching launcher layer open:
+## Loading and configuring
 
-```sh
-hyprctl -i "$TEST_INSTANCE" plugin load /absolute/path/libtohru-hyprland.so
-hyprctl -i "$TEST_INSTANCE" desktop-effects-capabilities
-hyprctl -i "$TEST_INSTANCE" eval "dofile('/absolute/path/hyprland/examples/effects.lua')"
-# Exercise candidate clients and launcher, then unload in the same private instance:
-hyprctl -i "$TEST_INSTANCE" plugin unload /absolute/path/libtohru-hyprland.so
-```
+Load it from your Hyprland Lua configuration with `hl.plugin.load("<path>/lib/libtohru-hyprland.so")`, or in a running session with `hyprctl plugin load <path>`.
 
-`examples/effects.lua` supplies authored selected-effect defaults from j2bar,
-including the app whitelist and exact effect animation curves/speeds. These are
-source defaults, not a verified live configuration. It intentionally supplies
-only these four effect settings/rules; global compositor styling stays in Nix.
-The example uses the proposed new launcher namespace and must wait for the
-namespace API gap decision: F confirmed Pleamar currently hardcodes
-`pleamar` for layers. See LAUNCHER-CONTRACT.md.
+`examples/effects.lua` sets j2bar's values for all four effects. They are j2bar's source defaults, not a checked live configuration. Things to know when writing your own:
 
-## Settings and boundaries
+- The plugin registers its animation leaves (`hyprfocusIn`, `hyprfocusOut`, `hyprsheetIn`, `hyprsheetOut`, `hyprrecedeTilt`, `hyprrecedeShade`, `hyprrecedeBlur`) only once it is loaded. At startup that is after your configuration has run, and `hl.animation` on an unknown leaf is an error that stops the rest of the file. The example sets them inside `pcall`, and again shortly after `hyprland.start`.
+- `plugin:hyprrecede:namespace` defaults to `^j2bar-launcher-backdrop$`. For Tohru's launcher set it to `^tohru-launcher-backdrop$`. Recession starts when a matching layer opens, so load and configure the plugin before opening the launcher.
+- Titlebars are drawn on every window unless a window rule sets `hyprbars:no_bar`. The example keeps them only on Alacritty and mpv with a `negative:` class rule.
+- `on_double_click = "tohru:maximize"` toggles maximize. An empty value disables double-click; any other value is run as a command.
+- The `class` patterns for focus and sheets, and the recession namespace, are C++ `std::regex` (ECMAScript) patterns. Hyprland window rules use RE2.
 
-Preserved native config groups are `plugin:hyprfocus`, `plugin:hyprbars`,
-`plugin:hyprsheet` and `plugin:hyprrecede`; all existing keys and component defaults
-remain in their source modules. The example records all selected settings and
-custom animation leaves. Focus modes accept `none`, `flash`, `shrink`, `slide`
-and comma combinations; render shrink holds client resize and never relayouts
-the application's content. Focus/sheet/recession matching uses C++ ECMAScript
-regex, while Hyprland window rules use RE2.
+## Known limitations
 
-Hyprbars retains its upstream button API and rules `hyprbars:no_bar`,
-`hyprbars:bar_color`, `hyprbars:title_color`. This compositor configuration API is
-not a shell plugin system. Configured titlebars require a compositor exclusion
-rule: the component's raw default enables bars for ordinary windows, whereas the
-old shell authored whitelist is `^(Alacritty|mpv)$`. The example preserves that
-whitelist with a negative rule. The built-in maximize action token remains
-`tohru:maximize`; empty disables double-click, other strings retain upstream
-compositor command execution behavior. Do not pass the old typed word `maximize`
-directly: it was translated by j2bar's former settings owner.
-
-The old shell's TOML settings owner/transaction engine is not extracted. Nix
-must translate retained settings into native compositor configuration; runtime
-Settings UI integration is not supplied by this package. Default authored focus
-settings (0.99 shrink, both keyboard/mouse, chooser exclusion) differ from raw
-component defaults (0.95, keyboard flash/mouse none). Recession's raw default
-namespace also differs from the former shell's broader launcher/polkit pattern.
-Do not infer active desktop settings from either set of defaults.
-
-Build compatibility and copied algorithms are checked; loading/unloading,
-visual parity, damage, orientation/scaling and performance are **unverified for
-the extracted package**. Follow VALIDATION.md before candidate acceptance.
-
-Accepted review fixes retain focus restoration state through both animation legs
-and restore geometry/opacity/config before releasing held client sizing on unload.
-Sheet cleanup preserves the parent's previous optional noFocus set-property slot
-and observable external false/unset writes. `make check` runs focused restoration
-checks plus provenance; Nix checkPhase runs those checks alongside ABI rejection.
-See UPSTREAM.md for intentional extraction changes and the pinned API's
-indistinguishable same-value override-write limitation.
+Static checks and the unit tests pass, and the effects have been seen working in a nested Hyprland 0.56.2. Unloading the plugin from a running session, damage handling, scaling and rotation, and performance have not been checked. `VALIDATION.md` lists the remaining checks.

@@ -1,23 +1,29 @@
-# Native screen corners
+# Screen corners
 
-`entry.plm` is the standalone private-display entry; root integration includes
-`state.plm` and `view.plm` in the ordinary shell process. The existing root
-`corners` fact must be declared only once. Root's existing settings publisher
-already updates it from `appearance.corners`; publish `corner_size` from a new
-integer `appearance.corner_size` key (1..100, default 32) through the same owner.
-Do not start a second settings owner or standalone production corners process.
+Rounded black corners drawn over each output's four corners. They run in the bar process.
 
-Four native layer surfaces per output sit on the top layer with exclusive zone
--1, so reserved bar space does not move them. They contain no zones, so native
-input regions are empty and clicks pass through. Each is at most 100 logical
-pixels square; the shader occupies the configured size at the output's outer
-corner. Native output removal/reconnect, scale and transform handling own their
-surface/buffer lifecycle. Disabled corners close all four surfaces. No timer,
-frame subscription, pointer input or shader time is used.
+## Files
 
-The shader ports j2bar's exponent-4 superellipse and derivative-based linear
-coverage, preserving orientation and MIT attribution. GPU/matched pixels,
-stacking after bar recreation, click-through, hotplug/scale/rotation and actual
-native close/reopen remain validation gates; source inspection alone proves
-none of those runtime outcomes. Standalone startup takes notification/auth
-ownership of nothing.
+| File | Contents |
+|---|---|
+| `state.plm` | The `corners` and `corner_size` facts and the `screen_corner` shader |
+| `view.plm` | Four 100×100 px layer surfaces, one per corner, on every output |
+| `corner.wgsl` | j2bar's corner shader: an exponent-4 superellipse with one-pixel antialiasing |
+| `entry.plm` | A standalone scene with only the corners, for development |
+
+## How it is wired
+
+`shell/bar.plm` includes `corners/state.plm` and `corners/view.plm`. `shell/bar.luau` sets `fact.corners` from `appearance.corners` and `fact.corner_size` from `appearance.corner_size` (1 to 100, default 32).
+
+Each surface is on the top layer with `reserve: -1`, so the bar's exclusive zone does not move it, and has no zones, so clicks pass through. The shader fills a `corner_size` square in the output's corner of its surface; 100 px, the surface size, is the largest size the setting allows. When `appearance.corners` is off, all four surfaces close. Corners always show on every output, whatever `bar.preferred_output` says.
+
+Nothing in the corners animates or uses a timer.
+
+## Running
+
+```sh
+pleamar --check shell/corners/entry.plm
+pleamar --scene shell/corners/entry.plm --answer-as tohru-corners
+```
+
+The standalone scene uses the defaults: corners on, 32 px.

@@ -1,55 +1,54 @@
-# Private session menu entry point
+# Session menu
 
-This is an independent development scene, not root imports or production activation.
-Scene-only changes reuse the compiled runtime. After coordinator GPU allocation,
-on private compositor and private buses only:
+The Lock, Sleep, Restart, Shut Down and Log Out menu. It runs as its own process, `tohru-session`, started by `bin/tohru-session-run` with `TOHRU_SHELL=1` so it can read `bar.preferred_output`.
 
-```sh
-pleamar --scene shell/session/menu.plm --answer-as tohru-session --no-hud
-```
+## Files
 
-Run it in its own dedicated process. Never launch it against the user's display
-or buses. See OWNERSHIP.md for required lifetimes.
+| File | Contents |
+|---|---|
+| `menu.plm` | A 1×1 px anchor surface and the 304×292 px menu popup, at the top left of the output below the bar. Permissions: `run` for `loginctl lock-session` and `systemctl suspend`, and the `window`, `session.reboot`, `session.poweroff` and `session.logout` services |
+| `menu.luau` | Opening, choosing, the confirmation countdown and running the actions |
+| `OWNERSHIP.md` | Which programs provide the lock screen, the polkit agent and notifications |
 
-| Native name | Request | Observable status |
-| --- | --- | --- |
-| tohru-session | `emit menu_open`, `emit menu_close`, `emit menu_toggle` | `open`, `confirming`, `remaining`, `status`, `error` |
-| tohru-session | `emit choose N` (1 lock, 2 sleep, 3 restart, 4 shutdown, 5 logout) | 3–5 open confirmation; `emit accept_choice` or `emit cancel_choice` |
+The menu opens on the output named by `bar.preferred_output`, or else on the focused output. The anchor surface moves only while the menu is closed.
 
-Tohru has no lock screen. Lock runs `loginctl lock-session`, which hypridle's
-`lock_cmd` answers by starting hyprlock. Sleep runs `loginctl lock-session` and,
-once that command exits successfully, `systemctl suspend`; if the lock request
-fails, it reports the error and does not suspend. hypridle's `before_sleep_cmd`
-also locks. The scene declares exactly those two commands in `permissions { run: … }`.
+## Opening it
 
-Restart, Shut Down and Log Out use the native `session.*` services. They spawn
-systemctl/loginctl, do not observe child exit or asynchronous completion, and may
-fail after request acceptance. Logout uses native terminate-session when
-XDG_SESSION_ID is available and otherwise native terminate-user fallback. Text
-status says request acceptance, never power success. Tohru has no polkit agent;
-hyprpolkitagent is the session's agent.
+| From | Sends |
+|---|---|
+| The bar's Mooncoil mark (`bar.mooncoil`) | The bar sends `emit menu_toggle` to `tohru-session` |
+| `tohru session open`, `close`, `toggle` | `emit menu_open`, `menu_close`, `menu_toggle` |
 
-CPU validation:
+Opening resets the selection and clears the last error. Toggling an open menu closes it and cancels any pending confirmation.
+
+## Actions
+
+| Item | Runs | Confirmation |
+|---|---|---|
+| Lock Screen | `loginctl lock-session` | No |
+| Sleep | `loginctl lock-session`, then `systemctl suspend` only if that exited successfully | No |
+| Restart… | Pleamar's `session.reboot` | Yes |
+| Shut Down… | Pleamar's `session.poweroff` | Yes |
+| Log Out… | Pleamar's `session.logout` | Yes |
+
+Tohru has no lock screen: hypridle's `lock_cmd` answers `loginctl lock-session` by starting hyprlock, and its `before_sleep_cmd` locks too. If the lock request fails, Sleep shows an error and does not suspend.
+
+A confirmation cancels itself after 60 seconds, and a logic reload cancels it. Up and Down move the selection, Return chooses or confirms, Escape cancels a confirmation and then closes the menu.
+
+The `status` text says only whether the request was accepted; Pleamar does not report whether the action finished.
+
+Other requests it accepts: `emit choose <1..5>` (in menu order), `emit accept_choice`, `emit cancel_choice`, and `get` on `open`, `confirming`, `remaining`, `status` and `error`.
+
+## Running and tests
 
 ```sh
 pleamar --check shell/session/menu.plm
 lua tests/session/logic.lua
 ```
 
-The test executes the actual Lua-compatible entry script with fake native boundaries
-and a deterministic timer. It checks confirmation expiration/cancellation, the
-Lock and Sleep command order, Sleep's refusal to suspend after a failed lock
-request. It is not a native
-Luau/compositor/helper integration test. Native popup click grab/Escape and CLI
-idle Escape behavior are accepted.
+Run the Lua test from the repository root with Lua 5.4. It runs `menu.luau` against fake services and checks confirmation, cancellation, and the Lock and Sleep command order. `tests/session/native.sh --runtime <pleamar>` runs the menu on a private session, with fake `loginctl` and `systemctl` that only log their arguments; it has not been re-run since the repository was restructured.
 
-`menu_toggle` closes an open menu and cancels any confirmation; opening resets
-selection and errors. The root owns its visible menu control: this feature scene
-has only a 1px transparent anchor surface, without a duplicate visible button.
+## Known limitations
 
-After coordinator GPU allocation, `tests/session/native.sh --runtime /absolute/pleamar`
-runs private menu protocol checks. Its `systemctl` and `loginctl` are
-fakes that only append their arguments to `power.log` in the evidence directory,
-and the run asserts Lock and Sleep produce `loginctl lock-session` and
-`loginctl lock-session`, `systemctl suspend`. `--notifications` adds the
-notification workload on private buses and an owned null audio sink.
+- The menu's header always reads "NixOS".
+- The menu is always opened by a request from another process, never by a click in its own, so a click outside it does not close it. Escape, the Mooncoil mark or `tohru session close` does.
