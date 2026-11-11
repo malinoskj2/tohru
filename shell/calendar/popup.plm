@@ -3,36 +3,37 @@ part CalendarPopup {
         at: screen.width - 430, 36
         size: 320, 165 + cal_weeks * 30
         open: cal_open
+        bright: panel_bright
         body {
-            color: #181825; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 25%
+            color: ink_body; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 0.25 - 0.11 * pk
             box { from: 0, 0; size: 320, 165 + cal_weeks * 30; corner: 22 }
         }
-        text cal_title { at: 20, 29; anchor: left center; size: 17; weight: 600; color: #cdd6f4 }
-        box cal_previous { from: 246, 13; size: 28, 28; corner: 7; color: #cdd6f4; opacity: 6%; cursor: pointer }
-        box cal_next { from: 278, 13; size: 28, 28; corner: 7; color: #cdd6f4; opacity: 6%; cursor: pointer }
-        text "‹" { at: 260, 27; anchor: center; size: 22; color: #cdd6f4 }
-        text "›" { at: 292, 27; anchor: center; size: 22; color: #cdd6f4 }
+        text cal_title { at: 20, 29; anchor: left center; size: 17; weight: 600; color: ink_text }
+        box cal_previous { from: 246, 13; size: 28, 28; corner: 7; color: ink_text; opacity: 6%; cursor: pointer }
+        box cal_next { from: 278, 13; size: 28, 28; corner: 7; color: ink_text; opacity: 6%; cursor: pointer }
+        text "‹" { at: 260, 27; anchor: center; size: 22; color: ink_text }
+        text "›" { at: 292, 27; anchor: center; size: 22; color: ink_text }
         on press cal_previous { emit calendar_previous }
         on press cal_next { emit calendar_next }
-        text "S" { at: 12 + (0 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: #6c7086 }
-        text "M" { at: 12 + (1 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: #6c7086 }
-        text "T" { at: 12 + (2 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: #6c7086 }
-        text "W" { at: 12 + (3 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: #6c7086 }
-        text "T" { at: 12 + (4 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: #6c7086 }
-        text "F" { at: 12 + (5 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: #6c7086 }
-        text "S" { at: 12 + (6 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: #6c7086 }
+        text "S" { at: 12 + (0 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: ink_overlay }
+        text "M" { at: 12 + (1 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: ink_overlay }
+        text "T" { at: 12 + (2 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: ink_overlay }
+        text "W" { at: 12 + (3 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: ink_overlay }
+        text "T" { at: 12 + (4 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: ink_overlay }
+        text "F" { at: 12 + (5 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: ink_overlay }
+        text "S" { at: 12 + (6 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: ink_overlay }
         for d in cal_days {
             zone box cal_cell.$d.index { from: 12 + d.col * 296 / 7, 76 + d.row * 30; size: 296 / 7, 30; cursor: pointer }
-            text d.day { at: 12 + (d.col + 0.5) * 296 / 7, 91 + d.row * 30; anchor: center; size: 13; weight: 400 + 200 * d.today; color: if(d.outside, #6c7086, if(d.col == 0 or d.col == 6, #a6adc8, #cdd6f4)) }
-            box { from: 12 + (d.col + 0.5) * 296 / 7 - 7, 99 + d.row * 30; size: 14, 3; color: pick(d.col, #fab387, #f9e2af, #a6e3a1, #94e2d5, #89b4fa, #b4befe, #cba6f7); show: d.selected }
-            box { from: 12 + (d.col + 0.5) * 296 / 7 - 7, 100 + d.row * 30; size: 14, 3; color: #6c7086; show: d.today and not d.selected }
+            text d.day { at: 12 + (d.col + 0.5) * 296 / 7, 91 + d.row * 30; anchor: center; size: 13; weight: 400 + 200 * d.today; color: if(d.outside, ink_overlay, if(d.col == 0 or d.col == 6, ink_sub0, ink_text)) }
+            box { from: 12 + (d.col + 0.5) * 296 / 7 - 7, 99 + d.row * 30; size: 14, 3; color: pick(d.col, ink_peach, ink_yellow, ink_green, ink_teal, ink_blue, ink_lavender, ink_mauve); show: d.selected }
+            box { from: 12 + (d.col + 0.5) * 296 / 7 - 7, 100 + d.row * 30; size: 14, 3; color: ink_overlay; show: d.today and not d.selected }
             on press cal_cell.$d.index { emit calendar_day(d.index) }
         }
         include "rail.plm"
-        text cal_footer { at: 20, 133 + cal_weeks * 30; anchor: left center; size: 13; color: #cdd6f4 }
-        text cal_week { at: 300, 133 + cal_weeks * 30; anchor: right center; size: 11; color: #a6adc8 }
+        text cal_footer { at: 20, 133 + cal_weeks * 30; anchor: left center; size: 13; color: ink_text }
+        text cal_week { at: 300, 133 + cal_weeks * 30; anchor: right center; size: 11; color: ink_sub0 }
         zone box cal_today_hit { from: 150, 13; size: 90, 28; active: not cal_current; cursor: pointer }
-        text "Today" { at: 215, 27; anchor: center; size: 11; color: #cdd6f4; show: not cal_current }
+        text "Today" { at: 215, 27; anchor: center; size: 11; color: ink_text; show: not cal_current }
         on press cal_today_hit { emit calendar_today }
     }
     on key Escape { cal_open = false }

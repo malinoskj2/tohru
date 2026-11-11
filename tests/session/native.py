@@ -184,11 +184,22 @@ def main():
             cli('tohru-notifications','emit power_warning_low 0.2');value('tohru-notifications','power_level','1')
             cli('tohru-notifications','emit power_warning_clear 0.5');value('tohru-notifications','power_level','0')
             assert 'Replacement title' in cli('tohru-notifications','describe json')
+            value('tohru-notifications','unread','1')
+            cli('tohru-notifications','emit notices_seen 0');value('tohru-notifications','unread','0')
+            seen=evidence/'data'/'pleamar'/'notifications'/'notices.json'
+            assert json.loads(seen.read_text())=={'unread':False},seen.read_text()
+            cli('tohru-notifications','emit notices_dnd 2');value('tohru-notifications','dnd','1')
+            assert 'Replacement title' not in cli('tohru-notifications','describe json')
+            silent=notify(0,'Silent fixture','Held by Do Not Disturb')
+            value('tohru-notifications','last_id',str(silent));value('tohru-notifications','unread','1')
+            assert 'Silent fixture' not in cli('tohru-notifications','describe json')
+            cli('tohru-notifications','emit notices_dnd 0');value('tohru-notifications','dnd','0')
+            checks.append('native unread set by a new notice and saved when seen; Do Not Disturb hides banners and still marks unread')
             previous=(evidence/'tohru-notifications.log').read_text().count('notifications.luau running')
             logic=scenes/'notifications/notifications.luau';logic.write_text(logic.read_text()+'\n-- private owner reload\n')
             wait(lambda:(evidence/'tohru-notifications.log').read_text().count('notifications.luau running')>previous,'actual notification VM reload')
             assert owner()==identity
-            value('tohru-notifications','last_id',str(first))
+            value('tohru-notifications','last_id',str(silent))
             assert notify(first,'Close fixture','Visible before close')==first
             wait(lambda:'Close fixture' in cli('tohru-notifications','describe json'),'native close fixture visible')
             bus('org.freedesktop.Notifications.CloseNotification',str(first))

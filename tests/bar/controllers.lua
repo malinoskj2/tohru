@@ -139,3 +139,18 @@ watches.clock({year=2026,month=11,day=8});assert(fact.cal_year==retained_year an
 events.calendar_next();assert(observations[#observations]==3)
 calendar.close();calendar.open();assert(resets==2 and fact.cal_month==11)
 print("Visible calendar reload keeps the month and the rail; close/reopen works")
+
+events = environment()
+local said = {}
+sys.call = function(name, role, request) assert(name == "say" and role == "tohru-notifications"); said[#said + 1] = request end
+assert(loadfile("shell/bar/bell.luau"))()()
+assert(said[1] == "emit notices_report 0")
+events.notices_state(1); assert(fact.notices_unread == true and fact.notices_dnd == false)
+events.notices_state(2); assert(fact.notices_unread == false and fact.notices_dnd == true)
+events.notices_state("garbage"); assert(fact.notices_unread == false and fact.notices_dnd == false)
+events.bell_seen(); events.bell_dnd()
+assert(said[2] == "emit notices_seen 0" and said[3] == "emit notices_dnd 2")
+sys.call = function() error("tohru-notifications is not running") end
+events.bell_seen()
+print("Bell shows what the notification daemon reports and survives it being away")
+

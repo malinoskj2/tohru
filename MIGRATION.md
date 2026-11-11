@@ -23,7 +23,8 @@ new packages on `PATH`) up to date. What is still open is unchecked below.
 | Region screenshot (row 28) | Remove from Tohru | grimblast (hyprwm/contrib): `grimblast --notify --freeze copysave area` |
 
 Already dropped by the acceptance inventory and still dropped: dmenu picker
-(06), notification history/DND/styling (07, 08), balance/peak meter/overdrive
+(06), notification history and styling (07, 08; Do Not Disturb came back with
+the bell), balance/peak meter/overdrive
 (10), network rates and VPN/Ethernet administration (12, 13), timezone editing
 (19), user/storage/generation administration (21), Assistant (22), power
 profiles and brightness (29), all game behavior (30, 31), Lua plugin API (37),
@@ -40,8 +41,11 @@ Accepted differences from j2bar that stay:
   was tried on 2026-11-11 in a nested Hyprland 0.56.2 and left Hyprland
   dismissing every later popup as soon as it opened, so it was dropped.
 - Launcher search uses a simple fuzzy matcher and Pleamar's app catalog.
-- Notifications are transient text plus one placeholder sound; Pleamar keeps
-  its own internal expiry bookkeeping but no history, unread or DND UI.
+- Notifications are transient text plus one placeholder sound, with no
+  history UI. The bar's bell shows whether a notification arrived unseen
+  (saved across restarts) and Do Not Disturb, as j2bar's does; Do Not Disturb
+  shows no OSD when toggled, and power warnings are the only notices that
+  bypass it (there are no per-app filters).
 - Network errors are as detailed as NetworkManager reports through Pleamar;
   requests report acceptance, not completion.
 - `tohru` CLI commands report that Pleamar accepted the request, not that the
@@ -64,20 +68,13 @@ Accepted differences from j2bar that stay:
       shader-input patch; side-by-side recordings against j2bar on 2026-11-11
       match apart from a start 50 to 100 ms later (Pleamar's Hyprland event
       coalescing).
+      Notification bell (left click marks seen, right click toggles Do Not
+      Disturb, j2bar's 4px unread mark and glow) and adaptive light/dark glass
+      are done. j2bar's adaptive ink is on its panels, not the bar, which stays
+      dark there too: the panels and the session menu turn light above 55%
+      bright and dark below 45% (patch 0020), and the calendar's month rail
+      keeps its dark-glass track until the rail shader takes an ink.
       Not done, and why:
-      - Notification bell: j2bar's bell shows whether its notification
-        history holds something unread, and Do Not Disturb (bell-off). Both
-        were dropped with rows 07/08, so a bell would have nothing to show
-        or do. Bring back an unread signal (and optionally DND) in the
-        notification daemon first; the bar side is then a tray button and
-        a `say:tohru` event.
-      - Adaptive light/dark glass: j2bar switches ink when more than 55% of
-        a capsule is over bright content (back below 45%), with luminance
-        from its compositor plugin. Pleamar keeps lens captures on the GPU
-        and gives a scene no brightness of what is behind it, and the
-        Tohru plugin does not talk to the shell. Either needs new code: a
-        Pleamar patch reducing the bar's capture to a "bright share" fact,
-        or plugin IPC. The patch is the smaller of the two.
       - Text rasteriser: not worth a patch. cosmic-text already hints and
         snaps glyphs to quarter-pixel bins; after the tabular numerals,
         positions match j2bar within 1px. What is left is glyph shape

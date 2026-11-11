@@ -75,8 +75,8 @@ export TOHRU_RUNTIME="$PWD/.tmp/pleamar-runtime/target/release/pleamar"
 **This is experimental. A lot of it is untested, and some of it is known to be broken.** Expect to read the source when something goes wrong.
 
 - It has only just replaced j2bar on one NixOS desktop (two monitors, NVIDIA). The systemd user units and the notification daemon run there; most panels have only had a short check.
-- There is no notification bell and no adaptive light/dark glass. j2bar's bell reports notification history and Do Not Disturb, which Tohru does not have. Adaptive ink needs the brightness of what is behind the bar, which Pleamar does not give a scene.
 - Pleamar rasterises text with swash rather than Pango, so letter shapes differ slightly from j2bar's. Positions in the bar match within 1 px.
+- On light panels the calendar's month rail still draws its dark-glass track, which barely shows.
 - A popup opened from the CLI (a keybind) closes with Escape or `tohru panel close`, not with a click outside it. Closing on an outside click needs an xdg_popup grab, which needs the serial of a real input event; a grab made without one, tried in a nested Hyprland 0.56.2, left Hyprland closing every later popup the moment it opened.
 - The workspace switcher can only switch to workspaces the compositor already reports. It cannot create one.
 - The workspace switcher's motion is j2bar's rebuilt from Pleamar springs, not a replay of its equations. It starts 50 to 100 ms after the switch, because Pleamar gathers Hyprland's workspace events for 50 ms before reporting them.
@@ -98,6 +98,7 @@ The `tohru` command sends requests to the running processes. It reports that a r
 | `tohru launcher toggle` | Open or close the launcher |
 | `tohru panel toggle sound` | Toggle a popup: `sound`, `calendar`, `network`, `bluetooth`, `info`, `about` |
 | `tohru panel close` | Close the open popup |
+| `tohru notifications dnd toggle` | Turn Do Not Disturb on or off (also `on`, `off`; right-click the bell) |
 | `tohru settings open` | Open Settings, starting it if needed |
 
 For example, in a Hyprland 0.56 Lua configuration:
@@ -109,6 +110,8 @@ hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("tohru audio volume up"), { lock
 hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("tohru audio volume down"), { locked = true, repeating = true })
 hl.bind("XF86AudioMute", hl.dsp.exec_cmd("tohru audio mute toggle"), { locked = true })
 ```
+
+The bell in the bar shows a dot while a notification has arrived unseen; clicking it marks them seen (`tohru notifications seen`). Panels switch to light glass over bright windows and back, as j2bar's do.
 
 Run `tohru help` for the full list, including per-app volume, output selection and `tohru config set`.
 

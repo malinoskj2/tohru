@@ -3,58 +3,59 @@ part BluetoothPopup {
         at: clamp(if(bt_button_x < 0, screen.width - 305, bt_button_x) - 195, 8, max(8, screen.width - 398)), 36
         size: 390, 520
         open: bt_open
-        body { color: #181825; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 25%
+        bright: panel_bright
+        body { color: ink_body; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 0.25 - 0.11 * pk
             box { from: 0, 0; size: 390, 520; corner: 22 }
         }
-        text "Bluetooth" { at: 20, 27; size: 17; weight: 600; color: #cdd6f4 }
-        text "No Bluetooth adapter reported" { at: 20, 57; size: 13; color: #a6adc8; show: not bt.present }
-        box bt_power { from: 20, 76; size: 170, 30; corner: 8; color: #cdd6f4; opacity: 8%; cursor: pointer; show: bt.present }
-        text "Power On" { at: 105, 91; anchor: center; size: 13; color: #a6e3a1; show: bt.present and bt.powered }
-        text "Power Off" { at: 105, 91; anchor: center; size: 13; color: #cdd6f4; show: bt.present and not bt.powered }
-        box bt_scan { from: 200, 76; size: 170, 30; corner: 8; color: #cdd6f4; opacity: 8%; cursor: pointer; show: bt.present and bt.powered }
-        text "Discover" { at: 285, 91; anchor: center; size: 13; color: #cdd6f4; show: bt.present and bt.powered and not bt.discovering }
-        text "Stop discovery" { at: 285, 91; anchor: center; size: 13; color: #a6e3a1; show: bt.present and bt.powered and bt.discovering }
+        text "Bluetooth" { at: 20, 27; size: 17; weight: 600; color: ink_text }
+        text "No Bluetooth adapter reported" { at: 20, 57; size: 13; color: ink_sub0; show: not bt.present }
+        box bt_power { from: 20, 76; size: 170, 30; corner: 8; color: ink_text; opacity: 8%; cursor: pointer; show: bt.present }
+        text "Power On" { at: 105, 91; anchor: center; size: 13; color: ink_green; show: bt.present and bt.powered }
+        text "Power Off" { at: 105, 91; anchor: center; size: 13; color: ink_text; show: bt.present and not bt.powered }
+        box bt_scan { from: 200, 76; size: 170, 30; corner: 8; color: ink_text; opacity: 8%; cursor: pointer; show: bt.present and bt.powered }
+        text "Discover" { at: 285, 91; anchor: center; size: 13; color: ink_text; show: bt.present and bt.powered and not bt.discovering }
+        text "Stop discovery" { at: 285, 91; anchor: center; size: 13; color: ink_green; show: bt.present and bt.powered and bt.discovering }
         on press bt_power { emit bluetooth_power }
         on press bt_scan { emit bluetooth_scan }
         for d in bt_devices {
             zone box bt_row.$d.index { from: 16, 118 + (d.index - floor(d.index / 6) * 6) * 34; size: 358, 32; active: floor(d.index / 6) == bt_page and bt.pairing == none; cursor: pointer; label: "{d.name}" }
-            box { from: 18, 118 + (d.index - floor(d.index / 6) * 6) * 34; size: 354, 32; corner: 8; color: #cdd6f4; opacity: 8%; show: d.index == bt_selected and floor(d.index / 6) == bt_page and bt.pairing == none }
-            text d.name { at: 24, 134 + (d.index - floor(d.index / 6) * 6) * 34; width: 230; anchor: left center; size: 13; color: if(d.connected, #a6e3a1, #cdd6f4); show: floor(d.index / 6) == bt_page and bt.pairing == none }
-            text "Connected" { at: 365, 134 + (d.index - floor(d.index / 6) * 6) * 34; anchor: right center; size: 11; color: #a6e3a1; show: d.connected and floor(d.index / 6) == bt_page and bt.pairing == none }
-            text "Paired" { at: 365, 134 + (d.index - floor(d.index / 6) * 6) * 34; anchor: right center; size: 11; color: #a6adc8; show: d.paired and not d.connected and floor(d.index / 6) == bt_page and bt.pairing == none }
+            box { from: 18, 118 + (d.index - floor(d.index / 6) * 6) * 34; size: 354, 32; corner: 8; color: ink_text; opacity: 8%; show: d.index == bt_selected and floor(d.index / 6) == bt_page and bt.pairing == none }
+            text d.name { at: 24, 134 + (d.index - floor(d.index / 6) * 6) * 34; width: 230; anchor: left center; size: 13; color: if(d.connected, ink_green, ink_text); show: floor(d.index / 6) == bt_page and bt.pairing == none }
+            text "Connected" { at: 365, 134 + (d.index - floor(d.index / 6) * 6) * 34; anchor: right center; size: 11; color: ink_green; show: d.connected and floor(d.index / 6) == bt_page and bt.pairing == none }
+            text "Paired" { at: 365, 134 + (d.index - floor(d.index / 6) * 6) * 34; anchor: right center; size: 11; color: ink_sub0; show: d.paired and not d.connected and floor(d.index / 6) == bt_page and bt.pairing == none }
             on press bt_row.$d.index { emit bluetooth_select(d.index) }
         }
-        text "No devices reported" { at: 24, 140; size: 13; color: #a6adc8; show: bt_devices.count == 0 and bt.pairing == none }
-        text bt.pairing_name { at: 24, 140; width: 340; size: 15; color: #cdd6f4; show: bt.pairing != none }
-        text bt.pairing_address { at: 24, 166; width: 340; size: 12; color: #a6adc8; show: bt.pairing != none }
-        text "Enter the device PIN" { at: 24, 198; size: 13; color: #cdd6f4; show: bt.pairing == pin }
-        text "Enter the device passkey" { at: 24, 198; size: 13; color: #cdd6f4; show: bt.pairing == passkey }
-        text "Do these codes match? {bt.pairing_code}" { at: 24, 198; width: 340; size: 13; color: #cdd6f4; show: bt.pairing == confirm }
-        text "Enter this code on the device: {bt.pairing_code}" { at: 24, 198; width: 340; size: 13; color: #cdd6f4; show: bt.pairing == display }
-        text "Allow this device to pair?" { at: 24, 198; size: 13; color: #cdd6f4; show: bt.pairing == authorize }
-        input bt_answer { at: 24, 232; width: 340; size: 14; color: #cdd6f4; placeholder: "Code"; secret: true; agent: no; show: bt.pairing == pin or bt.pairing == passkey; label: "Bluetooth code" }
-        box bt_confirm { from: 24, 270; size: 160, 32; corner: 8; color: #a6e3a1; opacity: 15%; show: bt.pairing != none and bt.pairing != display; cursor: pointer }
-        text "Continue" { at: 104, 286; anchor: center; size: 13; color: #cdd6f4; show: bt.pairing != none and bt.pairing != display }
-        box bt_cancel { from: 198, 270; size: 160, 32; corner: 8; color: #cdd6f4; opacity: 8%; show: bt.pairing != none; cursor: pointer }
-        text "Cancel" { at: 278, 286; anchor: center; size: 13; color: #cdd6f4; show: bt.pairing != none }
+        text "No devices reported" { at: 24, 140; size: 13; color: ink_sub0; show: bt_devices.count == 0 and bt.pairing == none }
+        text bt.pairing_name { at: 24, 140; width: 340; size: 15; color: ink_text; show: bt.pairing != none }
+        text bt.pairing_address { at: 24, 166; width: 340; size: 12; color: ink_sub0; show: bt.pairing != none }
+        text "Enter the device PIN" { at: 24, 198; size: 13; color: ink_text; show: bt.pairing == pin }
+        text "Enter the device passkey" { at: 24, 198; size: 13; color: ink_text; show: bt.pairing == passkey }
+        text "Do these codes match? {bt.pairing_code}" { at: 24, 198; width: 340; size: 13; color: ink_text; show: bt.pairing == confirm }
+        text "Enter this code on the device: {bt.pairing_code}" { at: 24, 198; width: 340; size: 13; color: ink_text; show: bt.pairing == display }
+        text "Allow this device to pair?" { at: 24, 198; size: 13; color: ink_text; show: bt.pairing == authorize }
+        input bt_answer { at: 24, 232; width: 340; size: 14; color: ink_text; placeholder: "Code"; secret: true; agent: no; show: bt.pairing == pin or bt.pairing == passkey; label: "Bluetooth code" }
+        box bt_confirm { from: 24, 270; size: 160, 32; corner: 8; color: ink_green; opacity: 15%; show: bt.pairing != none and bt.pairing != display; cursor: pointer }
+        text "Continue" { at: 104, 286; anchor: center; size: 13; color: ink_text; show: bt.pairing != none and bt.pairing != display }
+        box bt_cancel { from: 198, 270; size: 160, 32; corner: 8; color: ink_text; opacity: 8%; show: bt.pairing != none; cursor: pointer }
+        text "Cancel" { at: 278, 286; anchor: center; size: 13; color: ink_text; show: bt.pairing != none }
         on press bt_confirm { emit bluetooth_answer }
         on press bt_cancel { emit bluetooth_cancel }
         on change bt.pairing_id { emit bluetooth_question }
         on change bt.pairing while bt.pairing == pin or bt.pairing == passkey { focus bt_answer }
         zone box bt_prev { from: 20, 334; size: 80, 28; active: bt_page > 0 and bt.pairing == none; cursor: pointer }
         zone box bt_next { from: 290, 334; size: 80, 28; active: (bt_page + 1) * 6 < bt_devices.count and bt.pairing == none; cursor: pointer }
-        text "Previous" { at: 24, 350; size: 12; color: #a6adc8; show: bt_page > 0 and bt.pairing == none }
-        text "Next" { at: 360, 350; anchor: right center; size: 12; color: #a6adc8; show: (bt_page + 1) * 6 < bt_devices.count and bt.pairing == none }
+        text "Previous" { at: 24, 350; size: 12; color: ink_sub0; show: bt_page > 0 and bt.pairing == none }
+        text "Next" { at: 360, 350; anchor: right center; size: 12; color: ink_sub0; show: (bt_page + 1) * 6 < bt_devices.count and bt.pairing == none }
         on press bt_prev { emit bluetooth_page(-1) }
         on press bt_next { emit bluetooth_page(1) }
-        text bt_target_name { at: 20, 383; width: 350; size: 13; color: #a6adc8; show: bt.pairing == none }
-        box bt_connect { from: 20, 406; size: 230, 32; corner: 8; color: #cdd6f4; opacity: 8%; show: bt_has_target and bt.pairing == none; cursor: pointer }
-        text "Connect / Disconnect" { at: 135, 422; anchor: center; size: 13; color: #cdd6f4; show: bt_has_target and bt.pairing == none }
+        text bt_target_name { at: 20, 383; width: 350; size: 13; color: ink_sub0; show: bt.pairing == none }
+        box bt_connect { from: 20, 406; size: 230, 32; corner: 8; color: ink_text; opacity: 8%; show: bt_has_target and bt.pairing == none; cursor: pointer }
+        text "Connect / Disconnect" { at: 135, 422; anchor: center; size: 13; color: ink_text; show: bt_has_target and bt.pairing == none }
         zone box bt_forget { from: 278, 406; size: 90, 32; active: bt_has_target and bt.pairing == none; cursor: pointer }
-        text "Forget" { at: 325, 422; anchor: center; size: 13; color: #f38ba8; show: bt_has_target and bt.pairing == none }
+        text "Forget" { at: 325, 422; anchor: center; size: 13; color: ink_red; show: bt_has_target and bt.pairing == none }
         on press bt_connect { emit bluetooth_connect }
         on press bt_forget { emit bluetooth_forget }
-        text bt_request { at: 20, 472; width: 350; size: 11; color: #a6adc8 }
+        text bt_request { at: 20, 472; width: 350; size: 11; color: ink_sub0 }
     }
     on key Down while bt_open and bt.pairing == none { emit bluetooth_move(1) }
     on key Up while bt_open and bt.pairing == none { emit bluetooth_move(-1) }

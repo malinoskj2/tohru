@@ -1,0 +1,27 @@
+part BarBell {
+    image bar_bell = file "../service-assets/bell-filled.svg", 14, 14
+    image bar_bell_off = file "../service-assets/bell-off-filled.svg", 14, 14
+    fact notices_unread = false
+    fact notices_dnd = false
+    event notices_state ->
+    event bell_seen ->
+    event bell_dnd ->
+    let bell_accent = #f5c2e7
+    zone box bar_bell_hit { from: bell_x, 4; size: 24, 22; corner: 7; cursor: pointer; label: "Notifications" }
+    box { from: bell_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(bar_bell_hit.hover * 10%, bar_bell_hit.pressed * 16%) }
+    image bar_bell { at: round(bell_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 92%; show: not notices_dnd }
+    image bar_bell_off { at: round(bell_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 38%; show: notices_dnd }
+    // j2bar's unread mark: a 4px square 3px in from the button's top right, glowing 3.5px at 90% and 9px at 75%.
+    group {
+        glow: 9, 35%, bell_accent
+        show: notices_unread and not notices_dnd
+        box { from: bell_x + 17, 7; size: 4, 4; color: bell_accent }
+    }
+    group {
+        glow: 3.5, 45%, bell_accent
+        show: notices_unread and not notices_dnd
+        box { from: bell_x + 17, 7; size: 4, 4; color: bell_accent }
+    }
+    on press bar_bell_hit { notices_unread = false; emit bell_seen }
+    on press right bar_bell_hit { emit bell_dnd }
+}

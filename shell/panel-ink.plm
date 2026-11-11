@@ -1,0 +1,29 @@
+part PanelInk {
+    // How much of what is behind the open panel's glass is bright, from its lens capture.
+    fact panel_bright = 0
+    // j2bar's capsule: light above 55% bright, dark again below 45%.
+    fact panel_light = false
+    on change panel_bright while not panel_light and panel_bright > 0.55 { panel_light = true }
+    on change panel_bright while panel_light and panel_bright < 0.45 { panel_light = false }
+    prop panel_level = 0 ~210ms
+    follow panel_level = if(panel_light, 1, 0)
+    // The level through a smoothstep between 35% and 65%, as j2bar eases it.
+    let panel_k = clamp((panel_level - 0.35) / 0.3, 0, 1)
+    let pk = panel_k * panel_k * (3 - 2 * panel_k)
+    // Catppuccin Mocha for dark glass; for light, j2bar's light ink and Latte, as j2bar turns Mocha accents.
+    let ink_text = mix(#cdd6f4, #1c1826, pk)
+    let ink_sub1 = mix(#bac2de, #5c5f77, pk)
+    let ink_sub0 = mix(#a6adc8, #6c6f85, pk)
+    let ink_overlay = mix(#6c7086, #9ca0b0, pk)
+    let ink_surface = mix(#45475a, #bcc0cc, pk)
+    let ink_body = mix(#181825, #fafafc, pk)
+    let ink_sky = mix(#89dceb, #04a5e5, pk)
+    let ink_green = mix(#a6e3a1, #40a02b, pk)
+    let ink_red = mix(#f38ba8, #d20f39, pk)
+    let ink_blue = mix(#89b4fa, #1e66f5, pk)
+    let ink_peach = mix(#fab387, #fe640b, pk)
+    let ink_yellow = mix(#f9e2af, #df8e1d, pk)
+    let ink_mauve = mix(#cba6f7, #8839ef, pk)
+    let ink_lavender = mix(#b4befe, #7287fd, pk)
+    let ink_teal = mix(#94e2d5, #179299, pk)
+}

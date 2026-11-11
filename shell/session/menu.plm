@@ -17,25 +17,32 @@ scene TohruSession {
     event choose ->
     event cancel_choice ->
     event accept_choice ->
-    popup menu { at: 8, 38; size: 304, 292; open: open
-        box { from: 0, 0; size: 304, 292; corner: 16; color: #201a21; glass: 100% }
-        text "NixOS" { at: 16, 20; anchor: left center; size: 13; color: #f5f5f5 }
+    include "../panel-ink.plm"
+    let menu_body = mix(#201a21, #fafafc, pk)
+    let menu_ink = mix(#f5f5f5, #1c1826, pk)
+    let menu_row = mix(#f5cddd, #ea76cb, pk)
+    let menu_cancel = mix(#514851, #d9d3d9, pk)
+    let menu_quiet = mix(#b4aab4, #6f6570, pk)
+    let menu_error = mix(#ffc0bf, #d20f39, pk)
+    popup menu { at: 8, 38; size: 304, 292; open: open; bright: panel_bright
+        box { from: 0, 0; size: 304, 292; corner: 16; color: menu_body; glass: 100% }
+        text "NixOS" { at: 16, 20; anchor: left center; size: 13; color: menu_ink }
         repeat i in 0..5 {
-            box row { from: 8, 40 + i * 24; size: 288, 24; corner: 7; color: #f5cddd; opacity: if(selected == i + 1, 18%, 0%); cursor: pointer }
+            box row { from: 8, 40 + i * 24; size: 288, 24; corner: 7; color: menu_row; opacity: if(selected == i + 1, 18%, 0%); cursor: pointer }
             on press row { emit choose(i + 1) }
         }
-        text "Lock Screen" { at: 20, 52; anchor: left center; size: 13; color: #f5f5f5 }
-        text "Sleep" { at: 20, 76; anchor: left center; size: 13; color: #f5f5f5 }
-        text "Restart…" { at: 20, 100; anchor: left center; size: 13; color: #f5f5f5 }
-        text "Shut Down…" { at: 20, 124; anchor: left center; size: 13; color: #f5f5f5 }
-        text "Log Out…" { at: 20, 148; anchor: left center; size: 13; color: #f5f5f5 }
-        text prompt { at: 16, 180; anchor: left center; size: 13; color: #f5f5f5; show: confirming > 0 }
-        box cancel_button { at: 74, 211; size: 112, 28; corner: 9; color: #514851; cursor: pointer; show: confirming > 0 }
-        text "Cancel" { at: 74, 211; anchor: center; size: 13; color: #f5f5f5; show: confirming > 0 }
+        text "Lock Screen" { at: 20, 52; anchor: left center; size: 13; color: menu_ink }
+        text "Sleep" { at: 20, 76; anchor: left center; size: 13; color: menu_ink }
+        text "Restart…" { at: 20, 100; anchor: left center; size: 13; color: menu_ink }
+        text "Shut Down…" { at: 20, 124; anchor: left center; size: 13; color: menu_ink }
+        text "Log Out…" { at: 20, 148; anchor: left center; size: 13; color: menu_ink }
+        text prompt { at: 16, 180; anchor: left center; size: 13; color: menu_ink; show: confirming > 0 }
+        box cancel_button { at: 74, 211; size: 112, 28; corner: 9; color: menu_cancel; cursor: pointer; show: confirming > 0 }
+        text "Cancel" { at: 74, 211; anchor: center; size: 13; color: menu_ink; show: confirming > 0 }
         box accept_button { at: 224, 211; size: 128, 28; corner: 9; color: #bb6f9a; cursor: pointer; show: confirming > 0; agent: no }
         text accept { at: 224, 211; anchor: center; size: 13; color: #ffffff; show: confirming > 0 }
-        text "{remaining}s to cancel automatically" { at: 16, 242; anchor: left center; size: 11; color: #b4aab4; show: confirming > 0 }
-        text error { at: 16, 263; width: 272; lines: 2; size: 11; color: #ffc0bf }
+        text "{remaining}s to cancel automatically" { at: 16, 242; anchor: left center; size: 11; color: menu_quiet; show: confirming > 0 }
+        text error { at: 16, 263; width: 272; lines: 2; size: 11; color: menu_error }
         on press cancel_button { emit cancel_choice }
         on press accept_button { emit accept_choice }
     }

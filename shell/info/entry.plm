@@ -5,5 +5,6 @@ scene TohruInformation {
     zone box information_button { from: 100, 0; size: 160, 31; cursor: pointer }
     text "System Information" { at: 180, 16; anchor: center; size: 13; color: #cdd6f4 }
     on press information_button { emit info_open }
+    include "../panel-ink.plm"
     include "popup.plm"
 }

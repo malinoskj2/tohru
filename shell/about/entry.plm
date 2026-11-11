@@ -5,5 +5,6 @@ scene TohruAbout {
     zone box about_button { from: 100, 0; size: 120, 31; cursor: pointer }
     text "About" { at: 160, 16; anchor: center; size: 13; color: #cdd6f4 }
     on press about_button { emit about_toggle }
+    include "../panel-ink.plm"
     include "popup.plm"
 }

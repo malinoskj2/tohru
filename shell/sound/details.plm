@@ -1,12 +1,12 @@
 part SoundDetails {
  group {
   show: sound_details
-  box sound_output_tab { from: 12, 120; size: 88, 30; corner: 7; color: #89dceb; opacity: if(sound_tab == 0, 22%, 8%); cursor: pointer }
-  box sound_input_tab { from: 106, 120; size: 88, 30; corner: 7; color: #89dceb; opacity: if(sound_tab == 1, 22%, 8%); cursor: pointer }
-  box sound_app_tab { from: 200, 120; size: 88, 30; corner: 7; color: #89dceb; opacity: if(sound_tab == 2, 22%, 8%); cursor: pointer }
-  text "Outputs" { at: 56, 135; anchor: center; size: 12; color: #cdd6f4 }
-  text "Input" { at: 150, 135; anchor: center; size: 12; color: #cdd6f4 }
-  text "Apps" { at: 244, 135; anchor: center; size: 12; color: #cdd6f4 }
+  box sound_output_tab { from: 12, 120; size: 88, 30; corner: 7; color: ink_sky; opacity: if(sound_tab == 0, 22%, 8%); cursor: pointer }
+  box sound_input_tab { from: 106, 120; size: 88, 30; corner: 7; color: ink_sky; opacity: if(sound_tab == 1, 22%, 8%); cursor: pointer }
+  box sound_app_tab { from: 200, 120; size: 88, 30; corner: 7; color: ink_sky; opacity: if(sound_tab == 2, 22%, 8%); cursor: pointer }
+  text "Outputs" { at: 56, 135; anchor: center; size: 12; color: ink_text }
+  text "Input" { at: 150, 135; anchor: center; size: 12; color: ink_text }
+  text "Apps" { at: 244, 135; anchor: center; size: 12; color: ink_text }
   on press sound_output_tab { emit sound_tab(0) }
   on press sound_input_tab { emit sound_tab(1) }
   on press sound_app_tab { emit sound_tab(2) }
@@ -14,63 +14,63 @@ part SoundDetails {
    group {
     show: sound_tab == 0 and floor(output.index / 4) == sound_list_page
     let row_y = 160 + (output.index - floor(output.index / 4) * 4) * 44
-    box hit { from: 12, row_y; size: 276, 40; corner: 8; color: #45475a; opacity: if(output.default, 60%, 20%); stroke: if(output.index == sound_row_focus, 1, 0); cursor: pointer; label: "Choose output {output.name}" }
-    text output.name { at: 22, row_y + 20; anchor: left center; width: 230; lines: 1; size: 12; color: #cdd6f4 }
-    text "✓" { at: 272, row_y + 20; anchor: center; size: 13; color: #a6e3a1; show: output.default }
+    box hit { from: 12, row_y; size: 276, 40; corner: 8; color: ink_surface; opacity: if(output.default, 60%, 20%); stroke: if(output.index == sound_row_focus, 1, 0); cursor: pointer; label: "Choose output {output.name}" }
+    text output.name { at: 22, row_y + 20; anchor: left center; width: 230; lines: 1; size: 12; color: ink_text }
+    text "✓" { at: 272, row_y + 20; anchor: center; size: 13; color: ink_green; show: output.default }
     on press hit { emit audio_output_select(output.id) }
    }
   }
-  text "No outputs reported" { at: 18, 182; size: 12; color: #a6adc8; show: sound_tab == 0 and sound_outputs.count == 0 }
+  text "No outputs reported" { at: 18, 182; size: 12; color: ink_sub0; show: sound_tab == 0 and sound_outputs.count == 0 }
   group {
    show: sound_tab == 1
-   text "Microphone {round(audio.input * 100)}%" { at: 18, 177; size: 12; color: #cdd6f4; show: sound_input_ready }
-   text "No native default microphone reported" { at: 18, 177; size: 11; color: #a6adc8; show: not sound_input_ready }
-   box input_mute_hit { from: 12, 188; size: 26, 28; corner: 7; color: #45475a; cursor: pointer; active: sound_input_ready }
-   image sound_mic { at: 17, 194; size: 16, 16; tint: #89dceb; show: not audio.input_muted }
-   image sound_mic_off { at: 17, 194; size: 16, 16; tint: #89dceb; show: audio.input_muted }
+   text "Microphone {round(audio.input * 100)}%" { at: 18, 177; size: 12; color: ink_text; show: sound_input_ready }
+   text "No native default microphone reported" { at: 18, 177; size: 11; color: ink_sub0; show: not sound_input_ready }
+   box input_mute_hit { from: 12, 188; size: 26, 28; corner: 7; color: ink_surface; cursor: pointer; active: sound_input_ready }
+   image sound_mic { at: 17, 194; size: 16, 16; tint: ink_sky; show: not audio.input_muted }
+   image sound_mic_off { at: 17, 194; size: 16, 16; tint: ink_sky; show: audio.input_muted }
    let input_level = if(sound_input_dragging, sound_input_requested, clamp(audio.input, 0, 1))
-   box { from: 46, 201; size: 236, 4; corner: 2; color: #45475a }
-   box { from: 46, 201; size: 236 * input_level, 4; corner: 2; color: #89dceb; opacity: if(audio.input_muted, 38%, 100%) }
-   ellipse { at: 46 + 236 * input_level, 203; radius: 4; color: #89dceb; show: sound_input_ready }
+   box { from: 46, 201; size: 236, 4; corner: 2; color: ink_surface }
+   box { from: 46, 201; size: 236 * input_level, 4; corner: 2; color: ink_sky; opacity: if(audio.input_muted, 38%, 100%) }
+   ellipse { at: 46 + 236 * input_level, 203; radius: 4; color: ink_sky; show: sound_input_ready }
    zone box input_track { from: 46, 188; size: 236, 30; cursor: pointer; active: sound_input_ready }
    on press input_mute_hit { emit audio_input_mute }
    on press input_track { sound_input_dragging=true; sound_input_requested=clamp(local.x/236,0,1); emit audio_input_set(sound_input_requested) }
    on drag input_track { sound_input_requested=clamp(local.x/236,0,1); emit audio_input_set(sound_input_requested) }
    on release input_track { sound_input_dragging=false; emit audio_flush }
    for input in sound_inputs {
-    text input.name { at: 18, 238 + (input.index - floor(input.index / 4) * 4) * 28; anchor: left center; width: 242; lines: 1; size: 11; color: #a6adc8; show: floor(input.index / 4) == sound_list_page }
-    text "✓" { at: 272, 238 + (input.index - floor(input.index / 4) * 4) * 28; anchor: center; size: 12; color: #a6e3a1; show: input.default and floor(input.index / 4) == sound_list_page }
+    text input.name { at: 18, 238 + (input.index - floor(input.index / 4) * 4) * 28; anchor: left center; width: 242; lines: 1; size: 11; color: ink_sub0; show: floor(input.index / 4) == sound_list_page }
+    text "✓" { at: 272, 238 + (input.index - floor(input.index / 4) * 4) * 28; anchor: center; size: 12; color: ink_green; show: input.default and floor(input.index / 4) == sound_list_page }
    }
   }
   for app in sound_apps {
    group {
     show: sound_tab == 2 and floor(app.index / 4) == sound_list_page
     let app_y = 160 + (app.index - floor(app.index / 4) * 4) * 44
-    box { from: 12, app_y; size: 276, 40; corner: 7; stroke: if(app.index == sound_row_focus, 1, 0); color: #89dceb; opacity: 40% }
-    text app.name { at: 18, app_y + 10; anchor: left center; width: 150; lines: 1; size: 12; color: #cdd6f4 }
-    text app.title { at: 18, app_y + 28; anchor: left center; width: 118; lines: 1; size: 10; color: #a6adc8 }
-    text "{round(app.volume * 100)}%" { at: 166, app_y + 28; anchor: right center; size: 10; color: #a6adc8 }
-    box down { from: 174, app_y + 6; size: 30, 28; corner: 6; color: #45475a; cursor: pointer; label: "Lower {app.name} volume" }
-    box mute { from: 210, app_y + 6; size: 38, 28; corner: 6; color: if(app.muted, #89dceb, #45475a); cursor: pointer; label: "Toggle {app.name} mute" }
-    box up { from: 254, app_y + 6; size: 30, 28; corner: 6; color: #45475a; cursor: pointer; label: "Raise {app.name} volume" }
-    text "−" { at: 189, app_y + 20; anchor: center; size: 16; color: #cdd6f4 }
-    text "M" { at: 229, app_y + 20; anchor: center; size: 11; color: #cdd6f4 }
-    text "+" { at: 269, app_y + 20; anchor: center; size: 16; color: #cdd6f4 }
+    box { from: 12, app_y; size: 276, 40; corner: 7; stroke: if(app.index == sound_row_focus, 1, 0); color: ink_sky; opacity: 40% }
+    text app.name { at: 18, app_y + 10; anchor: left center; width: 150; lines: 1; size: 12; color: ink_text }
+    text app.title { at: 18, app_y + 28; anchor: left center; width: 118; lines: 1; size: 10; color: ink_sub0 }
+    text "{round(app.volume * 100)}%" { at: 166, app_y + 28; anchor: right center; size: 10; color: ink_sub0 }
+    box down { from: 174, app_y + 6; size: 30, 28; corner: 6; color: ink_surface; cursor: pointer; label: "Lower {app.name} volume" }
+    box mute { from: 210, app_y + 6; size: 38, 28; corner: 6; color: if(app.muted, ink_sky, ink_surface); cursor: pointer; label: "Toggle {app.name} mute" }
+    box up { from: 254, app_y + 6; size: 30, 28; corner: 6; color: ink_surface; cursor: pointer; label: "Raise {app.name} volume" }
+    text "−" { at: 189, app_y + 20; anchor: center; size: 16; color: ink_text }
+    text "M" { at: 229, app_y + 20; anchor: center; size: 11; color: ink_text }
+    text "+" { at: 269, app_y + 20; anchor: center; size: 16; color: ink_text }
     on press down { emit audio_app_down(app.id) }
     on press mute { emit audio_app_mute(app.id) }
     on press up { emit audio_app_up(app.id) }
    }
   }
-  text "No application streams reported" { at: 18, 182; size: 12; color: #a6adc8; show: sound_tab == 2 and sound_apps.count == 0 }
+  text "No application streams reported" { at: 18, 182; size: 12; color: ink_sub0; show: sound_tab == 2 and sound_apps.count == 0 }
   let sound_list_count = if(sound_tab == 0, sound_outputs.count, if(sound_tab == 1, sound_inputs.count, sound_apps.count))
-  box sound_previous { from: 12, 352; size: 98, 28; corner: 6; color: #45475a; cursor: pointer; active: sound_list_page > 0 }
-  box sound_next { from: 190, 352; size: 98, 28; corner: 6; color: #45475a; cursor: pointer; active: (sound_list_page + 1) * 4 < sound_list_count }
-  text "Previous" { at: 61, 366; anchor: center; size: 11; color: #cdd6f4 }
-  text "{sound_list_page + 1}" { at: 150, 366; anchor: center; size: 11; color: #cdd6f4 }
-  text "Next" { at: 239, 366; anchor: center; size: 11; color: #cdd6f4 }
+  box sound_previous { from: 12, 352; size: 98, 28; corner: 6; color: ink_surface; cursor: pointer; active: sound_list_page > 0 }
+  box sound_next { from: 190, 352; size: 98, 28; corner: 6; color: ink_surface; cursor: pointer; active: (sound_list_page + 1) * 4 < sound_list_count }
+  text "Previous" { at: 61, 366; anchor: center; size: 11; color: ink_text }
+  text "{sound_list_page + 1}" { at: 150, 366; anchor: center; size: 11; color: ink_text }
+  text "Next" { at: 239, 366; anchor: center; size: 11; color: ink_text }
   on press sound_previous { emit sound_list_page(-1) }
   on press sound_next { emit sound_list_page(1) }
-  text "Input devices read-only: native IDs collide. Arrows change level; Enter toggles the default mic mute." { at: 18, 392; anchor: left top; width: 264; lines: 2; size: 10; color: #a6adc8; show: sound_tab == 1 }
-  text "Tab changes pages; Up/Down selects a row, arrows change level, Enter selects output or toggles app mute." { at: 18, 392; anchor: left top; width: 264; lines: 2; size: 10; color: #a6adc8; show: sound_tab != 1 }
+  text "Input devices read-only: native IDs collide. Arrows change level; Enter toggles the default mic mute." { at: 18, 392; anchor: left top; width: 264; lines: 2; size: 10; color: ink_sub0; show: sound_tab == 1 }
+  text "Tab changes pages; Up/Down selects a row, arrows change level, Enter selects output or toggles app mute." { at: 18, 392; anchor: left top; width: 264; lines: 2; size: 10; color: ink_sub0; show: sound_tab != 1 }
  }
 }

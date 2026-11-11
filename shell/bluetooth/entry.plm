@@ -5,5 +5,6 @@ scene TohruBluetooth {
     zone box bluetooth_button { from: screen.width - 150, 0; size: 120, 31; cursor: pointer }
     text "Bluetooth" { at: screen.width - 90, 16; anchor: center; size: 13; color: #cdd6f4 }
     on press bluetooth_button { emit bluetooth_toggle }
+    include "../panel-ink.plm"
     include "popup.plm"
 }

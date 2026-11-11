@@ -7,6 +7,7 @@ Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru settings open|close
        tohru session open|close|toggle
        tohru launcher toggle|open|close
+       tohru notifications seen | dnd on|off|toggle
        tohru routing-error
        tohru audio volume up|down
        tohru audio mute toggle
@@ -48,6 +49,15 @@ case ${1:-help} in
         [[ $# == 2 ]] || fail 'Usage: tohru launcher toggle|open|close'
         case $2 in toggle|open|close) ;; *) fail 'Usage: tohru launcher toggle|open|close' ;; esac
         exec "$pleamar" --say tohru-launcher "emit launcher_$2"
+        ;;
+    notifications)
+        case "${2:-}:${3:-}:$#" in
+            seen::2) exec "$pleamar" --say tohru-notifications 'emit notices_seen 0' ;;
+            dnd:off:3) exec "$pleamar" --say tohru-notifications 'emit notices_dnd 0' ;;
+            dnd:on:3) exec "$pleamar" --say tohru-notifications 'emit notices_dnd 1' ;;
+            dnd:toggle:3) exec "$pleamar" --say tohru-notifications 'emit notices_dnd 2' ;;
+            *) fail 'Usage: tohru notifications seen | dnd on|off|toggle' ;;
+        esac
         ;;
     routing-error)
         [[ $# == 1 ]] || fail 'routing-error takes no arguments'
