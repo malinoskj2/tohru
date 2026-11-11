@@ -1,7 +1,7 @@
 language 0.4
 scene TohruSession {
     surface { size: 1, 1; anchor: top_left; keyboard: exclusive while open }
-    permissions { services: "say:tohru-lock", "session.reboot", "session.poweroff", "session.logout" }
+    permissions { run: "loginctl lock-session", "systemctl suspend"; services: "session.reboot", "session.poweroff", "session.logout" }
     fact open = false
     fact selected = 1
     fact confirming = 0

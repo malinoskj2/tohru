@@ -8,7 +8,7 @@
  mod tohru_settings;
 --- a/src/logic_luau.rs
 +++ b/src/logic_luau.rs
-@@ -1404,3 +1404,4 @@
+@@ -1393,3 +1393,4 @@
          if self.prefix.is_none() && std::env::var("TOHRU_SHELL").as_deref() == Ok("1") {
              crate::tohru_settings::install(&lua)?;
 +            crate::tohru_workspace::install(&lua)?;

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """CPU regressions for the actual private native runner environment boundary."""
 import importlib.util
-import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -69,22 +68,5 @@ class Isolation(unittest.TestCase):
             self.assertIn('kill',processes[1].actions)
             self.assertTrue(log.closed)
             self.assertFalse(run.exists())
-
-    def test_pam_preflight_requires_executable_input_tool_before_any_native_start(self):
-        with tempfile.TemporaryDirectory(dir=native.ROOT/'.tmp') as path:
-            directory=Path(path);tool=directory/'tool'
-            tool.write_text('#!/bin/sh\nexit 0\n');tool.chmod(0o700)
-            for mode in ['permit','deny','account-deny']:
-                for missing in [None,directory/'missing',directory]:
-                    with self.assertRaisesRegex(ValueError,'executable --wtype'):
-                        native.validate_pam_tools(mode,missing,tool,directory)
-                native.validate_pam_tools(mode,tool,tool,directory)
-            native.validate_pam_tools(None,None,None,None)
-
-    def test_pam_guard_rejects_current_host_namespace_before_policy_or_exec(self):
-        spec=importlib.util.spec_from_file_location('pam_guard',HERE/'pam_guard.py')
-        guard=importlib.util.module_from_spec(spec);spec.loader.exec_module(guard)
-        with self.assertRaisesRegex(RuntimeError,'mount namespace was not isolated'):
-            guard.verify('unused',os.readlink('/proc/self/ns/mnt'),os.readlink('/proc/self/ns/user'))
 
 if __name__=='__main__': unittest.main()

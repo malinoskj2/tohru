@@ -16,6 +16,7 @@ Status: draft, started 2026-11-10. Nothing below has been done yet.
 | Still-image wallpaper (row 26) | Remove from Tohru | Plain Hyprland configuration (no effects plugin) |
 | Video wallpaper (row 26) | Remove from Tohru | mpvpaper, through the existing `~/nix` wallpaper units |
 | Idle (row 24) | Remove from Tohru | hypridle, configured in `~/nix` |
+| Polkit agent (row 25) | Remove from Tohru | hyprpolkitagent, configured in `~/nix` |
 | Region screenshot (row 28) | Remove from Tohru | grimblast (hyprwm/contrib): `grimblast --notify --freeze copysave area` |
 
 Already dropped by the acceptance inventory and still dropped: dmenu picker
@@ -45,7 +46,7 @@ Accepted differences from j2bar that stay:
 
 - [ ] Removal tasks #1–#6 in the repo task list (lock boundary, window lifecycle,
       wallpaper, video, idle, capture), with their patch rebases.
-- [ ] Session menu Lock and Sleep call `loginctl lock-session` (and suspend for
+- [x] Session menu Lock and Sleep call `loginctl lock-session` (and suspend for
       Sleep) so hyprlock, through hypridle's `lock_cmd`, does the locking.
 - [ ] Bar visual parity with j2bar (started: shape, row layout, glyphs, SF Pro
       Text). Still missing: notification bell, adaptive light/dark glass.
@@ -53,14 +54,13 @@ Accepted differences from j2bar that stay:
       with focused/first fallback; Tohru currently draws `screens: all`. Pick one.
 - [ ] CLI gap against current keybinds (section 4): launcher toggle.
 - [ ] Process supervision: Tohru is several scenes (bar root, session menu,
-      locker, launcher, notifications, polkit, Settings on demand). Nothing
+      launcher, notifications, Settings on demand). Nothing
       starts them yet; `nix/home-manager.nix` only installs the package. Add
       systemd user units (bound to `graphical-session.target`) or Hyprland
       `exec-once`, with restart policy for each long-lived role.
 - [ ] Notifications: Tohru must be the only `org.freedesktop.Notifications`
       owner; verify banner text and the placeholder sound.
-- [ ] Polkit: Tohru's agent must be the only agent (j2bar currently runs
-      `j2bar polkit-agent`).
+- [ ] Polkit: hyprpolkitagent is the only polkit agent (stop j2bar polkit-agent).
 - [ ] Effects plugin: fix the first-pass `hl.animation` ordering (its animation calls run before
       `hl.plugin.load` registers them, so they only apply after a reload),
       run its visual/unload/damage checks in a nested Hyprland, then move
@@ -74,17 +74,16 @@ Accepted differences from j2bar that stay:
       (`--pointer` coordinates need the new bar layout), `tests/bar/native.py` in every mode
       (needs `setsid`, `wayland-scanner`, xkbcommon pkg-config; update for the
       new bar layout), and `tests/session/native.sh` with `--notifications`
-      (its lock and PAM modes go with #1).
+      (its fake `systemctl`/`loginctl` log must show Lock and Sleep commands).
 
 ### Roles and processes
 
 | Scene name (`--answer-as`) | Scene | Started by |
 |---|---|---|
-| `tohru` | `shell/bar.plm` (bar, popups, OSD, corners) | `bin/tohru-run` (sets `TOHRU_SHELL=1`, clears `TOHRU_LOCKER`) |
+| `tohru` | `shell/bar.plm` (bar, popups, OSD, corners) | `bin/tohru-run` (sets `TOHRU_SHELL=1`) |
 | `tohru-session` | `shell/session/menu.plm` | `pleamar --scene … --answer-as tohru-session --no-hud` |
 | `tohru-launcher` | `shell/launcher/entry.plm` | `pleamar --scene … --answer-as tohru-launcher --stall 0` |
 | `tohru-notifications` | `shell/notifications/notifications.plm` | own process; must be the only notification daemon |
-| `tohru-polkit` | `shell/polkit/polkit.plm` | own process; must be the only polkit agent |
 | `tohru-settings` | `shell/settings/settings.plm` | `tohru settings open` runs `bin/tohru-settings-run` (sets `TOHRU_SHELL=1`) when no Settings answers |
 
 Every role is its own process and can restart on its own. Scenes talk with
@@ -155,6 +154,12 @@ Idle (hypridle):
       unlocked ones (approximate by a shorter screen-off listener that checks
       whether the session is locked).
 
+Polkit (hyprpolkitagent):
+
+- [ ] Enable `services.hyprpolkitagent` in Home Manager (a user service bound to
+      `graphical-session.target`), and remove `j2bar polkit-agent` so it is the
+      only agent.
+
 ## 4. Keybinds (`hyprland/hyprland.lua`)
 
 | Key | j2bar today | Tohru |
@@ -217,7 +222,8 @@ a live check. Things only the real session can prove:
 
 - Bar on each monitor, hotplug and reconnect, rotation and fractional scale.
 - Glass and adaptive ink against j2bar screenshots over the same wallpaper.
-- Real PAM: lock/unlock, wrong password, lock before sleep, polkit prompts.
+- hyprlock: session menu Lock and Sleep, Super+Shift+Escape, wrong password,
+  lock before sleep. hyprpolkitagent prompts with real PAM.
 - hypridle: screen-off, lock, suspend, lock before sleep, inhibitors from
   video players, DPMS back on after resume.
 - Notifications from real apps; exactly one notification daemon and one polkit agent.

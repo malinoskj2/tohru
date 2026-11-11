@@ -17,8 +17,16 @@ local function execute(action)
     clear()
     text.error = ""
     local ok, err = pcall(function()
-        if action == "lock" or action == "sleep" then
-            sys.call("say", "tohru-lock", "emit " .. (action == "sleep" and "lock_and_suspend" or "lock_request"))
+        if action == "lock" then
+            run("loginctl", { "lock-session" })
+        elseif action == "sleep" then
+            run("loginctl", { "lock-session" }, function(_, code)
+                if code == 0 then
+                    run("systemctl", { "suspend" })
+                else
+                    text.error = "Lock request failed; not suspending"
+                end
+            end)
         else
             sys.call("session." .. action)
         end

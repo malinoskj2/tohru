@@ -57,6 +57,13 @@ unchanged and is hidden before screenshots. Production Settings files stay intac
 Intentional window/root quit must return exit status zero; its status is recorded
 in CLI evidence before clearing process ownership. Crashes/timeouts remain failures.
 
+`tests/session/native.sh --runtime "$runtime/bin/pleamar"` uses the same private
+endpoints for the session menu; add `--notifications --pulseaudio …
+--gdbus … --pactl …` for the notification daemon. Its `systemctl` and `loginctl`
+are fakes that append their arguments to the evidence directory's `power.log`;
+the run requires Lock to log `loginctl lock-session` and Sleep to log
+`loginctl lock-session` then `systemctl suspend`.
+
 This is driver/lifecycle/input evidence, not performance, exact pixel parity or
 physical-session acceptance. Both application and compositor hardware adapters
 must be present in their logs. Failed assertions remain failures with raw evidence;

@@ -2,7 +2,7 @@ diff --git a/src/render.rs b/src/render.rs
 index 91ff1fa..0da09d3 100644
 --- a/src/render.rs
 +++ b/src/render.rs
-@@ -862,6 +862,10 @@ pub fn run(
+@@ -859,6 +859,10 @@ pub fn run(
          // press is the zone's under where it was pressed, the moving and what
          // follows it, the next round's.
          let mut pressed = false;
@@ -13,7 +13,7 @@ index 91ff1fa..0da09d3 100644
          if timing {
              for m in &incoming {
                  let kind = match m {
-@@ -888,6 +892,11 @@ pub fn run(
+@@ -885,6 +889,11 @@ pub fn run(
                  continue;
              }
              pressed |= matches!(m, ToRender::Button(_, true) | ToRender::AgentButton(_, true));

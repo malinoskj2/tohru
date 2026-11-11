@@ -39,3 +39,11 @@ index 9390161..8accbb7 100644
          // The sandbox, last of all: from here on the globals are not touched.
          lua.sandbox(true)?;
          Ok(lua)
+@@ -1762,6 +1766,7 @@ pub static REQUIRED: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mute
+ #[cfg(test)]
+ mod tests {
+     use super::{command_allowed, say_allowed};
++    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/runtime/role-install.rs"));
+ 
+     #[test]
+     fn a_command_declared_with_its_script_runs_only_that() {

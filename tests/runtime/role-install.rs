@@ -1,6 +1,6 @@
 // Included inside the actual native logic_luau::tests module, Luau feature only.
 #[test]
-fn tohru_locker_role_install_does_not_read_shell_settings() {
+fn tohru_shell_role_alone_installs_shell_settings() {
     use std::process::Command;
 
     struct Fixture(std::path::PathBuf);
@@ -25,7 +25,7 @@ fn tohru_locker_role_install_does_not_read_shell_settings() {
         "-- No services or actions started\n",
     )
     .unwrap();
-    for case in ["locker", "shell", "none", "plugin"] {
+    for case in ["shell", "none", "plugin"] {
         let output = Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
@@ -34,14 +34,6 @@ fn tohru_locker_role_install_does_not_read_shell_settings() {
                 "--ignored",
             ])
             .env("TOHRU_ROLE_INSTALL_TEST_DIR", &dir.0)
-            .env(
-                "TOHRU_LOCKER",
-                if matches!(case, "locker" | "plugin") {
-                    "1"
-                } else {
-                    "0"
-                },
-            )
             .env("TOHRU_SHELL", if case == "none" { "0" } else { "1" })
             .env("HOME", dir.0.join("home"))
             .env("XDG_CONFIG_HOME", dir.0.join("config"))
@@ -103,7 +95,7 @@ fn tohru_role_child(case: &str) {
     );
     let _ = script.scene();
     if case == "plugin" {
-        script.prefix = Some("tohru-lock".into());
+        script.prefix = Some("tohru-plugin".into());
     }
     let mut context = crate::logic::Context::for_plugin(tx, blocked);
     script.on_event(crate::scene::Event::Alarm("start"), &mut context);
@@ -116,7 +108,7 @@ fn tohru_role_child(case: &str) {
         let lua = script
             .lua
             .as_ref()
-            .expect("locker/disabled/plugin loads without shell TOML");
+            .expect("disabled/plugin loads without shell TOML");
         for name in ["tohru_settings", "tohru_workspace", "tohru_info"] {
             assert!(
                 matches!(
@@ -127,12 +119,6 @@ fn tohru_role_child(case: &str) {
             );
         }
     }
-}
-
-#[test]
-#[ignore = "spawned only by isolated role installer parent test"]
-fn tohru_role_child_locker() {
-    tohru_role_child("locker");
 }
 
 #[test]

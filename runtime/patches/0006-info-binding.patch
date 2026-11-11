@@ -8,7 +8,7 @@
  mod tohru_workspace;
 --- a/src/logic_luau.rs
 +++ b/src/logic_luau.rs
-@@ -1405,3 +1405,4 @@
+@@ -1394,3 +1394,4 @@
              crate::tohru_settings::install(&lua)?;
              crate::tohru_workspace::install(&lua)?;
 +            crate::tohru_info::install(&lua)?;

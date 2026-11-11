@@ -2,7 +2,7 @@ diff --git a/src/render.rs b/src/render.rs
 index 0da09d3..aac918e 100644
 --- a/src/render.rs
 +++ b/src/render.rs
-@@ -3122,8 +3122,10 @@ pub fn run(
+@@ -3047,8 +3047,10 @@ pub fn run(
                      }
                      Trigger::Key(t) => keys.iter().any(|x| x == t),
                      Trigger::Submit(t) => submitted.contains(&(t.0 as usize)),

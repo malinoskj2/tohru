@@ -10,15 +10,6 @@ let
       ../runtime/info_luau.rs ../runtime/info/mod.rs ../runtime/info/read.rs ../runtime/info/storage.rs ../runtime/info/system.rs ../tests/info/snapshot.rs ../tests/info.rs ../tests/settings.rs
         ../tests/runtime/role-install.rs ../LICENSE ];
   };
-  lockSource = lib.fileset.toSource {
-    root = ../.;
-    fileset = lib.fileset.unions [
-      ../runtime/lock/native.rs ../runtime/lock/authority.rs ../runtime/lock/publication.rs
-      ../tests/session/lock_authority.rs ../tests/session/lock_publication.rs ../tests/session/native_security.rs ../tests/session/native_binding.rs
-      ../tests/session/security-owner.luau ../tests/session/security-owner.plm
-      ../tests/session/security-public.plm ../tests/session/security-secret.plm
-    ];
-  };
   source = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [ ../bin ../shell ../LICENSE ];
@@ -28,10 +19,9 @@ let
     version = pin.version;
     src = fetchurl { url = pin.archive; hash = pin.hash; };
     cargoLock.lockFile = ../runtime/Cargo.lock;
-    patches = [ ../runtime/patches/0001-shell-settings.patch ../runtime/patches/0002-lock-boundary.patch
+    patches = [ ../runtime/patches/0001-shell-settings.patch
       ../runtime/workspace/shader-inputs.patch ../runtime/patches/0004-workspace-binding.patch
       ../runtime/launcher/namespace.patch ../runtime/patches/0006-info-binding.patch
-        ../runtime/patches/0008-locker-gate.patch
         ../runtime/patches/0010-key-rule-order.patch ../runtime/patches/0011-focus-round.patch ];
     postPatch = ''
       mkdir foundation
@@ -47,11 +37,6 @@ let
       cp ${foundationSource}/runtime/settings_luau.rs src/tohru_settings.rs
       cp ${foundationSource}/runtime/workspace_luau.rs src/tohru_workspace.rs
       cp ${foundationSource}/runtime/info_luau.rs src/tohru_info.rs
-      mkdir -p src/tohru_lock tests/session
-      cp ${lockSource}/runtime/lock/native.rs src/tohru_lock.rs
-      cp ${lockSource}/runtime/lock/authority.rs src/tohru_lock/authority.rs
-      cp ${lockSource}/runtime/lock/publication.rs src/tohru_lock/publication.rs
-      cp ${lockSource}/tests/session/* tests/session/
       mkdir -p tests/runtime
       cp ${foundationSource}/tests/runtime/role-install.rs tests/runtime/
       cp ${../runtime/Cargo.lock} Cargo.lock
@@ -84,7 +69,7 @@ in stdenvNoCC.mkDerivation {
     mkdir -p $out/bin $out/share/tohru
     cp -r shell $out/share/tohru/
     cp LICENSE $out/share/tohru/LICENSE
-    cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-locker-run $out/bin/
+    cp bin/tohru bin/tohru-run bin/tohru-settings-run $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar
     wrapProgram $out/bin/tohru-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
@@ -92,9 +77,6 @@ in stdenvNoCC.mkDerivation {
     wrapProgram $out/bin/tohru-settings-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_SETTINGS_SCENE $out/share/tohru/shell/settings/settings.plm
-    wrapProgram $out/bin/tohru-locker-run \
-      --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
-      --set TOHRU_LOCK_SCENE $out/share/tohru/shell/lock/lock.plm
     runHook postInstall
   '';
   passthru = { inherit runtime; };

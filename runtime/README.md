@@ -9,7 +9,7 @@ The shell's own initial settings implementation is MIT.
 `0001-shell-settings.patch` adds the focused `tohru-shell` path dependency and
 one binding installation hook, gated by TOHRU_SHELL=1 and excluding plugins.
 `settings_luau.rs` owns the process singleton and Luau boundary. Additional narrow
-patches cover approved lock/secret safety and workspace shader scalars/API;
+patches cover workspace shader scalars/API;
 exact applied lists live in prepare.sh and nix/default.nix.
 `Cargo.lock` starts from the pinned upstream lock and adds only anyhow, the local
 library, and toml_writer (needed for comment-preserving TOML writes). The library
