@@ -1,0 +1,44 @@
+diff --git a/src/platform/wayland.rs b/src/platform/wayland.rs
+index 2f0292a..9dcfec2 100644
+--- a/src/platform/wayland.rs
++++ b/src/platform/wayland.rs
+@@ -1435,6 +1435,8 @@ struct Popups {
+     serial: Arc<AtomicU32>,
+     /// What the next one hangs from: the surface where the mouse was last seen.
+     parent: Mutex<Option<Parent>>,
++    /// Whether the mouse has picked `parent` yet.
++    pointed: std::sync::atomic::AtomicBool,
+     seat: Mutex<Option<wl_seat::WlSeat>>,
+     /// The last press: with it one can ask for a click outside to close it.
+     last_press: Mutex<Option<(u32, std::time::Instant)>>,
+@@ -2137,6 +2139,7 @@ pub fn run_event_loop(wanted: Vec<Surface>, extra_height: u32, instance: wgpu::I
+                 cursors: state.cursors.clone(),
+                 serial: state.serial.clone(),
+                 parent: Mutex::default(),
++                pointed: Default::default(),
+                 seat: Mutex::default(),
+                 last_press: Mutex::default(),
+                 open: Mutex::default(),
+@@ -2237,8 +2240,12 @@ impl State {
+         p.size = size;
+         if let Some((surface, name, mhz)) = p.pending.take() {
+             if let (Some(pp), Some(layer)) = (POPUPS.get(), p.role.layer()) {
+-                // While the mouse hasn't been seen on any, popups hang from the first one.
+-                pp.parent.lock().unwrap().get_or_insert_with(|| Parent { layer: layer.clone(), backdrop: p.backdrop.clone(), scale: p.scale, name: name.clone(), mhz });
++                // While the mouse hasn't been seen on any, popups hang from the scene's own surface,
++                // or the first one until that is placed.
++                let mut parent = pp.parent.lock().unwrap();
++                if parent.is_none() || (p.which == 0 && !pp.pointed.load(std::sync::atomic::Ordering::Relaxed)) {
++                    *parent = Some(Parent { layer: layer.clone(), backdrop: p.backdrop.clone(), scale: p.scale, name: name.clone(), mhz });
++                }
+             }
+             let _ = self.to_render.send(ToRender::Sheet(Box::new(gpu::NewSheet {
+                 id: p.id,
+@@ -2346,6 +2353,7 @@ impl PointerHandler for State {
+                     (x, y) = (x + origin.0, y + origin.1);
+                     // Popups hang from a layer: from a normal window, not yet.
+                     if let Some(layer) = p.role.layer() {
++                        pp.pointed.store(true, std::sync::atomic::Ordering::Relaxed);
+                         *pp.parent.lock().unwrap() = Some(Parent {
+                             layer: layer.clone(),
+                             backdrop: p.backdrop.clone(),
