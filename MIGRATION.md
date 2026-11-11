@@ -173,7 +173,7 @@ Polkit (hyprpolkitagent):
 | Super+P | `msg screenshot-region` | `grimblast --notify --freeze copysave area` |
 | Super+Escape | `msg panel-toggle menu` | `tohru session toggle` |
 | Super+Shift+Escape | `msg session lock` | `loginctl lock-session` |
-| Super+Space | `msg panel-toggle launcher` | missing: add `tohru launcher toggle` (`--say tohru-launcher 'emit launcher_toggle'`) |
+| Super+Space | `msg panel-toggle launcher` | `tohru launcher toggle` |
 | Super+S | `msg panel-toggle control-center` | j2bar has no such panel (the bind is already dead); remove or repoint |
 | Super+A | `msg panel-toggle assistant` | Assistant dropped; remove the bind |
 | XF86AudioRaiseVolume | `msg volume-up` | `tohru audio volume up` |
