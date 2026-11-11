@@ -4,9 +4,9 @@
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601";
 
   # Keep the optional plugin on E's reviewed Hyprland 0.56.2 package set.
-  inputs.effects-nixpkgs.url = "github:NixOS/nixpkgs/8ce4ef6cb6f871616146b9fe26d2a5ae594e94fe";
+  inputs.hyprland-nixpkgs.url = "github:NixOS/nixpkgs/8ce4ef6cb6f871616146b9fe26d2a5ae594e94fe";
 
-  outputs = { self, nixpkgs, effects-nixpkgs }:
+  outputs = { self, nixpkgs, hyprland-nixpkgs }:
     let
       # Only the platform validated in this foundation checkpoint is exported.
       systems = [ "x86_64-linux" ];
@@ -20,9 +20,9 @@
           default = tohru;
           inherit tohru;
           pleamar-runtime = tohru.runtime;
-        } // nixpkgs.lib.optionalAttrs (builtins.pathExists ./effects/package.nix) {
+        } // nixpkgs.lib.optionalAttrs (builtins.pathExists ./hyprland/package.nix) {
           # This package must use the exact reviewed candidate compositor headers.
-          tohru-hyprland = (import effects-nixpkgs { inherit system; }).callPackage ./effects/package.nix { };
+          tohru-hyprland = (import hyprland-nixpkgs { inherit system; }).callPackage ./hyprland/package.nix { };
         });
       apps = eachSystem (system: {
         default = self.apps.${system}.shell;
@@ -37,7 +37,7 @@
       });
       # Hyprland plugins only load into the compositor they were built against.
       overlays.default = final: _prev: {
-        tohru-hyprland = final.callPackage ./effects/package.nix { };
+        tohru-hyprland = final.callPackage ./hyprland/package.nix { };
       };
       homeManagerModules = {
         tohru = import ./nix/home-manager.nix;

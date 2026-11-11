@@ -18,7 +18,7 @@ transitive dependencies: pixman, libdrm, pangocairo, libinput, libudev,
 wayland-server, xkbcommon and Lua (reviewed headers use 5.5.0).
 
 ```sh
-cd effects
+cd hyprland
 make check
 make check-deps
 make check-abi
@@ -29,8 +29,8 @@ make install PREFIX=/desired/staging/prefix
 With Nix, the standalone flake pins the reference nixpkgs and upstream Hyprland:
 
 ```sh
-nix build path:./effects
-nix develop path:./effects -c make -C effects -j1  # when invoked from tohru root
+nix build path:./hyprland
+nix develop path:./hyprland -c make -C hyprland -j1  # when invoked from tohru root
 ```
 
 From the extracted standalone repository use `nix build .` and
@@ -40,7 +40,7 @@ with that exact compositor derivation rather than assuming equal version strings
 are sufficient:
 
 ```nix
-pkgs.callPackage ./effects/package.nix {
+pkgs.callPackage ./hyprland/package.nix {
   hyprland = candidateHyprland;
 }
 ```
@@ -64,7 +64,7 @@ After compositor startup, with no matching launcher layer open:
 ```sh
 hyprctl -i "$TEST_INSTANCE" plugin load /absolute/path/libtohru-hyprland.so
 hyprctl -i "$TEST_INSTANCE" desktop-effects-capabilities
-hyprctl -i "$TEST_INSTANCE" eval "dofile('/absolute/path/effects/examples/effects.lua')"
+hyprctl -i "$TEST_INSTANCE" eval "dofile('/absolute/path/hyprland/examples/effects.lua')"
 # Exercise candidate clients and launcher, then unload in the same private instance:
 hyprctl -i "$TEST_INSTANCE" plugin unload /absolute/path/libtohru-hyprland.so
 ```

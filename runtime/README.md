@@ -123,7 +123,7 @@ Home Manager, nixpkgs and Tohru flake values for enabled/disabled consumer check
 No NixOS module is exported because this slice supplies no NixOS-specific behavior.
 
 `packages.x86_64-linux.tohru-hyprland` builds the Hyprland plugin in
-`effects/package.nix` against the flake's pinned Hyprland; it is never a shell
+`hyprland/package.nix` against the flake's pinned Hyprland; it is never a shell
 dependency and never loaded automatically. A consumer builds it against its own
 compositor through `overlays.default` (`pkgs.tohru-hyprland`) or the Home Manager
 option `programs.tohru.hyprlandPlugin.package`, which follows the session's
@@ -135,7 +135,7 @@ does not prove compatibility. With a custom candidate, use the effect package's
 integration step. A changed nixpkgs/compositor requires those compatibility checks
 again. No plugin loading/configuration or existing Nix repository is modified.
 
-The optional effect package uses the separately locked `effects-nixpkgs` input at
+The optional effect package uses the separately locked `hyprland-nixpkgs` input at
 E's reviewed revision `8ce4ef6cb6f871616146b9fe26d2a5ae594e94fe`; the shell's
 newer nixpkgs pin does not supply Hyprland 0.56.2. Keep this input independent of
 the shell nixpkgs follow unless the replacement package set has the exact reviewed

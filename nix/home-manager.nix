@@ -19,7 +19,7 @@ in {
     };
     hyprlandPlugin.package = lib.mkOption {
       type = lib.types.package;
-      default = pkgs.callPackage ../effects/package.nix { inherit hyprland; };
+      default = pkgs.callPackage ../hyprland/package.nix { inherit hyprland; };
       defaultText = lib.literalExpression "tohru.packages.\${pkgs.system}.tohru-hyprland";
       description = "Compositor plugin built against this session's Hyprland; nothing loads it automatically.";
     };
