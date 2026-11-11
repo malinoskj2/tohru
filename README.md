@@ -44,7 +44,7 @@ Tohru replaces my previous shell, j2bar. The shell itself is `.plm` scene files,
 
 ### With Nix and Home Manager
 
-Try the bar without installing anything (it reserves 31 px at the top of the screen):
+Try the bar without installing anything:
 
 ```sh
 nix run github:malinoskj2/tohru
