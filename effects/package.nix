@@ -1,8 +1,8 @@
 { hyprland, hyprlandPlugins, lib }:
 assert lib.assertMsg (hyprland.version == "0.56.2")
-  "desktop-effects requires reviewed Hyprland 0.56.2 headers; review private hooks before updating";
+  "tohru-hyprland requires reviewed Hyprland 0.56.2 headers; review private hooks before updating";
 hyprlandPlugins.mkHyprlandPlugin {
-  pluginName = "desktop-effects";
+  pluginName = "tohru-hyprland";
   version = "0.1.0";
   # Explicitly use the caller's compositor, including its existing source patches.
   inherit hyprland;
@@ -22,9 +22,9 @@ hyprlandPlugins.mkHyprlandPlugin {
   installPhase = ''
     runHook preInstall
     make install PREFIX=$out
-    install -Dm644 README.md $out/share/doc/desktop-effects/README.md
-    install -Dm644 UPSTREAM.md $out/share/doc/desktop-effects/UPSTREAM.md
-    install -Dm644 source-manifest.json $out/share/doc/desktop-effects/source-manifest.json
+    install -Dm644 README.md $out/share/doc/tohru-hyprland/README.md
+    install -Dm644 UPSTREAM.md $out/share/doc/tohru-hyprland/UPSTREAM.md
+    install -Dm644 source-manifest.json $out/share/doc/tohru-hyprland/source-manifest.json
     runHook postInstall
   '';
   meta = {

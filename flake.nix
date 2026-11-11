@@ -22,7 +22,7 @@
           pleamar-runtime = tohru.runtime;
         } // nixpkgs.lib.optionalAttrs (builtins.pathExists ./effects/package.nix) {
           # This package must use the exact reviewed candidate compositor headers.
-          desktop-effects = (import effects-nixpkgs { inherit system; }).callPackage ./effects/package.nix { };
+          tohru-hyprland = (import effects-nixpkgs { inherit system; }).callPackage ./effects/package.nix { };
         });
       apps = eachSystem (system: {
         default = self.apps.${system}.shell;
@@ -35,6 +35,10 @@
           program = "${self.packages.${system}.tohru}/bin/tohru";
         };
       });
+      # Hyprland plugins only load into the compositor they were built against.
+      overlays.default = final: _prev: {
+        tohru-hyprland = final.callPackage ./effects/package.nix { };
+      };
       homeManagerModules = {
         tohru = import ./nix/home-manager.nix;
         default = self.homeManagerModules.tohru;

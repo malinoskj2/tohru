@@ -10,7 +10,7 @@
         let pkgs = import nixpkgs { inherit system; };
         in {
           default = pkgs.callPackage ./package.nix { };
-          desktop-effects = self.packages.${system}.default;
+          tohru-hyprland = self.packages.${system}.default;
         });
       devShells = eachSystem (system:
         let pkgs = import nixpkgs { inherit system; };

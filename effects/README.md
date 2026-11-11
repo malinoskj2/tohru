@@ -1,4 +1,4 @@
-# Desktop effects (provisional package name)
+# tohru-hyprland
 
 Independent optional Hyprland plugin extracted for Pleamar migration phase 4:
 render-only focus dips, thin application titlebars with double-click maximize,
@@ -62,11 +62,11 @@ plugin selection intact. Nix owns permanent loading, rules and animation config.
 After compositor startup, with no matching launcher layer open:
 
 ```sh
-hyprctl -i "$TEST_INSTANCE" plugin load /absolute/path/libdesktop-effects.so
+hyprctl -i "$TEST_INSTANCE" plugin load /absolute/path/libtohru-hyprland.so
 hyprctl -i "$TEST_INSTANCE" desktop-effects-capabilities
 hyprctl -i "$TEST_INSTANCE" eval "dofile('/absolute/path/effects/examples/effects.lua')"
 # Exercise candidate clients and launcher, then unload in the same private instance:
-hyprctl -i "$TEST_INSTANCE" plugin unload /absolute/path/libdesktop-effects.so
+hyprctl -i "$TEST_INSTANCE" plugin unload /absolute/path/libtohru-hyprland.so
 ```
 
 `examples/effects.lua` supplies authored selected-effect defaults from j2bar,

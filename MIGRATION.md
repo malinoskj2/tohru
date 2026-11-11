@@ -109,9 +109,10 @@ Remove j2bar:
 - [ ] `users/jesse/hyprland-desktop/j2bar.nix`: drop `J2BAR_BIN` and the plugin
       package; keep the `.wallpapers/video` link for mpvpaper.
 - [ ] `users/jesse/hyprland-desktop/hyprland/default.nix`: replace `nix.j2bar`
-      and `nix.j2barPlugin` with Tohru CLI and effects plugin paths.
-- [ ] `users/jesse/hyprland-desktop/hyprland/look.lua`: load the Tohru effects
-      plugin instead of `libj2bar-hyprland.so`; move `programs.j2bar.settings.effects`
+      and `nix.j2barPlugin` with the Tohru CLI and
+      `${programs.tohru.hyprlandPlugin.package}/lib/libtohru-hyprland.so`.
+- [ ] `users/jesse/hyprland-desktop/hyprland/look.lua`: load `libtohru-hyprland.so`
+      instead of `libj2bar-hyprland.so`; move `programs.j2bar.settings.effects`
       policy to the new plugin's configuration.
 - [ ] `hosts/home/gaming.nix`: remove `j2bar.gameEngine.enable` and every
       `j2bar game-run -- %command%` Steam launch option (game behavior is

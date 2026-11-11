@@ -117,10 +117,12 @@ activating services or autostart. `nix/tests/home-manager.nix` accepts actual
 Home Manager, nixpkgs and Tohru flake values for enabled/disabled consumer checks.
 No NixOS module is exported because this slice supplies no NixOS-specific behavior.
 
-When the independent E-owned `effects/package.nix` is present after integration,
-`packages.x86_64-linux.desktop-effects` calls it separately; it is never a shell
-dependency and never loaded automatically. E's source is absent from this F-only
-checkout, so that optional output is not declared/tested here. The package's
+`packages.x86_64-linux.tohru-hyprland` builds the Hyprland plugin in
+`effects/package.nix` against the flake's pinned Hyprland; it is never a shell
+dependency and never loaded automatically. A consumer builds it against its own
+compositor through `overlays.default` (`pkgs.tohru-hyprland`) or the Home Manager
+option `programs.tohru.hyprlandPlugin.package`, which follows the session's
+Hyprland package. The package's
 reviewed candidate requires Hyprland **0.56.2**, exact matching compositor headers
 and runtime ABI including any local compositor patches; the version string alone
 does not prove compatibility. With a custom candidate, use the effect package's

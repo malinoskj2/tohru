@@ -1,6 +1,13 @@
-{ config, lib, pkgs, ... }:
+args@{ config, lib, pkgs, ... }:
 let
   cfg = config.programs.tohru;
+  sessionHyprland = config.wayland.windowManager.hyprland.package or null;
+  # Only a NixOS or nix-darwin integration passes osConfig.
+  systemHyprland = args.osConfig.programs.hyprland.package or null;
+  hyprland =
+    if sessionHyprland != null then sessionHyprland
+    else if systemHyprland != null then systemHyprland
+    else pkgs.hyprland;
   format = pkgs.formats.toml { };
   managed = format.generate "tohru-managed.toml" cfg.settings;
 in {
@@ -9,6 +16,12 @@ in {
     package = lib.mkOption {
       type = lib.types.package;
       default = pkgs.callPackage ./default.nix { };
+    };
+    hyprlandPlugin.package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.callPackage ../effects/package.nix { inherit hyprland; };
+      defaultText = lib.literalExpression "tohru.packages.\${pkgs.system}.tohru-hyprland";
+      description = "Compositor plugin built against this session's Hyprland; nothing loads it automatically.";
     };
     settings = lib.mkOption {
       type = format.type;

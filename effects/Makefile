@@ -8,7 +8,7 @@ CXXFLAGS += -O2 -g -std=c++2b -fPIC -fno-gnu-unique -Wno-narrowing
 LDFLAGS += -shared -Wl,--build-id=sha1
 SOURCES = main.cpp focus/main.cpp bars/main.cpp bars/barDeco.cpp bars/BarPassElement.cpp sheet.cpp recede.cpp
 HEADERS = $(wildcard *.hpp focus/*.hpp bars/*.hpp sheet/*.hpp)
-TARGET = libdesktop-effects.so
+TARGET = libtohru-hyprland.so
 
 all: $(TARGET)
 
@@ -20,8 +20,8 @@ $(TARGET): $(SOURCES) $(HEADERS) | check-deps
 
 install: $(TARGET)
 	install -Dm755 $(TARGET) $(DESTDIR)$(PREFIX)/lib/$(TARGET)
-	install -Dm644 LICENSE $(DESTDIR)$(PREFIX)/share/doc/desktop-effects/LICENSE
-	install -Dm644 UPSTREAM-LICENSE $(DESTDIR)$(PREFIX)/share/doc/desktop-effects/UPSTREAM-LICENSE
+	install -Dm644 LICENSE $(DESTDIR)$(PREFIX)/share/doc/tohru-hyprland/LICENSE
+	install -Dm644 UPSTREAM-LICENSE $(DESTDIR)$(PREFIX)/share/doc/tohru-hyprland/UPSTREAM-LICENSE
 
 check:
 	python3 tools/check-source.py
