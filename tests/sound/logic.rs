@@ -247,8 +247,9 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         tohru_settings={snapshot=function() return {
             ['bar.mooncoil']={value=false},['appearance.corners']={value=true},['appearance.corner_size']={value=32},
             ['bar.preferred_output']={value='legacy'},
-            ['appearance.palette']={value='mocha'}
-        } end}
+            ['appearance.palette']={value='mocha'},
+            ['bar.info_button']={value=false},['bar.about_button']={value=false}
+        } end, managed_path=function() return nil end}
     "#).exec().unwrap();
     let modules: mlua::Table = lua.globals().get("modules").unwrap();
     for (name, source) in [

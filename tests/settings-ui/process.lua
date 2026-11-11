@@ -1,7 +1,7 @@
 math.clamp=function(v,a,b)return math.max(a,math.min(b,v))end
 fact,text,model,handlers={settings_selected=0,settings_sidebar=false},{settings_search=''},{},{}
 function on(name,callback)handlers[name]=callback end
-local config={['bar.mooncoil']={value=false},['bar.preferred_output']={value=''},['appearance.corners']={value=true},['appearance.corner_size']={value=32},
+local config={['bar.mooncoil']={value=false},['bar.info_button']={value=false},['bar.about_button']={value=false},['bar.preferred_output']={value=''},['appearance.corners']={value=true},['appearance.corner_size']={value=32},
     ['appearance.palette']={value='mocha',managed=true}}
 local reloads=0
 tohru_settings={snapshot=function()return config end,

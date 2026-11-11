@@ -1,0 +1,29 @@
+[package]
+name = "tohru-scene-tests"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "lib.rs"
+
+[dev-dependencies]
+mlua = { version = "0.12", features = ["luau", "send"] }
+naga = { version = "30", features = ["wgsl-in"] }
+tohru-shell = { path = "../../runtime" }
+
+[[test]]
+name = "osd"
+path = "../osd/logic.rs"
+
+[[test]]
+name = "sound"
+path = "../sound/logic.rs"
+
+[[test]]
+name = "settings-ui"
+path = "../settings-ui/logic.rs"
+
+[[test]]
+name = "workspace-shader"
+path = "../bar/workspace-shader.rs"
