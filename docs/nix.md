@@ -87,7 +87,7 @@ If your Hyprland setup provides its own target, such as `hyprland-session.target
 
 `tohru-notifications` must be the only notification daemon. Disable mako, dunst, swaync or similar first. These units are new and have not been tested on a real session.
 
-`TOHRU_MANAGED_CONFIG` reaches other programs, such as the Settings window started from a keybind, only through `home.sessionVariables`, which applies to sessions started from a login shell.
+Other programs get `TOHRU_MANAGED_CONFIG` through `home.sessionVariables`, which only applies to sessions started from a login shell. `tohru settings open` does not depend on that: when the variable is unset or empty, it asks the running bar which managed file it loaded and starts Settings with the same one.
 
 ## Hyprland plugin
 

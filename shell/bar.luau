@@ -21,6 +21,7 @@ local function change(operation)
     end
 end
 publish(tohru_settings.snapshot())
+text.managed_config = tohru_settings.managed_path() or ""
 on("config_reload", function() change(tohru_settings.reload) end)
 on("setting_mooncoil", function(n)
     change(function() return tohru_settings.set("bar.mooncoil", n ~= 0) end)

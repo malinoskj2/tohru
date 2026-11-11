@@ -343,6 +343,11 @@ impl Owner {
     }
 
     #[must_use]
+    pub fn managed_path(&self) -> Option<&Path> {
+        self.managed_path.as_deref()
+    }
+
+    #[must_use]
     pub fn get(&self, key: Key) -> Setting {
         let managed = self.managed.contains_key(&key);
         let (value, origin) = if let Some(value) = self.overrides.get(&key) {

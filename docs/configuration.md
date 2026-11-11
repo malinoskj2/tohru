@@ -5,7 +5,7 @@
 Tohru reads two TOML files:
 
 - The writable file, `$XDG_CONFIG_HOME/tohru/config.toml`, or `~/.config/tohru/config.toml` when `XDG_CONFIG_HOME` is unset. Settings and `tohru config set` write here.
-- An optional read-only managed file, named by the `TOHRU_MANAGED_CONFIG` environment variable. The Home Manager module generates it from `programs.tohru.settings`. It must not be the same file as the writable one.
+- An optional read-only managed file, named by the `TOHRU_MANAGED_CONFIG` environment variable. The Home Manager module generates it from `programs.tohru.settings`. It must not be the same file as the writable one. An empty value means no managed file. When `tohru settings open` starts Settings without the variable set, it gives Settings the managed file the running bar loaded.
 
 Only the bar and Settings processes read settings. Nothing is imported from j2bar.
 

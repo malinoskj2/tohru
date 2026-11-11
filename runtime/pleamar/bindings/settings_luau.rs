@@ -19,7 +19,7 @@ fn owner() -> Result<&'static Mutex<Owner>> {
                 .join(".config")
         }
     };
-    let managed = std::env::var_os("TOHRU_MANAGED_CONFIG").map(PathBuf::from);
+    let managed = std::env::var_os("TOHRU_MANAGED_CONFIG").filter(|path| !path.is_empty()).map(PathBuf::from);
     let owner =
         Owner::load(user_dir.join("tohru/config.toml"), managed).context("load tohru settings")?;
     let _ = SETTINGS.set(Mutex::new(owner));
@@ -133,6 +133,15 @@ pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
                 .map_err(|_| mlua::Error::runtime("settings owner mutex poisoned"))?;
             let outcome = owner.set(key, value).map_err(report)?;
             applied(lua, &owner, outcome)
+        })?,
+    )?;
+    api.set(
+        "managed_path",
+        lua.create_function(move |_, ()| {
+            let owner = owner
+                .lock()
+                .map_err(|_| mlua::Error::runtime("settings owner mutex poisoned"))?;
+            Ok(owner.managed_path().map(|path| path.to_string_lossy().into_owned()))
         })?,
     )?;
     lua.globals().set("tohru_settings", api)

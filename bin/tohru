@@ -58,6 +58,11 @@ case ${1:-help} in
         case $2 in
             open)
                 "$pleamar" --say tohru-settings 'emit settings_open_request' >/dev/null 2>&1 && exit 0
+                # A keybind's environment may lack the managed file the bar's service was given.
+                if [[ -z ${TOHRU_MANAGED_CONFIG:-} ]]; then
+                    managed=$("$pleamar" --say tohru 'get managed_config' 2>/dev/null) || managed=
+                    if [[ -n $managed && -f $managed ]]; then export TOHRU_MANAGED_CONFIG=$managed; fi
+                fi
                 run=${TOHRU_SETTINGS_RUN:-$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/tohru-settings-run}
                 (set -m; nohup "$run" </dev/null >/dev/null 2>&1 &)
                 ;;
