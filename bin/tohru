@@ -58,7 +58,7 @@ case ${1:-help} in
         case $2 in
             open)
                 "$pleamar" --say tohru-settings 'emit settings_open_request' >/dev/null 2>&1 && exit 0
-                run=${TOHRU_SETTINGS_RUN:-$(dirname -- "${BASH_SOURCE[0]}")/tohru-settings-run}
+                run=${TOHRU_SETTINGS_RUN:-$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/tohru-settings-run}
                 (set -m; nohup "$run" </dev/null >/dev/null 2>&1 &)
                 ;;
             close) exec "$pleamar" --say tohru-settings quit ;;
