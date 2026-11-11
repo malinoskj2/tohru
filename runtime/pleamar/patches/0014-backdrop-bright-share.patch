@@ -1,0 +1,322 @@
+diff --git a/docs/11-language-reference.md b/docs/11-language-reference.md
+index 3c96ddc..8ea401e 100644
+--- a/docs/11-language-reference.md
++++ b/docs/11-language-reference.md
+@@ -543,7 +543,7 @@ Each element accepts these properties and no others; another one is an error, wi
+ | `figure` | `at` (where the piece's centre goes) · `size: w, h` or `scale:` (without either, one unit of the svg is one pixel) · `pivot: x, y` (in the svg's units, from its centre: the point it **turns** around, which does not move it) · `rotate` · `color` (instead of the one in the file) · `opacity` · `blend` · `stroke` · `show` |
+ | `input` | `at` · `width` · `size` · `weight` · `color` · `opacity` · `family` · `placeholder` · `selection` · `secret` · `passive` · `show` · `label` · `agent` |
+ | `group` | `pivot` · `rotate` · `scale: s` or `sx, sy` · `move: dx, dy` · `opacity` (they melt as a single thing) · `size` (for whoever lays it out) · `show` · `z` (see below) · and its **effects**: `blur` · `glow` · `saturation` · `brightness` · `contrast` · `hue` · `mask` · `mode` (§8.2) |
+-| `popup` | `at` (inside the surface) · `size` · `open:` a fact |
++| `popup` | `at` (inside the surface) · `size` · `open:` a fact · `bright:` a fact, written with the share (0 to 1) of what is behind its lens glass that is bright, each time a capture is taken in: its box in a 16 × 16 grid, the cells over 55 % Rec. 709 luma counted. It goes back to 0 each time the popup opens, and stays there without a lens to capture with |
+ | `row` `column` | `at` · `anchor` · `gap` · `padding` · `align:` `start` `center` `end` · `fill` · `corner` · `opacity` · `cursor` · `show` · `size: w, h` · `view: w, h` · `step` · `content` · `wrap: n` |
+ | `grid` | `at` · `columns` · `width` · `gap` · `row` (the height of every row) · `show` · `opacity`; and on its children, `span`. What it is: below |
+ 
+@@ -1917,7 +1917,7 @@ properties.shader: at size corner opacity show values colors grow place
+ properties.particles: at area count life speed direction spread gravity drag size colors opacity shape emit burst show
+ properties.input: at width size weight color opacity family placeholder selection secret passive show label agent
+ properties.group: pivot rotate scale move opacity size show z grow span blur glow saturation brightness contrast hue mask mode shader place
+-properties.popup: at size open
++properties.popup: at size open bright
+ properties.children: move
+ properties.grid: at columns gap width row show opacity
+ properties.layout: at anchor gap padding align fill glass lens shine refraction dispersion dome ripple frost smoke milk tint vivid mirror highlight corner show opacity cursor view step stick content wrap size grow place
+diff --git a/src/gpu.rs b/src/gpu.rs
+index 71665af..dc2c4a7 100644
+--- a/src/gpu.rs
++++ b/src/gpu.rs
+@@ -5291,6 +5291,9 @@ impl Gpu {
+         let commands = encoder.finish();
+         let t2 = timing.then(std::time::Instant::now);
+         let index = self.queue.submit(Some(commands));
++        if let Some(lens) = &mut l.lens {
++            lens.read_bright(&self.device, &index);
++        }
+         let sent = Sent::after(&self.queue);
+         self.last_submission.replace(Some(sent.clone()));
+         let t3 = timing.then(std::time::Instant::now);
+diff --git a/src/language/compiler.rs b/src/language/compiler.rs
+index bfc7cb6..d0445d8 100644
+--- a/src/language/compiler.rs
++++ b/src/language/compiler.rs
+@@ -3228,6 +3228,16 @@ impl<'a> Compiler<'a> {
+                 None => return self.unknown(c, "no fact", &h, self.facts.keys().collect()),
+             }
+         };
++        let bright = match p.get_mut("bright") {
++            Some(c) => {
++                let h = self.global(&c.id("the fact that hears how bright it is behind")?);
++                match self.facts.get(&h) {
++                    Some(h) => Some(*h),
++                    None => return self.unknown(c, "no fact", &h, self.facts.keys().collect()),
++                }
++            }
++            None => None,
++        };
+         // Each one in its place, far from the surface and from the others.
+         self.next_origin += 10000.0;
+         let origin = (0.0, self.next_origin);
+@@ -3238,7 +3248,7 @@ impl<'a> Compiler<'a> {
+         self.group(n.body.as_deref().unwrap_or(&[]).iter());
+         self.under.pop();
+         self.e.paint(Instr::Transform(None));
+-        self.e.popups.push(Popup { name: interned(&name), open, at, size, origin });
++        self.e.popups.push(Popup { name: interned(&name), open, at, size, origin, bright });
+         Ok(())
+     }
+ 
+diff --git a/src/language/vocabulary.rs b/src/language/vocabulary.rs
+index f113e5d..7e04f41 100644
+--- a/src/language/vocabulary.rs
++++ b/src/language/vocabulary.rs
+@@ -37,7 +37,7 @@ pub const PROPERTIES: &[(&str, &[&str])] = &[
+     ("particles", &["at", "area", "count", "life", "speed", "direction", "spread", "gravity", "drag", "size", "colors", "opacity", "shape", "emit", "burst", "show"]),
+     ("input", &["at", "width", "size", "weight", "color", "opacity", "family", "placeholder", "selection", "secret", "passive", "show", "label", "agent"]),
+     ("group", &["pivot", "rotate", "scale", "move", "opacity", "size", "show", "z", "grow", "span", "blur", "glow", "saturation", "brightness", "contrast", "hue", "mask", "mode", "shader", "place"]),
+-    ("popup", &["at", "size", "open"]),
++    ("popup", &["at", "size", "open", "bright"]),
+     ("children", &["move"]),
+     ("grid", &["at", "columns", "gap", "width", "row", "show", "opacity"]),
+     ("layout", &["at", "anchor", "gap", "padding", "align", "fill", "glass", "lens", "shine", "refraction", "dispersion", "dome", "ripple", "frost", "smoke", "milk", "tint", "vivid", "mirror", "highlight", "corner", "show", "opacity", "cursor", "view", "step", "stick", "content", "wrap", "size", "grow", "place"]),
+diff --git a/src/lens.rs b/src/lens.rs
+index 5edee13..7c00241 100644
+--- a/src/lens.rs
++++ b/src/lens.rs
+@@ -184,6 +184,14 @@ pub struct Lens {
+     fixed_frost: bool,
+     /// The blur's values it was last frosted with: a picture is frosted again when they change.
+     frosted_with: [f32; 8],
++    /// `bright:` where to tell how bright what is behind is, in the canvas's pixels (x, y, width,
++    /// height), set by the render each frame; `None`, nowhere.
++    pub bright_area: Option<[u32; 4]>,
++    bright: Option<Bright>,
++    /// The count of the background unmixed last, on its way back from the card.
++    bright_read: Option<wgpu::Buffer>,
++    /// The share last read back, not yet taken by the render.
++    pub bright_share: Option<f32>,
+ }
+ 
+ impl Lens {
+@@ -226,6 +234,10 @@ impl Lens {
+             fixed: None,
+             fixed_frost: false,
+             frosted_with: [0.0; 8],
++            bright_area: None,
++            bright: None,
++            bright_read: None,
++            bright_share: None,
+         }
+     }
+ 
+@@ -578,6 +590,34 @@ impl Lens {
+         if t.checked.is_some() {
+             self.judging = judging;
+         }
++        if let Some(area) = self.bright_area {
++            let x0 = area[0].min(lw);
++            let y0 = area[1].min(lh);
++            let (w, h) = (area[2].min(lw - x0), area[3].min(lh - y0));
++            if w > 0 && h > 0 {
++                let bright = self.bright.get_or_insert_with(|| Bright::new(dev));
++                self.bright_read = Some(bright.count(g, enc, &self.backgrounds[self.current].1, [x0, y0, w, h]));
++            }
++        }
++    }
++
++    /// After the frame that unmixed a capture is submitted: how much of it is bright, read back.
++    /// Waits for the card at most a few frames' worth, once per capture taken in.
++    pub fn read_bright(&mut self, d: &wgpu::Device, index: &wgpu::SubmissionIndex) {
++        let Some(read) = self.bright_read.take() else { return };
++        let (tx, rx) = std::sync::mpsc::channel();
++        read.slice(..).map_async(wgpu::MapMode::Read, move |r| {
++            let _ = tx.send(r.is_ok());
++        });
++        let waited = d.poll(wgpu::PollType::Wait { submission_index: Some(index.clone()), timeout: Some(std::time::Duration::from_millis(50)) });
++        if !(waited.is_ok() && rx.recv_timeout(std::time::Duration::from_millis(50)).unwrap_or(false)) {
++            return;
++        }
++        let Ok(view) = read.slice(..).get_mapped_range() else { return };
++        let n = u32::from_ne_bytes(view[..4].try_into().unwrap());
++        drop(view);
++        read.unmap();
++        self.bright_share = Some(n as f32 / BRIGHT_CELLS as f32);
+     }
+ 
+     /// `PLEAMAR_LENS_LOG`: what the card counted for the last capture unmixed (it has long been submitted when the
+@@ -1336,6 +1376,83 @@ fn join_ours(had: Option<Vec<[f32; 4]>>, pieces: Option<&[[f32; 4]]>) -> Option<
+     Some(had)
+ }
+ 
++/// How much of what is behind a box is bright: the box cut in a 16 × 16 grid, each cell the mean
++/// of 4 × 4 points in it, and the cells whose Rec. 709 luma is over 55 % counted. Only the count
++/// (four bytes) comes back from the card.
++struct Bright {
++    pipeline: wgpu::ComputePipeline,
++    layout: wgpu::BindGroupLayout,
++    area: wgpu::Buffer,
++    count: wgpu::Buffer,
++}
++
++const BRIGHT_CELLS: u32 = 16 * 16;
++
++const BRIGHT_SHADER: &str = r#"
++@group(0) @binding(0) var behind: texture_2d<f32>;
++// x, y, width, height, in the background's pixels.
++@group(0) @binding(1) var<uniform> area: vec4<u32>;
++@group(0) @binding(2) var<storage, read_write> n: array<atomic<u32>, 1>;
++@compute @workgroup_size(16, 16) fn main(@builtin(global_invocation_id) g: vec3<u32>) {
++    let origin = vec2<f32>(f32(area.x), f32(area.y));
++    let cell = vec2<f32>(f32(area.z), f32(area.w)) / 16.0;
++    var sum = vec3<f32>(0.0);
++    for (var j = 0u; j < 4u; j++) {
++        for (var i = 0u; i < 4u; i++) {
++            let at = origin + (vec2<f32>(g.xy) + (vec2<f32>(f32(i), f32(j)) + 0.5) / 4.0) * cell;
++            sum += textureLoad(behind, vec2<i32>(at), 0).rgb;
++        }
++    }
++    if dot(sum / 16.0, vec3<f32>(0.2126, 0.7152, 0.0722)) > 0.55 {
++        atomicAdd(&n[0], 1u);
++    }
++}
++"#;
++
++impl Bright {
++    fn new(d: &wgpu::Device) -> Bright {
++        let layout = d.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
++            label: Some("how bright it is behind"),
++            entries: &[
++                wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: false }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
++                wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: wgpu::BufferSize::new(16) }, count: None },
++                wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: wgpu::BufferSize::new(4) }, count: None },
++            ],
++        });
++        let pl = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("how bright it is behind"), bind_group_layouts: &[Some(&layout)], immediate_size: 0 });
++        let shader = d.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("how bright it is behind"), source: wgpu::ShaderSource::Wgsl(BRIGHT_SHADER.into()) });
++        let pipeline = d.create_compute_pipeline(&wgpu::ComputePipelineDescriptor { label: Some("how bright it is behind"), layout: Some(&pl), module: &shader, entry_point: Some("main"), compilation_options: Default::default(), cache: None });
++        let area = d.create_buffer(&wgpu::BufferDescriptor { label: Some("where it is told how bright"), size: 16, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
++        let count = d.create_buffer(&wgpu::BufferDescriptor { label: Some("bright cells"), size: 4, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
++        Bright { pipeline, layout, area, count }
++    }
++
++    /// Counts in `enc`, and gives the buffer the count is copied to, to map once it is submitted.
++    fn count(&self, g: &crate::gpu::Gpu, enc: &mut wgpu::CommandEncoder, background: &wgpu::TextureView, area: [u32; 4]) -> wgpu::Buffer {
++        let dev = &g.device;
++        g.queue.write_buffer(&self.area, 0, bytemuck::cast_slice(&area));
++        let group = dev.create_bind_group(&wgpu::BindGroupDescriptor {
++            label: None,
++            layout: &self.layout,
++            entries: &[
++                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(background) },
++                wgpu::BindGroupEntry { binding: 1, resource: self.area.as_entire_binding() },
++                wgpu::BindGroupEntry { binding: 2, resource: self.count.as_entire_binding() },
++            ],
++        });
++        enc.clear_buffer(&self.count, 0, None);
++        {
++            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("how bright it is behind"), timestamp_writes: None });
++            pass.set_pipeline(&self.pipeline);
++            pass.set_bind_group(0, &group, &[]);
++            pass.dispatch_workgroups(1, 1, 1);
++        }
++        let read = dev.create_buffer(&wgpu::BufferDescriptor { label: Some("bright cells, to read"), size: 4, usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
++        enc.copy_buffer_to_buffer(&self.count, 0, &read, 0, 4);
++        read
++    }
++}
++
+ /// Whether a capture on the card is the same as the last one taken in, as the processor judges one in
+ /// shared memory: one pixel in nine, no colour off by more than three levels; or the same but where the
+ /// scene painted itself (`ours`), when that leaves more than half to tell by (#125). The card counts and
+diff --git a/src/render.rs b/src/render.rs
+index 5926a0b..df8c515 100644
+--- a/src/render.rs
++++ b/src/render.rs
+@@ -3919,6 +3919,7 @@ pub fn run(
+         let open = |k: usize| scene.surfaces.get(k).and_then(|s| s.open.as_ref()).is_none_or(|e| e.is_true(Ctx { props: &props, facts: &facts, seen: None }));
+         draw.views.clear();
+         draw.views.extend(sheets.iter().filter(|l| open(l.view.surface)).map(|l| l.view.bounds()));
++        let mut opened_bright = Vec::new();
+         for (k, em) in scene.popups.iter().enumerate() {
+             let c = Ctx { props: &props, facts: &facts, seen: None };
+             let wants = (facts[em.open.0 as usize] > 0.5 && !sheets.is_empty()).then(|| {
+@@ -3935,6 +3936,10 @@ pub fn run(
+                 if let Some(g) = wants {
+                     crate::platform::popup(k, Some((g, em.origin)));
+                 }
++                // Opened (not moved or resized): nothing is known yet of what is behind it.
++                if let (None, Some(_), Some(h)) = (popups[k], wants, em.bright) {
++                    opened_bright.push(h.0 as usize);
++                }
+                 popups[k] = wants;
+             }
+             if let Some(g) = popups[k] {
+@@ -4643,6 +4648,15 @@ pub fn run(
+                 }
+             }
+             l.wants_lens = !with_lens.is_empty() || !read.is_empty();
++            // `bright:` on a popup: how bright it is behind its glass, the box all of it fits in.
++            let tells_bright = l.view.popup.and_then(|k| scene.popups.get(k)).is_some_and(|p| p.bright.is_some());
++            let scale = l.scale;
++            if let Some(lens) = &mut l.lens {
++                lens.bright_area = with_lens.iter().copied().reduce(|a, b| [a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])]).filter(|_| tells_bright).map(|b| {
++                    let px = |v: i32| (v.max(0) as f32 * scale).round() as u32;
++                    [px(b[0]), px(b[1]), px(b[2]).saturating_sub(px(b[0])), px(b[3]).saturating_sub(px(b[1]))]
++                });
++            }
+             if crate::gpu::timing_enabled() {
+                 glass_regions_said(l.id, &with_lens, &read, l.view.size);
+             }
+@@ -4982,6 +4996,14 @@ pub fn run(
+         last_presented = Instant::now();
+         let mut painted = 0;
+         let mut up_to_date = 0;
++        let mut bright_changed = false;
++        for h in opened_bright {
++            if facts[h] != 0.0 {
++                facts[h] = 0.0;
++                let _ = to_logic.send(Event::Fact(scene.facts[h].0, 0.0));
++                bright_changed = true;
++            }
++        }
+         let mut waiting_for_screen = false;
+         // If the one that sets the pace does not paint this time, there is no notice to wait for:
+         // the clock sets the next round.
+@@ -5140,6 +5162,16 @@ pub fn run(
+             // A nudge says the whole sheet changed: presented with nothing changed, the compositor has nothing to paint
+             // again, so it does not paint the monitor, and the capture the nudge is for is never answered (#118).
+             let was_painted = g.paint(l, &draw, &uniforms, asks || others || fifo, (knows_where && l.painted == Some(where_) && !nudge).then(|| with_owed.as_deref().unwrap_or(&changed[..])));
++            if let Some(share) = l.lens.as_mut().and_then(|x| x.bright_share.take()) {
++                if let Some(h) = l.view.popup.and_then(|k| scene.popups.get(k)).and_then(|p| p.bright) {
++                    let h = h.0 as usize;
++                    if (facts[h] - share).abs() > 0.001 {
++                        facts[h] = share;
++                        let _ = to_logic.send(Event::Fact(scene.facts[h].0, share));
++                        bright_changed = true;
++                    }
++                }
++            }
+             if was_painted {
+                 l.rate_last = Some(Instant::now());
+                 // What the scene painted itself (not what a capture taken in owed): where the next capture may
+@@ -5611,7 +5643,7 @@ pub fn run(
+         if op.no_vsync && cycle.dts.len() >= 600 {
+             cycle.close();
+         }
+-        if !op.no_vsync && !alive && !something_happened && finger_light == 0.0 && ripple.is_none() && !blocked && !region_changes && !measure_changed && !keyboard_changed && props.iter().all(Animated::at_rest) {
++        if !op.no_vsync && !alive && !something_happened && finger_light == 0.0 && ripple.is_none() && !blocked && !region_changes && !measure_changed && !bright_changed && !keyboard_changed && props.iter().all(Animated::at_rest) {
+             for a in &mut props {
+                 a.settle();
+             }
+diff --git a/src/scene.rs b/src/scene.rs
+index f0a30fd..c417459 100644
+--- a/src/scene.rs
++++ b/src/scene.rs
+@@ -2278,6 +2278,9 @@ pub struct Popup {
+     pub at: (Expr, Expr),
+     pub size: (Expr, Expr),
+     pub origin: (f32, f32),
++    /// `bright: fact`: the share, 0 to 1, of what is behind its glass that is bright, written there
++    /// each time a capture of it is taken in. Only a popup with a lens has one to tell.
++    pub bright: Option<FactId>,
+ }
+ 
+ /// What this scene's logic can touch of the system. **Undeclared,

@@ -1,0 +1,17 @@
+diff --git a/src/platform/wayland.rs b/src/platform/wayland.rs
+index 9dcfec2..3681a9e 100644
+--- a/src/platform/wayland.rs
++++ b/src/platform/wayland.rs
+@@ -709,6 +709,12 @@ impl Dispatch2<ZwlrScreencopyFrameV1, State> for CaptureFor {
+                     return;
+                 }
+                 let (Some(size), Some((_, shm))) = (*self.format.lock().unwrap(), SCREENCOPY.get()) else {
++                    // No shared-memory format it can read (a 24-bit one, as a headless Sway offers), but the card is
++                    // offered: the render is told, so the next capture goes onto the card instead of none ever arriving.
++                    let offer = (*self.dmabuf.lock().unwrap()).filter(|_| self.part.is_none() && super::card_backdrops_allowed() && !super::card_refused(id));
++                    if offer.is_some() {
++                        let _ = e.to_render.send(ToRender::Backdrop(Box::new(super::Backdrop { sheet: id, width: 0, height: 0, stride: 0, opacity: 1.0, data: None, rects: Vec::new(), card: None, offer })));
++                    }
+                     self.finish();
+                     return;
+                 };

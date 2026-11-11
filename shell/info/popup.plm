@@ -3,7 +3,8 @@ part InformationPopup {
         at: (screen.width - 600) / 2, 48
         size: 600, 520
         open: info_visible
-        body { color: #181825; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 25%
+        bright: panel_bright
+        body { color: ink_body; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 0.25 - 0.11 * pk
             box { from: 0, 0; size: 600, 520; corner: 22 }
         }
         include "content.plm"

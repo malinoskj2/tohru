@@ -12,6 +12,7 @@ scene Tohru {
  include "sound/declarations.plm"
  include "osd/state.plm"
  include "corners/state.plm"
+ include "panel-ink.plm"
  fact mooncoil = false
  shader bar_fill = file "bar/fill.wgsl"
  text settings_status = "{}"
@@ -59,6 +60,7 @@ scene Tohru {
   at: clamp(sound_button_x - 150, 8, screen.width - 308), 37
   size: 300, 116 + sound_details * 316 + audio_failed * 62
   open: sound_open
+  bright: panel_bright
   include "sound/panel.plm"
  }
  include "calendar/popup.plm"
