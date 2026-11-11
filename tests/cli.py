@@ -44,6 +44,19 @@ class Cli(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(json.loads(result.stdout),['--say','tohru','get routing_error'])
 
+    def test_launcher_routes_never_start_a_role(self):
+        for action in ['toggle','open','close']:
+            result=self.invoke('launcher',action)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(json.loads(result.stdout),['--say','tohru-launcher','emit launcher_'+action])
+        for args in [('launcher',),('launcher','show'),('launcher','open','extra'),('launcher','open;quit'),('launcher','toggle\nemit quit')]:
+            with self.subTest(args=args):
+                result=self.invoke(*args)
+                self.assertEqual(result.returncode,2)
+                self.assertEqual(result.stdout,'')
+                self.assertIn('Usage: tohru launcher toggle|open|close',result.stderr)
+        self.assertEqual(self.invoke('launcher','toggle',NATIVE_EXIT='1').returncode,1)
+
     def test_native_input_app_and_output_commands_reject_ambiguous_or_invalid_ids(self):
         for arguments, event in [
             (('audio','input','volume','up'),'audio_input_up'),

@@ -6,6 +6,7 @@ Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru panel close
        tohru settings open|close
        tohru session open|close|toggle
+       tohru launcher toggle|open|close
        tohru routing-error
        tohru audio volume up|down
        tohru audio mute toggle
@@ -42,6 +43,11 @@ case ${1:-help} in
         [[ $# == 2 ]] || fail 'Usage: tohru session open|close|toggle'
         case $2 in open|close|toggle) ;; *) fail 'Usage: tohru session open|close|toggle' ;; esac
         exec "$pleamar" --say tohru-session "emit menu_$2"
+        ;;
+    launcher)
+        [[ $# == 2 ]] || fail 'Usage: tohru launcher toggle|open|close'
+        case $2 in toggle|open|close) ;; *) fail 'Usage: tohru launcher toggle|open|close' ;; esac
+        exec "$pleamar" --say tohru-launcher "emit launcher_$2"
         ;;
     routing-error)
         [[ $# == 1 ]] || fail 'routing-error takes no arguments'
