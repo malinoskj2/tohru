@@ -25,13 +25,18 @@ return function(applied)
         local categories = {}
         for id, title in ipairs(pages) do categories[id] = {id=id, title=title, selected=id==page} end
         model.settings_categories = categories
-        local mooncoil = snapshot["bar.mooncoil"]
-        local managed_detail = mooncoil.managed and "Nix managed · runtime edits last until shell exits" or "Saved in writable config.toml"
-        if mooncoil.runtime_override then managed_detail = "Nix managed · temporary runtime override is active" end
+        local function switch(page, key, title)
+            local setting = snapshot[key]
+            local detail = setting.managed and "Nix managed · runtime edits last until shell exits" or "Saved in writable config.toml"
+            if setting.runtime_override then detail = "Nix managed · temporary runtime override is active" end
+            return {page=page, key=key, title=title, detail=detail,
+                    value=setting.value, editable=true, managed=setting.managed, temporary=setting.runtime_override}
+        end
         local output = snapshot["bar.preferred_output"].value
         local catalog = {
-            {page=1, key="bar.mooncoil", title="Mooncoil mark", detail=managed_detail,
-             value=mooncoil.value, editable=true, managed=mooncoil.managed, temporary=mooncoil.runtime_override},
+            switch(1, "bar.mooncoil", "Mooncoil mark"),
+            switch(1, "bar.info_button", "System information button"),
+            switch(1, "bar.about_button", "About button"),
             {page=1, title="Outputs", detail=output ~= "" and "Bar is shown on " .. output or "Bar is shown on every output", editable=false},
             {page=2, key="appearance.corners", title="Screen corners", detail="Native corner overlays on every output",
              value=snapshot["appearance.corners"].value, editable=true, managed=snapshot["appearance.corners"].managed,

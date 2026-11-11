@@ -17,7 +17,7 @@ Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru status --json
        tohru config reload
        tohru config set appearance.palette mocha|macchiato|rose_pine|nord|gruvbox|tokyo_night|dracula|everforest
-       tohru config set bar.mooncoil|appearance.corners true|false
+       tohru config set bar.mooncoil|bar.info_button|bar.about_button|appearance.corners true|false
        tohru config set appearance.corner_size 1..100
        tohru config set bar.preferred_output OUTPUT   ('' for every output)
        tohru settings-error
@@ -138,9 +138,14 @@ case ${1:-help} in
             set)
                 [[ $# == 4 ]] || fail 'Usage: tohru config set KEY VALUE'
                 case $3 in
-                    bar.mooncoil|appearance.corners)
+                    bar.mooncoil|bar.info_button|bar.about_button|appearance.corners)
                         case $4 in true) number=1 ;; false) number=0 ;; *) fail 'Value must be true or false' ;; esac
-                        case $3 in bar.mooncoil) event=setting_mooncoil ;; appearance.corners) event=setting_corners ;; esac
+                        case $3 in
+                            bar.mooncoil) event=setting_mooncoil ;;
+                            bar.info_button) event=setting_info_button ;;
+                            bar.about_button) event=setting_about_button ;;
+                            appearance.corners) event=setting_corners ;;
+                        esac
                         exec "$pleamar" --say tohru "emit $event $number"
                         ;;
                     appearance.palette)

@@ -75,7 +75,6 @@ export TOHRU_RUNTIME="$PWD/.tmp/pleamar-runtime/target/release/pleamar"
 **This is experimental. A lot of it is untested, and some of it is known to be broken.** Expect to read the source when something goes wrong.
 
 - It has only just replaced j2bar on one NixOS desktop (two monitors, NVIDIA). The systemd user units and the notification daemon run there; most panels have only had a short check.
-- The bar's Information and About buttons never show: their switches are not wired up. The popups still open with `tohru panel toggle info|about`.
 - There is no notification bell and no adaptive light/dark glass. Clock and text rendering differ slightly from j2bar, the reference design.
 - Popups opened from the CLI, without a pointer click, may need Escape to close.
 - The workspace switcher can only switch to workspaces the compositor already reports. It cannot create one.

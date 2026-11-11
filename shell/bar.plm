@@ -20,6 +20,8 @@ scene Tohru {
  text output_request = ""
  event config_reload ->
  event setting_mooncoil ->
+ event setting_info_button ->
+ event setting_about_button ->
  event setting_corners ->
  event setting_corner_size ->
  event setting_output ->

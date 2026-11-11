@@ -107,6 +107,8 @@ class Cli(unittest.TestCase):
             (("status", "--json"), ["--say", "tohru", "get settings_status"]),
             (("config", "reload"), ["--say", "tohru", "emit config_reload"]),
             (("config", "set", "bar.mooncoil", "true"), ["--say", "tohru", "emit setting_mooncoil 1"]),
+            (("config", "set", "bar.info_button", "true"), ["--say", "tohru", "emit setting_info_button 1"]),
+            (("config", "set", "bar.about_button", "false"), ["--say", "tohru", "emit setting_about_button 0"]),
             (("config", "set", "appearance.corners", "false"), ["--say", "tohru", "emit setting_corners 0"]),
             (("config", "set", "appearance.corner_size", "1"), ["--say", "tohru", "emit setting_corner_size 1"]),
             (("config", "set", "appearance.corner_size", "100"), ["--say", "tohru", "emit setting_corner_size 100"]),

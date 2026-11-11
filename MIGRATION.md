@@ -208,6 +208,7 @@ How Tohru settings work:
   them to the bar, which then holds its own until it exits.
 - Keys left after removals #3, #5 and #6: `appearance.palette`,
   `appearance.corners`, `appearance.corner_size` (1–100), `bar.mooncoil`,
+  `bar.info_button`, `bar.about_button` (both off by default),
   `bar.preferred_output`. The bar, its popups and the volume display show only on
   the preferred output, and the workspace rail counts only its workspaces; empty
   means every output with one merged rail. Corners stay on every output.

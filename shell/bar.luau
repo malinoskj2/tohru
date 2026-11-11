@@ -4,6 +4,8 @@ local workspace = require("bar/workspace")(make_rail, tohru_workspace)
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
+    fact.bar_info_button = settings["bar.info_button"].value
+    fact.bar_about_button = settings["bar.about_button"].value
     fact.corners = settings["appearance.corners"].value
     fact.corner_size = settings["appearance.corner_size"].value
     workspace.prefer(settings["bar.preferred_output"].value)
@@ -22,6 +24,12 @@ publish(tohru_settings.snapshot())
 on("config_reload", function() change(tohru_settings.reload) end)
 on("setting_mooncoil", function(n)
     change(function() return tohru_settings.set("bar.mooncoil", n ~= 0) end)
+end)
+on("setting_info_button", function(n)
+    change(function() return tohru_settings.set("bar.info_button", n ~= 0) end)
+end)
+on("setting_about_button", function(n)
+    change(function() return tohru_settings.set("bar.about_button", n ~= 0) end)
 end)
 on("setting_palette", function(index)
     local palettes = {[0]="mocha", "macchiato", "rose_pine", "nord", "gruvbox", "tokyo_night", "dracula", "everforest"}

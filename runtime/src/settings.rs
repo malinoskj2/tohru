@@ -13,15 +13,19 @@ const MAX_CONFIG_BYTES: u64 = 1024 * 1024;
 pub enum Key {
     PreferredOutput,
     Mooncoil,
+    InfoButton,
+    AboutButton,
     Corners,
     CornerSize,
     Palette,
 }
 
 impl Key {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 7] = [
         Self::PreferredOutput,
         Self::Mooncoil,
+        Self::InfoButton,
+        Self::AboutButton,
         Self::Corners,
         Self::CornerSize,
         Self::Palette,
@@ -32,6 +36,8 @@ impl Key {
         match self {
             Self::PreferredOutput => "bar.preferred_output",
             Self::Mooncoil => "bar.mooncoil",
+            Self::InfoButton => "bar.info_button",
+            Self::AboutButton => "bar.about_button",
             Self::Corners => "appearance.corners",
             Self::CornerSize => "appearance.corner_size",
             Self::Palette => "appearance.palette",
@@ -66,6 +72,8 @@ impl Key {
         match self {
             Self::PreferredOutput => ("bar", "preferred_output"),
             Self::Mooncoil => ("bar", "mooncoil"),
+            Self::InfoButton => ("bar", "info_button"),
+            Self::AboutButton => ("bar", "about_button"),
             Self::Corners => ("appearance", "corners"),
             Self::CornerSize => ("appearance", "corner_size"),
             Self::Palette => ("appearance", "palette"),
@@ -83,7 +91,7 @@ impl Key {
     fn default_value(self) -> Value {
         match self {
             Self::PreferredOutput => Value::Text(String::new()),
-            Self::Mooncoil => Value::Bool(false),
+            Self::Mooncoil | Self::InfoButton | Self::AboutButton => Value::Bool(false),
             Self::Corners => Value::Bool(true),
             Self::CornerSize => Value::Integer(32),
             Self::Palette => Value::Palette(Palette::Mocha),
@@ -97,7 +105,10 @@ impl Key {
             {
                 Ok(())
             }
-            (Self::Mooncoil | Self::Corners, Value::Bool(_))
+            (
+                Self::Mooncoil | Self::InfoButton | Self::AboutButton | Self::Corners,
+                Value::Bool(_),
+            )
             | (Self::Palette, Value::Palette(_)) => Ok(()),
             (_, Value::Integer(value))
                 if self
