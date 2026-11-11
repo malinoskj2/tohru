@@ -72,7 +72,7 @@ Follow-up: native false-open transitions and toggle/explicit closes flush/cancel
 pending writes and reset dragging idempotently. Logic reload cancels unissued
 pending drag work and clears presentation drag state. Command failures now render
 in a growing error area, separately from awaiting native observations.
-User accepted the pinned synchronous Pulse I/O limitation: a stalled accepting
+Accepts the pinned synchronous Pulse I/O limitation: a stalled accepting
 server can block root logic indefinitely. The50ms timer bounds coalescing only;
 no command deadline/cancellation, backend replacement or workaround was added.
 

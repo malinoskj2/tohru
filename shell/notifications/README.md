@@ -7,7 +7,7 @@ Production singleton launch/cutover belongs to S/Nix; no live takeover is enable
 Native name replacement/queue policy is retained, so development must use private
 buses/endpoints. No old notification daemon/policy implementation is ported.
 
-The user accepted native internal expiration history (50 entries), without any
+Accepts native internal expiration history (50 entries), without any
 history/unread/DND UI or history subscription. Presentation is transient title/body
 text in four plain banners, six seconds maximum, removed earlier on native close.
 No app/content filters, buttons, inline reply, hover pause or countdown. Exactly

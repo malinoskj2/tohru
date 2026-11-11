@@ -74,7 +74,7 @@ including the app whitelist and exact effect animation curves/speeds. These are
 source defaults, not a verified live configuration. It intentionally supplies
 only these four effect settings/rules; global compositor styling stays in Nix.
 The example uses the proposed new launcher namespace and must wait for the
-user's namespace API gap decision: F confirmed Pleamar currently hardcodes
+namespace API gap decision: F confirmed Pleamar currently hardcodes
 `pleamar` for layers. See LAUNCHER-CONTRACT.md.
 
 ## Settings and boundaries

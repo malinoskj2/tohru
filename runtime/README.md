@@ -81,7 +81,7 @@ integration (native API decision pending), full retained bar contents and 1:1
 visuals, native glass review, and all performance/presentation/soak gates.
 No notifications, authentication or other singleton services
 are activated by this foundation. Native frame/namespace/notification gaps stay
-unpatched until the user's decisions. Independent review follows integration.
+unpatched until decided. Independent review follows integration.
 
 ## Root flake interface
 
@@ -97,7 +97,7 @@ nix run .#tohru -- status --json
 ```
 
 The command runner still follows native display warning/fallback behavior,
-explicitly accepted by the user; zero running instances fail. The initial bar
+explicitly accepted; zero running instances fail. The initial bar
 is a foundation slice, not workspace/output/visual parity.
 
 A consuming flake may follow its own pinned nixpkgs and import the module:

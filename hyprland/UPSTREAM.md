@@ -9,7 +9,7 @@ records SHA-256 of every copied file before extraction changes.
 `focus/` and `bars/` derive from `hyprwm/hyprland-plugins` v0.56.0,
 BSD 3-Clause (`UPSTREAM-LICENSE`). The j2bar source already incorporates local
 focus class-filter, combined-modes, render-shrink and bars transformed-pass,
-unload-listeners patches, plus its subsequent fixes. Jesse Malinosky's original
+unload-listeners patches, plus its subsequent fixes. j2bar's original
 code and local modifications retain the root MIT `LICENSE`. Preserve both notices
 in source and binary distributions. No hyprglass source or GLASS-LICENSE is
 included because no code from that component is extracted.

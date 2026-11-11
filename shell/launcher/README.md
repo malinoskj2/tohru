@@ -33,7 +33,7 @@ scan/name dedup, visibility/TryExec/Path/D-Bus/activation/terminal/alias gaps we
 reported with exact source evidence and explicitly accepted (MIGRATION.md). No alternate
 catalog/launcher backend or runtime extension is implemented.
 
-The user selected simple fuzzy search instead of exact frizbee scoring. The
+Uses simple fuzzy search instead of exact frizbee scoring. The
 native input matches available catalog fields case-insensitively with Luau's
 ASCII string.lower, preserving whole UTF-8 codepoints during subsequence matching.
 Prefix outranks substring, which outranks in-order subsequence; ties preserve

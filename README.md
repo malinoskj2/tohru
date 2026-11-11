@@ -9,7 +9,7 @@ A Linux desktop shell for Hyprland, written as [Pleamar](https://github.com/k4di
 [![Pleamar 0.7.27](https://img.shields.io/badge/Pleamar-0.7.27-1f6feb)](runtime/pleamar/pin.json)
 [![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#status)
 
-Tohru replaces the author's previous shell, j2bar. The shell itself is `.plm` scene files, Luau logic and WGSL shaders, run by a patched build of Pleamar 0.7.27. An optional Hyprland plugin adds window effects.
+Tohru replaces my previous shell, j2bar. The shell itself is `.plm` scene files, Luau logic and WGSL shaders, run by a patched build of Pleamar 0.7.27. An optional Hyprland plugin adds window effects.
 
 ## What you get
 
