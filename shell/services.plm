@@ -11,7 +11,8 @@ part RootServiceControls {
     let bar_ink = #ffffff
     // j2bar's row: 22px buttons at least 24px wide, 2px apart, ending 110px from the right edge.
     let row_end = screen.width - 110
-    let clock_w = bar_date_measure.width + 10 + bar_time_measure.width + 14
+    let date_w = round(bar_date_measure.width)
+    let clock_w = date_w + 10 + round(bar_time_measure.width) + 14
     let clock_x = row_end - clock_w
     let root_net_x = clock_x - 26
     let sound_x = root_net_x - 26

@@ -16,7 +16,8 @@ part BarContents {
     }
     zone box bar_clock_hit { from: clock_x, 4.5; size: clock_w, 22; corner: 7; cursor: pointer }
     box { from: clock_x, 4.5; size: clock_w, 22; corner: 7; color: #ffffff; opacity: max(bar_clock_hit.hover * 10%, bar_clock_hit.pressed * 16%) }
-    text bar_date { at: clock_x + 7, 15.5; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_date_measure }
-    text bar_time { at: clock_x + 17 + bar_date_measure.width, 15.5; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_time_measure }
+    // j2bar's hinted labels are about 1px wider, so its text sits 1px left of the 7px inset.
+    text bar_date { at: clock_x + 6, 15.5; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_date_measure }
+    text bar_time { at: clock_x + 16 + date_w, 15.5; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_time_measure }
     on press bar_clock_hit { emit calendar_toggle }
 }
