@@ -34,8 +34,11 @@ Accepted differences from j2bar that stay:
 - Panels, launcher and OSD use Pleamar's native glass, springs, glow and blur.
   Dimensions, content and interactions follow j2bar; j2bar's custom
   Warp/turbulence/Slosh effects are not reproduced.
-- Popups opened from the CLI (no pointer click) may need Escape to close;
-  outside-click dismissal relies on the click's popup grab.
+- Popups opened from the CLI (no pointer click) close with Escape or
+  `tohru panel close`, not an outside click: that needs an xdg_popup grab,
+  and a grab needs a real input serial. Grabbing with a stale or zero serial
+  was tried on 2026-11-11 in a nested Hyprland 0.56.2 and left Hyprland
+  dismissing every later popup as soon as it opened, so it was dropped.
 - Launcher search uses a simple fuzzy matcher and Pleamar's app catalog.
 - Notifications are transient text plus one placeholder sound; Pleamar keeps
   its own internal expiry bookkeeping but no history, unread or DND UI.
