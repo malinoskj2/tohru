@@ -47,7 +47,7 @@ return function()
             label = player and player.name or ""
             if label == "" then label = "Playing" end
         end
-        text.bar_media = "▶ " .. label
+        text.bar_media = label
         fact.bar_playing = value.playing == true
     end)
     sys.watch("clock", function(value)

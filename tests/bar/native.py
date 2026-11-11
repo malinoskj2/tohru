@@ -245,7 +245,7 @@ def main():
         start([sys.executable, str(ROOT / 'tests/bar/mpris.py'), str(player_ready)], 'mpris')
         wait_for(player_ready.exists, 'private MPRIS name')
         expect('bar', 'bar_playing', 'true')
-        expect('bar', 'bar_media', '▶ Native track - Native artist')
+        expect('bar', 'bar_media', 'Native track - Native artist')
         window_scene = evidence / 'window.plm'
         window_scene.write_text('scene TestWindow { surface { kind: window; size: 480, 180; title: "B Native Window" } box { from: 0, 0; size: 480, 180; color: #181825 } }')
         window = start([runtime, '--scene', str(window_scene), '--stall', '0', '--no-hud'], 'window')
