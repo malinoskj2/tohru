@@ -61,7 +61,8 @@ in stdenvNoCC.mkDerivation {
     mkdir -p $out/bin $out/share/tohru
     cp -r shell $out/share/tohru/
     cp LICENSE $out/share/tohru/LICENSE
-    cp bin/tohru bin/tohru-run bin/tohru-settings-run $out/bin/
+    cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-session-run \
+      bin/tohru-launcher-run bin/tohru-notifications-run $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar
     wrapProgram $out/bin/tohru-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
@@ -69,6 +70,15 @@ in stdenvNoCC.mkDerivation {
     wrapProgram $out/bin/tohru-settings-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_SETTINGS_SCENE $out/share/tohru/shell/settings/settings.plm
+    wrapProgram $out/bin/tohru-session-run \
+      --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
+      --set TOHRU_SESSION_SCENE $out/share/tohru/shell/session/menu.plm
+    wrapProgram $out/bin/tohru-launcher-run \
+      --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
+      --set TOHRU_LAUNCHER_SCENE $out/share/tohru/shell/launcher/entry.plm
+    wrapProgram $out/bin/tohru-notifications-run \
+      --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
+      --set TOHRU_NOTIFICATIONS_SCENE $out/share/tohru/shell/notifications/notifications.plm
     runHook postInstall
   '';
   passthru = { inherit runtime; };

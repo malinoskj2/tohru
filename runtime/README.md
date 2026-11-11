@@ -50,7 +50,7 @@ have no namespace extension and must not be used to claim those parser checks.
 
 Nix: import `default.nix { pkgs = <explicit pinned nixpkgs>; }`; optional reusable
 Home Manager module `nix/home-manager.nix` supplies the package and managed TOML
-path, with no service/autostart activation. It never writes into /home/jesse/nix.
+path; `programs.tohru.systemd.enable` adds the user services. It never writes into /home/jesse/nix.
 A Nix build and NixOS/system integration remain separate verification gates.
 
 ## Verified initial checkpoint
@@ -117,8 +117,8 @@ inputs.tohru.inputs.nixpkgs.follows = "nixpkgs";
 ```
 
 The module uses its consumer's `pkgs`; `programs.tohru.package` remains
-replaceable. It installs a package and managed TOML environment path only, without
-activating services or autostart. `nix/tests/home-manager.nix` accepts actual
+replaceable. It installs a package and managed TOML environment path; services
+start only with `programs.tohru.systemd.enable`. `nix/tests/home-manager.nix` accepts actual
 Home Manager, nixpkgs and Tohru flake values for enabled/disabled consumer checks.
 No NixOS module is exported because this slice supplies no NixOS-specific behavior.
 

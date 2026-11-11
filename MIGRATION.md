@@ -57,12 +57,12 @@ Accepted differences from j2bar that stay:
       tray), and Pleamar's text rasteriser against Pango's.
 - [x] Bar output policy: one bar on `bar.preferred_output`, every output while it
       is empty, no focused/first fallback.
-- [ ] CLI gap against current keybinds (section 4): launcher toggle.
-- [ ] Process supervision: Tohru is several scenes (bar root, session menu,
-      launcher, notifications, Settings on demand). Nothing
-      starts them yet; `nix/home-manager.nix` only installs the package. Add
-      systemd user units (bound to `graphical-session.target`) or Hyprland
-      `exec-once`, with restart policy for each long-lived role.
+- [x] CLI gap against current keybinds (section 4): `tohru launcher toggle|open|close`.
+- [x] Process supervision: Tohru is several scenes (bar root, session menu,
+      launcher, notifications, Settings on demand). Each long-lived role has a
+      wrapper in `bin/`, and `programs.tohru.systemd.enable` starts them as user
+      services bound to `graphical-session.target`, restarting on failure. The
+      units have not run under a real systemd session yet.
 - [ ] Notifications: Tohru must be the only `org.freedesktop.Notifications`
       owner; verify banner text and the placeholder sound.
 - [ ] Polkit: hyprpolkitagent is the only polkit agent (stop j2bar polkit-agent).
@@ -86,9 +86,9 @@ Accepted differences from j2bar that stay:
 | Scene name (`--answer-as`) | Scene | Started by |
 |---|---|---|
 | `tohru` | `shell/bar.plm` (bar, popups, OSD, corners) | `bin/tohru-run` (sets `TOHRU_SHELL=1`) |
-| `tohru-session` | `shell/session/menu.plm` | `pleamar --scene … --answer-as tohru-session --no-hud` |
-| `tohru-launcher` | `shell/launcher/entry.plm` | `pleamar --scene … --answer-as tohru-launcher --stall 0` |
-| `tohru-notifications` | `shell/notifications/notifications.plm` | own process; must be the only notification daemon |
+| `tohru-session` | `shell/session/menu.plm` | `bin/tohru-session-run` |
+| `tohru-launcher` | `shell/launcher/entry.plm` | `bin/tohru-launcher-run` |
+| `tohru-notifications` | `shell/notifications/notifications.plm` | `bin/tohru-notifications-run`; must be the only notification daemon |
 | `tohru-settings` | `shell/settings/settings.plm` | `tohru settings open` runs `bin/tohru-settings-run` (sets `TOHRU_SHELL=1`) when no Settings answers |
 
 Every role is its own process and can restart on its own. Scenes talk with

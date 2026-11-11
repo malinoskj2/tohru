@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+exec "${TOHRU_RUNTIME:-pleamar}" --scene "${TOHRU_NOTIFICATIONS_SCENE:-$root/shell/notifications/notifications.plm}" --no-hud --stall 0 --answer-as tohru-notifications "$@"
