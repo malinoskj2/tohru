@@ -20,4 +20,9 @@ part BarState {
     measure bar_title_measure
     measure bar_date_measure
     measure bar_time_measure
+    // j2bar's row: 22px buttons at least 24px wide, 2px apart, ending 110px from the right edge.
+    let row_end = screen.width - 110
+    let date_w = round(bar_date_measure.width)
+    let clock_w = date_w + 10 + round(bar_time_measure.width) + 14
+    let clock_x = row_end - clock_w
 }

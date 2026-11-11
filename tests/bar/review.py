@@ -35,7 +35,7 @@ def verify(root, runtime, evidence, env, start, say, expect, wait_for, icons_onl
 }''')
         logic = scene_dir / 'composed.luau'
         logic.write_text('require("bar/controller")()\nlocal rail = require("calendar/rail-publisher")(tohru_workspace,"calendar","cal_rail_")\nrequire("calendar/controller")(rail)\n')
-    app = start([runtime, '--scene', str(scene), '--answer-as', 'review', '--stall', '0', '--no-hud'], 'review', {'WAYLAND_DEBUG': '1'})
+    app = start([runtime, '--scene', str(scene), '--answer-as', 'review', '--stall', '0', '--no-hud'], 'review', {'WAYLAND_DEBUG': '1', 'TOHRU_SHELL': '1'})
     wait_for(lambda: say('review', 'get bar_date'), 'composed native clock')
     if not icons_only:
         expect('review', 'cal_open', 'false')
@@ -90,10 +90,11 @@ def verify(root, runtime, evidence, env, start, say, expect, wait_for, icons_onl
         return
     # Keep the virtual pointer alive until the app binds its no-input seat.
     # A one-shot wlrctl device can disappear before wl_pointer is bound.
-    pointer = start([str(root / '.tmp/pointer-build/pointer'), env['XDG_RUNTIME_DIR']], 'pointer', stdin=subprocess.PIPE)
+    pointer = start([str(root / '.tmp/s-pointer-build/pointer'), env['XDG_RUNTIME_DIR']], 'pointer', stdin=subprocess.PIPE)
     wait_for(lambda: 'ready' in (evidence / 'pointer.log').read_text(), 'persistent private pointer')
     wait_for(lambda: '.get_pointer(' in (evidence / 'review.log').read_text(), 'app pointer binding')
-    pointer.stdin.write(b'click 1060 16\n')
+    x, y, w, h = next(node['box'] for surface in json.loads(say('review', 'describe json')) for node in surface['nodes'] if node.get('name') == 'bar_clock_hit')
+    pointer.stdin.write(f'click {x + w // 2} {y + h // 2}\n'.encode())
     pointer.stdin.flush()
     expect('review', 'cal_open', 'true')
     wait_for(lambda: 'xdg_popup' in (evidence / 'review.log').read_text() and '.grab(' in (evidence / 'review.log').read_text(), 'native popup grab')
