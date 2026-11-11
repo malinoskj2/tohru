@@ -255,11 +255,7 @@ fn palette_is_typed_canonical_and_restartable() {
         assert!(Key::Palette.parse_text(bad).is_err());
     }
     let disk = fs::read(files.user()).unwrap();
-    assert!(
-        owner
-            .set(Key::Palette, Value::Text("nord".into()))
-            .is_err()
-    );
+    assert!(owner.set(Key::Palette, Value::Text("nord".into())).is_err());
     assert_eq!(fs::read(files.user()).unwrap(), disk);
 }
 
@@ -268,11 +264,7 @@ fn related_managed_proposals_never_half_persist() {
     use std::collections::BTreeMap;
     let files = Fixture::new();
     fs::write(files.managed(), "[appearance]\npalette='mocha'\n").unwrap();
-    fs::write(
-        files.user(),
-        "# retained\n[appearance]\ncorner_size=40\n",
-    )
-    .unwrap();
+    fs::write(files.user(), "# retained\n[appearance]\ncorner_size=40\n").unwrap();
     let mut owner = files.owner();
     let disk = fs::read(files.user()).unwrap();
     let proposal = BTreeMap::from([
