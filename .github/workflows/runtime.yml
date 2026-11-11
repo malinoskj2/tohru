@@ -71,7 +71,9 @@ jobs:
           install -m 755 "$RUNNER_TEMP/$archive/cargo-about" "$HOME/.cargo/bin/cargo-about"
 
       - name: Package
-        run: .github/scripts/package.sh .tmp/pleamar-runtime .tmp/pleamar-runtime/target/release/pleamar dist
+        env:
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+        run: .github/scripts/package.sh .tmp/pleamar-runtime .tmp/pleamar-runtime/target/release/pleamar dist "$VERSION"
 
       - name: Smoke-test the package
         run: |

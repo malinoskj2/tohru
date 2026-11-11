@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Usage: package.sh PREPARED_PLEAMAR_TREE PLEAMAR_BINARY OUT_DIR
+# Usage: package.sh PREPARED_PLEAMAR_TREE PLEAMAR_BINARY OUT_DIR VERSION
 set -euo pipefail
 source=$(cd -- "$1" && pwd)
 binary=$2
 out=$3
+version=$4
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 stage=$(mktemp -d)
 trap 'rm -rf -- "$stage"' EXIT
@@ -15,6 +16,7 @@ install -m 755 "$binary" "$root/bin/pleamar"
 strip "$root/bin/pleamar"
 cp -a shell "$root/"
 cp LICENSE "$root/LICENSE"
+printf '%s\n' "$version" > "$root/VERSION"
 cp "$source/LICENSE" "$source/THIRD-PARTY.md" "$root/licenses/pleamar/"
 cargo about generate --locked --fail --manifest-path "$source/Cargo.toml" \
     --config "$here/about.toml" --output-file "$root/licenses/pleamar/THIRD-PARTY-LICENSES.txt" "$here/about.hbs"

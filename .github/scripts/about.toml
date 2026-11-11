@@ -12,6 +12,5 @@ accepted = [
     "Zlib",
 ]
 targets = ["x86_64-unknown-linux-gnu"]
-ignore-build-dependencies = true
 ignore-dev-dependencies = true
 private = { ignore = true }
