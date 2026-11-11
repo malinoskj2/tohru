@@ -10,12 +10,11 @@ struct Fixture(PathBuf);
 
 impl Fixture {
     fn new() -> Self {
-        let path = std::env::current_dir().unwrap().join(".tmp").join(format!(
-            "info-test-{}-{}",
+        let path = std::env::temp_dir().join(format!(
+            "tohru-info-test-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::create_dir(&path).unwrap();
         Self(path)
     }
