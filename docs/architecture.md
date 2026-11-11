@@ -46,6 +46,7 @@ Requests report that Pleamar accepted them, not that the action finished. If no 
 | `0010-key-rule-order` | Keys that arrive in the same frame as a key that triggers a rule, such as typing right after Ctrl+F, are handled after the rule has acted |
 | `0011-focus-round` | A keyboard leave and enter in the same frame, such as a popup grab moving focus between Tohru's own surfaces, no longer counts as losing focus |
 | `0012-popup-root-parent` | Until the pointer enters one of its surfaces, a scene's popups hang from its main surface instead of whichever surface mapped first (such as a screen corner on another monitor) |
+| `0013-text-font-features` | A text's `family:` may name OpenType features after a colon (`"SF Pro Text:tnum"`). The bar's clock uses it for j2bar's tabular numerals |
 
 Numbers 0003 and 0007 to 0009 belonged to features that were removed.
 

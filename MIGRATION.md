@@ -57,10 +57,11 @@ Accepted differences from j2bar that stay:
 - [ ] Bar visual parity with j2bar. Matched against j2bar on the live desktop:
       31px height, outline (flares, bottom corners, hairline weight at scale 1),
       icons and text on j2bar's pixel rows, rail width, clock padding, the body
-      tint, and the switcher (rail, lit segment with its rounded ends, glow).
-      Still missing: notification bell, adaptive light/dark glass, tabular
-      numerals in the clock (the date is about 4px narrower, which shifts the
-      tray), and Pleamar's text rasteriser against Pango's.
+      tint, the switcher (rail, lit segment with its rounded ends, glow), the
+      button row at y=4, and the clock's tabular numerals (patch 0013; the
+      date, time and tray now land within 1px of j2bar's).
+      Still missing: notification bell, adaptive light/dark glass, and
+      Pleamar's text rasteriser against Pango's.
 - [x] Bar output policy: one bar on `bar.preferred_output`, every output while it
       is empty, no focused/first fallback.
 - [x] CLI gap against current keybinds (section 4): `tohru launcher toggle|open|close`.
