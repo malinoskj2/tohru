@@ -9,14 +9,14 @@ part BarContents {
     let bar_title_lead = if(bar_title_icon, 20, 0)
     let bar_title_width = min(bar_title_limit, bar_title_measure.width + bar_title_lead)
     group {
-        move: (screen.width - bar_title_width) / 2, 0
+        move: round((screen.width - bar_title_width) / 2), 0
         show: bar_title_limit > 0
-        image bar_app_icon { at: 0, 8.5; size: 14, 14; show: bar_title_icon }
-        text bar_title { at: bar_title_lead, 14.5; anchor: left center; width: max(1, bar_title_limit - bar_title_lead); lines: 1; tight: true; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_title_measure }
+        image bar_app_icon { at: 0, 8; size: 14, 14; show: bar_title_icon }
+        text bar_title { at: bar_title_lead, 15.5; anchor: left center; width: max(1, bar_title_limit - bar_title_lead); lines: 1; tight: true; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_title_measure }
     }
     zone box bar_clock_hit { from: clock_x, 4.5; size: clock_w, 22; corner: 7; cursor: pointer }
     box { from: clock_x, 4.5; size: clock_w, 22; corner: 7; color: #ffffff; opacity: max(bar_clock_hit.hover * 10%, bar_clock_hit.pressed * 16%) }
-    text bar_date { at: clock_x + 7, 14.5; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_date_measure }
-    text bar_time { at: clock_x + 17 + bar_date_measure.width, 14.5; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_time_measure }
+    text bar_date { at: clock_x + 7, 15.5; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_date_measure }
+    text bar_time { at: clock_x + 17 + bar_date_measure.width, 15.5; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_time_measure }
     on press bar_clock_hit { emit calendar_toggle }
 }
