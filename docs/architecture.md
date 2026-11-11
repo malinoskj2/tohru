@@ -39,11 +39,13 @@ Requests report that Pleamar accepted them, not that the action finished. If no 
 | Patch | Change |
 |---|---|
 | `0001-shell-settings` | Adds the `tohru-shell` library as a dependency and installs the `tohru_settings` Luau global, only when `TOHRU_SHELL=1` |
-| `0005-launcher-namespace` | Adds an optional static `layer_namespace` surface property. The launcher uses it so the Hyprland plugin can match its layer. Without it, layers are named `pleamar` |
+| `0005-launcher-namespace` | Adds an optional static `layer_namespace` surface property. The launcher uses it so the Hyprland plugin can match its layer. Without it, layers are named `pleamar`. It also makes Pleamar's lookup of where a layer sits on Hyprland match the layer's own namespace, which places the launcher's glass capture correctly under the bar's exclusive zone |
 | `0006-info-binding` | Installs the `tohru_info` Luau global |
 | `0010-key-rule-order` | Keys that arrive in the same frame as a key that triggers a rule, such as typing right after Ctrl+F, are handled after the rule has acted |
 | `0011-focus-round` | A keyboard leave and enter in the same frame, such as a popup grab moving focus between Tohru's own surfaces, no longer counts as losing focus |
 | `0012-popup-root-parent` | Until the pointer enters one of its surfaces, a scene's popups hang from its main surface instead of whichever surface mapped first (such as a screen corner on another monitor) |
+| `0013-text-font-features` | A text's `family:` may name OpenType features after a colon (`"SF Pro Text:tnum"`). The bar's clock uses it for j2bar's tabular numerals |
+| `0014-secret-get` | `--say … get` answers `? secret input cannot be read` for the text of a `secret: true` field, as `describe` and `watch` already withhold it. Without it any process of the user could read the Wi-Fi password while it is typed |
 
 Numbers 0002 to 0004 and 0007 to 0009 belonged to features that were removed or moved into the scenes.
 

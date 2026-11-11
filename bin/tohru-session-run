@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export TOHRU_SHELL=1
-root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+root=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd)
 exec "${TOHRU_RUNTIME:-pleamar}" --scene "${TOHRU_SESSION_SCENE:-$root/shell/session/menu.plm}" --no-hud --stall 0 --answer-as tohru-session "$@"

@@ -1,37 +1,45 @@
-# Native text notification role
+# Notifications
 
-Private entry: `pleamar --scene shell/notifications/notifications.plm --answer-as tohru-notifications`.
-One dedicated native process owns org.freedesktop.Notifications, independently of
-ordinary bar UI restart. Never import/start this owner from the root bar scene.
-Production singleton launch/cutover belongs to S/Nix; no live takeover is enabled.
-Native name replacement/queue policy is retained, so development must use private
-buses/endpoints. No old notification daemon/policy implementation is ported.
+The notification daemon, run as its own process, `tohru-notifications`, by `bin/tohru-notifications-run`. Pleamar's `notifications` service owns `org.freedesktop.Notifications` on the session bus, so no other notification daemon may run. The bar never starts it.
 
-Accepts native internal expiration history (50 entries), without any
-history/unread/DND UI or history subscription. Presentation is transient title/body
-text in four plain banners, six seconds maximum, removed earlier on native close.
-No app/content filters, buttons, inline reply, hover pause or countdown. Exactly
-one fixed native sine tone (880Hz/80ms) is requested for each observed new/changed
-notification, with the same parameters for every app/urgency. No custom sound
-assets or per-app policy. Native sound backend owns playback/device availability.
+## Files
 
-UI work inspects at most64 most recent native active entries, keeps only bounded
-fingerprints and at most4 timers/models; title/body bounds preserve UTF-8. Native
-process-owned last-ID scene fact prevents replay across logic reload, and begins
-fresh with a new process. Identical same-second replacements may be coalesced by
-the native service and do not necessarily retrigger a tone; no event/backend patch.
-Native active protocol bookkeeping/history remains native even after UI timeout.
-There is no user-facing retained notification state.
+| File | Contents |
+|---|---|
+| `notifications.plm` | A 420×380 px overlay surface at the top right of every output, 42 px from the top, with up to four 396×80 px banners. Permissions: `notifications` and `sound` |
+| `notifications.luau` | Turns the service's notification list into banners and plays the tone |
 
-Checks: `pleamar --check shell/notifications/notifications.plm` and
-`lua tests/session/notifications.lua` execute scene parser and actual interaction
-logic with native boundaries controlled. Real private Notify/replace/close/name
-ownership/reload checks and captured presentation remain required; placeholder
-tone parameters are checked, not claimed audible on physical hardware.
+## Behaviour
 
-Power warning native events are `power_warning_clear`, `power_warning_low`,
-`power_warning_critical`, `power_warning_empty`, each with one finite normalized
-charge0..1. Fixed title/percentage text shares the same placeholder tone; repeated
-severity is suppressed across logic reload, clear removes only the power banner.
-No battery-triggered session/power action. B owns transition/hysteresis decisions;
-S owns the exact native say permission/route, with no arbitrary text event.
+- Each new or changed notification shows a banner with its title (up to 256 characters) and body (up to 768 characters, three lines). The newest is on top; at most four show.
+- A banner disappears after 6 seconds, or earlier when the notification is closed.
+- Each new or changed notification plays the same short tone (an 880 Hz sine for 80 ms), whatever its application or urgency.
+- There are no actions, buttons, history, unread count or Do Not Disturb.
+
+`fact.last_id` remembers the highest notification ID seen, so a logic reload does not show old notifications again. It starts from zero in a new process.
+
+## Power warnings
+
+The bar's `info/power.luau` sends these events with the battery charge from 0 to 1:
+
+| Event | Banner |
+|---|---|
+| `power_warning_low` | Battery low |
+| `power_warning_critical` | Battery critical |
+| `power_warning_empty` | Battery nearly empty |
+| `power_warning_clear` | Removes the power banner |
+
+The banner body is the percentage remaining, and it plays the same tone. A repeated warning at the same level is ignored.
+
+## Running and tests
+
+```sh
+pleamar --check shell/notifications/notifications.plm
+lua tests/session/notifications.lua
+```
+
+Run the Lua test from the repository root with Lua 5.4. To try it, stop any other notification daemon, start `bin/tohru-notifications-run` and send one with `notify-send`. `tests/session/native.sh --runtime <pleamar> --notifications` runs it on a private session bus with a null audio sink; it has not been re-run since the repository was restructured.
+
+## Known limitations
+
+A replacement is recognised by a change in title, body or timestamp. One that keeps all three, such as an identical replacement sent within the timestamp's resolution, shows no new banner and plays no tone.

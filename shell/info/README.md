@@ -1,60 +1,68 @@
-# Read-only information and power
+# System information and power warnings
 
-Root integration S: include info/state.plm + info/popup.plm; initialize
-`info = require("info/controller")(tohru_info.snapshot, optional_outputs_getter)`.
-Return lifecycle open(page)/close/toggle/refresh is callable directly for root
-coordination; native events info_open/close/toggle/refresh, info_page, info_scroll.
-Pages0System/1Displays/2DateTime/3Users/4Storage/5Generations/6Power. Same-root
-popup preserves click serial; accepted CLI-idle Escape limitation. Private entry
-info/entry.plm + entry.luau is test-only, answer-as tohru-info for About test route.
+A read-only System Information popup with seven pages, and the battery warnings sent to the notification daemon. Both run in the bar process. The popup opens from the bar's information button, which `bar.info_button` turns on, from About's More Info, or with `tohru panel toggle info`.
 
-Snapshot data pages read only on open or explicit refresh. Rendering and scroll
-use cached rows; all256 bounded accounts are reachable, current account first,
-with public UID/description/home/shell. Storage shows actual block capacities and
-mount metadata, free space Unknown; generation current label only from actual
-resolved unique complete active identity. No user/avatar/trash/generation/GC/
-network or system administration. Unknown avatars/timezone/mode/scale/refresh are
-not invented; no external administration links. Native clock displays actual
-minute date/time; power displays native battery presence/percent/charging only.
+## Files
 
-The optional outputs getter returns at most8 native {name,width,height} records;
-these must be actual logical output facts, not a Settings window's dimensions.
-Absent getter yields Unknown (native display API limit accepted). No custom
-monitor observer or scale inference. Source/runtime mapping in runtime/src/info/README.
+| File | Contents |
+|---|---|
+| `state.plm` | Popup facts, the visible `info_rows` (8) and cached `info_cache` (256) models, the `clock` service and the `info_*` events |
+| `power-state.plm` | Battery facts (`power_present`, `power_known`, `power_percent`, `power_charging`), `power_warning_level` and `power_error` |
+| `popup.plm`, `content.plm` | The 600×520 px popup, centred horizontally 48 px from the top, with page tabs, rows, paging and Refresh |
+| `controller.luau` | Builds each page's rows from a `tohru_info` snapshot. Returns `{open, close, toggle, refresh}` |
+| `power.luau` | Watches `battery` and sends power warnings |
+| `entry.plm`, `entry.luau` | A standalone scene with an information button, for development |
 
-Presentation has at most256 cached rows and8 rendered rows, native keyboard
-Up/Down/PageUp/PageDown and paging buttons. Native facts/texts retain the cached
-page across VM reload without further snapshot I/O; tab changes open a page.
-Some available portions can be partial; issue banner reports this without claiming
-that no issues proves every field available. Native panel glass approximation.
+## Pages
 
-Power integration: initialize require("info/power")(optional_notify, optional_low)
-once, permission battery + say:tohru-notifications. Default notify sends ONLY fixed
-native `emit power_warning_clear|low|critical|empty <finite normalized charge>`
-to exact tohru-notifications; L owns banners/tone and clear removes only power.
-Native battery percent0..100 is normalized exactly once to internal0..1 for
-presentation/notification. Source thresholds low20% default (optional shared typed getter), critical5%,
-empty2%, recovery2% hysteresis; no DND/persistence policy or automatic action.
-Scene power_warning_level persists accepted transition across VM reload to prevent
-duplicate tone. Delivery errors retain the previous level and error; next native
-observation or power_warning_retry retries without a timer. This is request
-acceptance, not acknowledgment of pixels/sound. Low getter returns percent5..100.
+| Page | Shows |
+|---|---|
+| 0 System | OS, version, host name, kernel, processor, graphics, memory, available memory, uptime, active generation, configuration revision (`/run/current-system/configuration-revision`) |
+| 1 Displays | Output name and logical size, if the controller is given an outputs function. The bar gives it none, so this page reads Unknown |
+| 2 Date/Time | Date and time from the `clock` service. Time zone reads Unknown |
+| 3 Users | Accounts from `/etc/passwd` (up to 256), the current one first, with UID, description, home and shell |
+| 4 Storage | Block devices (capacity, model, removable) and mounts (source, filesystem, read-only). Free space reads Unknown |
+| 5 Generations | NixOS system generations (`/nix/var/nix/profiles/system-*-link`), with the one matching `/run/current-system` marked active |
+| 6 Power | Battery presence, percentage and charging state from the `battery` service |
 
-Optional bar/power.plm consumes these facts and opens info page6; S owns final
-bar placement/inclusion. Its default cell is before the existing media label;
-root may draw its own control using the same facts/event instead of including it.
-No second native battery backend, notification owner or power controls.
+Pages 0 and 3 to 5 read a snapshot only when the page opens or Refresh is pressed; rows are cached, so scrolling and logic reloads do not read again. Up and Down scroll one row, Page Up and Page Down eight, and Escape closes. A fact the snapshot lacks reads Unknown, and the popup says when some sources reported problems.
 
-CPU: lua tests/info/controllers.lua and tests/info/power.lua; pinned compiler
---check shell/info/entry.plm. Actual native binding/private scene input, visuals
-and L cross-role warning evidence await coordinator slot; no real power/radio
-mutation is needed/authorized for these development checks.
+## How it is wired
 
-Native availability ambiguity: pinned platform/system.rs212–221 uses0.0 when
-capacity and energy/charge counters cannot be read, while present stays true.
-The native numeric0 cannot distinguish actually empty from missing measurement.
-power_known means a native-reported value passed range/type checks, not an
-independently verified kernel measurement. Missing/invalid Lua payload Unknown
-fixtures do not prove native missing-counter distinction. Keep native report/
-warning semantics; no extra sysfs poll/backend/patch, invented0 suppression or
-automatic power action.
+`shell/bar.plm` includes `info/state.plm` and `info/popup.plm`, and its permissions include `battery` and `say:tohru-notifications`. `shell/bar.luau` calls `require("info/controller")(tohru_info.snapshot)` and `require("info/power")()`.
+
+| Event | Effect |
+|---|---|
+| `info_open [page]`, `info_close`, `info_toggle` | Open (on page 0 by default), close or toggle |
+| `info_page <page>` | Switch page |
+| `info_refresh` | Read the snapshot again |
+| `info_scroll <rows>` | Scroll |
+| `power_warning_retry` | Resend a power warning that failed |
+
+## Power warnings
+
+`power.luau` sends `emit power_warning_<level> <charge>` to `tohru-notifications`, with the charge from 0 to 1, whenever the warning level changes:
+
+| Level | When discharging at or below |
+|---|---|
+| `low` | 20% |
+| `critical` | 5% |
+| `empty` | 2% |
+| `clear` | Charging, above 20%, or no battery |
+
+A level is kept until the charge rises 2 percentage points above its threshold, so it does not flicker. If sending fails, `power_error` shows the error and the warning is retried on the next battery report or `power_warning_retry`. Nothing suspends or shuts down on a low battery.
+
+## Running and tests
+
+```sh
+lua tests/info/controllers.lua
+lua tests/info/power.lua
+pleamar --check shell/info/entry.plm
+TOHRU_SHELL=1 pleamar --scene shell/info/entry.plm --answer-as tohru-info
+```
+
+Run the Lua tests from the repository root with Lua 5.4. `python3 tests/bar/native.py --services-only --runtime <pleamar>` exercises this popup, About, network and Bluetooth on a private Sway session against fake services; it has not been re-run since the bar layout changed.
+
+## Known limitations
+
+When opened from the CLI, the popup closes with Escape, its close button or `tohru panel close`, not with a click outside it.

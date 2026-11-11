@@ -23,8 +23,16 @@ wayland-scanner private-code tests/launcher/virtual-keyboard.xml .tmp/s-pointer-
 cc -std=c11 -Wall -Wextra -Werror $(pkg-config --cflags wayland-client xkbcommon) -I.tmp/s-pointer-build tests/launcher/keyboard.c .tmp/s-pointer-build/virtual-keyboard.c $(pkg-config --libs wayland-client xkbcommon) -o .tmp/s-pointer-build/keyboard
 ```
 
-Supply an installed wayland-scanner path if it is absent from PATH. The current
-sandbox has `/nix/store/2a96lbjxyq7yiaf5zb013kshf8p8nigx-wayland-scanner-1.25.0-bin/bin/wayland-scanner`.
+Without `wayland-scanner` on `PATH`, `nix shell nixpkgs#wayland-scanner` provides it.
+The runners also need `setsid` (util-linux) and `sway`, `grim`, `swaymsg`.
+
+The CPU-only checks need no display:
+
+```sh
+for test in tests/*.lua tests/*/*.lua; do lua "$test"; done   # Lua 5.4
+python3 tests/cli.py
+cargo test --manifest-path tests/rust/Cargo.toml   # controller and shader tests that need mlua or naga
+```
 
 Run against the Nix runtime (`nix build --print-out-paths .#pleamar-runtime`):
 

@@ -1,29 +1,36 @@
-# Optional launcher namespace
+# 0005: layer namespace
 
-0005-launcher-namespace.patch is against exact clean pin dc902feb0ee9058b7db7c2bc2c9d59d9f655fd86.
-S applies once after other shared patches and builds the existing package/runtime.
-It adds only optional STATIC layer_namespace quoted property to Surface, native
-language vocabulary/compiler and existing create_layer_surface argument. Unset
-still creates namespace pleamar; window/lock reject it;1..128ASCII ._- identifiers.
-No generic Pleamar matching, runtime service, renderer, helper or IPC extension.
-Changing namespace on an existing role requires process restart; the feature
-constant never changes dynamically. Default native scenes are unaffected.
+Stock Pleamar gives every layer surface the layer-shell namespace `pleamar`. This patch adds an optional surface property that names it instead:
 
-Launcher named fullscreen layer uses EXACT tohru-launcher-backdrop per E effects
-LAUNCHER-CONTRACT.md. Basic launcher has no plugin/compositor dependency. Feature
-code supplies focused/first native output on open and clears its screens text
-only once native closing spring is settled; existing native rescreen removes the
-role (open:false alone merely paints empty and does not unmap). Bootstrap stays
-transparent default namespace with empty input/no reserve and no rest animation.
-No separate layer lifetime patch, generic pleamar match or catcher.
+```
+surface launcher_layer {
+    layer_namespace: "tohru-launcher-backdrop"
+    ...
+}
+```
 
-Source-only git apply --check passed against fresh clean-pin copies in root.tmp;
-no source-reference edits or heavy/native build. S owns prep/shared patch list.
-After shared build run actual parser matrix:
+The value is static: it is read when the scene is compiled, so changing it needs a process restart. The compiler accepts 1 to 128 ASCII letters, digits, `.`, `_` or `-`, and rejects the property on windows and lock surfaces. Surfaces without it keep the `pleamar` namespace.
 
-    python3 tests/launcher/namespace.py --runtime ABS_RUNTIME
+The launcher uses it so the Hyprland plugin's recession effect can match its layer (`plugin:hyprrecede:namespace = "^tohru-launcher-backdrop$"`) without matching every other Pleamar layer. Only the launcher's full-screen layer is named; its 1 px bootstrap surface keeps `pleamar`.
 
-Then separately allocated private native workload must verify actual role create/
-namespace/map-unmap, focused/fallback/hotplug, settled close/rapid reopen/reload,
-no permanent recession and no recurring frames at rest. Parser/source evidence
-is not this native lifecycle or plugin/physical/performance acceptance.
+## Changes
+
+| File | Change |
+|---|---|
+| `src/scene.rs` | `Surface` gains `layer_namespace: Option<String>` |
+| `src/language/vocabulary.rs` | `layer_namespace` is a known surface property |
+| `src/language/compiler.rs` | Parses and validates it |
+| `src/platform/wayland.rs` | Passes it to `create_layer_surface`, and stores it in `BackdropKind::Layer` |
+| `src/platform/hyprland.rs` | `layer_position` takes the namespace to look for |
+
+The last two matter for glass. On Hyprland, Pleamar finds where a layer really is by asking Hyprland for the layers on its monitor and matching this process's layer by namespace and size. Before the patch that lookup only matched `pleamar`, so it missed the launcher's layer and fell back to placing it by its anchor. With the bar's 31 px exclusive zone pushing the layer down, the launcher's glass then captured the wrong part of the screen.
+
+## Checking it
+
+```sh
+python3 tests/launcher/namespace.py --runtime "$PWD/.tmp/pleamar-runtime/target/release/pleamar"
+```
+
+This runs `pleamar --check` on small scenes: no namespace, a valid one, the longest valid one, and the invalid cases (empty, too long, a space, non-ASCII, on a window, on a lock surface). It does not start a compositor.
+
+To see the namespace on a running session, open the launcher and look for `tohru-launcher-backdrop` in `hyprctl layers`.

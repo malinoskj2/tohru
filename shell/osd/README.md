@@ -1,38 +1,36 @@
-# Output and microphone volume vessel
+# Volume OSD
 
-The root shares its existing declarative native audio observations with this
-controller through a direct callback. Initial/unchanged/unknown reports do not
-flash the OSD; later observed output/microphone volume/mute or native default-device changes
-show it. Command acceptance
-alone never changes the displayed level or opens the vessel. A missing displayed input/output hides it and resets that observation baseline. Opening sound hides it directly;
-Lua fact writes are not treated as synthetic event redispatch.
+A glass vessel at the right edge of the screen that shows the output or microphone level after it changes. It runs in the bar process, on the bar's outputs.
 
-Retained reference: read-only j2bar `src/osd/mod.rs` (44×200 vessel,1600ms hold),
-`motion.rs` Jelly entrance and `vessel.rs` fill/ink/glow. This implementation uses
-the accepted native approximation: native glass/frost/refraction/rim, spring
-entrance and velocity squash, cyan rounded fill and existing speaker/microphone mute SVGs.
-It does not implement randomized coupled Slosh or reproduce its exact motion.
-Observed volume above100% is labelled honestly; the fill saturates at the vessel.
-Control writes still cap100%. Native device names appear below the vessel. A
-combined report changing both channels uses deterministic output priority, while
-the untouched channel retains its own observation baseline.
+## Files
 
-One cancellable1600ms timer runs while visible and outside the pointer. Hover
-holds the vessel without a timer; leaving starts the hold. Repeated changes
-replace the timer, identical reports do not extend it. Reload retains observation
-facts and visible state, clears stale hover and rearms one finite hold. There is
-no recurring publication timer, extra audio stream, Rust module or runtime patch.
+| File | Contents |
+|---|---|
+| `state.plm` | What is shown (`osd_open`, `osd_level`, `osd_label`, `osd_device`, `osd_input`, `osd_muted`), the last observed values, and the `osd_enter` and `osd_leave` events |
+| `view.plm` | The `volume_osd` surface: 100×260 px, anchored right with a 20 px margin, on the overlay layer, on `bar_outputs`, no keyboard and no reserved space |
+| `controller.luau` | Decides when to show and hide it. Returns `{observe, hide}` |
 
-The native100×260 right-centred overlay surface appears on the bar's outputs, takes
-no keyboard/reservation and has only the visible44×200 vessel as an input zone.
-The native surface remains allocated while the scene lives; drawing and input
-hide at rest. Exact unmap/free and driver-idle claims are not made. Native spring
-and renderer own animation to rest. No settings reader or service process is added.
+## How it is wired
 
-The real-controller Rust/Luau fixture in `tests/osd/logic.rs` is included by the
-existing sound binding harness. It tests initial/unchanged/error observations,
-volume/mute, replacement/cancel/hover/hide, VM replacement and zero steady timers.
-The actual-root fixture verifies the native report callback and direct sound
-close path. Native compiler accepts the composed root. GPU pixels, pointer hover,
-multiple output geometry and real volume observation remain private runtime gates;
-the currently running B workload uses its separately frozen scene snapshot.
+`shell/bar.plm` includes `osd/state.plm` and `osd/view.plm`. `shell/bar.luau` creates the controller and passes its `observe` function to the sound controller, which calls it after every audio report. The OSD has no audio watch of its own and sends no commands.
+
+- It shows when a report changes the default output's volume, mute or device, or the default microphone's. The first report, and reports that change nothing, do not show it. If both change at once, it shows the output.
+- It shows the level as a fill and a percentage, "Mute" when muted, the speaker or microphone icon, and the device name below the vessel.
+- It hides 1600 ms after the last change. Hovering over the vessel holds it open; leaving starts the 1600 ms again.
+- Opening the sound popup hides it, and it does not show while the popup is open.
+- If the device it is showing disappears, it hides.
+
+The 44×200 px vessel is the surface's only zone, and it is active only while the OSD is shown. The surface itself exists for as long as the bar runs; when hidden it draws nothing.
+
+## Tests
+
+```sh
+lua tests/sound/osd-integration.lua
+cargo test --manifest-path tests/rust/Cargo.toml --test osd
+```
+
+Run them from the repository root; the Lua test needs Lua 5.4.
+
+## Known limitations
+
+The entrance is a Pleamar spring with a squash, not j2bar's Jelly and Slosh motion.

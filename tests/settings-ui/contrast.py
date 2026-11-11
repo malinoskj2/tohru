@@ -4,7 +4,7 @@ from pathlib import Path
 
 source = (Path(__file__).resolve().parents[2] / 'shell/settings/window.plm').read_text()
 rows = source.split('for setting in settings_rows {', 1)[1].split('on press hit', 1)[0]
-assert rows.count('size: 556, 58; corner: 10;') == 1, 'no second full-row fill overlay'
+assert rows.count('size: settings_width, 58; corner: 10;') == 1, 'no second full-row fill overlay'
 assert 'color: if(setting.index == settings_selected and not settings_sidebar, #3b3d53, #313244)' in rows
 
 def luminance(color):

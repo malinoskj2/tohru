@@ -1,81 +1,68 @@
-# Native bar contents
+# Bar
 
-Private entry: `pleamar --scene shell/bar/entry.plm --answer-as tohru-bar-contents --stall 0`.
-Use only a private display/bus and an allocated GPU slot during development.
+The bar is the root of the `tohru` process. `shell/bar.plm` declares the bar surface and includes every popup, the volume OSD and the screen corners; `shell/bar.luau` starts their controllers and publishes settings.
 
-Root integration (S): include `bar/state.plm`, then `bar/contents.plm` at the
-bar's origin; call `require("bar/controller")()` once from root logic. Declare
-read permissions `window`, `apps`, `media`, `clock`. Forward the existing
-process-owned `bar.mooncoil` setting to `fact.bar_mooncoil`; do not create a
-second settings owner. Compose `calendar/state.plm` + `calendar/popup.plm` and its controller in
-this same root scene (see ../calendar/README.md), preserving the native click
-serial. Only `session_toggle` needs routing to its independently owned role. The bar follows `bar.preferred_output`:
-`workspace.luau` writes that monitor, or every monitor the workspace report names
-while it is empty, to the `bar_outputs` text the root surface follows. With one
-preferred monitor the rail counts only its workspaces. Root owns this layout and
-the 31px reservation; there is no focused-first fallback.
+## Files
 
-Source mapping: j2bar `bar.rs` / `bar/providers.rs` (100px inset, 14px app icon,
-360px centered title limit, 180px playing-only media, 12-hour default clock),
-`sources/media.rs` (title/artist label), `assets/mooncoil.svg` (MIT, notice here).
-Pinned services: window title/class + apps id/StartupWMClass/icon; native MPRIS
-selection, no commands or controls; clock numeric fields on minute changes.
-The native apps service itself checks catalog signatures every two seconds;
-the service content adds no polling/frame handlers.
+| File | Contents |
+|---|---|
+| `../bar.plm` | Root scene: the 31 px reserved bar on `bar_outputs`, its glass and hairline, and every include |
+| `../bar.luau` | Publishes settings to facts, handles `config_reload` and `setting_*`, starts the controllers, keeps one popup open at a time, forwards `session_toggle` to `tohru-session` |
+| `../services.plm` | The network, Bluetooth, information and About buttons, the media label, and their placement |
+| `../session-route.luau` | Sends `emit menu_toggle` to `tohru-session` and records failures in `routing_error` |
+| `contents.plm` | Mooncoil mark, focused window title and icon, clock |
+| `controller.luau` | Watches `window`, `apps`, `media` and `clock`, and fills the title, icon, media label, date and time |
+| `state.plm` | Texts, facts, measures and images used by the contents, and the clock's position |
+| `fill.wgsl` | The bar's fill shader |
+| `mooncoil.svg` | The Mooncoil mark, also used by the About popup |
+| `workspace.plm`, `workspace.luau`, `rail-state.plm`, `rail.luau`, `ribbon.wgsl` | The workspace switcher. `rail-state.plm` and `rail.luau` also drive the calendar's month row |
+| `power.plm` | A battery percentage cell. No scene includes it |
+| `entry.plm`, `entry.luau` | A standalone scene with only the bar contents |
 
-Workspace rail: `rail-state.plm` declares two rails in one `repeat` (0 the
-workspaces, 1 the calendar's months) as Pleamar springs, `follow`s on `vel()`
-and a `spin` clock that stops once the wave has died out, so nothing draws at
-rest. `rail.luau` only sets a rail's goal and j2bar's per-switch random draws
-(spring choice, swell gain, crest reach, wave life); the scene's `on change`
-rules start each switch. `ribbon.wgsl` takes upstream Pleamar's eight values:
-the bead's rounding rides in the integer part of its half-height and the
-wave's direction in the sign of its phase; bead extent, glow, wash width and
-chop are derived in the shader. Differences from j2bar's `track.rs`: the
-springs are integrated per frame rather than at a fixed 240 Hz, the wash is a
-spring approximation of its first-order decay, its width grows with the
-wave's life rather than its gain, and the chop has no random phase. Pleamar's
-Hyprland service coalesces workspace events for 50 ms, so the rail starts a
-few frames after j2bar's.
+## Layout
 
-Checks: `lua tests/bar/controllers.lua`; `pleamar --check shell/bar/entry.plm`;
-exclusive private GPU integration `python3 tests/bar/native.py --runtime PATH`
-after sourcing `runtime/pleamar/dev-env.sh` and supplying driver libraries as documented
-in runtime/README.md. The runner owns and stops its compositor/apps/private bus.
+All positions are logical pixels, matching j2bar.
 
-This is usable native service content, not glass/font/layout/physical-output or
-performance acceptance.
-Native desktop discovery/launch/Identity
-limitations are accepted; this feature does not implement a custom
-catalog. The mark's original asset is retained, its exact glass/glow still awaits
-visual integration. The clock button's event requires root routing.
+- The bar spans the output width minus 100 px on each side and reserves 31 px at the top.
+- With `bar.mooncoil` on, the Mooncoil mark sits at the bar's left end; clicking it toggles the session menu. The workspace switcher follows it.
+- The focused window's title and application icon are centred, at most 360 px wide, and shrink so they never overlap the left group or the button row.
+- The button row is 24×22 px buttons at y=4, 2 px apart, ending 110 px from the right edge of the output. From the right: clock, network, sound, Bluetooth, information (`bar.info_button`), About (`bar.about_button`). When the output is too narrow, About, information and Bluetooth drop out, in that order.
+- While media plays, its title and artist (up to 160 px) appear left of the buttons, if there is room.
+- The clock shows `Wed 11 Nov` and a 12-hour time in SF Pro Text with tabular numerals (`family: "SF Pro Text:tnum"`, from patch 0013), so the width does not change as digits change. Clicking it toggles the calendar.
 
-Native layout hooks for S final measured root assembly (no layout manager):
+The application icon comes from matching the focused window's class against the `apps` catalog by id, id suffix and `StartupWMClass`.
 
-- `bar_title_cap` instant prop defaults360, clamped0..360. Centered group width is
-  min(cap, measured text +20px icon lead), text width cap-lead. Below21px the icon
-  is omitted as in source Title.layout;0 hides the group rather than width0's
-  native unconstrained-text behavior. Source cap360/14px icon/6px gap retained.
-- `bar_media_right_inset` instant prop defaults408; label's right edge is
-  screen.width-inset. `bar_media_cap` defaults180, clamped0..180;0 hides it. Native
-  tight text ensures actual intrinsic clipped measure/right anchor, not an empty
-  fixed180px box for short tracks. `bar_media_measure.width` is available to root.
+## Outputs
 
-Use native `follow` on these props from root measured cluster allocation; no Lua
-screen-size mirror/setting/backend required. For output width W, center C=W/2,
-occupied left endpoint L and right-cluster start R (including current media), a
-nonoverlapping centered title bound is min(360,max(0,2*min(C-L,R-C)-2*gap)).
-Root decides graceful source widget allocation under width pressure, including
-media cap/anchor and service buttons, rather than B guessing final cluster size.
-Current default private title fixtures retain360/340 text limits and placement.
-This corrects the exposed fixed-layout overlap possibility without claiming final
-root narrow-output layout/visual acceptance; S owns those measured formulas.
+`workspace.luau` writes `bar_outputs`, which the bar surface and the OSD follow, and so the popups that open from the bar: the value of `bar.preferred_output`, or, when that is empty, every monitor the `workspaces` service reports. With a preferred output the switcher counts only that output's workspaces.
 
-Workspace cells are native advertised-only: `ws_advertised.1..10` updates from the
-native list, absent cells have a native dim treatment/no hit target, and Lua also
-rejects stale/unadvertised activation. The rail spans 5 to 10 slots.
-Pinned generic ext-workspace can only activate advertised handles; it has no
-create-workspace command. Coordinator accepted this native UI behavior instead
-of a Sway IPC/create adapter; no compositor detection/poll or backend fork. Native
-Hyprland focus semantics remain unchanged when native actions are invoked; the
-bar does not infer extra capabilities from environment variables or row counts.
+## Workspace switcher
+
+The switcher shows workspaces 1 to 10 and can only switch to workspaces the compositor reports; it cannot create one. Its motion is Pleamar springs declared in `rail-state.plm`, which stop drawing once the wave has died out; `rail.luau` only sets where the bead should go and the random draws for each switch (spring, swell, crest reach, wave life). `ribbon.wgsl` draws it from Pleamar's eight shader values. Pleamar gathers Hyprland's workspace events for 50 ms, so the motion starts a few frames after j2bar's.
+
+## Events
+
+| Event | Sent by | Effect |
+|---|---|---|
+| `calendar_toggle` | Clock | Toggles the calendar |
+| `session_toggle` | Mooncoil mark | Sends `emit menu_toggle` to `tohru-session` |
+| `network_toggle`, `bluetooth_toggle`, `info_toggle`, `about_toggle`, `sound_toggle` | Button row | Toggle that popup |
+| `panel_close` | `tohru panel close` | Closes every popup |
+
+## Tests
+
+From the repository root, with Lua 5.4:
+
+```sh
+lua tests/bar/controllers.lua
+lua tests/session-route.lua
+pleamar --check shell/bar.plm
+pleamar --check shell/bar/entry.plm
+```
+
+`tests/bar/native.py --runtime <pleamar>` runs the bar on a private Sway session; `--review-only`, `--icons-only`, `--launcher-only`, `--lifecycle-only` and `--services-only` select its other checks. See `tests/WINDOW-RUNNER.md` for the helpers it needs.
+
+## Known limitations
+
+- There is no notification bell and no adaptive light or dark glass.
+- Pleamar draws text with swash rather than Pango, so letter shapes differ slightly from j2bar's.

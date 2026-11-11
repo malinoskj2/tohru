@@ -1,143 +1,66 @@
-# Native sound controls
+# Sound
 
-Root scene `tohru` uses one existing native `sys.watch("audio")` whole-report
-subscription and the supported output/input/app commands. Each report fills the
-plain audio facts and bounded native models, reconciles the selected ID/index,
-and publishes CLI status/OSD once. It does not also declare `service audio` or
-start an additional observer, high-rate `audio.level` stream or manual poll.
-Native HUBS reuses the same owner/name/watch subscription across VM reload and
-replays its last report. The native audio backend still collects its normal
-input/app fields while closed; this view adds no extra closed-panel stream.
+The bar's sound button, the sound popup and the audio commands behind `tohru audio`. They run in the bar process and use Pleamar's `audio` service, which speaks the PulseAudio protocol (PulseAudio or PipeWire's PulseAudio server).
 
-When migrating from an older declarative-audio scene, restart the ordinary shell
-process once: native HUBS distinguishes the old `service:<alias>` tag from `watch`
-and retains a superseded hub until that process exits. A VM/scene reload alone
-cannot stop the old hub. No live desktop activation or takeover is performed here.
+## Files
 
-The bar sound icon opens a native xdg popup. Native placement anchors its 300px
-panel at the sound button center minus150px, 6px below the31px bar; native slide
-constraints keep it onscreen. Sound header uses j2bar15px/600 type,6px padding,
-40px header and30px row; SVG speaker paths are from j2bar's OSD speaker with its
-MIT notice retained. Mocha text/sky palette follows the source. This is a native
-glass/interaction candidate using the accepted native effects approximation;
-no claim of1:1 graphics/motion or glass pixel parity.
-The More control exposes native output selection, microphone level/mute and
-per-stream application level/mute in a paged view.
+| File | Contents |
+|---|---|
+| `declarations.plm` | The `audio.*` permissions, the output, input and application models (32, 32 and 64 entries), sound facts, `audio_status`, the events and the icons |
+| `view.plm` | The sound button and the popup's keyboard rules |
+| `panel.plm` | The popup's main part: output mute, volume slider, default output name and the More (⋯) button |
+| `details.plm` | The More section: Outputs, Input and Apps tabs, four rows to a page |
+| `controller.luau` | Watches `audio`, issues audio commands and publishes `audio_status`. Returns `{close}` |
+| `speaker.svg`, `muted.svg`, `mic.svg`, `mic-off.svg` | Icons, also used by the volume OSD |
 
-Public CLI, reaching only an already running root scene:
+The button's volume icons are in `shell/service-assets/`.
 
-```sh
-tohru panel toggle sound
-tohru panel open sound
-tohru panel close
-tohru audio volume up
-tohru audio volume down
-tohru audio mute toggle
-tohru audio status --json
-```
+## How it is wired
 
-Volume keys move5%, preserve mute, and native service clamps writes to0..1.
-Slider writes are bounded0..1, coalesce at most one pending50ms timer, flush the
-last value on release/close, and never poll. Observations stay authoritative;
-status distinguishes awaiting_report from last_report, missing from zero/unmuted,
-and command errors from successful native calls. The status is a last observation,
-not a promise of live server health; pinned native audio has no disconnect status.
-No volume key claims asynchronous system completion merely from CLI acceptance.
+`shell/bar.plm` includes `sound/declarations.plm` and `sound/view.plm`, and declares the `sound_panel` popup, which includes `sound/panel.plm`. The popup is 300 px wide, centred under the sound button and kept 8 px from the output's edges; it grows when More is open or a request has failed.
 
-Tab selects mute/slider; arrows adjust5%, Return/Space on mute toggles, Escape
-closes. Parent asks exclusive keyboard only while panel is open and releases it
-on close. Native pointer-open popup grabs use a recent real pointer serial;
-outside click then follows compositor popup_done. CLI-open without recent pointer
-serial has no native outside grab and may require Escape. This native behavior
-is accepted (MIGRATION.md, accepted differences); outside-click parity is not claimed.
-No layer catcher, serial workaround or native patch added.
+`shell/bar.luau` starts the OSD first and passes its `observe` function to `require("sound/controller")`, so the OSD sees every audio report without a second watch. It also closes the other popups when the sound popup opens, and hides the OSD.
 
-The root surface follows the `bar_outputs` text, one surface with one state on the
-monitors it names, which permits native root popup compilation; no singleton-each
-compiler fix. `bar.preferred_output` names the monitor; empty means every output.
+The controller makes a single `sys.watch("audio", ...)` call. Each report fills the models and the `audio.volume`, `audio.muted`, `audio.input` and `audio.input_muted` facts, then updates `audio_status` and the OSD. Commands never change what is displayed; only the next report does.
 
-The accepted native OSD approximation uses44×200 glass/spring/velocity/fill and
-1600ms hold. It reports output/microphone levels, mute and native device names;
-custom randomized Slosh and pixel parity are not claimed.
+## Controls
 
-CPU tests in tests/sound/logic.rs execute the real controller using mlua at the
-native-call/timer boundary; GUI/native service/input tests require an exclusive
-private compositor/GPU slot and private PulseAudio null sink, never live audio.
+| Where | Action |
+|---|---|
+| Sound button | Click toggles the popup; scrolling changes the volume by 5% per scroll step |
+| Main part | Mute button and volume slider. While dragging, at most one volume write is sent every 50 ms, and the last value is sent on release or close |
+| Outputs tab | Choose the default output |
+| Input tab | Microphone level and mute for the default input. Other input devices are listed but cannot be chosen |
+| Apps tab | Per-stream volume (−, +, 5% steps) and mute |
 
-B clock/calendar parts are integrated in the same root scene; no standalone
-calendar process is started, so a real clock click retains root popup serial.
-Root panel-close closes both panels and opening either closes the other.
+Keyboard, with the popup open: Tab switches between mute and slider (or, in More, between tabs), arrows change the level by 5%, Up and Down move between rows in More, Return or Space toggles mute or chooses the selected output, Page Up and Page Down change page, Escape closes.
 
-Follow-up: native false-open transitions and toggle/explicit closes flush/cancel
-pending writes and reset dragging idempotently. Logic reload cancels unissued
-pending drag work and clears presentation drag state. Command failures now render
-in a growing error area, separately from awaiting native observations.
-Accepts the pinned synchronous Pulse I/O limitation: a stalled accepting
-server can block root logic indefinitely. The50ms timer bounds coalescing only;
-no command deadline/cancellation, backend replacement or workaround was added.
+## CLI
 
+| Command | Event sent to `tohru` |
+|---|---|
+| `tohru panel toggle sound` / `open sound` | `sound_toggle` / `sound_open_request` |
+| `tohru audio volume up` / `down` | `audio_step 1` / `audio_step -1` (5%) |
+| `tohru audio mute toggle` | `audio_mute` |
+| `tohru audio input volume up` / `down`, `tohru audio input mute toggle` | `audio_input_up`, `audio_input_down`, `audio_input_mute` |
+| `tohru audio output select <id>` | `audio_output_select <id>` |
+| `tohru audio app <id> volume up` / `down`, `tohru audio app <id> mute toggle` | `audio_app_up <id>`, `audio_app_down <id>`, `audio_app_mute <id>` |
+| `tohru audio status --json` | `get audio_status` |
 
-## Expanded native controls
+IDs must be unsigned 32-bit integers; the controller also rejects IDs that are not in the current report. `audio status --json` returns schema 2: whether a report has arrived (`observation`), output volume and mute, microphone volume and mute, the output, input and application lists with their IDs, and the last command error.
 
-Output devices are actionable using the observed native sink ID. Microphone
-level/mute use the actual native default input. Input devices are deliberately
-read-only: pinned `audio.default(id)` checks sink IDs before source IDs, and common
-IDs collide. The accepted choice is an honest unavailable input selector, with no
-name guessing, custom observer/backend or Pleamar patch. No native default input
-report disables microphone commands rather than targeting a fallback implicitly.
-
-Applications remain native per-stream reports, capped64 (devices32 each), four
-rows per page. Names/titles, level, mute and playing come from the native service;
-there is no aggregate app model or alternate process/audio catalog. UI events
-carry native IDs, which must still exist in the current bounded report before a
-command is issued. Explicit commands for removed stream IDs fail visibly. Keyboard selection
-preserves its native ID through reordering, moves its outline/page with that ID,
-and clamps/reselects the current row when the identity disappears. Whole-report
-updates refresh same-count name/title/volume/mute/playing changes too. Native request
-acceptance remains distinct from subsequent state observation. Device/app status
-is included in schema2 `audio status --json` for CLI ID discovery, with text fields
-bounded256 UTF-8 bytes and explicit capacities/selection limitation.
-
-Default output and microphone sliders share one50ms coalescing slot; switching
-kind flushes the previous value, close/release flushes the final value, and VM
-replacement cancels unissued work and clears both drag flags. App buttons change
-5% and toggle mute using explicit native commands; all writes clamp0..1. No peak
-meter, overdrive, balance or game policy is added. The existing native audio
-backend already reports input/app data even while closed; this view does not add
-an `audio.level` observer or a recurring query/poll.
-
-Expanded keyboard: Tab cycles Outputs/Input/Apps, Up/Down selects rows (or changes
-microphone level), Left/Right adjusts the default output/input or selected app,
-Enter/Space selects an output or toggles microphone/app mute, PageUp/PageDown
-pages the bounded list, Escape closes. Model changes invalidate stale ID actions.
+## Tests
 
 ```sh
-tohru audio input volume up
-tohru audio input mute toggle
-tohru audio output select 0
-tohru audio app 7 volume down
-tohru audio app 7 mute toggle
+lua tests/sound/reconciliation.lua
+lua tests/sound/osd-integration.lua
+cargo test --manifest-path tests/rust/Cargo.toml --test sound
 ```
 
-These are fixed, validated native requests. Input selection is rejected before
-IPC; output/app IDs must be canonical unsigned32-bit integers. Mic SVGs retain
-Lucide's license under LICENSE.LUCIDE. Controller/CLI/compiler checks cover source
-and API mappings only; private Pulse input/apps/hotplug/input/visual evidence
-remains pending an exclusive native workload allocation.
+Run them from the repository root; the Lua tests need Lua 5.4. `tests/native-settings.sh --runtime <pleamar> --sound` (see `tests/WINDOW-RUNNER.md`) drives the popup on a private Sway session with a PulseAudio null sink; it has not been re-run since the bar layout changed.
 
-## Whole-report sound/OSD presentation boundary
+## Known limitations
 
-The volume vessel consumes the sound controller's already-published native audio
-report; it does not create a second watch, issue commands, or poll. A same-ID
-device rename refreshes a visible vessel's label without reopening it or extending
-the hold. Hidden metadata updates do not show an OSD. Explicit hide, panel-open
-suppression and disappearing devices clear pointer-hover presentation state so a
-later observed level/mute transition gets its finite hold. A queued enter after
-hide is ignored. Native commands alone never display an optimistic new level.
-
-`tests/sound/osd-integration.lua` executes both production controllers against a
-plain model/fact boundary, one native-watch fixture and cancellable timer fixture.
-It verifies native report ordering, rename/mute/device/disappearance, hover/hide,
-command acceptance/error and reload baseline behavior. These are CPU source
-checks, not real Pulse/input/compositor/pixel/resource measurements. Native audio
-I/O can still block root logic indefinitely, as accepted.
+- Input devices cannot be chosen: Pleamar's input and output device IDs can collide.
+- There is no balance control or peak meter.
+- When opened from the CLI, the popup closes with Escape or `tohru panel close`, not with a click outside it.

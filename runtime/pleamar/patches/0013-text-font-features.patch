@@ -1,0 +1,32 @@
+--- a/src/text.rs
++++ b/src/text.rs
+@@ -11,7 +11,7 @@
+ use std::collections::HashSet;
+ use std::sync::mpsc::{channel, Sender};
+ use std::sync::Arc;
+-use cosmic_text::{Align, Attrs, Buffer, CacheKey, Ellipsize, EllipsizeHeightLimit, Family, FontSystem, Metrics, Shaping, SwashCache, SwashContent, Weight, Wrap};
++use cosmic_text::{Align, Attrs, Buffer, CacheKey, Ellipsize, EllipsizeHeightLimit, Family, FeatureTag, FontFeatures, FontSystem, Metrics, Shaping, SwashCache, SwashContent, Weight, Wrap};
+ use std::collections::HashMap;
+ 
+ /// The atlas's width, and the height it starts with.
+@@ -277,7 +277,19 @@
+             buffer.set_ellipsize(Ellipsize::End(EllipsizeHeightLimit::Lines(n)));
+         }
+         buffer.set_size(width, None);
+-        let attrs = Attrs::new().family(c.family.map_or(Family::SansSerif, Family::Name)).weight(Weight(c.weight));
++        // `family: "SF Pro Text:tnum"`: OpenType features to turn on follow the name, after a colon, separated by commas.
++        let (family, features) = match c.family.and_then(|f| f.split_once(':')) {
++            Some((name, tags)) => (Some(name), Some(tags)),
++            None => (c.family, None),
++        };
++        let mut attrs = Attrs::new().family(family.map_or(Family::SansSerif, Family::Name)).weight(Weight(c.weight));
++        if let Some(tags) = features {
++            let mut on = FontFeatures::new();
++            for tag in tags.split(',').filter_map(|t| <[u8; 4]>::try_from(t.trim().as_bytes()).ok()) {
++                on.enable(FeatureTag::new(&tag));
++            }
++            attrs = attrs.font_features(on);
++        }
+         let align = match c.align {
+             TextAlign::Left => Align::Left,
+             TextAlign::Center => Align::Center,

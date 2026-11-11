@@ -34,8 +34,11 @@ Accepted differences from j2bar that stay:
 - Panels, launcher and OSD use Pleamar's native glass, springs, glow and blur.
   Dimensions, content and interactions follow j2bar; j2bar's custom
   Warp/turbulence/Slosh effects are not reproduced.
-- Popups opened from the CLI (no pointer click) may need Escape to close;
-  outside-click dismissal relies on the click's popup grab.
+- Popups opened from the CLI (no pointer click) close with Escape or
+  `tohru panel close`, not an outside click: that needs an xdg_popup grab,
+  and a grab needs a real input serial. Grabbing with a stale or zero serial
+  was tried on 2026-11-11 in a nested Hyprland 0.56.2 and left Hyprland
+  dismissing every later popup as soon as it opened, so it was dropped.
 - Launcher search uses a simple fuzzy matcher and Pleamar's app catalog.
 - Notifications are transient text plus one placeholder sound; Pleamar keeps
   its own internal expiry bookkeeping but no history, unread or DND UI.
@@ -54,14 +57,33 @@ Accepted differences from j2bar that stay:
 - [ ] Bar visual parity with j2bar. Matched against j2bar on the live desktop:
       31px height, outline (flares, bottom corners, hairline weight at scale 1),
       icons and text on j2bar's pixel rows, rail width, clock padding, the body
-      tint, and the switcher (rail, lit segment with its rounded ends, glow).
+      tint, the switcher (rail, lit segment with its rounded ends, glow), the
+      button row at y=4, and the clock's tabular numerals (patch 0013; the
+      date, time and tray now land within 1px of j2bar's).
       The switcher's motion now runs on Pleamar springs, with no Rust physics or
       shader-input patch; side-by-side recordings against j2bar on 2026-11-11
       match apart from a start 50 to 100 ms later (Pleamar's Hyprland event
       coalescing).
-      Still missing: notification bell, adaptive light/dark glass, tabular
-      numerals in the clock (the date is about 4px narrower, which shifts the
-      tray), and Pleamar's text rasteriser against Pango's.
+      Not done, and why:
+      - Notification bell: j2bar's bell shows whether its notification
+        history holds something unread, and Do Not Disturb (bell-off). Both
+        were dropped with rows 07/08, so a bell would have nothing to show
+        or do. Bring back an unread signal (and optionally DND) in the
+        notification daemon first; the bar side is then a tray button and
+        a `say:tohru` event.
+      - Adaptive light/dark glass: j2bar switches ink when more than 55% of
+        a capsule is over bright content (back below 45%), with luminance
+        from its compositor plugin. Pleamar keeps lens captures on the GPU
+        and gives a scene no brightness of what is behind it, and the
+        Tohru plugin does not talk to the shell. Either needs new code: a
+        Pleamar patch reducing the bar's capture to a "bright share" fact,
+        or plugin IPC. The patch is the smaller of the two.
+      - Text rasteriser: not worth a patch. cosmic-text already hints and
+        snaps glyphs to quarter-pixel bins; after the tabular numerals,
+        positions match j2bar within 1px. What is left is glyph shape
+        (swash's hinter against FreeType's slight autohinter through
+        Pango), which whole-pixel positioning would not change, at the cost
+        of a patch on every text Pleamar draws.
 - [x] Bar output policy: one bar on `bar.preferred_output`, every output while it
       is empty, no focused/first fallback.
 - [x] CLI gap against current keybinds (section 4): `tohru launcher toggle|open|close`.
@@ -77,16 +99,22 @@ Accepted differences from j2bar that stay:
       `hl.plugin.load` registers them, so they only apply after a reload),
       run its visual/unload/damage checks in a nested Hyprland, then move
       `hyprland/` to its own repository as planned.
-- [ ] Settings window: decide whether it floats or tiles (it renders 800 px wide
-      inside whatever size the compositor gives it).
-- [ ] Re-run the private native checks that survive the removals against
-      `nix build --print-out-paths .#pleamar-runtime` (they own a private Sway,
-      bus and Pulse; see `tests/WINDOW-RUNNER.md`):
-      `tests/native-settings.sh --settings --sound --pointer --keyboard --wtype`
-      (`--pointer` coordinates need the new bar layout), `tests/bar/native.py` in every mode
-      (needs `setsid`, `wayland-scanner`, xkbcommon pkg-config; update for the
-      new bar layout), and `tests/session/native.sh` with `--notifications`
-      (its fake `systemctl`/`loginctl` log must show Lock and Sleep commands).
+- [x] Settings window: it lays out at whatever size the compositor gives it
+      (tiled or floating). It asks for 760×640, which Pleamar also makes its
+      minimum size; no window rule is needed.
+- [x] Re-run the private native checks (they own a private Sway, bus and
+      Pulse; see `tests/WINDOW-RUNNER.md`). All passed on 2026-11-11 against
+      the runtime with patches up to 0014:
+      `tests/native-settings.sh --settings --sound --pointer --keyboard --wtype`,
+      `tests/bar/native.py` in every mode, and `tests/session/native.sh
+      --notifications` (Lock logs `loginctl lock-session`; Sleep logs it, then
+      `systemctl suspend`). Clicks now find zones by name through
+      `describe json` instead of fixed coordinates. Intermittent: in one of
+      two runs, `--services-only` passed every check but its closing `quit`
+      took longer than 10 s, and `--rails-only` timed out waiting for
+      `ws_available` once. The CPU-only suites (`tests/*.lua` with Lua 5.4,
+      `tests/cli.py`, `cargo test --manifest-path tests/rust/Cargo.toml`)
+      pass too.
 
 ### Roles and processes
 
@@ -212,6 +240,7 @@ How Tohru settings work:
   them to the bar, which then holds its own until it exits.
 - Keys left after removals #3, #5 and #6: `appearance.palette`,
   `appearance.corners`, `appearance.corner_size` (1–100), `bar.mooncoil`,
+  `bar.info_button`, `bar.about_button` (both off by default),
   `bar.preferred_output`. The bar, its popups and the volume display show only on
   the preferred output, and the workspace rail counts only its workspaces; empty
   means every output with one merged rail. Corners stay on every output.

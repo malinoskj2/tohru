@@ -18,9 +18,8 @@ let
     version = pin.version;
     src = fetchurl { url = pin.archive; hash = pin.hash; };
     cargoLock.lockFile = ../runtime/pleamar/Cargo.lock;
-    patches = map (name: ../runtime/pleamar/patches + "/${name}") [
-      "0001-shell-settings.patch" "0005-launcher-namespace.patch" "0006-info-binding.patch"
-      "0010-key-rule-order.patch" "0011-focus-round.patch" "0012-popup-root-parent.patch" ];
+    patches = map (name: ../runtime/pleamar/patches + "/${name}")
+      (builtins.filter (lib.hasSuffix ".patch") (builtins.attrNames (builtins.readDir ../runtime/pleamar/patches)));
     postPatch = ''
       mkdir foundation
       cp ${foundationSource}/runtime/Cargo.toml ${foundationSource}/runtime/Cargo.lock foundation/

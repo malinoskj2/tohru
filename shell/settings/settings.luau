@@ -1,6 +1,8 @@
 local palettes = {"mocha", "macchiato", "rose_pine", "nord", "gruvbox", "tokyo_night", "dracula", "everforest"}
 local overrides = {
     ["bar.mooncoil"] = function(value) return "setting_mooncoil " .. (value and 1 or 0) end,
+    ["bar.info_button"] = function(value) return "setting_info_button " .. (value and 1 or 0) end,
+    ["bar.about_button"] = function(value) return "setting_about_button " .. (value and 1 or 0) end,
     ["appearance.corners"] = function(value) return "setting_corners " .. (value and 1 or 0) end,
     ["appearance.corner_size"] = function(value) return "setting_corner_size " .. value end,
     ["appearance.palette"] = function(value)

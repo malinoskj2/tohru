@@ -1,163 +1,56 @@
-# Runtime source and patches
+# Runtime
 
-This folder is the `tohru-shell` Rust package (`Cargo.toml`, `src/`, `tests/`)
-and, under `pleamar/`, everything that goes into the Pleamar build: the pin, the
-patches, the Luau bindings, its lock file and the preparation script.
+This folder holds the Rust side of Tohru:
 
-Pleamar 0.7.27 is fetched at dc902feb0ee9058b7db7c2bc2c9d59d9f655fd86;
-`pleamar/pin.json` records the archive SHA256 and upstream repository. Upstream HEAD
-was checked on 2026-11-07 and still matched. No prototype vendor is copied.
-Upstream's BSD-3-Clause license/THIRD-PARTY notices remain in its source archive.
-The shell's own initial settings implementation is MIT.
+- the `tohru-shell` crate (`Cargo.toml`, `src/`, `tests/`), which keeps state that has to outlive a scene's Luau logic;
+- `pleamar/`, everything that turns Pleamar 0.7.27 into the runtime Tohru needs.
 
-`pleamar/patches/0001-shell-settings.patch` adds the focused `tohru-shell` path
-dependency and one binding installation hook, gated by TOHRU_SHELL=1 and excluding
-plugins. `pleamar/bindings/settings_luau.rs` owns the process singleton and Luau
-boundary. Further narrow patches add the info binding and input/popup fixes;
-`pleamar/prepare.sh` applies every patch in `pleamar/patches/` in name order and
-nix/default.nix lists the same files.
-`pleamar/Cargo.lock` starts from the pinned upstream lock and adds only anyhow, the
-local library, and toml_writer (needed for comment-preserving TOML writes). The
-library uses upstream's already selected toml_edit 0.25.15 and serde_json 1.0.151.
+## The `tohru-shell` crate
+
+| Module | Luau global | Used by |
+|---|---|---|
+| `src/settings.rs` | `tohru_settings` | Bar, Settings and the session menu: layered TOML settings (defaults, writable file, managed file, runtime overrides) that keep comments and unknown keys when written |
+| `src/info/` | `tohru_info` | The information and About popups: a read-only snapshot of the OS, kernel, CPU, GPUs, memory, uptime, accounts, disks, mounts and system generations |
+
+The crate builds on its own with Rust 1.85 (its `rust-version`) and denies unsafe code. Its tests:
+
+```sh
+cargo test --locked --manifest-path runtime/Cargo.toml
+```
+
+## Building the patched Pleamar
+
+| Path | Contents |
+|---|---|
+| `pleamar/pin.json` | Upstream repository, version 0.7.27, revision `dc902feb0ee9058b7db7c2bc2c9d59d9f655fd86`, archive URL and hash |
+| `pleamar/patches/` | Tohru's patches, applied in name order. [docs/architecture.md](../docs/architecture.md#runtime-patches) lists what each one does |
+| `pleamar/bindings/` | The Luau globals, copied into the Pleamar tree as `src/tohru_settings.rs` and `src/tohru_info.rs` |
+| `pleamar/Cargo.lock` | Replaces Pleamar's lock file. It must contain every package in `runtime/Cargo.lock`; `python3 tests/packaging-locks.py` checks this |
+| `pleamar/tests/role-install.rs` | Copied to `tests/runtime/` and included by patch 0001. Checks that the globals are installed only when `TOHRU_SHELL=1`, and never into plugin scripts |
+| `pleamar/prepare.sh` | Builds a patched source tree from the pieces above |
+| `pleamar/dev-env.sh` | Adds `pkg-config`, library and loader paths from `/nix/store` for building outside a Nix development shell |
+
+`prepare.sh` downloads the archive named in `pin.json`, checks its hash, applies every patch, copies in the crate, the bindings, `role-install.rs` and the lock file, and writes the tree to `.tmp/pleamar-runtime` (or the directory given as its only argument). It refuses to overwrite an existing destination. `nix/default.nix` builds the same tree from the same files.
+
+Building the runtime needs Rust 1.90 or newer, because of Pleamar's locked dependencies.
 
 ```sh
 ./runtime/pleamar/prepare.sh
-source runtime/pleamar/dev-env.sh # only needed for native headers in the supplied sandbox
-cargo test --release --locked --manifest-path .tmp/pleamar-runtime/Cargo.toml --lib tohru_settings:: --jobs 1
-cargo build --release --locked --manifest-path .tmp/pleamar-runtime/Cargo.toml --bin pleamar --jobs 1
-.tmp/pleamar-runtime/target/release/pleamar --check shell/bar.plm
-TOHRU_RUNTIME="$PWD/.tmp/pleamar-runtime/target/release/pleamar" ./bin/tohru-run
-./bin/tohru status --json # set TOHRU_RUNTIME to the same binary for local use
+source runtime/pleamar/dev-env.sh   # only without a Nix development shell
+cargo build --release --locked --manifest-path .tmp/pleamar-runtime/Cargo.toml --bin pleamar
+cargo test --release --locked --manifest-path .tmp/pleamar-runtime/Cargo.toml --lib tohru_
 ```
 
-Run only in an explicitly selected private display/bus during development.
-Pleamar normally refreshes editor skills in HOME on launch; use a private HOME
-and XDG directories in tests. Do not point test commands at a live desktop.
-The ordinary root shows the bar, its popups and the volume display on
-`bar.preferred_output`, or on every output while that is empty, with same-process
-sound, calendar, Settings and corner parts. Corners stay on every output.
-`appearance.corners`, its bounded size and `bar.mooncoil` control actual parts.
-Exact native lifecycle/input/driver evidence is recorded by candidate in S.md;
-source/compiler checks do not imply physical-display or visual/performance parity.
-No authentication/notification singleton is started by the root bar.
+The `tohru_` filter runs the binding tests and the role-install test, the same set the Nix build runs. Pleamar's other tests may need desktop services.
 
-The next candidate applies the reviewed optional `layer_namespace` property with
-the current launcher source. Native default remains `pleamar`; the named launcher
-alone selects `tohru-launcher-backdrop`, with immutable edits requiring restart.
-After that candidate's coordinated build, run `tests/launcher/namespace.py` with
-its actual binary and check the full launcher entry. The frozen window artifacts
-have no namespace extension and must not be used to claim those parser checks.
+## How the bindings are installed
 
-Nix: import `default.nix { pkgs = <explicit pinned nixpkgs>; }`; optional reusable
-Home Manager module `nix/home-manager.nix` supplies the package and managed TOML
-path; `programs.tohru.systemd.enable` adds the user services. It never writes into /home/jesse/nix.
-A Nix build and NixOS/system integration remain separate verification gates.
+Patches 0001 and 0006 install the two globals into a scene's main Luau state only when `TOHRU_SHELL=1`. `bin/tohru-run`, `bin/tohru-session-run` and `bin/tohru-settings-run` set it; the launcher and notification daemon do not, and have no Tohru globals. The state behind each global lives in Rust, outside the Luau state, so it survives a logic reload but not a process restart.
 
-## Verified initial checkpoint
-
-The real settings entry point was tested on private NVIDIA RTX 5090 Sway/GLES2
-with the app on Vulkan: native CLI writes, managed overrides, config reload,
-actual Luau logic reload, invalid reload rejection, unknown/comment preservation,
-unmanaged persistence, and process restart reset. Test runner owns and stops its
-app/compositor; the wrapper owns the private bus. It writes raw logs and one PNG
-under the worktree-root `.tmp/` with absolute paths printed on completion.
-
-After obtaining the exclusive GPU slot, run:
+To run a scene by hand with the bindings:
 
 ```sh
-./tests/native-settings.sh --runtime "$PWD/.tmp/pleamar-runtime/target/release/pleamar"
+TOHRU_SHELL=1 .tmp/pleamar-runtime/target/release/pleamar --scene shell/bar.plm --answer-as tohru
 ```
 
-This wrapper reproduces the explicit private bus configuration needed in the
-sandbox (the default /etc/dbus-1/session.conf is absent). It uses short runtime
-paths under `.tmp/` to respect Unix socket limits. The wrapper was syntax-checked;
-the equivalent explicit private-bus command was used for the recorded passing run.
-CPU-only CLI checks: `python3 tests/cli.py`.
-
-Remaining gates: Nix package build, Home Manager evaluation with a real consumer,
-Hyprland runtime validation, preferred/focused/first-output fallback and reconnect,
-hotplug/scaling/rotation, full retained bar contents and 1:1
-visuals, native glass review, and all performance/presentation/soak gates.
-No notifications, authentication or other singleton services
-are activated by this foundation. Native frame/namespace/notification gaps stay
-unpatched until decided. Independent review follows integration.
-
-## Root flake interface
-
-The root `flake.nix` locks nixpkgs revision
-`4fe25e12eb9f4c744966dd3de5a05246cf098601`. It exports only `x86_64-linux`;
-no ARM/macOS build or support is claimed. Pleamar keeps its separate runtime pin.
-
-```sh
-nix build .#tohru            # also packages.x86_64-linux.default
-nix build .#pleamar-runtime  # pinned upstream with approved shell settings hook
-nix run .#shell             # also nix run . ; starts only the initial shell bar
-nix run .#tohru -- status --json
-```
-
-The command runner still follows native display warning/fallback behavior,
-explicitly accepted; zero running instances fail. The initial bar
-is a foundation slice, not workspace/output/visual parity.
-
-A consuming flake may follow its own pinned nixpkgs and import the module:
-
-```nix
-inputs.tohru.url = "path:/path/to/tohru";
-inputs.tohru.inputs.nixpkgs.follows = "nixpkgs";
-# In a Home Manager configuration's modules:
-{
-  imports = [ inputs.tohru.homeManagerModules.tohru ]; # .default is an alias
-  programs.tohru = {
-    enable = true;
-    settings.bar.mooncoil = false;
-    settings.bar.preferred_output = "DP-1";
-  };
-}
-```
-
-The module uses its consumer's `pkgs`; `programs.tohru.package` remains
-replaceable. It installs a package and managed TOML environment path; services
-start only with `programs.tohru.systemd.enable`. `nix/tests/home-manager.nix` accepts actual
-Home Manager, nixpkgs and Tohru flake values for enabled/disabled consumer checks.
-No NixOS module is exported because this slice supplies no NixOS-specific behavior.
-
-`packages.x86_64-linux.tohru-hyprland` builds the Hyprland plugin in
-`hyprland/package.nix` against the flake's pinned Hyprland; it is never a shell
-dependency and never loaded automatically. A consumer builds it against its own
-compositor through `overlays.default` (`pkgs.tohru-hyprland`) or the Home Manager
-option `programs.tohru.hyprlandPlugin.package`, which follows the session's
-Hyprland package. The package's
-reviewed candidate requires Hyprland **0.56.2**, exact matching compositor headers
-and runtime ABI including any local compositor patches; the version string alone
-does not prove compatibility. With a custom candidate, use the effect package's
-`override { hyprland = candidate; }` before building, and keep loading an explicit
-integration step. A changed nixpkgs/compositor requires those compatibility checks
-again. No plugin loading/configuration or existing Nix repository is modified.
-
-The optional effect package uses the separately locked `hyprland-nixpkgs` input at
-E's reviewed revision `8ce4ef6cb6f871616146b9fe26d2a5ae594e94fe`; the shell's
-newer nixpkgs pin does not supply Hyprland 0.56.2. Keep this input independent of
-the shell nixpkgs follow unless the replacement package set has the exact reviewed
-candidate compositor. The native portable shell neither builds nor loads this
-plugin as a dependency.
-
-## Follow-up verification
-
-The packaged runtime has a separate inexpensive launch wrapper that prefixes
-`util-linux` (`setsid`) and Bash (`sh`) onto PATH. Pinned native `apps.launch`
-executes `setsid -f sh -c`; the remaining user PATH stays available for installed
-application resolution. This adds runtime tools without changing that backend or
-recompiling the Rust runtime merely to change its launch environment.
-
-Q1/Q3 persistence fixes pass the locked root tests, Clippy with warnings denied,
-actual Rust 1.85.0 tests, and a real Luau binding VM/warning test. Final committed
-root `nix build .#tohru --max-jobs 1 --cores 4` succeeded on x86_64-linux; installed
-help, scene check, runtime version and zero-instance exit boundaries passed.
-A real exported Home Manager consumer evaluated and generated the expected TOML
-without services or activation; the available HM26.05 source warned about pinned
-nixpkgs26.11. Release-matched machine integration is still a later gate.
-Optional archived E output evaluates with its separately locked compositor package
-set; no E build, machine-candidate ABI or plugin runtime acceptance is claimed.
-Earlier generic pending-build/MSRV notes describe the initial checkpoint; these
-checks close those foundation gates, while compositor/motion/visual/performance
-acceptance remains pending. No GPU check was repeated for these persistence fixes.
+`bin/tohru-run` does the same with `TOHRU_RUNTIME` set to the binary.

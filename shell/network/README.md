@@ -1,35 +1,47 @@
-# Native Wi-Fi and network popup
+# Network
 
-Production: include network/state.plm + network/popup.plm in the same root as
-its bar button. Initialize require("network/controller")() once; retain returned
-open/close/toggle callables for root coordination (Lua emit is render-only).
-Native public events: network_open/close/toggle. Permission network.*.
-Private entry shell/network/entry.plm + entry.luau is test-only, with real button.
-Native click grab and Escape; CLI-idle open may require Escape as accepted.
+The Wi-Fi popup and the bar's network icon. Both run in the bar process and use Pleamar's `network` service, which talks to NetworkManager.
 
-Pinned native networkmanager.rs/iwd.rs: network.{online,kind,name,strength,wifi,
-error,networks}; network.wifi/scan/connect/disconnect/forget. Declarative native
-service and capped64-row model, seven-row pages; Up/Down/Return select/join,
-secret native input (agent:no) submits password, clear on cancel/send/close.
-Native catalog marks saved/open networks so they connect without password entry;
-new secured networks expose credentials. Selected observed active connection has
-disconnect, saved connection has forget. An observed replacement connection is
-never disconnected through a stale target. Status remains native-authoritative;
-request acceptance is labelled and is never treated as completion. Detailed NM
-errors may be absent (accepted native limitation). Network rates, Ethernet/IP,
-VPN and external administration links are intentionally omitted by plan12/13.
+## Files
 
-Source: j2bar panel/network.rs and panel/settings/network.rs retained selection,
-status and native-capable actions; accepted native panel glass approximation.
-Checks: lua tests/network/controller.lua; pinned pleamar --check entry.plm.
-Private native system-bus fixtures/capture remain pending coordinator allocation;
-no host NetworkManager operation is part of development verification.
+| File | Contents |
+|---|---|
+| `state.plm` | The `network` service as `net` (online, kind, name, strength, Wi-Fi on, error, up to 64 networks in `net_rows`), popup facts and the `network_*` events |
+| `popup.plm` | The 390×490 px popup: status, Wi-Fi on/off, Scan, networks seven to a page, the password form, Disconnect and Forget |
+| `controller.luau` | Turns popup actions into `network.*` calls. Returns `{open, close, toggle}` |
+| `entry.plm`, `entry.luau` | A standalone scene with a Network button, for development |
 
-Root measured popup anchor: follow the instant native property `net_button_x`
-with the bar button center in screen-local logical pixels. Its default `-1`
-selects `screen.width - 305` (native prop initializers require a numeric literal).
-Any nonnegative value, including zero, is an explicit root allocation. The390px
-panel opens at `clamp(button_x - 195, 8, max(8, screen.width - 398)), 36`;
-negative fallback preserves the prior default position away from output edges,
-and narrow outputs clamp to x8. Root owns the measured center/follow rule; no
-controller, timer or shared layout manager is involved.
+The bar's network button and its icons are in `shell/services.plm`. The icon shows Ethernet, Wi-Fi at four signal strengths, or Wi-Fi off, dimmed while offline.
+
+## How it is wired
+
+`shell/bar.plm` includes `network/state.plm` and `network/popup.plm`, with the `network.*` permission. `shell/bar.luau` calls `require("network/controller")()` and uses the returned functions to keep one popup open at a time. The popup is centred under the network button, using `net_button_x`, which `services.plm` sets, and kept 8 px from the output's edges.
+
+| Event | Effect |
+|---|---|
+| `network_open`, `network_close`, `network_toggle` | Open, close or toggle. `tohru panel open network` and `tohru panel toggle network` send the first and last |
+| `network_select <row>` | Connect to that network, or ask for its password first |
+| `network_join`, `network_cancel` | Submit or cancel the password |
+| `network_scan`, `network_power` | Scan, or turn Wi-Fi on or off |
+| `network_disconnect`, `network_forget` | Disconnect the selected active network, or forget a saved one |
+
+Choosing a saved or open network connects at once. A new secured network asks for a password in a secret field that is cleared on submit, cancel and close. Down and Up move the selection, Return activates it, Escape closes.
+
+Each request reports only that it was sent ("Request sent — check observed status"); the status shown always comes from the service.
+
+## Running and tests
+
+```sh
+lua tests/network/controller.lua
+python3 tests/network/strength.py
+pleamar --check shell/network/entry.plm
+pleamar --scene shell/network/entry.plm --answer-as tohru-network
+```
+
+Run them from the repository root; the Lua test needs Lua 5.4. The standalone scene talks to the real NetworkManager on the system bus. `python3 tests/bar/native.py --services-only --runtime <pleamar>` runs the popup against a fake NetworkManager on a private bus; it has not been re-run since the bar layout changed.
+
+## Known limitations
+
+- Error detail is only what NetworkManager reports through Pleamar.
+- There are no Ethernet, IP address, VPN or network rate details.
+- When opened from the CLI, the popup closes with Escape or `tohru panel close`, not with a click outside it.

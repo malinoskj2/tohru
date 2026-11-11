@@ -107,6 +107,8 @@ class Cli(unittest.TestCase):
             (("status", "--json"), ["--say", "tohru", "get settings_status"]),
             (("config", "reload"), ["--say", "tohru", "emit config_reload"]),
             (("config", "set", "bar.mooncoil", "true"), ["--say", "tohru", "emit setting_mooncoil 1"]),
+            (("config", "set", "bar.info_button", "true"), ["--say", "tohru", "emit setting_info_button 1"]),
+            (("config", "set", "bar.about_button", "false"), ["--say", "tohru", "emit setting_about_button 0"]),
             (("config", "set", "appearance.corners", "false"), ["--say", "tohru", "emit setting_corners 0"]),
             (("config", "set", "appearance.corner_size", "1"), ["--say", "tohru", "emit setting_corner_size 1"]),
             (("config", "set", "appearance.corner_size", "100"), ["--say", "tohru", "emit setting_corner_size 100"]),
@@ -134,6 +136,31 @@ class Cli(unittest.TestCase):
         self.invoke("settings", "open", TOHRU_SETTINGS_RUN=str(starter))
         subprocess.run(["sleep", "0.3"])
         self.assertFalse(launched.exists())
+
+    def test_settings_open_takes_the_bars_managed_file(self):
+        managed = self.path / "managed.toml"
+        managed.write_text("[bar]\n")
+        runtime = self.path / "answering runtime"
+        runtime.write_text(
+            "#!/usr/bin/env bash\n"
+            "[[ $2 == tohru-settings ]] && exit 1\n"
+            f"[[ $3 == 'get managed_config' ]] && printf '%s\\n' '{managed}'\n"
+        )
+        runtime.chmod(0o755)
+        seen = self.path / "seen"
+        starter = self.path / "settings run"
+        starter.write_text(f"#!/usr/bin/env bash\nprintf '%s' \"$TOHRU_MANAGED_CONFIG\" > '{seen}'\n")
+        starter.chmod(0o755)
+        for given, expected in [("", str(managed)), ("/declared.toml", "/declared.toml")]:
+            with self.subTest(given=given):
+                result = self.invoke("settings", "open", TOHRU_RUNTIME=str(runtime), TOHRU_SETTINGS_RUN=str(starter), TOHRU_MANAGED_CONFIG=given)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                for _ in range(100):
+                    if seen.exists():
+                        break
+                    subprocess.run(["sleep", "0.05"])
+                self.assertEqual(seen.read_text(), expected)
+                seen.unlink()
 
     def test_output_is_literal_and_cannot_inject_commands(self):
         marker = self.path / "injected"

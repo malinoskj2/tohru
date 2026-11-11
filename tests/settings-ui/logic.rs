@@ -8,6 +8,8 @@ fn actual_settings_search_history_and_managed_edits_share_the_owner() {
         text={settings_search=''}; model={}; handlers={}; saves=0; applied_count=0
         function on(name,callback) handlers[name]=callback end
         config={['bar.mooncoil']={value=false,managed=true,runtime_override=false},
+                ['bar.info_button']={value=false,managed=false,runtime_override=false},
+                ['bar.about_button']={value=false,managed=false,runtime_override=false},
                 ['bar.preferred_output']={value='',managed=false,runtime_override=false},
                 ['appearance.corners']={value=true,managed=false,runtime_override=false},
                 ['appearance.corner_size']={value=32,managed=false,runtime_override=false}, ['appearance.palette']={value='mocha',managed=false,runtime_override=false}}

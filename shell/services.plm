@@ -9,11 +9,6 @@ part RootServiceControls {
     image root_info = file "service-assets/info-filled.svg", 14, 14
     image root_play = file "service-assets/play-filled.svg", 14, 14
     let bar_ink = #ffffff
-    // j2bar's row: 22px buttons at least 24px wide, 2px apart, ending 110px from the right edge.
-    let row_end = screen.width - 110
-    let date_w = round(bar_date_measure.width)
-    let clock_w = date_w + 10 + round(bar_time_measure.width) + 14
-    let clock_x = row_end - clock_w
     let root_net_x = clock_x - 26
     let sound_x = root_net_x - 26
     let root_left = 112 + if(bar_mooncoil, 29, 0) + if(ws_available, ws_width, 0) + 14
@@ -34,12 +29,12 @@ part RootServiceControls {
     follow net_button_x = root_net_x + 12
     follow bt_button_x = root_bt_x + 12
 
-    box { from: media_x, 4.5; size: media_w, 22; corner: 7; color: bar_ink; opacity: 10%; show: media_shown }
+    box { from: media_x, 4; size: media_w, 22; corner: 7; color: bar_ink; opacity: 10%; show: media_shown }
     image root_play { at: round(media_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 92%; show: media_shown }
     text bar_media { at: media_x + 25, 15.5; anchor: left center; width: 160; lines: 1; tight: true; measure: bar_media_measure; size: 13; family: "SF Pro Text"; color: bar_ink; opacity: 92%; show: media_shown }
 
-    zone box root_network { from: root_net_x, 4.5; size: 24, 22; corner: 7; cursor: pointer; label: "Network" }
-    box { from: root_net_x, 4.5; size: 24, 22; corner: 7; color: bar_ink; opacity: max(root_network.hover * 10%, root_network.pressed * 16%) }
+    zone box root_network { from: root_net_x, 4; size: 24, 22; corner: 7; cursor: pointer; label: "Network" }
+    box { from: root_net_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(root_network.hover * 10%, root_network.pressed * 16%) }
     image root_ethernet { at: round(root_net_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: if(net.online, 92%, 38%); show: net.kind == wired }
     image root_wifi { at: round(root_net_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 92%; show: net.kind != wired and net.wifi and net.online and net.strength >= 60 }
     image root_wifi_high { at: round(root_net_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 92%; show: net.kind != wired and net.wifi and net.online and net.strength >= 35 and net.strength < 60 }
@@ -48,18 +43,18 @@ part RootServiceControls {
     image root_wifi_off { at: round(root_net_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 38%; show: net.kind != wired and not net.wifi }
     on press root_network { emit network_toggle }
 
-    zone box root_bluetooth_hit { from: root_bt_x, 4.5; size: 24, 22; corner: 7; active: root_extra >= 1; cursor: pointer; label: "Bluetooth" }
-    box { from: root_bt_x, 4.5; size: 24, 22; corner: 7; color: bar_ink; opacity: max(root_bluetooth_hit.hover * 10%, root_bluetooth_hit.pressed * 16%); show: root_extra >= 1 }
+    zone box root_bluetooth_hit { from: root_bt_x, 4; size: 24, 22; corner: 7; active: root_extra >= 1; cursor: pointer; label: "Bluetooth" }
+    box { from: root_bt_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(root_bluetooth_hit.hover * 10%, root_bluetooth_hit.pressed * 16%); show: root_extra >= 1 }
     image root_bluetooth { at: round(root_bt_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: if(bt.powered, 92%, 38%); show: root_extra >= 1 }
     on press root_bluetooth_hit { emit bluetooth_toggle }
 
-    zone box root_information { from: root_info_x, 4.5; size: 24, 22; corner: 7; active: bar_info_button and root_extra >= 2; cursor: pointer; label: "System information" }
-    box { from: root_info_x, 4.5; size: 24, 22; corner: 7; color: bar_ink; opacity: max(root_information.hover * 10%, root_information.pressed * 16%); show: bar_info_button and root_extra >= 2 }
+    zone box root_information { from: root_info_x, 4; size: 24, 22; corner: 7; active: bar_info_button and root_extra >= 2; cursor: pointer; label: "System information" }
+    box { from: root_info_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(root_information.hover * 10%, root_information.pressed * 16%); show: bar_info_button and root_extra >= 2 }
     image root_info { at: round(root_info_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 92%; show: bar_info_button and root_extra >= 2 }
     on press root_information { emit info_toggle }
 
-    zone box root_about { from: root_about_x, 4.5; size: 24, 22; corner: 7; active: bar_about_button and root_extra >= root_about_slot; cursor: pointer; label: "About Tohru" }
-    box { from: root_about_x, 4.5; size: 24, 22; corner: 7; color: bar_ink; opacity: max(root_about.hover * 10%, root_about.pressed * 16%); show: bar_about_button and root_extra >= root_about_slot }
+    zone box root_about { from: root_about_x, 4; size: 24, 22; corner: 7; active: bar_about_button and root_extra >= root_about_slot; cursor: pointer; label: "About Tohru" }
+    box { from: root_about_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(root_about.hover * 10%, root_about.pressed * 16%); show: bar_about_button and root_extra >= root_about_slot }
     image bar_mark { at: round(root_about_x + 4.5), 8; size: 15, 15; tint: bar_ink; opacity: 92%; show: bar_about_button and root_extra >= root_about_slot }
     on press root_about { emit about_toggle }
 }

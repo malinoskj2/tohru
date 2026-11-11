@@ -192,7 +192,7 @@ def main():
             command += ['--mouse', mouse]
         process = start(command, name, {'WAYLAND_DEBUG': '1'} if debug else None)
         wait_for(lambda: say(name, 'get cal_open' if name.startswith('calendar') else 'get bar_time'), name)
-        assert 'NVIDIA GeForce RTX 5090' in (evidence / f'{name}.log').read_text(), 'app GPU unverified'
+        wait_for(lambda: 'NVIDIA GeForce RTX 5090' in (evidence / f'{name}.log').read_text(), 'app GPU')
         return process
 
     try:

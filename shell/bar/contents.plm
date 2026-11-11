@@ -1,6 +1,6 @@
 part BarContents {
     // Workspace geometry is reserved for the exact motion slice; never a generic spring.
-    zone box bar_mark_hit { from: 107, 4.5; size: 24, 22; active: bar_mooncoil; cursor: pointer }
+    zone box bar_mark_hit { from: 107, 4; size: 24, 22; active: bar_mooncoil; cursor: pointer }
     image bar_mark { at: 111, 8; size: 15, 15; opacity: 30%; show: bar_mooncoil }
     on press bar_mark_hit { emit session_toggle }
 
@@ -14,10 +14,9 @@ part BarContents {
         image bar_app_icon { at: 0, 8; size: 14, 14; show: bar_title_icon }
         text bar_title { at: bar_title_lead, 15.5; anchor: left center; width: max(1, bar_title_limit - bar_title_lead); lines: 1; tight: true; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_title_measure }
     }
-    zone box bar_clock_hit { from: clock_x, 4.5; size: clock_w, 22; corner: 7; cursor: pointer }
-    box { from: clock_x, 4.5; size: clock_w, 22; corner: 7; color: #ffffff; opacity: max(bar_clock_hit.hover * 10%, bar_clock_hit.pressed * 16%) }
-    // j2bar's hinted labels are about 1px wider, so its text sits 1px left of the 7px inset.
-    text bar_date { at: clock_x + 6, 15.5; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_date_measure }
-    text bar_time { at: clock_x + 16 + date_w, 15.5; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: bar_time_measure }
+    zone box bar_clock_hit { from: clock_x, 4; size: clock_w, 22; corner: 7; cursor: pointer }
+    box { from: clock_x, 4; size: clock_w, 22; corner: 7; color: #ffffff; opacity: max(bar_clock_hit.hover * 10%, bar_clock_hit.pressed * 16%) }
+    text bar_date { at: clock_x + 7, 15.5; anchor: left center; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: #ffffff; opacity: 92%; measure: bar_date_measure }
+    text bar_time { at: clock_x + 17 + date_w, 15.5; anchor: left center; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: #ffffff; opacity: 92%; measure: bar_time_measure }
     on press bar_clock_hit { emit calendar_toggle }
 }
