@@ -75,7 +75,8 @@ export TOHRU_RUNTIME="$PWD/.tmp/pleamar-runtime/target/release/pleamar"
 **This is experimental. A lot of it is untested, and some of it is known to be broken.** Expect to read the source when something goes wrong.
 
 - It has only just replaced j2bar on one NixOS desktop (two monitors, NVIDIA). The systemd user units and the notification daemon run there; most panels have only had a short check.
-- There is no notification bell and no adaptive light/dark glass. Clock and text rendering differ slightly from j2bar, the reference design.
+- There is no notification bell and no adaptive light/dark glass. j2bar's bell reports notification history and Do Not Disturb, which Tohru does not have. Adaptive ink needs the brightness of what is behind the bar, which Pleamar does not give a scene.
+- Pleamar rasterises text with swash rather than Pango, so letter shapes differ slightly from j2bar's. Positions in the bar match within 1 px.
 - A popup opened from the CLI (a keybind) closes with Escape or `tohru panel close`, not with a click outside it. Closing on an outside click needs an xdg_popup grab, which needs the serial of a real input event; a grab made without one, tried in a nested Hyprland 0.56.2, left Hyprland closing every later popup the moment it opened.
 - The workspace switcher can only switch to workspaces the compositor already reports. It cannot create one.
 - The Hyprland plugin registers its animation leaves only once it is loaded, which at startup is after your configuration runs. Set them as shown in `hyprland/examples/effects.lua`. Its unload and damage checks have not been done.

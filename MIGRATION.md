@@ -60,8 +60,26 @@ Accepted differences from j2bar that stay:
       tint, the switcher (rail, lit segment with its rounded ends, glow), the
       button row at y=4, and the clock's tabular numerals (patch 0013; the
       date, time and tray now land within 1px of j2bar's).
-      Still missing: notification bell, adaptive light/dark glass, and
-      Pleamar's text rasteriser against Pango's.
+      Not done, and why:
+      - Notification bell: j2bar's bell shows whether its notification
+        history holds something unread, and Do Not Disturb (bell-off). Both
+        were dropped with rows 07/08, so a bell would have nothing to show
+        or do. Bring back an unread signal (and optionally DND) in the
+        notification daemon first; the bar side is then a tray button and
+        a `say:tohru` event.
+      - Adaptive light/dark glass: j2bar switches ink when more than 55% of
+        a capsule is over bright content (back below 45%), with luminance
+        from its compositor plugin. Pleamar keeps lens captures on the GPU
+        and gives a scene no brightness of what is behind it, and the
+        Tohru plugin does not talk to the shell. Either needs new code: a
+        Pleamar patch reducing the bar's capture to a "bright share" fact,
+        or plugin IPC. The patch is the smaller of the two.
+      - Text rasteriser: not worth a patch. cosmic-text already hints and
+        snaps glyphs to quarter-pixel bins; after the tabular numerals,
+        positions match j2bar within 1px. What is left is glyph shape
+        (swash's hinter against FreeType's slight autohinter through
+        Pango), which whole-pixel positioning would not change, at the cost
+        of a patch on every text Pleamar draws.
 - [x] Bar output policy: one bar on `bar.preferred_output`, every output while it
       is empty, no focused/first fallback.
 - [x] CLI gap against current keybinds (section 4): `tohru launcher toggle|open|close`.
