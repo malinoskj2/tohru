@@ -11,35 +11,6 @@ A Linux desktop shell for Hyprland, written as [Pleamar](https://github.com/k4di
 
 Tohru replaces my previous shell, j2bar. The shell itself is `.plm` scene files, Luau logic and WGSL shaders, run by a patched build of Pleamar 0.7.27. An optional Hyprland plugin adds window effects.
 
-## What you get
-
-- A top bar with a workspace switcher, window title, media label, clock and service buttons.
-- Popups for sound, calendar, network, Bluetooth, system information and About.
-- A volume OSD and rounded screen corners.
-- An application launcher with categories, pins and fuzzy search.
-- A session menu: lock, sleep, restart, shut down, log out.
-- A notification daemon that shows plain text banners.
-- A Settings window, and a `tohru` CLI for keybinds and scripts.
-- Optional: `tohru-hyprland`, a Hyprland 0.56.2 plugin for focus dips, thin titlebars, file chooser sheets and a launcher backdrop effect.
-
-## Status
-
-**This is experimental. A lot of it is untested, and some of it is known to be broken.** Expect to read the source when something goes wrong.
-
-- It has not been used as a daily driver yet. It has only been exercised on a private, headless test display.
-- The systemd user units and the launch wrappers for the session menu, launcher and notifications are brand new.
-- Running the notification daemon as the sole `org.freedesktop.Notifications` owner has not been verified on a real session.
-- The bar's Information and About buttons never show: their switches are not wired up. The popups still open with `tohru panel toggle info|about`.
-- There is no notification bell and no adaptive light/dark glass. Clock and text rendering differ slightly from j2bar, the reference design.
-- Popups opened from the CLI, without a pointer click, may need Escape to close.
-- The workspace switcher can only switch to workspaces the compositor already reports. It cannot create one.
-- The Hyprland plugin's animation settings only apply after a compositor reload. Its visual, unload and damage checks have not been done.
-- The Settings window's size and placement are unresolved: it renders 800 px wide whatever size it gets.
-- The native test suites have not been re-run since the bar layout changed and the repository was restructured. Several need updating.
-- There is no screen locker, idle handling, polkit agent, wallpaper or screenshot tool. Use hyprlock, hypridle, hyprpolkitagent, and grimblast or similar.
-- x86_64-linux only. ARM is untested. Only tested with an NVIDIA GPU. Non-NixOS distributions are untested.
-- Tohru needs its own patched Pleamar build. Stock Pleamar will not run the bar.
-
 ## Quickstart
 
 ### With Nix and Home Manager
@@ -98,6 +69,24 @@ export TOHRU_RUNTIME="$PWD/.tmp/pleamar-runtime/target/release/pleamar"
 ```
 
 [docs/manual-install.md](docs/manual-install.md) covers each step, keeping the processes running, and putting `tohru` on your `PATH`.
+
+## Status
+
+**This is experimental. A lot of it is untested, and some of it is known to be broken.** Expect to read the source when something goes wrong.
+
+- It has not been used as a daily driver yet. It has only been exercised on a private, headless test display.
+- The systemd user units and the launch wrappers for the session menu, launcher and notifications are brand new.
+- Running the notification daemon as the sole `org.freedesktop.Notifications` owner has not been verified on a real session.
+- The bar's Information and About buttons never show: their switches are not wired up. The popups still open with `tohru panel toggle info|about`.
+- There is no notification bell and no adaptive light/dark glass. Clock and text rendering differ slightly from j2bar, the reference design.
+- Popups opened from the CLI, without a pointer click, may need Escape to close.
+- The workspace switcher can only switch to workspaces the compositor already reports. It cannot create one.
+- The Hyprland plugin's animation settings only apply after a compositor reload. Its visual, unload and damage checks have not been done.
+- The Settings window's size and placement are unresolved: it renders 800 px wide whatever size it gets.
+- The native test suites have not been re-run since the bar layout changed and the repository was restructured. Several need updating.
+- There is no screen locker, idle handling, polkit agent, wallpaper or screenshot tool. Use hyprlock, hypridle, hyprpolkitagent, and grimblast or similar.
+- x86_64-linux only. ARM is untested. Only tested with an NVIDIA GPU. Non-NixOS distributions are untested.
+- Tohru needs its own patched Pleamar build. Stock Pleamar will not run the bar.
 
 ## Using it
 
