@@ -25,9 +25,9 @@ while floating/fullscreen and unmapped clients restore saved geometry. Selected
 modes, target values, curves and speeds remain unchanged. `sheet.cpp` fixes
 accepted Q-E-2 by preserving the parent's prior optional noFocus set-property
 slot, including explicit false, and restoring it through existing show/cleanup
-paths while preserving observable external false/unset writes. Component symbols,
-internal diagnostics and the special `j2bar:maximize` config token are retained
-for easy algorithm/settings comparison. They do not depend on j2bar's process.
+paths while preserving observable external false/unset writes. Component symbols
+and internal diagnostics are retained for easy algorithm/settings comparison;
+the special maximize token is now `tohru:maximize`. They do not depend on j2bar's process.
 The new main.cpp combines only the four selected components, checks the private
 build hash, unwinds partial initialization and exposes a distinct read-only
 capability command. The former managed-rules/glass/panel orchestration is omitted;

@@ -93,7 +93,7 @@ not a shell plugin system. Configured titlebars require a compositor exclusion
 rule: the component's raw default enables bars for ordinary windows, whereas the
 old shell authored whitelist is `^(Alacritty|mpv)$`. The example preserves that
 whitelist with a negative rule. The built-in maximize action token remains
-`j2bar:maximize`; empty disables double-click, other strings retain upstream
+`tohru:maximize`; empty disables double-click, other strings retain upstream
 compositor command execution behavior. Do not pass the old typed word `maximize`
 directly: it was translated by j2bar's former settings owner.
 

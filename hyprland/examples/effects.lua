@@ -15,7 +15,7 @@ hl.config({ plugin = {
         bar_blur = false, bar_text_font = "Sans", bar_text_align = "center",
         bar_part_of_window = true, bar_precedence_over_border = true,
         bar_buttons_alignment = "right", bar_padding = 7, bar_button_padding = 5,
-        icon_on_hover = false, on_double_click = "j2bar:maximize",
+        icon_on_hover = false, on_double_click = "tohru:maximize",
     },
     hyprsheet = {
         class = "^(xdg-desktop-portal-gtk)$", parent_share = 0.75,

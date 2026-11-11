@@ -266,7 +266,7 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
 
     if (!ON_DOUBLE_CLICK.empty() &&
         std::chrono::duration_cast<std::chrono::milliseconds>(Time::steadyNow() - m_lastMouseDown).count() < 400 /* Arbitrary delay I found suitable */) {
-        if (ON_DOUBLE_CLICK == "j2bar:maximize") {
+        if (ON_DOUBLE_CLICK == "tohru:maximize") {
             const auto modes = Fullscreen::controller()->getFullscreenModes(PWINDOW);
             const auto next = modes.internal == Fullscreen::FSMODE_MAXIMIZED ? Fullscreen::FSMODE_NONE : Fullscreen::FSMODE_MAXIMIZED;
             const CInternalFullscreenScope internalOnly(PWINDOW->m_ruleApplicator->syncFullscreen());
