@@ -53,6 +53,7 @@ scene Tohru {
  include "bar/contents.plm"
  include "bar/workspace.plm"
  include "services.plm"
+ include "bar/bell.plm"
  include "sound/view.plm"
  popup sound_panel {
   at: clamp(sound_button_x - 150, 8, screen.width - 308), 37

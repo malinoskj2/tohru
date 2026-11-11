@@ -256,6 +256,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
             "session-route",
             include_str!("../../shell/session-route.luau"),
         ),
+        ("bar/bell", include_str!("../../shell/bar/bell.luau")),
         (
             "network/controller",
             include_str!("../../shell/network/controller.luau"),
@@ -308,6 +309,10 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
     lua.load(
         r#"
         assert(fact.corners and fact.corner_size==32)
+        local asked; for _,call in ipairs(calls) do if call.name=='say' and call.value=='tohru-notifications' then asked=true end end
+        assert(asked, 'the bar asks the notification daemon for its state')
+        dispatch('notices_state',3); assert(fact.notices_unread and fact.notices_dnd)
+        dispatch('notices_state',0); assert(not fact.notices_unread and not fact.notices_dnd)
         dispatch('audio_report'); assert(not fact.osd_open)
         dispatch('audio_step',1); assert(not fact.osd_open, 'ack is not an observation')
         fact['audio.volume']=0.4; dispatch('audio_report')

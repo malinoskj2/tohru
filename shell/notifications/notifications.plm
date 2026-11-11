@@ -1,10 +1,14 @@
 language 0.4
 scene TohruNotifications {
     surface { size: 420, 380; anchor: top_right; margin: 42, 12, 0, 0; level: overlay; keyboard: none; screens: each }
-    permissions { services: "notifications", "sound" }
-    // Protocol bookkeeping only; no unread/history state or visible counter.
+    permissions { services: "notifications", "sound", "files", "files.write", "say:tohru" }
     fact last_id = 0
     fact power_level = 0
+    fact unread = false
+    fact dnd = false
+    event notices_seen ->
+    event notices_dnd ->
+    event notices_report ->
     event power_warning_clear ->
     event power_warning_low ->
     event power_warning_critical ->

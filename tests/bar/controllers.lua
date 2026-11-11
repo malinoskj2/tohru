@@ -152,3 +152,18 @@ events.calendar_next();assert(observations[#observations]==3)
 calendar.close();assert(stops==1 and not fact.cal_rail_ready)
 calendar.open();assert(resets==2 and fact.cal_month==11 and fact.cal_rail_ready)
 print("Visible calendar reload rearms without resetting retained month/physics; close/reopen works")
+
+events = environment()
+local said = {}
+sys.call = function(name, role, request) assert(name == "say" and role == "tohru-notifications"); said[#said + 1] = request end
+assert(loadfile("shell/bar/bell.luau"))()()
+assert(said[1] == "emit notices_report 0")
+events.notices_state(1); assert(fact.notices_unread == true and fact.notices_dnd == false)
+events.notices_state(2); assert(fact.notices_unread == false and fact.notices_dnd == true)
+events.notices_state("garbage"); assert(fact.notices_unread == false and fact.notices_dnd == false)
+events.bell_seen(); events.bell_dnd()
+assert(said[2] == "emit notices_seen 0" and said[3] == "emit notices_dnd 2")
+sys.call = function() error("tohru-notifications is not running") end
+events.bell_seen()
+print("Bell shows what the notification daemon reports and survives it being away")
+

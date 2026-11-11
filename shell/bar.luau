@@ -45,6 +45,7 @@ on("sound_open_request", osd.hide)
 on("sound_toggle", function() if fact.sound_open then osd.hide() end end)
 
 require("bar/controller")()
+require("bar/bell")()
 local calendar_rail = make_rail(tohru_workspace, "calendar", "cal_rail_")
 local calendar = require("calendar/controller")(calendar_rail)
 local network = require("network/controller")()
