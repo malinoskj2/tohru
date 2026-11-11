@@ -116,11 +116,15 @@ def main():
     env['PATH'] = str(fakebin)+':'+env['PATH']
     config = evidence/'sway.conf'
     config.write_text('output HEADLESS-1 mode 1280x800@60Hz\noutput HEADLESS-1 bg #30232b solid_color\nseat seat0 hide_cursor 100\n')
+    # As the session's wrapper runs it: TOHRU_SHELL=1 reads bar.preferred_output, the menu's output while
+    # no window has focus, which on this empty display is always.
+    (evidence/'config'/'tohru').mkdir(parents=True)
+    (evidence/'config'/'tohru'/'config.toml').write_text('[bar]\npreferred_output = "HEADLESS-1"\n')
     processes=[]; files=[]; events=[]; checks=[]
-    def start(args, log):
+    def start(args, log, extra=None):
         check_ipc_directory(env, run)
         f=(evidence/log).open('w');files.append(f)
-        proc=subprocess.Popen(args, env=env, stdout=f, stderr=subprocess.STDOUT)
+        proc=subprocess.Popen(args, env={**env, **(extra or {})}, stdout=f, stderr=subprocess.STDOUT)
         processes.append(proc);return proc
     def cli(scene, command, check=True):
         check_ipc_directory(env, run)
@@ -133,7 +137,7 @@ def main():
     def launch(role, name):
         path=scenes/role
         arguments=[str(a.runtime),'--scene',str(path),'--answer-as',name,'--no-hud']
-        proc=start(arguments,name+'.log')
+        proc=start(arguments,name+'.log',{'TOHRU_SHELL':'1'} if name=='tohru-session' else None)
         wait(lambda: cli(name,'get '+('open' if name=='tohru-session' else 'last_id'),False) is not None,name+' ready')
         wait(lambda:'NVIDIA GeForce RTX 5090' in (evidence/(name+'.log')).read_text(),name+' hardware')
         return proc
