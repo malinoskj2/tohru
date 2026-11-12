@@ -1,0 +1,23 @@
+--- a/src/logic_luau.rs
++++ b/src/logic_luau.rs
+@@ -1282,9 +1282,18 @@
+                 return Ok(true);
+             }
+             let (to_logic, n) = (Mutex::new(to_logic.clone()), name.clone());
+-            Ok(crate::platform::service(&mine, &name, "watch", Box::new(move |v| {
++            // Starting a service first asks the system whether it is there
++            // (BlueZ, NetworkManager, the sound server), and at login the bus
++            // can take seconds to answer. As with `sys.ask`, that waiting does
++            // not count against the handler's patience.
++            let t0 = Instant::now();
++            let started = crate::platform::service(&mine, &name, "watch", Box::new(move |v| {
+                 let _ = to_logic.lock().unwrap().send(Event::Data(n.clone(), v));
+-            })))
++            }));
++            if let Some(l) = &mut c.lock().unwrap().deadline {
++                *l += t0.elapsed();
++            }
++            Ok(started)
+         })?)?;
+         let (c, mine) = (self.c.clone(), who.clone());
+         sys.set("call", lua.create_function(move |_, (name, args): (String, mlua::Variadic<Value>)| {
