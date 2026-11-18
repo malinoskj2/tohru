@@ -141,7 +141,10 @@ def verify(root,runtime,evidence,env,start,say,expect,wait_for):
     expect('launcher','launcher_total','1')
     run(['grim','-o','HEADLESS-1',str(evidence/'launcher-native-open.png')])
     keyboard('escape');expect('launcher','launcher_query','');expect('launcher','launcher_visible','true')
-    keyboard('escape');closed()
+    keyboard('escape')
+    wait_for(lambda:not named(),'backdrop role destroyed as closing starts')
+    assert say('launcher','get launcher_closing')=='true','backdrop outlived the closing card'
+    closed()
 
     # Interrupt close before it settles, then start a new close cycle.
     opened('HEADLESS-1');wait_for(lambda:seen()>.99,'reopen reveal')
@@ -178,7 +181,7 @@ def verify(root,runtime,evidence,env,start,say,expect,wait_for):
     if say('launcher','get launcher_visible') == 'true':
         say('launcher','emit launcher_close');closed()
     else:
-        wait_for(lambda:not named(),'native output close removed its role')
+        closed()
     say('focus','quit');focus.wait(timeout=10)
 
     # Passive finite observation, not an idle-performance acceptance benchmark.
