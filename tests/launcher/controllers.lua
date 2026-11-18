@@ -1,5 +1,5 @@
 local make_usage = assert(loadfile("shell/launcher/usage.luau"))()
-local search = assert(loadfile("shell/launcher/search.luau"))()
+local search = assert(loadfile("shell/launcher/search.luau"))()(assert(loadfile("shell/launcher/fuzzy.luau"))())
 local geometry = assert(loadfile("shell/launcher/geometry.luau"))()
 local usage = make_usage({counts = {a = 2, bad = -1}, pins = {"", "a", "a", "b"}, recent = {"a", "a", "b"}})
 assert(usage.state.counts.a == 2 and not usage.state.counts.bad)

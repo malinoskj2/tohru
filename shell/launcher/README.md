@@ -16,7 +16,8 @@ The application launcher. It runs as its own process, `tohru-launcher`, started 
 | `slice.wgsl` | Three columns of the waving track and liquid; `track.luau` hands it the columns while waves run |
 | `entry.luau` | Wires the modules below together |
 | `controller.luau` | Catalog, categories, selection, scrolling, the action menu, launching and saving |
-| `search.luau` | The search matcher |
+| `search.luau` | j2bar's search ranking: which text matched, its weight, the forgiving second pass and the launch boost |
+| `fuzzy.luau` | frizbee 0.13.0's scoring, which j2bar matches with: its prefilter (with up to a typo in four letters), Smith-Waterman with its chunked gap propagation, and the greedy fallback for texts over 1024 bytes |
 | `usage.luau` | Pins, launch counts and recent launches, loaded from and saved to `launcher.json` |
 | `geometry.luau` | Tile positions, including the gap between the Pinned and Applications sections |
 | `output.luau` | Chooses the output to open on, and empties the backdrop's outputs as closing starts |
@@ -55,7 +56,7 @@ As under j2bar, the bar rises above the launcher and tints sky while it is open.
 
 - The card is 3 to 8 columns of 72 px tiles, depending on the output's width, with tabs Home, Create, Code, Media, Web, Office and System. Categories come from each desktop entry's `Categories`; anything that matches no other tab goes under System.
 - Home shows pinned applications first, then every other application.
-- Typing searches every tab. A query matches the name, localised name, generic name, ID, `Exec`, keywords, categories and comment. A match at the start beats a match anywhere, which beats the letters appearing in order. Ties keep catalog order, and at most 50 results show.
+- Typing searches every tab, ranked as j2bar ranks. The query, lowercased but otherwise as typed, is scored with frizbee's fuzzy match: its letters in order, consecutive letters and the starts of words counting for more. A match in the shown name outranks one in the untranslated name, which outranks the best of the generic name (weighted 2), keywords (0.8), categories (0.3), ID (1.5) and `Exec` (1); a name that starts with the query outranks one that does not. The comment is not searched. When nothing matches, the query is matched again forgiving a missing or wrong letter in four. Each launch adds 2.5, at most 12.5. Ties keep catalog order, and at most 50 results show.
 - Right-click, the Menu key or Shift+F10 opens a menu with Open, the entry's desktop actions, and Pin or Unpin.
 - Launching calls Pleamar's `apps.launch` with the entry's `Exec`. The launch is counted and the launcher closes once Pleamar accepts the request; a failure shows in the card.
 - The launcher closes when it loses keyboard focus after having had it.
@@ -71,7 +72,7 @@ As under j2bar, the bar rises above the launcher and tints sky while it is open.
 
 ## Saved state
 
-`launcher.json` is written through Pleamar's `files` service, under `$XDG_DATA_HOME/pleamar/entry/`. It holds up to 64 pins, launch counts for up to 2000 applications and the six most recent launches. Nothing is imported from j2bar. Launch counts and recent launches are recorded but nothing is ordered by them yet.
+`launcher.json` is written through Pleamar's `files` service, under `$XDG_DATA_HOME/pleamar/entry/`. It holds up to 64 pins, launch counts for up to 2000 applications and the six most recent launches. Nothing is imported from j2bar. Launch counts raise search results a little; recent launches are recorded but nothing uses them yet.
 
 ## Tests
 
@@ -91,7 +92,8 @@ Run them from the repository root; the Lua tests need Lua 5.4. `namespace.py` ne
 
 ## Known limitations
 
-- Search has no typo tolerance and no ranking by use. Case folding covers ASCII letters only.
+- Search lowercases ASCII letters only, where j2bar lowercases all of Unicode, and scores a non-ASCII query byte by byte, where frizbee scores it by codepoint. Pleamar gives one translation of the name, so the untranslated name is the only alias; j2bar also matched every other translation. `Exec` is Pleamar's, without field codes and with its spaces collapsed, where j2bar matched the line as written, and keyword and category lists keep their escapes.
+- Scores are frizbee's on an AVX-512 CPU. frizbee's gap propagation depends on its SIMD width, so j2bar on a CPU without AVX-512 can score some long or gappy matches slightly differently.
 - What the catalog contains, and how an entry is started, is up to Pleamar's `apps` service. It does not honour `TryExec`, so entries whose program is missing still show; j2bar hid them. Pleamar also chooses and scales icons itself, so some come from another file of the theme than j2bar's.
 - The search field's caret is drawn at the end of the text: Home and End move Pleamar's own (hidden) caret but not the drawn one, and a selection made with Ctrl+A is not drawn.
 - The Fill track's glows stay straight while waves bend the track and liquid, and lie under the track rather than over it; j2bar's follow the bend.

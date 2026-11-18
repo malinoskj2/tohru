@@ -57,7 +57,7 @@ return function(make_usage, search, geometry, output, make_track)
         fact.launcher_searching = searching
         fact.launcher_typed = query ~= ""
         if searching then
-            shown = search(query, catalog)
+            shown = search(query, catalog, usage.state.counts)
         elseif tab == 0 then
             for _, id in ipairs(usage.state.pins) do
                 if by_id[id] then shown[#shown + 1] = by_id[id]; pinned_count = pinned_count + 1 end
@@ -227,10 +227,11 @@ return function(make_usage, search, geometry, output, make_track)
         -- j2bar's order: by name whatever its case, then as written, then by id.
         catalog = {}
         for index, app in ipairs(value) do catalog[index] = app end
+        local function shown(app) return app.local_name and app.local_name ~= "" and app.local_name or app.name or "" end
         table.sort(catalog, function(a, b)
-            local x, y = (a.name or ""):lower(), (b.name or ""):lower()
+            local x, y = shown(a):lower(), shown(b):lower()
             if x ~= y then return x < y end
-            if a.name ~= b.name then return (a.name or "") < (b.name or "") end
+            if shown(a) ~= shown(b) then return shown(a) < shown(b) end
             return (a.id or "") < (b.id or "")
         end)
         close_menu(); rebuild()
