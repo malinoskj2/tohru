@@ -1,0 +1,16 @@
+--- a/src/render.rs
++++ b/src/render.rs
+@@ -2096,7 +2096,12 @@
+             // shortcut— goes on to the rules and to the logic. Only a field that is
+             // drawn now: a hidden one (a search that is closed) takes nothing, or
+             // in a window manager no window could be typed into.
+-            if let Some(ed) = editing.as_mut().filter(|e| draw.fields.iter().any(|f| f.text == e.field && !f.passive)) {
++            // Plain Left and Right that an active rule of the scene names move through what it
++            // shows, as a launcher's grid does, instead of the caret; with Shift they still select.
++            let ruled = matches!(name.as_str(), "Left" | "Right" | "KP_Left" | "KP_Right")
++                && !(mods.ctrl || mods.alt || mods.logo || mods.shift)
++                && scene.rules.iter().any(|r| matches!(&r.when, Trigger::Key(t) if *t == name) && r.guard.as_ref().is_none_or(|g| g.is_true(Ctx { props: &props, facts: &facts, seen: None })));
++            if let Some(ed) = editing.as_mut().filter(|e| !ruled && draw.fields.iter().any(|f| f.text == e.field && !f.passive)) {
+                 let k = ed.field;
+                 let secret = draw.fields.iter().any(|f| f.text == k && f.secret);
+                 match ed.handle_key(&mut texts[k], &name, typed.as_deref(), mods, secret) {

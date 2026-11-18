@@ -154,3 +154,18 @@ sys.call = function() error("tohru-notifications is not running") end
 events.bell_seen()
 print("Bell shows what the notification daemon reports and survives it being away")
 
+
+events = environment()
+said = {}
+sys.call = function(name, role, request) assert(name == "say" and role == "tohru-launcher"); said[#said + 1] = request end
+assert(loadfile("shell/bar/launcher.luau"))()()
+assert(said[1] == "emit launcher_report 0", "a bar that starts asks where the launcher is")
+assert(fact.bar_launcher == nil)
+events.launcher_bar(1); assert(fact.bar_launcher == 1)
+events.launcher_bar(2); assert(fact.bar_launcher == 2)
+events.launcher_check(); assert(said[2] == "emit launcher_report 0" and fact.bar_launcher == 2)
+events.launcher_bar(7); assert(fact.bar_launcher == 0)
+events.launcher_bar(3); assert(fact.bar_launcher == 3)
+sys.call = function() error("tohru-launcher is not running") end
+events.launcher_check(); assert(fact.bar_launcher == 0, "a launcher that died open leaves the bar")
+print("Bar follows the launcher's state and drops it when the launcher is gone")

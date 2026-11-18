@@ -17,6 +17,7 @@ The bar is the root of the `tohru` process. `shell/bar.plm` declares the bar sur
 | `mooncoil.svg` | The Mooncoil mark, also used by the About popup |
 | `workspace.plm`, `workspace.luau`, `rail-state.plm`, `rail.luau`, `ribbon.wgsl` | The workspace switcher. `rail-state.plm` and `rail.luau` also drive the calendar's month row |
 | `bell.plm`, `bell.luau` | The notification bell |
+| `launcher.luau` | Follows the launcher's state, which raises and tints the bar |
 | `../panel-ink.plm` | The `ink_*` colours every popup draws with, and the switch between dark and light glass |
 | `power.plm` | A battery percentage cell. No scene includes it |
 | `entry.plm`, `entry.luau` | A standalone scene with only the bar contents |
@@ -46,6 +47,10 @@ The switcher shows workspaces 1 to 10 and can only switch to workspaces the comp
 
 The bell sits left of the volume button. It shows j2bar's 4 px pink unread mark while a notification has arrived unseen, and a dimmed bell-off icon in Do Not Disturb, which hides the mark. A left click marks notifications seen; a right click toggles Do Not Disturb. `tohru-notifications` owns both states and reports them with `notices_state` (see [../notifications/README.md](../notifications/README.md)); without that process the bell shows neither.
 
+## Under the launcher
+
+While the launcher is open the bar does what j2bar's did: `fill.wgsl` lays a sky tint over it (5 % at the top to 20 % at the bottom, fading in and out over 350 ms), and from the moment the launcher's layer is mapped until it is removed the bar surface moves to the overlay level, above the launcher's scrim. `launcher.luau` keeps `bar_launcher` from what `tohru-launcher` reports; see [../launcher/README.md](../launcher/README.md#the-bar-while-the-launcher-is-open) for the states and how the two recover when one restarts or dies.
+
 ## Panel ink
 
 Every popup says `bright: panel_bright` (patch 0020), the share of what is behind its glass that is bright. `../panel-ink.plm` turns `panel_light` on above 55% and off below 45%, as j2bar does, and eases the `ink_*` colours from Catppuccin Mocha to j2bar's light ink and Latte. The bar itself stays dark, as j2bar's does.
@@ -58,6 +63,8 @@ Every popup says `bright: panel_bright` (patch 0020), the share of what is behin
 | `session_toggle` | Mooncoil mark | Sends `emit menu_toggle` to `tohru-session` |
 | `network_toggle`, `bluetooth_toggle`, `info_toggle`, `about_toggle`, `sound_toggle` | Button row | Toggle that popup |
 | `bell_seen`, `bell_dnd` | Bell, left and right click | Send `emit notices_seen 0` and `emit notices_dnd 2` to `tohru-notifications` |
+| `launcher_bar N` | `tohru-launcher` | Sets `bar_launcher`: 0 closed, 1 open, 2 open and mapped, 3 closing. The bar tints sky in 1 and 2 and is on the overlay level in 2 and 3 |
+| `launcher_check` | Every second while `bar_launcher` is not 0 | Sends `emit launcher_report 0` to `tohru-launcher`; if it is not running, `bar_launcher` goes back to 0 |
 | `notices_state <n>` | `tohru-notifications` | Sets the bell: 1 unread, 2 Do Not Disturb, 3 both |
 | `panel_close` | `tohru panel close` | Closes every popup |
 

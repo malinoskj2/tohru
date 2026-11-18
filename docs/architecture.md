@@ -14,7 +14,7 @@ Each role is its own `pleamar` process, started by a wrapper in `bin/`. Each can
 |---|---|---|---|
 | `tohru` | `shell/bar.plm` | `tohru-run` | Bar, all popups, volume OSD and screen corners in one process. Sets `TOHRU_SHELL=1` |
 | `tohru-session` | `shell/session/menu.plm` | `tohru-session-run` | Session menu, on the bar's output. Sets `TOHRU_SHELL=1` to read it |
-| `tohru-launcher` | `shell/launcher/entry.plm` | `tohru-launcher-run` | Launcher, a full-screen layer named `tohru-launcher-backdrop` |
+| `tohru-launcher` | `shell/launcher/entry.plm` | `tohru-launcher-run` | Launcher: a full-screen scrim layer named `tohru-launcher-backdrop` under a full-screen layer with the card |
 | `tohru-notifications` | `shell/notifications/notifications.plm` | `tohru-notifications-run` | Owns `org.freedesktop.Notifications`; must be the only notification daemon. Keeps whether something arrived unseen (saved across restarts) and Do Not Disturb (not saved) |
 | `tohru-settings` | `shell/settings/settings.plm` | `tohru-settings-run` | Settings window, started on demand. Sets `TOHRU_SHELL=1` |
 
@@ -30,6 +30,7 @@ Processes send each other requests with `pleamar --say <role> "<request>"`, or f
 - The bar sends `emit menu_toggle` to `tohru-session` when its session button is used, and power warnings to `tohru-notifications`.
 - The bell: the bar sends `emit notices_seen` (left click), `emit notices_dnd 2` (right click, toggle) and, when it starts, `emit notices_report` to `tohru-notifications`, which answers each change with `emit notices_state N` to `tohru` (1 unread, 2 Do Not Disturb, added).
 - Settings sends `emit config_reload` and `setting_*` events to `tohru` after each accepted edit.
+- The launcher sends `emit launcher_bar N` to `tohru` (0 closed, 1 open, 2 open and mapped, 3 closing), and the bar tints sky and rises above the launcher from it. The bar sends `emit launcher_report` to `tohru-launcher` when it starts and every second while the launcher is not closed; the launcher answers with its state, and a bar that cannot reach it takes it as closed.
 
 Requests report that Pleamar accepted them, not that the action finished. If no Tohru process runs on the caller's display, Pleamar may route the request to one on another display, with a warning.
 
@@ -40,7 +41,7 @@ Requests report that Pleamar accepted them, not that the action finished. If no 
 | Patch | Change |
 |---|---|
 | `0001-shell-settings` | Adds the `tohru-shell` library as a dependency and installs the `tohru_settings` Luau global, only when `TOHRU_SHELL=1` |
-| `0005-launcher-namespace` | Adds an optional static `layer_namespace` surface property. The launcher uses it so the Hyprland plugin can match its layer. Without it, layers are named `pleamar`. It also makes Pleamar's lookup of where a layer sits on Hyprland match the layer's own namespace, which places the launcher's glass capture correctly under the bar's exclusive zone |
+| `0005-launcher-namespace` | Adds an optional static `layer_namespace` surface property. The launcher uses it so the Hyprland plugin can match its layer. Without it, layers are named `pleamar`. It also makes Pleamar's lookup of where a layer sits on Hyprland match the layer's own namespace, so glass on a named layer captures the right part of the screen |
 | `0006-info-binding` | Installs the `tohru_info` Luau global |
 | `0010-key-rule-order` | Keys that arrive in the same frame as a key that triggers a rule, such as typing right after Ctrl+F, are handled after the rule has acted |
 | `0011-focus-round` | A keyboard leave and enter in the same frame, such as a popup grab moving focus between Tohru's own surfaces, no longer counts as losing focus |
@@ -48,6 +49,7 @@ Requests report that Pleamar accepted them, not that the action finished. If no 
 | `0013-text-font-features` | A text's `family:` may name OpenType features after a colon (`"SF Pro Text:tnum"`). The bar's clock uses it for j2bar's tabular numerals |
 | `0014-secret-get` | `--say … get` answers `? secret input cannot be read` for the text of a `secret: true` field, as `describe` and `watch` already withhold it. Without it any process of the user could read the Wi-Fi password while it is typed |
 | `0015-watch-patience` | Time spent starting a service in `sys.watch`, such as asking the system bus whether BlueZ or NetworkManager is there, no longer counts against a handler's 2 s limit, as with `sys.call` and `sys.ask`. Without it a slow bus at login cut off the bar's whole script, leaving the bar empty |
+| `0016-field-arrow-rules` | Plain Left and Right go to an active `on key` rule of the scene before the focused field moves its caret, as j2bar's launcher grid has them; with Shift they still select text |
 | `0020-backdrop-bright-share` | Adds an optional `bright: fact` popup property. After each capture its lens takes in, the card counts the cells of a 16 × 16 grid over the popup's glass whose Rec. 709 luma is over 55 %, and only that count is read back into the fact (0 to 1). It returns to 0 when the popup opens. The panels and the session menu use it for j2bar's light and dark glass |
 | `0021-card-capture-without-shm` | When the compositor offers its captures in a shared-memory format Pleamar cannot read (a headless Sway offers 24-bit BGR888) but also offers a dmabuf, the next capture goes onto the card instead of none ever arriving. Without it no lens glass works on such a Sway |
 
@@ -64,7 +66,7 @@ The bindings in `runtime/pleamar/bindings/` are copied into the Pleamar source a
 
 ## Hyprland plugin
 
-`hyprland/` is a separate, optional compositor plugin, `libtohru-hyprland.so`. It does not link to or talk to the shell. It combines four effects: focus dips (from hyprfocus), thin titlebars (from hyprbars), file chooser sheets attached to their parent window, and a tilt, shrink, shade and blur of windows behind the launcher's `tohru-launcher-backdrop` layer. It is built for Hyprland 0.56.2 and checks the compositor's API hash before installing any hook. The plugin is planned to move to its own repository.
+`hyprland/` is a separate, optional compositor plugin, `libtohru-hyprland.so`. It does not link to or talk to the shell. It combines four effects: focus dips (from hyprfocus), thin titlebars (from hyprbars), file chooser sheets attached to their parent window, and a tilt, shrink, shade and blur of windows behind the launcher's `tohru-launcher-backdrop` layer. It is built for Hyprland 0.56.2 and checks the compositor's API hash before installing any hook.
 
 ## Repository layout
 

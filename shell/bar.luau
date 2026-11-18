@@ -55,6 +55,7 @@ on("sound_toggle", function() if fact.sound_open then osd.hide() end end)
 
 require("bar/controller")()
 require("bar/bell")()
+require("bar/launcher")()
 local calendar = require("calendar/controller")(make_rail(1))
 local network = require("network/controller")()
 local bluetooth = require("bluetooth/controller")()

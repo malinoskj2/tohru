@@ -113,12 +113,12 @@ If the prototype passes, this could beat a custom shell on maintenance: Noctalia
 
 ## Ownership after migration
 
-Create a separate repository for the existing Hyprland plugin. This is an extraction of working effects, not a new implementation. Suggested names below are placeholders.
+The existing Hyprland plugin lives in this repository under `hyprland/`. It is an extraction of working effects, not a new implementation. Suggested names below are placeholders.
 
 | Owner | Responsibilities |
 |---|---|
 | Nix repository | Exact package pins; Hyprland/plugin compatibility; plugin loading; monitors, binds, window/layer rules, static effect settings; PAM/polkit policy; service lifecycle; hardware permissions; game launch wrappers. |
-| `desktop-effects` repository | Focus dips, title bars, glass/refraction, contrast sampling, file-chooser sheets and recession; capability protocol and compositor regression tests. |
+| `hyprland/` in this repository | Focus dips, title bars, glass/refraction, contrast sampling, file-chooser sheets and recession; capability protocol and compositor regression tests. |
 | `desktop-shell` repository | Amane UI, shaders, animation models, panel state and display-specific interaction. Small versioned Amane patch series initially. |
 | Optional `desktop-services` package | Only custom runtime behavior not covered elsewhere: game controller/libraries, privileged Settings helpers and possibly retained audio/notification adapters. Can begin as a package in the shell repo rather than creating many repositories immediately. |
 
