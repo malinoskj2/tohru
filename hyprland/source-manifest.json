@@ -29,6 +29,10 @@
     "sheet.cpp": {
       "sha256": "9ee677f0d1c331b3ac54a80d902cdb2d9ecc6725d4522402467ccdf20fcc0f9b",
       "reason": "Accepted Q-E-2: preserve the optional prior PRIORITY_SET_PROP noFocus value and respect observable intervening false/unset writes during parent restoration."
+    },
+    "recede.cpp": {
+      "sha256": "694f060359027d111358b6b580d43ef384dffd74ef5e79106d6049ccb2214875",
+      "reason": "On a rotated monitor, a window with nothing to tilt or shade still goes through the shader: returning Hyprland's buffer unchanged drew it turned for a frame at each end of the recession."
     }
   }
 }
