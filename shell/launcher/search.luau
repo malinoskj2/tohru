@@ -10,9 +10,13 @@ return function(fuzzy)
         local name = (app.local_name ~= "" and app.local_name or app.name or ""):lower()
         local found = score(name)
         if found then return found * 5 + (name:sub(1, #pattern) == pattern and TIER or 0) + 2 * TIER end
-        local untranslated = (app.name or ""):lower()
-        found = untranslated ~= "" and untranslated ~= name and score(untranslated)
-        if found then return found * 5 + TIER end
+        local alias
+        for _, other in ipairs({app.name, table.unpack(app.names or {})}) do
+            other = (other or ""):lower()
+            found = other ~= "" and other ~= name and score(other)
+            if found and (not alias or found > alias) then alias = found end
+        end
+        if alias then return alias * 5 + TIER end
         local best
         local function consider(value, weight)
             found = score(value)
@@ -22,7 +26,7 @@ return function(fuzzy)
         for _, keyword in ipairs(list(app.keywords)) do consider(keyword, 0.8) end
         for _, category in ipairs(list(app.categories)) do consider(category, 0.3) end
         consider((app.id or ""):lower(), 1.5)
-        consider((app.exec or ""):lower(), 1)
+        consider((app.exec_line or app.exec or ""):lower(), 1)
         return best
     end
     local function matches(catalog, pattern, typos)

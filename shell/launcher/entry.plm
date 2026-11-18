@@ -48,7 +48,8 @@ scene TohruLauncher {
     fact launcher_track_n = 564
     fact launcher_waves = false
     model launcher_track max 200 { k: number; o0: number; d0: number; o1: number; d1: number; o2: number; d2: number; o3: number; d3: number }
-    model launcher_tiles max 96 { position: number; x: number; y: number; name: text; id: text; icon: image 96, 96; pinned: bool }
+    model launcher_tiles max 96 { position: number; x: number; y: number; name: text; id: text; icon: image 96, 96; iconless: bool; pinned: bool }
+    image launcher_app_window = file "../service-assets/app-window.svg", 27, 27
     model launcher_choices max 14 { position: number; y: number; label: text; action: number }
     event launcher_unmap ->
     event launcher_outputs_changed ->
@@ -223,6 +224,7 @@ scene TohruLauncher {
                             glow: 26, 0
                             shader: launcher_tile, surge, vel(surge), 1, card_cx, reveal_blur, ripple_map, ripple_strength, card_cy while revealing or abs(surge) > 0.002 or abs(vel(surge)) > 0.02
                             image t.icon { at: 14, 10; size: 44, 44 }
+                            image launcher_app_window { at: 23, 19; size: 27, 27; tint: #ffffff; opacity: 62%; show: t.iconless }
                         }
                         on enter launcher_tile.$k while not launcher_menu { launcher_pointer = true; launcher_hovered = t.position; emit launcher_select(t.position) }
                         on leave launcher_tile.$k while launcher_hovered == t.position { launcher_hovered = -1 }

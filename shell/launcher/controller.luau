@@ -88,7 +88,7 @@ return function(make_usage, search, geometry, output, make_track)
             local x, y = position(index - 1)
             if y + 72 >= scroll - 72 and y <= scroll + viewport + 72 then
                 tiles[#tiles + 1] = {position = index - 1, x = x * 72, y = y, name = app.local_name and app.local_name ~= "" and app.local_name or app.name,
-                    id = app.id, icon = app.icon, pinned = usage.pinned(app.id)}
+                    id = app.id, icon = app.icon, iconless = not app.icon_found, pinned = usage.pinned(app.id)}
             end
         end
         model.launcher_tiles = tiles

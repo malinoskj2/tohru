@@ -150,4 +150,12 @@ local result = search("test", many)
 assert(#result == 50 and result[1].id == "1" and result[50].id == "50")
 result = search("test", many, {["70"] = 1})
 assert(result[1].id == "70" and result[2].id == "1")
+local translated = {
+    {id = "mpv", name = "mpv Media Player", local_name = "", names = {"Lecteur multimédia mpv", "mpv Media Player"}, exec = "mpv --", exec_line = "mpv -- %U"},
+    {id = "other", name = "Other", local_name = "", names = {}, exec = "other"},
+}
+result = search("lecteur", translated)
+assert(#result == 1 and result[1].id == "mpv")
+result = search("%u", translated)
+assert(#result == 1 and result[1].id == "mpv")
 print("frizbee scores and j2bar's search ranking reproduced")

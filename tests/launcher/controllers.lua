@@ -43,12 +43,13 @@ assert(barred() == "emit launcher_bar 0" and fact.launcher_bar_state == 0)
 local actions = {}
 for i = 1, 100 do actions[i] = {name = "Action " .. i, exec = "action" .. i} end
 watches.apps({
-    {id = "a", name = "Art", local_name = "", icon = "art", categories = "Graphics;Development;", exec = "art", actions = actions},
-    {id = "b", name = "Code", local_name = "", icon = "code", categories = "Development;", exec = "code"},
-    {id = "c", name = "Music", local_name = "", icon = "music", categories = "AudioVideo;", exec = "refused"},
+    {id = "a", name = "Art", local_name = "", icon = "art", icon_found = true, categories = "Graphics;Development;", exec = "art", actions = actions},
+    {id = "b", name = "Code", local_name = "", icon = "code", icon_found = true, categories = "Development;", exec = "code"},
+    {id = "c", name = "Music", local_name = "", icon = "", categories = "AudioVideo;", exec = "refused"},
 })
 handlers.launcher_open()
 assert(fact.launcher_visible and fact.launcher_total == 3)
+assert(not model.launcher_tiles[1].iconless and model.launcher_tiles[3].iconless)
 handlers.launcher_tab(1)
 assert(fact.launcher_total == 1 and model.launcher_tiles[1].id == "a")
 handlers.launcher_tab(2)
