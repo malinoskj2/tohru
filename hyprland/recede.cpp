@@ -318,7 +318,10 @@ class CRecedeTransformer : public Render::IWindowTransformer {
 
         const auto  PROJ   = RECEDE ? projectionFor(*RECEDE) : std::nullopt;
         const float SHADE  = RECEDE && IS_FRAME ? std::clamp(RECEDE->shade->value(), 0.F, 1.F) * configValues.shade->value() : 0.F;
-        if (!PROJ && SHADE <= 0.F)
+        // Hyprland draws a transformer's result in the monitor's logical orientation, so a buffer
+        // in the output's own orientation goes through the shader even with nothing to tilt.
+        const bool LOGICAL = dynamic_cast<CLogicalFramebuffer*>(in.get()) || MONITOR->m_transform == WL_OUTPUT_TRANSFORM_NORMAL;
+        if (!PROJ && SHADE <= 0.F && LOGICAL)
             return in;
 
         if (!ensureShader())
