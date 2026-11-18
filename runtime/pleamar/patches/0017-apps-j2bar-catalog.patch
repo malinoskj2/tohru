@@ -1,5 +1,5 @@
 diff --git a/src/platform/desktop.rs b/src/platform/desktop.rs
-index c2eca8c..a586ad2 100644
+index c2eca8c..83a790e 100644
 --- a/src/platform/desktop.rs
 +++ b/src/platform/desktop.rs
 @@ -13,6 +13,8 @@ struct App {
@@ -91,7 +91,22 @@ index c2eca8c..a586ad2 100644
              // `Categories=`, as written: `Utility;Calculator;`.
              ("categories".into(), text(self.categories)),
              // These three in the user's language, like `local_name`, and "" when it has none:
-@@ -365,6 +414,38 @@ Exec=/usr/lib/firefox/firefox --ProfileManager
+@@ -358,6 +407,14 @@ Exec=/usr/lib/firefox/firefox --ProfileManager
+         assert_eq!(parse(FIREFOX, "firefox", "").unwrap().actions[1].local_name, "New Private Window");
+     }
+ 
++    #[test]
++    fn an_entry_brings_every_name_and_its_exec_as_written() {
++        let mpv = parse("[Desktop Entry]\nType=Application\nName=mpv Media Player\nName[fr]=Lecteur multimédia mpv\nName[de]=mpv Medienspieler\nExec=mpv -- %U\nIcon=/nonexistent/mpv.svg\n", "mpv", "fr").unwrap();
++        assert_eq!(mpv.names, ["mpv Medienspieler", "Lecteur multimédia mpv"]);
++        assert_eq!((mpv.exec.as_str(), mpv.exec_line.as_str()), ("mpv --", "mpv -- %U"));
++        assert!(!found_icon(&mpv.icon) && !found_icon(""));
++    }
++
+     #[test]
+     fn a_terminal_entry_says_so() {
+         assert!(!parse(FIREFOX, "firefox", "").unwrap().terminal);
+@@ -365,6 +422,38 @@ Exec=/usr/lib/firefox/firefox --ProfileManager
          assert!(btop.terminal && btop.actions.is_empty() && btop.keywords.is_empty());
      }
  
