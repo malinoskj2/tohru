@@ -1,0 +1,185 @@
+--- a/src/render.rs
++++ b/src/render.rs
+@@ -525,6 +525,8 @@
+     // never waited for); and those that skipped a round waiting, to paint as
+     // soon as theirs arrives. See where they are painted.
+     let mut in_flight: Vec<(u32, Instant)> = Vec::new();
++    // The frames on their way that a sheet has already painted one more after (see where they are painted).
++    let mut ahead: Vec<(u32, Instant)> = Vec::new();
+     // The surfaces that answered a frame since the last round (see `Sheet::unseen`).
+     let mut seen_again: Vec<u32> = Vec::new();
+     let mut answers: Vec<u32> = Vec::new();
+@@ -4883,10 +4885,10 @@
+                     next_frame = right_now + period;
+                 }
+                 if next_frame > right_now {
+-                    // While waiting, the capture that a sheet with a lens
+-                    // needed in order to paint may arrive: then it is painted right away, without waiting
+-                    // for the clock, or its step and the compositor's drift out of phase and
+-                    // one out of every two gets painted.
++                    // While waiting, the capture a sheet with a lens asked may arrive: it is taken in, and
++                    // painted on the clock's step like everything else. Painting it the moment it arrived
++                    // moved the step to the compositor's paint, where the frame just presented was still not
++                    // answered, and one round in three was lost (39 a second on a 60 Hz monitor).
+                     let awaits_capture = sheets.iter().any(|l| l.capture == crate::gpu::BackdropCapture::AfterPresent);
+                     if awaits_capture {
+                         loop {
+@@ -4897,10 +4899,7 @@
+                             }
+                             match rx.recv_timeout(left) {
+                                 Ok(ToRender::Backdrop(d)) => {
+-                                    if handle_backdrop(g, &mut sheets, d) {
+-                                        next_frame = Instant::now() + period;
+-                                        break;
+-                                    }
++                                    handle_backdrop(g, &mut sheets, d);
+                                 }
+                                 // The frame notice is waited for right after: kept for the
+                                 // next round, that wait would not see it and would run out.
+@@ -5080,17 +5079,14 @@
+                     }
+                 }
+             }
+-            // With a lens: if the capture of the last presented frame has not arrived yet, it
+-            // waits for it —it arrives in less than a refresh— and paints afterwards.
+-            // If it was only watching, that capture is forgotten and it paints.
++            // With a lens: if the capture of a presented frame has not arrived yet, it paints
++            // anyway, with the background it has; the capture is of the canvas it was asked
++            // with (`Lens::asked`), and taken in on whichever round it arrives by. Waiting for it
++            // cost a refresh each time. If it was only watching, that capture is forgotten.
+             if l.lens.is_some() {
+                 match l.capture {
+                     // It arrives in less than a refresh. If it takes longer, it has been lost.
+-                    crate::gpu::BackdropCapture::AfterPresent if l.capture_since().elapsed() < Duration::from_millis(100) => {
+-                        skip(l);
+-                        up_to_date += 1;
+-                        continue;
+-                    }
++                    crate::gpu::BackdropCapture::AfterPresent if l.capture_since().elapsed() < Duration::from_millis(100) => {}
+                     crate::gpu::BackdropCapture::AfterPresent => l.cancel_backdrop(),
+                     crate::gpu::BackdropCapture::Watching => l.cancel_backdrop(),
+                     crate::gpu::BackdropCapture::Idle => {}
+@@ -5156,7 +5152,14 @@
+             // scene on a 165 Hz monitor and a 60 Hz one went at 60 on both—.
+             // Not beyond a while: what is not shown is never answered.
+             let others = !l.drives_pace && g.uses_mailbox() && !op.no_vsync && !op.naive;
+-            if others && l.open && in_flight.iter().any(|f| f.0 == l.id && f.1.elapsed() < Duration::from_millis(100)) {
++            // One frame due by now —most of a refresh of its own monitor on its way— is not waited
++            // for, once: Hyprland answers the frame it was handed after a capture of the screen
++            // one refresh late, and skipping for it lost one frame for every capture.
++            ahead.retain(|a| in_flight.contains(a));
++            let due = Duration::from_secs_f64(750.0 / l.pace_mhz() as f64);
++            let waiting = in_flight.iter().find(|f| f.0 == l.id && f.1.elapsed() < Duration::from_millis(100)).copied();
++            let goes_ahead = waiting.is_some_and(|f| f.1.elapsed() >= due && !ahead.contains(&f));
++            if others && l.open && waiting.is_some() && !goes_ahead {
+                 if !owed.contains(&l.id) {
+                     owed.push(l.id);
+                 }
+@@ -5192,7 +5195,9 @@
+                     lens.painted_ours(ours.as_deref());
+                 }
+             }
+-            if was_painted && ((others && answers.contains(&l.id)) || (fifo && l.open)) {
++            if was_painted && others && goes_ahead {
++                ahead.extend(waiting);
++            } else if was_painted && ((others && answers.contains(&l.id)) || (fifo && l.open)) {
+                 in_flight.retain(|f| f.0 != l.id);
+                 in_flight.push((l.id, Instant::now()));
+             }
+@@ -5206,7 +5211,9 @@
+                 let p = pace(l);
+                 // A panel grows on every frame it drops: what it uncovers is taken at most every 150 ms, not on each one.
+                 let grew = l.glass_grew && !p.held && p.since >= p.interval.min(std::time::Duration::from_millis(150));
+-                if p.after_paint(nudge) || grew {
++                // (One on its way: the next is owed, not asked over it, and its arrival wakes the render.)
++                let on_way = l.capture == crate::gpu::BackdropCapture::AfterPresent;
++                if !on_way && (p.after_paint(nudge) || grew) {
+                     l.request_backdrop(false);
+                     l.capture_owed = false;
+                     l.glass_grew &= l.capture != crate::gpu::BackdropCapture::AfterPresent;
+@@ -5215,7 +5222,7 @@
+                     // And a round when the interval is over, to take it (see the still ones, below): with nothing
+                     // else waking the render, what it owes was only taken when something made it paint again, and
+                     // the glass kept showing what was behind it before (#118).
+-                    if !p.held {
++                    if !p.held && !on_way {
+                         appointments.push(Instant::now() + p.interval.saturating_sub(p.since) + Duration::from_millis(1));
+                     }
+                 }
+--- a/src/lens.rs
++++ b/src/lens.rs
+@@ -130,10 +130,13 @@
+ 
+ pub struct Lens {
+     pub px: (u32, u32),
+-    /// Two canvases: one gets painted, the other is the one the compositor has.
+-    canvases: [(wgpu::Texture, wgpu::TextureView); 2],
++    /// Three canvases: one gets painted, one is the one the compositor has, and one the capture on its way is of.
++    canvases: [(wgpu::Texture, wgpu::TextureView); 3],
+     next: usize,
+     presented: Option<usize>,
++    /// The canvas presented when the capture on its way was asked: it is unmixed against that one, and
++    /// that one is not painted over meanwhile. Painting does not wait for the capture.
++    held: Option<usize>,
+     capture: Option<(wgpu::Texture, wgpu::TextureView, (u32, u32))>,
+     /// The unmixed background, in two to go back and forth: each time the one
+     /// that is not the current one is written, reading the current one where
+@@ -206,9 +209,10 @@
+         let background = || texture(d, "background", px, wgpu::TextureFormat::Rgba8Unorm, U::RENDER_ATTACHMENT | U::TEXTURE_BINDING | U::COPY_SRC | U::COPY_DST);
+         Lens {
+             px,
+-            canvases: [canvas(), canvas()],
++            canvases: [canvas(), canvas(), canvas()],
+             next: 0,
+             presented: None,
++            held: None,
+             capture: None,
+             backgrounds: [background(), background()],
+             current: 0,
+@@ -250,9 +254,15 @@
+     pub fn asked(&mut self) {
+         let now = std::mem::replace(&mut self.ours_now, Some(Vec::new()));
+         self.ours_asked = join_ours(self.ours_asked.take(), now.as_deref());
++        self.held = self.presented;
+     }
+ 
+-    /// Which of the two canvases this frame is painted on.
++    /// The capture on its way will not come.
++    pub fn forget_asked(&mut self) {
++        self.held = None;
++    }
++
++    /// Which of the canvases this frame is painted on.
+     pub fn next(&self) -> usize {
+         self.next
+     }
+@@ -271,7 +281,7 @@
+             wgpu::Extent3d { width: w.min(screen.width()), height: h.min(screen.height()), depth_or_array_layers: 1 },
+         );
+         self.presented = Some(self.next);
+-        self.next ^= 1;
++        self.next = (0..3).find(|&i| Some(i) != self.presented && Some(i) != self.held).unwrap_or(0);
+     }
+ 
+     /// A capture of the box `bounds` arrives (logical pixels of the surface):
+@@ -281,7 +291,7 @@
+         if self.fixed.is_some() {
+             return false;
+         }
+-        let Some(presented) = self.presented else {
++        let Some(presented) = self.held.take().or(self.presented) else {
+             said(|c| c.unpresented += 1);
+             return false;
+         };
+--- a/src/gpu.rs
++++ b/src/gpu.rs
+@@ -5550,6 +5550,9 @@
+ 
+     pub fn cancel_backdrop(&mut self) {
+         self.window.cancel_backdrop();
++        if let Some(lens) = &mut self.lens {
++            lens.forget_asked();
++        }
+         self.capture = BackdropCapture::Idle;
+         self.capture_forced = false;
+         self.watch_replaced = false;
