@@ -1,0 +1,27 @@
+--- a/src/platform/wayland.rs
++++ b/src/platform/wayland.rs
+@@ -1961,13 +1961,19 @@ pub fn popup(k: usize, what: Option<([i32; 4], (f32, f32))>) {
+             positioner.set_constraint_adjustment(ConstraintAdjustment::SlideX | ConstraintAdjustment::SlideY);
+         }
+         let wl = e.compositor.create_surface(&e.qh);
++        // If it opens because of a click a moment ago, let a click outside close it.
++        let grab = e.seat.lock().unwrap().clone().zip(*e.last_press.lock().unwrap()).filter(|(_, (_, when))| when.elapsed() < std::time::Duration::from_millis(1500));
++        // The parent's keyboard (`keyboard: … while`) usually changes with the fact that opens
++        // this, and a parent with frames of its own commits it after them. Exclusive arriving
++        // after the grab, Hyprland takes the keyboard back to the parent and ends the grab: the
++        // popup closed the moment it opened, on about every other click. Committed first.
++        if grab.is_some() {
++            parent.layer.wl_surface().commit();
++        }
+         let popup = Popup::from_surface(None, &positioner, &e.qh, wl, &e.xdg).ok()?;
+         parent.layer.get_popup(popup.xdg_popup());
+-        // If it opens because of a click a moment ago, let a click outside close it.
+-        if let (Some(seat), Some((serial, when))) = (e.seat.lock().unwrap().as_ref(), *e.last_press.lock().unwrap()) {
+-            if when.elapsed() < std::time::Duration::from_millis(1500) {
+-                popup.xdg_popup().grab(seat, serial);
+-            }
++        if let Some((seat, (serial, _))) = grab {
++            popup.xdg_popup().grab(&seat, serial);
+         }
+         let id = next_surface_id();
+         let viewport = e.viewporter.as_ref().map(|v| v.get_viewport(popup.wl_surface(), &e.qh, Silent));
