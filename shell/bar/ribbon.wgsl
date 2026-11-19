@@ -11,7 +11,7 @@ fn rounding(s: Shader) -> f32 { return floor(s.a.z/8.0)/255.0; }
 fn half(s: Shader) -> f32 { return s.a.z-8.0*floor(s.a.z/8.0); }
 fn phase(s: Shader) -> f32 { return abs(s.b.w)-1.0; }
 fn wave(s: Shader, x: f32) -> vec2<f32> {
- let i = clamp(floor(x+0.5),0.0,s.size.x-24.0);
+ let i = clamp(x, 0.0, s.size.x - 24.0);
  let dir = sign(s.b.w);
  let skew = min(phase(s), 1.0);
  // j2bar's wash widens by (18 + 10 * gain) px/s and its chop turns at 7 rad/s: at a typical
@@ -65,13 +65,13 @@ fn erf_approx(input: f32) -> f32 {
 fn phi(z: f32) -> f32 { return 0.5+0.5*erf_approx(z*0.70710678); }
 fn shade(s: Shader) -> vec4<f32> {
  let p=s.pos-vec2<f32>(12.0,21.0);
- let column=floor(p.x); let row=floor(p.y);
+ let column=p.x-0.5; let row=p.y-0.5;
  let color=s.color.xyz;
  let w0=wave(s,column); let w1=wave(s,column+1.0);
  let h0=max(0.4,2.0+w0.y)*cap(s,column);
  let h1=max(0.4,2.0+w1.y)*cap(s,column+1.0);
  var rail=0.0;
- if column>=0.0 && column<s.size.x-24.0 {
+ if column>=-0.5 && column<s.size.x-24.5 {
   rail=row_above(w0.x+h0-row,(w1.x+h1)-(w0.x+h0))-row_above(w0.x-h0-row,(w1.x-h1)-(w0.x-h0));
  }
  let tx=floor(clamp(p.x,0.0,(s.size.x-24.0)-0.001)/4.0)*4.0;

@@ -10,7 +10,7 @@ part SoundDetails {
    opacity: smooth(0.3, 1, o_k)
    zone box o_hit { from: sound_ox + 8, o_y; size: sound_w - 16, 22; corner: 7; cursor: pointer; active: sound_unfolded; label: "Use {output.name}" }
    box { from: sound_ox + 8, o_y; size: sound_w - 16, 22; corner: 7; color: sound_ink; opacity: max(o_hit.hover * 10%, o_hit.pressed * 16%) }
-   text output.name { at: sound_ox + 38, o_y + 11; anchor: left center; width: sound_w - 54; lines: 1; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 92% }
+   text output.name { at: sound_ox + 38, o_y + 10.3; anchor: left center; width: sound_w - 54; lines: 1; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 92% }
    on press o_hit { sound_keyed = false; emit audio_output_select(output.id) }
   }
  }
@@ -20,7 +20,7 @@ part SoundDetails {
  group {
   show: sound_out_pager == 1 and sound_out_k > 0.001
   opacity: smooth(0.3, 1, sound_out_k)
-  text "{sound_out_page + 1} of {sound_out_pages}" { at: sound_ox + 38, sound_out_pager_y + 11; anchor: left center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 60% }
+  text "{sound_out_page + 1} of {sound_out_pages}" { at: sound_ox + 38, sound_out_pager_y + 10.3; anchor: left center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 60% }
   zone box sound_out_prev { from: sound_ox + sound_w - 64, sound_out_pager_y; size: 24, 22; corner: 7; cursor: pointer; active: sound_unfolded and sound_out_page > 0; label: "Previous outputs" }
   zone box sound_out_next { from: sound_ox + sound_w - 38, sound_out_pager_y; size: 24, 22; corner: 7; cursor: pointer; active: sound_unfolded and sound_out_page + 1 < sound_out_pages; label: "More outputs" }
   box { from: sound_ox + sound_w - 64, sound_out_pager_y; size: 24, 22; corner: 7; color: sound_ink; opacity: max(sound_out_prev.hover * 10%, sound_out_prev.pressed * 16%) }
@@ -49,9 +49,9 @@ part SoundDetails {
   image sound_mic_glyph { at: sound_ox + 13, mic_sy + 4 - 1.5 * (1 - mic_c); size: 14, 14; tint: sound_ink; opacity: 92%; show: not audio.input_muted }
   image sound_mic_off_glyph { at: sound_ox + 13, mic_sy + 4 - 1.5 * (1 - mic_c); size: 14, 14; tint: sound_ink; opacity: 92%; show: audio.input_muted }
   box { from: mic_tx, mic_ty; size: mic_tw, 2; corner: 1; color: sound_ink; opacity: 22% }
-  box { from: mic_tx, mic_ty + 1 - mic_fh / 2; size: mic_tw * mic_v, mic_fh; corner: mic_fh / 2; color: sound_ink; opacity: 92% }
-  box { from: mic_tx + mic_tw * mic_v - 8 * mic_bs, mic_ty + 1 - 4 * mic_bs; size: 16 * mic_bs, 8 * mic_bs; corner: 4 * mic_bs; color: sound_ink; opacity: smooth(0.55, 1, mic_c) }
-  text "{round(mic_v * 100)}" { at: sound_ox + 266, mic_sy + (1 - mic_c) * 6 + 11; anchor: right center; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 92% * smooth(0.35, 1, mic_c) }
+  box { from: mic_tx, mic_ty + 1 - mic_fh / 2; size: mic_tw * mic_v, mic_fh; corner: mic_fh / 2; color: sound_ink; opacity: 92% + 8% * mic_c; show: mic_tw * mic_v > 0.5 }
+  box { from: mic_tx + clamp(mic_tw * mic_v, 8 * mic_bs, mic_tw - 8 * mic_bs) - 8 * mic_bs, mic_ty + 1 - 4 * mic_bs; size: 16 * mic_bs, 8 * mic_bs; corner: 4 * mic_bs; color: sound_ink; opacity: smooth(0.55, 1, mic_c) }
+  text "{round(mic_v * 100)}" { at: sound_ox + 266.5, sound_mic_y + (1 - mic_c) * 6 + 10.3; anchor: right center; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 92% * smooth(0.35, 1, mic_c) }
   zone box mic_track { from: sound_ox + 40, sound_mic_y; size: 194, 22; cursor: pointer; active: sound_unfolded; label: "Microphone volume"; role: slider; value: "{round(mic_v * 100)} %" }
  }
  on press mic_hit { sound_keyed = false; emit audio_input_mute }
@@ -84,10 +84,10 @@ part SoundDetails {
    box { from: a_sx, a_sy; size: 24, 22; corner: 7; color: sound_ink; opacity: a_c * max(a_hit.hover * 10%, a_hit.pressed * 16%) }
    image app.icon { at: a_sx + 5, a_sy + 4 - 1.5 * (1 - a_c); size: 14, 14 }
    box { from: a_tx, a_ty; size: a_tw, 2; corner: 1; color: sound_ink; opacity: 22% }
-   box { from: a_tx, a_ty + 1 - a_fh / 2; size: a_tw * a_v, a_fh; corner: a_fh / 2; color: sound_ink; opacity: 92% }
-   box { from: a_tx + a_tw * a_v - 8 * a_bs, a_ty + 1 - 4 * a_bs; size: 16 * a_bs, 8 * a_bs; corner: 4 * a_bs; color: sound_ink; opacity: smooth(0.55, 1, a_c) }
-   text app.name { at: sound_ox + 38, a_row + (1 - a_c) * 6 + 11; anchor: left center; width: 72; lines: 1; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 92% * smooth(0.35, 1, a_c) }
-   text "{round(a_v * 100)}" { at: sound_ox + 266, a_row + (1 - a_c) * 6 + 11; anchor: right center; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 92% * smooth(0.35, 1, a_c) }
+   box { from: a_tx, a_ty + 1 - a_fh / 2; size: a_tw * a_v, a_fh; corner: a_fh / 2; color: sound_ink; opacity: 92% + 8% * a_c; show: a_tw * a_v > 0.5 }
+   box { from: a_tx + clamp(a_tw * a_v, 8 * a_bs, a_tw - 8 * a_bs) - 8 * a_bs, a_ty + 1 - 4 * a_bs; size: 16 * a_bs, 8 * a_bs; corner: 4 * a_bs; color: sound_ink; opacity: smooth(0.55, 1, a_c) }
+   text app.name { at: sound_ox + 38, a_row + (1 - a_c) * 6 + 10.3; anchor: left center; width: 72; lines: 1; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 92% * smooth(0.35, 1, a_c) }
+   text "{round(a_v * 100)}" { at: sound_ox + 266.5, a_row + (1 - a_c) * 6 + 10.3; anchor: right center; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 92% * smooth(0.35, 1, a_c) }
    zone box a_track { from: sound_ox + 116, a_row; size: 118, 22; cursor: pointer; active: sound_unfolded; label: "{app.name} volume"; role: slider; value: "{round(a_v * 100)} %" }
    on press a_hit { sound_keyed = false; emit audio_app_mute(app.id) }
    on press a_track { sound_keyed = false; sound_app_drag = app.index; sound_app_requested = clamp((local.x - sound_ox - 116) / 118, 0, 1); emit audio_app_set(app.index * 2 + clamp((local.x - sound_ox - 116) / 118, 0, 1)) }
@@ -101,7 +101,7 @@ part SoundDetails {
  group {
   show: sound_app_pager == 1 and sound_app_k > 0.001
   opacity: smooth(0.3, 1, sound_app_k)
-  text "{sound_app_page + 1} of {sound_app_pages}" { at: sound_ox + 38, sound_app_pager_y + 11; anchor: left center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 60% }
+  text "{sound_app_page + 1} of {sound_app_pages}" { at: sound_ox + 38, sound_app_pager_y + 10.3; anchor: left center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 60% }
   zone box sound_app_prev { from: sound_ox + sound_w - 64, sound_app_pager_y; size: 24, 22; corner: 7; cursor: pointer; active: sound_unfolded and sound_app_page > 0; label: "Previous apps" }
   zone box sound_app_next { from: sound_ox + sound_w - 38, sound_app_pager_y; size: 24, 22; corner: 7; cursor: pointer; active: sound_unfolded and sound_app_page + 1 < sound_app_pages; label: "More apps" }
   box { from: sound_ox + sound_w - 64, sound_app_pager_y; size: 24, 22; corner: 7; color: sound_ink; opacity: max(sound_app_prev.hover * 10%, sound_app_prev.pressed * 16%) }

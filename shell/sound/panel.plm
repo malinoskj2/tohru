@@ -1,4 +1,5 @@
 part SoundPanel {
+  shader sound_fill = file "fill.wgsl"
   // Adaptive ink as the bar draws it: white on dark glass, j2bar's light ink on light glass.
   let sound_ink = mix(#ffffff, #1c1826, pk)
   let sound_glass = mix(#140a1e, #fafafc, pk)
@@ -7,15 +8,17 @@ part SoundPanel {
   let sound_rk = smooth(0.7, 1, sound_fc)
   let sound_dx = sound_ox + 16 + 22 * sound_fold
   let sound_dy = 10 + 24 * sound_fold
+  let sound_bw = 1 - 0.4 * sound_fc
 
   body {
-   color: sound_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+   color: sound_glass; glass: 100%; frost: 100%; tint: 60% * (1 - sound_fc); vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
    shadow: 0, 4, 10, 0.22 - 0.1 * pk
    box { from: sound_ox, 0; size: sound_w, sound_h; corner: 15 }
   }
+  shader sound_fill { at: sound_ox, 0; size: sound_w, sound_h; corner: 15; values: 0.62, 0.46; colors: sound_glass; opacity: sound_fc; show: sound_fc > 0.001 }
   // The mock's 0.6 px hairline at 26 %: on 1x pixels a centred stroke spreads over two, so it is a
   // 1 px stroke inset by half a pixel, as bright in total as the hairline.
-  box { from: sound_ox + 0.5, 0.5; size: sound_w - 1, sound_h - 1; corner: 14.5; stroke: 1; color: sound_ink; opacity: 0.6 * (26% - 10% * pk) }
+  box { from: sound_ox + sound_bw / 2, sound_bw / 2; size: sound_w - sound_bw, sound_h - sound_bw; corner: 15 - sound_bw / 2; stroke: sound_bw; color: sound_ink; opacity: (0.6 + 0.4 * sound_fc) * (26% - 10% * pk) }
   zone box sound_scroll { from: sound_ox, 0; size: sound_w, sound_h; corner: 15 }
   zone box sound_water_hit { from: sound_ox, 0; size: sound_w, sound_h; corner: 15; active: not sound_unfolded and sound_outputs.count > 0; label: "Volume" }
 
@@ -26,63 +29,66 @@ part SoundPanel {
    include "tank.plm"
   }
 
-  // The master row: speaker slot, rail and value.
-  zone box sound_mute_hit { from: sound_ox + 8, 8; size: 24, 22; corner: 7; cursor: pointer; active: sound_unfolded and sound_outputs.count > 0; label: "Mute output" }
-  box { from: sound_ox + 8, 8; size: 24, 22; corner: 7; color: sound_ink; opacity: sound_rk * max(sound_mute_hit.hover * 10%, sound_mute_hit.pressed * 16%) }
-  let sound_vs = 0.6 + 0.4 * smooth(0.3, 1, sound_fc)
-  image sound_glyph_x { at: sound_ox + 20 - 7 * sound_vs, 19 - 7 * sound_vs; size: 14 * sound_vs, 14 * sound_vs; tint: sound_ink; opacity: 92% * smooth(0.3, 1, sound_fc); show: sound_quiet == 1 or sound_shown < 0.005 }
-  image sound_glyph_1 { at: sound_ox + 20 - 7 * sound_vs, 19 - 7 * sound_vs; size: 14 * sound_vs, 14 * sound_vs; tint: sound_ink; opacity: 92% * smooth(0.3, 1, sound_fc); show: sound_quiet == 0 and sound_shown >= 0.005 and sound_shown < 0.5 }
-  image sound_glyph_2 { at: sound_ox + 20 - 7 * sound_vs, 19 - 7 * sound_vs; size: 14 * sound_vs, 14 * sound_vs; tint: sound_ink; opacity: 92% * smooth(0.3, 1, sound_fc); show: sound_quiet == 0 and sound_shown >= 0.5 }
-  // The ribbon's own track is white; on light glass it needs one in ink to show.
-  box { from: sound_ox + 40, 18; size: 194, 2; corner: 1; color: sound_ink; opacity: sound_rk * pk * 22% }
-  shader rail_shader { at: sound_ox + 28, -2; size: 218, 42; values: rail.x.2, vel(rail.x.2), rail.bead.2, rail.c.2, rail.amp.2, rail.wash.2, rail.wc.2, rail.wave.2; colors: mix(rgb(rail.red.2, rail.green.2, rail.blue.2), #1c1826, 0.35 * pk), #ffffff; opacity: sound_rk * if(sound_quiet == 1, 38%, 100%); show: sound_rk > 0.001 }
-  // Every label value is laid out once and kept: a value shaped on demand comes back frames late.
-  repeat n in 0..101 { text "{n}" { at: sound_ox + 266, 19; anchor: right center; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 0.1%; show: sound_open } }
-  zone box sound_rail_hit { from: sound_ox + 40, 8; size: 194, 22; cursor: pointer; active: sound_unfolded and sound_outputs.count > 0; label: "Volume"; role: slider; value: "{sound_percent} %" }
-  text "{sound_percent}" { at: sound_ox + 266, 19; anchor: right center; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: smooth(0.7, 1, sound_fc) * if(sound_quiet == 1, 38%, 92%) }
-
-  // The device name: the tank's heading, then the default output's row. Its pill folds and unfolds.
   measure sound_name
   let sound_name_w = min(200, sound_name.width)
-  zone box sound_dev_hit { from: sound_dx - 6, sound_dy; size: sound_name_w + 28, 22; corner: 7; cursor: pointer; label: if(sound_unfolded, "Fold sound controls", "Unfold sound controls") }
-  box { from: sound_dx - 6, sound_dy; size: sound_name_w + 28, 22; corner: 7; color: sound_ink; opacity: max(sound_dev_hit.hover * 10%, sound_dev_hit.pressed * 16%) }
-  text sound_device { at: sound_dx, sound_dy + 11; anchor: left center; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 0%; measure: sound_name }
-  text sound_device { at: sound_dx, sound_dy + 11; anchor: left center; width: 200; lines: 1; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: if(sound_outputs.count > 0 and sound_default_row >= 0, 92%, 60%) }
-  group {
-   pivot: sound_dx + sound_name_w + 11, sound_dy + 11
-   rotate: sound_fold * 3.14159
-   path {
-    at: sound_dx + sound_name_w + 11, sound_dy + 11
-    stroke: 1.25; color: sound_ink; opacity: 60%
-    move -2.5, -1.25
-    line 0, 1.25
-    line 2.5, -1.25
-   }
-  }
-  // j2bar's 4 px mark, glowing 3.5 px at 90% and 9 px at 75%, on the default output.
+  let sound_vs = 0.6 + 0.4 * smooth(0.3, 1, sound_fc)
   let sound_ms = smooth(0.3, 1, sound_fc)
-  group {
-   glow: 9, 35%, sound_ink
-   opacity: sound_ms
-   show: sound_default_row >= 0 and sound_ms > 0.001
-   box { from: sound_ox + 20 - 2 * sound_ms, 45 - 2 * sound_ms; size: 4 * sound_ms, 4 * sound_ms; color: sound_ink }
-  }
-  group {
-   glow: 3.5, 45%, sound_ink
-   opacity: sound_ms
-   show: sound_default_row >= 0 and sound_ms > 0.001
-   box { from: sound_ox + 20 - 2 * sound_ms, 45 - 2 * sound_ms; size: 4 * sound_ms, 4 * sound_ms; color: sound_ink }
-  }
-
-  include "details.plm"
-
-  // The number toggles mute; a drag that starts on it moves the water instead (controller.luau).
-  zone box sound_number_hit { from: sound_ox + 12, 34; size: 112, 58; cursor: pointer; active: not sound_unfolded and sound_outputs.count > 0; label: "Mute output"; value: "{sound_percent} %" }
-
-  // The keyboard's row.
   let sound_focus_row = if(sound_focus_index < if(sound_default_row >= 0, 1, 0), 0, sound_focus_index - if(sound_default_row >= 0, 1, 0) - sound_out_page * 3 + 1)
   let sound_focus_y = pick(sound_focus_kind, 8, 34 + 26 * sound_focus_row, sound_mic_y, sound_app_y + 26 * (sound_focus_index - sound_app_page * 4))
-  box { from: sound_ox + 5, sound_focus_y - 1; size: sound_w - 10, 24; corner: 8; stroke: 1; color: sound_ink; opacity: 40% * sound_rk; show: sound_keyed and sound_unfolded }
+
+  group {
+   clip box { from: sound_ox, 0; size: sound_w, sound_h; corner: 15 }
+
+   // The master row: speaker slot, rail and value.
+   zone box sound_mute_hit { from: sound_ox + 8, 8; size: 24, 22; corner: 7; cursor: pointer; active: sound_unfolded and sound_outputs.count > 0; label: "Mute output" }
+   box { from: sound_ox + 8, 8; size: 24, 22; corner: 7; color: sound_ink; opacity: sound_rk * max(sound_mute_hit.hover * 10%, sound_mute_hit.pressed * 16%) }
+   image sound_glyph_x { at: sound_ox + 20 - 7 * sound_vs, 19 - 7 * sound_vs; size: 14 * sound_vs, 14 * sound_vs; tint: sound_ink; opacity: 92% * smooth(0.3, 1, sound_fc); show: sound_quiet == 1 or sound_shown < 0.005 }
+   image sound_glyph_1 { at: sound_ox + 20 - 7 * sound_vs, 19 - 7 * sound_vs; size: 14 * sound_vs, 14 * sound_vs; tint: sound_ink; opacity: 92% * smooth(0.3, 1, sound_fc); show: sound_quiet == 0 and sound_shown >= 0.005 and sound_shown < 0.5 }
+   image sound_glyph_2 { at: sound_ox + 20 - 7 * sound_vs, 19 - 7 * sound_vs; size: 14 * sound_vs, 14 * sound_vs; tint: sound_ink; opacity: 92% * smooth(0.3, 1, sound_fc); show: sound_quiet == 0 and sound_shown >= 0.5 }
+   // The ribbon's own track is white; on light glass it needs one in ink to show.
+   box { from: sound_ox + 40, 18; size: 194, 2; corner: 1; color: sound_ink; opacity: sound_rk * pk * 22% }
+   shader rail_shader { at: sound_ox + 28, -2; size: 218, 42; values: rail.x.2, vel(rail.x.2), rail.bead.2, rail.c.2, rail.amp.2, rail.wash.2, rail.wc.2, rail.wave.2; colors: mix(rgb(rail.red.2, rail.green.2, rail.blue.2), #1c1826, 0.35 * pk), #ffffff; opacity: sound_rk * if(sound_quiet == 1, 38%, 100%); show: sound_rk > 0.001 }
+   repeat n in 0..101 { text "{n}" { at: sound_ox + 266.5, 18.3; anchor: right center; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 0.1%; show: sound_open } }
+   zone box sound_rail_hit { from: sound_ox + 40, 8; size: 194, 22; cursor: pointer; active: sound_unfolded and sound_outputs.count > 0; label: "Volume"; role: slider; value: "{sound_percent} %" }
+   text "{sound_percent}" { at: sound_ox + 266.5, 18.3; anchor: right center; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: smooth(0.7, 1, sound_fc) * if(sound_quiet == 1, 38%, 92%) }
+
+   // The device name: the tank's heading, then the default output's row. Its pill folds and unfolds.
+   zone box sound_dev_hit { from: sound_dx - 6, sound_dy; size: sound_name_w + 28, 22; corner: 7; cursor: pointer; label: if(sound_unfolded, "Fold sound controls", "Unfold sound controls") }
+   box { from: sound_dx - 6, sound_dy; size: sound_name_w + 28, 22; corner: 7; color: sound_ink; opacity: max(sound_dev_hit.hover * 10%, sound_dev_hit.pressed * 16%) }
+   text sound_device { at: sound_dx, sound_dy + 11 - 0.7 * sound_fc; anchor: left center; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 0%; measure: sound_name }
+   text sound_device { at: sound_dx, sound_dy + 11 - 0.7 * sound_fc; anchor: left center; width: 200; lines: 1; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: if(sound_outputs.count > 0 and sound_default_row >= 0, 92%, 60%) }
+   group {
+    pivot: sound_dx + sound_name_w + 11 - 0.4 * sound_fc, sound_dy + 11
+    rotate: sound_fold * 3.14159
+    path {
+     at: sound_dx + sound_name_w + 11 - 0.4 * sound_fc, sound_dy + 11
+     stroke: 1.25; color: sound_ink; opacity: 60% - 4.8% * sound_fc
+     move -2.5, -1.25
+     line 0, 1.25
+     line 2.5, -1.25
+    }
+   }
+   group {
+    glow: 9, 60%, sound_ink
+    opacity: sound_ms
+    show: sound_default_row >= 0 and sound_ms > 0.001
+    box { from: sound_ox + 20 - 2 * sound_ms, 45 - 2 * sound_ms; size: 4 * sound_ms, 4 * sound_ms; color: sound_ink }
+   }
+   group {
+    glow: 3.5, 90%, sound_ink
+    opacity: sound_ms
+    show: sound_default_row >= 0 and sound_ms > 0.001
+    box { from: sound_ox + 20 - 2 * sound_ms, 45 - 2 * sound_ms; size: 4 * sound_ms, 4 * sound_ms; color: sound_ink }
+   }
+
+   include "details.plm"
+
+   // The number toggles mute; a drag that starts on it moves the water instead (controller.luau).
+   zone box sound_number_hit { from: sound_ox + 12, 34; size: 112, 58; cursor: pointer; active: not sound_unfolded and sound_outputs.count > 0; label: "Mute output"; value: "{sound_percent} %" }
+
+   // The keyboard's row.
+   box { from: sound_ox + 5, sound_focus_y - 1; size: sound_w - 10, 24; corner: 8; stroke: 1; color: sound_ink; opacity: 40% * sound_rk; show: sound_keyed and sound_unfolded }
+  }
 
   body {
    color: sound_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
