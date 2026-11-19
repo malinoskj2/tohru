@@ -23,8 +23,44 @@ return function(index)
         -- Written last: the scene's switch rules fire on it and read the facts above.
         fact[key("serial")] = fact[key("serial")] + 1
     end
+    -- A rail with no slots (the sound popup's volume) moves in pixels, with the sound mock's fixed draws.
+    local function bump(name) fact[key(name)] = (fact[key(name)] or 0) + 1 end
+    local target, heading = fact[key("target")] or 8, 0
+    local function place(goal)
+        target, heading = goal, 0
+        fact[key("goal")] = goal
+        bump("land")
+    end
+    local function glide(goal)
+        target, heading = goal, 0
+        fact[key("goal")] = goal
+        fact[key("kind")] = 2
+        fact[key("draw")] = 1
+        fact[key("reach")] = 12
+        fact[key("life")] = 0.5
+        bump("serial")
+    end
+    -- The bead chases a dragged goal through its own spring; turning back starts a fresh crest.
+    local function chase(goal)
+        local delta = goal - target
+        if math.abs(delta) > 1e-4 then
+            local direction = delta > 0 and 1 or -1
+            if direction ~= heading then
+                heading = direction
+                fact[key("dir")] = direction
+                fact[key("gain")] = 0.95
+                bump("crest")
+            end
+        end
+        target = goal
+        fact[key("target")] = goal
+    end
     return {
         observe = observe,
+        place = place,
+        glide = glide,
+        chase = chase,
+        target = function() return target end,
         reset = function()
             active = nil
             fact[key("present")] = false

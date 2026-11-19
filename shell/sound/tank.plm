@@ -1,0 +1,41 @@
+part SoundTank {
+    shader sound_tank = file "tank.wgsl"
+    measure sound_tank_number
+    // Above 0 it stands in for the clock, so a capture can be matched to a mock frame.
+    fact sound_tank_clock = 0
+    let sound_tank_scale = 1 + (13 / 60 - 1) * sound_fold
+    let sound_tank_digits = if(sound_big >= 100, 3, if(sound_big >= 10, 2, 1))
+    // The number's width at 60 px with the mock's -1.8 px tracking, which letter_move draws.
+    // The number's width at 60 px with the mock's -1.8 px tracking, which letter_move draws.
+    let sound_tank_w60 = sound_tank_number.width - 1.8 * sound_tank_digits
+    // The surface sloshes when the level moves, when the panel starts to unfold and as it lands folded.
+    prop sound_tank_open_kick = 0 ~spring(400, 100)
+    prop sound_tank_shut_kick = 0 ~spring(240, 100)
+    follow sound_tank_open_kick = 0
+    follow sound_tank_shut_kick = 0
+    on change sound_fold > 0.02 while sound_fold > 0.02 { sound_tank_open_kick: 1.2 ~0ms }
+    on change sound_fold < 0.04 while sound_fold < 0.04 and vel(sound_fold) < 0 { sound_tank_shut_kick: 2.2 ~0ms }
+    let sound_tank_slosh = 1 + sound_tank_open_kick + sound_tank_shut_kick + min(2.2, abs(vel(sound_water)) * 4)
+    // Every value is laid out once and kept: one shaped on demand comes back frames late while the water is dragged.
+    repeat n in 0..101 { text "{n}" { at: 16, 88 + 0.308 * 60; anchor: left bottom; size: 60; weight: 200; family: "SF Pro Text"; color: sound_ink; opacity: 0.1% } }
+    // Unfolded, everything it draws is gone: hidden, the clock it reads stops and the popup rests.
+    group {
+        show: sound_fold < 0.995
+        shader: sound_tank, sound_fold, sound_water, sound_tank_slosh, sound_w, sound_tank_w60, pk, sound_quiet, sound_tank_clock
+        box { from: 0, 0; size: sound_w, sound_h; color: #000000; opacity: 1% }
+        // Laid out once at 60 px and scaled as a picture: a text whose size changes every frame is laid
+        // out again behind the frame, and showed the 60 px number at the small one's place for a while.
+        group {
+            pivot: 16, 88
+            scale: sound_tank_scale
+            move: (266 - sound_tank_w60 * 13 / 60 - 2.2 - 16) * sound_fold, (23.4 - 88) * sound_fold
+            // A text's bottom is its line's, 0.308 em under the baseline the mock places.
+            text "{sound_big}" {
+                at: 16, 88 + 0.308 * 60
+                anchor: left bottom; size: 60; weight: 200; family: "SF Pro Text"; color: sound_ink
+                letter_move: -1.8 * letter, 0
+                measure: sound_tank_number
+            }
+        }
+    }
+}

@@ -60,8 +60,8 @@ scene Tohru {
  include "bar/bell.plm"
  include "sound/view.plm"
  popup sound_panel {
-  at: clamp(sound_button_x - 150, 8, screen.width - 308), 37
-  size: 300, 116 + sound_details * 316 + audio_failed * 62
+  at: clamp(sound_button_x - 140, 8, screen.width - 288) - 12, 37
+  size: 304, max(190, sound_open_h) + audio_failed * 54 + 18
   open: sound_open
   bright: panel_bright
   include "sound/panel.plm"

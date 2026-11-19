@@ -2,27 +2,31 @@ part SoundState {
  permissions { services: "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.app_volume", "audio.app_mute" }
  model sound_outputs max 32 { id: number; name: text; default: bool }
  model sound_inputs max 32 { id: number; name: text; default: bool }
- model sound_apps max 64 { id: number; name: text; title: text; volume: number; muted: bool; playing: bool }
+ model sound_apps max 64 { id: number; name: text; title: text; icon: image 14, 14; volume: number; muted: bool; playing: bool }
  // Exactly one whole-report native audio watch populates these fields/models.
  fact audio.volume = -1
  fact audio.muted = false
  fact audio.input = -1
  fact audio.input_muted = false
- fact sound_details = false
- fact sound_tab = 0
- fact sound_list_page = 0
- fact sound_row_focus = -1
- fact sound_row_id = -1
+ fact sound_unfolded = false
+ fact sound_default_row = -1
+ fact sound_out_page = 0
+ fact sound_app_page = 0
+ fact sound_focus_kind = 0
+ fact sound_focus_index = 0
+ fact sound_keyed = false
  fact sound_input_ready = false
  fact sound_input_dragging = false
  fact sound_input_requested = 0
+ fact sound_app_drag = -1
+ fact sound_app_requested = 0
  fact audio_failed = false
  fact sound_open = false
- fact sound_focus = 1
  fact sound_dragging = false
  fact sound_requested = 0
  text audio_status = "{}"
  text audio_error = ""
+ text sound_device = "Waiting for audio"
  event sound_toggle ->
  event sound_open_request ->
  event panel_close_sound ->
@@ -31,18 +35,27 @@ part SoundState {
  event audio_set ->
  event audio_flush ->
  event audio_mute ->
- event sound_details_toggle ->
- event sound_tab ->
- event sound_list_page ->
- event sound_tab_next ->
- event sound_row_move ->
- event sound_details_step ->
- event sound_details_activate ->
+ event sound_fold_toggle ->
+ event sound_rail_press ->
+ event sound_water_press ->
+ event sound_water_drag ->
+ event sound_water_release ->
+ event sound_rail_drag ->
+ event sound_rail_release ->
+ event sound_input_release ->
+ event sound_app_release ->
+ event sound_focus_move ->
+ event sound_focus_step ->
+ event sound_focus_activate ->
+ event sound_page ->
  event audio_output_select ->
  event audio_input_set ->
  event audio_input_up ->
  event audio_input_down ->
  event audio_input_mute ->
+ event audio_app_set ->
+ event sound_app_drag_to ->
+ event sound_input_drag ->
  event audio_app_up ->
  event audio_app_down ->
  event audio_app_mute ->
@@ -51,7 +64,68 @@ part SoundState {
  image sound_mic = file "mic.svg", 16, 16
  image sound_mic_off = file "mic-off.svg", 16, 16
  image sound_muted = file "muted.svg", 16, 16
+ image sound_mic_glyph = file "mic-filled.svg", 14, 14
+ image sound_mic_off_glyph = file "mic-off-filled.svg", 14, 14
  image sound_glyph_x = file "../service-assets/volume-x-filled.svg", 14, 14
  image sound_glyph_1 = file "../service-assets/volume-1-filled.svg", 14, 14
  image sound_glyph_2 = file "../service-assets/volume-2-filled.svg", 14, 14
+
+ // 0 is the tank, 1 the rows. The mock's spring (omega 14, damping ratio 0.78), and copies of it
+ // started later for the staggered pieces.
+ prop sound_fold = 0 ~spring(196, 21.84)
+ prop sound_lag.30 = 0 ~spring(196, 21.84)
+ prop sound_lag.40 = 0 ~spring(196, 21.84)
+ prop sound_lag.60 = 0 ~spring(196, 21.84)
+ prop sound_lag.80 = 0 ~spring(196, 21.84)
+ prop sound_lag.90 = 0 ~spring(196, 21.84)
+ prop sound_lag.120 = 0 ~spring(196, 21.84)
+ prop sound_lag.150 = 0 ~spring(196, 21.84)
+ on change sound_unfolded {
+  sound_fold: if(sound_unfolded, 1, 0)
+  sound_lag.30: if(sound_unfolded, 1, 0) after 30ms
+  sound_lag.40: if(sound_unfolded, 1, 0) after 40ms
+  sound_lag.60: if(sound_unfolded, 1, 0) after 60ms
+  sound_lag.80: if(sound_unfolded, 1, 0) after 80ms
+  sound_lag.90: if(sound_unfolded, 1, 0) after 90ms
+  sound_lag.120: if(sound_unfolded, 1, 0) after 120ms
+  sound_lag.150: if(sound_unfolded, 1, 0) after 150ms
+ }
+ let sound_shown = if(sound_dragging, sound_requested, clamp(audio.volume, 0, 1))
+ let sound_percent = round(sound_shown * 100)
+ let sound_quiet = if(audio.muted or sound_outputs.count == 0, 1, 0)
+ // The mock's level spring: omega 7.5, damping ratio 0.92.
+ prop sound_water = 0 ~spring(56.25, 13.8)
+ follow sound_water = sound_shown
+ // The tank's number counts with the water, except for a level the user set by hand: that one is shown
+ // at once and kept until the water has arrived, so it never steps back.
+ fact sound_big_held = false
+ let sound_big = if(sound_dragging or sound_big_held, sound_percent, round(sound_water * 100))
+ on change abs(sound_water - sound_shown) < 0.005 while not sound_dragging and abs(sound_water - sound_shown) < 0.005 { sound_big_held = false }
+ on change sound_dragging while not sound_dragging and abs(sound_water - sound_shown) < 0.005 { sound_big_held = false }
+ on change sound_open {
+  sound_fold: if(sound_unfolded, 1, 0) ~0ms
+  sound_lag.30: if(sound_unfolded, 1, 0) ~0ms
+  sound_lag.40: if(sound_unfolded, 1, 0) ~0ms
+  sound_lag.60: if(sound_unfolded, 1, 0) ~0ms
+  sound_lag.80: if(sound_unfolded, 1, 0) ~0ms
+  sound_lag.90: if(sound_unfolded, 1, 0) ~0ms
+  sound_lag.120: if(sound_unfolded, 1, 0) ~0ms
+  sound_lag.150: if(sound_unfolded, 1, 0) ~0ms
+  sound_water: sound_shown ~0ms
+ }
+
+ // The unfolded rows: the default output on top, then three more outputs and four apps to a page.
+ let sound_out_others = sound_outputs.count - if(sound_default_row >= 0, 1, 0)
+ let sound_out_rows = 1 + max(0, min(3, sound_out_others - sound_out_page * 3))
+ let sound_out_pager = if(sound_out_others > 3, 1, 0)
+ let sound_mic_y = 44 + 26 * (sound_out_rows + sound_out_pager)
+ let sound_app_y = sound_mic_y + if(sound_input_ready, 36, 0)
+ let sound_app_rows = max(0, min(4, sound_apps.count - sound_app_page * 4))
+ let sound_app_pager = if(sound_apps.count > 4, 1, 0)
+ let sound_rows_end = if(sound_app_rows + sound_app_pager > 0, sound_app_y + 26 * (sound_app_rows + sound_app_pager) - 4, if(sound_input_ready, sound_mic_y + 22, sound_mic_y - 14))
+ let sound_open_h = sound_rows_end + 8
+ let sound_w = 260 + 20 * sound_fold
+ let sound_h = 190 + (sound_open_h - 190) * sound_fold
+ let sound_fc = clamp(sound_fold, 0, 1)
+ let sound_minis = min(3, sound_apps.count)
 }

@@ -34,6 +34,7 @@ function after(ms,callback)
     timers[next_timer]={ms=ms,callback=callback};return next_timer
 end
 function cancel(id)assert(timers[id]);timers[id]=nil end
+function require(name)assert(name=='bar/rail');return assert(loadfile('shell/bar/rail.luau'))()end
 function every()error('No recurring publication or audio polling')end
 local function count()
     local n=0;for _ in pairs(timers)do n=n+1 end;return n

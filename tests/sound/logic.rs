@@ -7,10 +7,11 @@ mod osd;
 fn controller() -> Lua {
     let lua = Lua::new();
     lua.load(r#"
-        fact = {['audio.volume']=-1, ['audio.muted']=false, ['sound_outputs.count']=0, sound_open=false}
+        fact = {['audio.volume']=-1, ['audio.muted']=false, ['sound_outputs.count']=0, sound_open=false, sound_unfolded=false, sound_focus_kind=0, sound_focus_index=0}
         text, model, handlers, timers, calls = {}, {}, {}, {}, {}
         function on(name, callback) handlers[name]=callback end
-        function after(ms, callback) assert(ms==50); timers[1]=callback; return 1 end
+        function after(ms, callback) if ms~=50 then return 0 end; timers[1]=callback; return 1 end
+        function require(name) assert(name=='bar/rail'); return rail_module end
         function cancel(id) timers[id]=nil end
         sys = {watch=function(name, callback) assert(name=='audio'); audio_watch=callback;return true end,call=function(name, value, extra)
             if denied then error('sound server refused') end
@@ -18,6 +19,11 @@ fn controller() -> Lua {
         end}
         json = {encode=function(status) last_status=status; return 'snapshot' end}
     "#).exec().unwrap();
+    let rail: mlua::Function = lua
+        .load(include_str!("../../shell/bar/rail.luau"))
+        .eval()
+        .unwrap();
+    lua.globals().set("rail_module", rail).unwrap();
     lua.load(include_str!("../../shell/sound/controller.luau"))
         .eval::<mlua::Function>()
         .unwrap()
@@ -54,25 +60,27 @@ fn native_input_apps_and_output_selection_use_typed_current_ids_only() {
         fact['sound_inputs.0.default']=false;handlers.audio_report()
         handlers.audio_input_down();handlers.audio_input_mute()
         assert(#calls==5 and not last_status.input_available and last_status.input_volume==nil)
-        handlers.sound_details_toggle();assert(fact.sound_details)
-        handlers.sound_tab(1);assert(fact.sound_tab==1 and fact.sound_list_page==0)
-        fact['sound_inputs.count']=5;handlers.sound_list_page(1);assert(fact.sound_list_page==1)
-        handlers.sound_list_page(1);assert(fact.sound_list_page==1)
-        handlers.sound_tab(2);assert(fact.sound_list_page==0 and fact.sound_row_id==8)
-        fact['sound_apps.0.id']=9;handlers.audio_report();assert(#calls==5 and fact.sound_row_id==9, 'replacement reselects outlined row without issuing a request')
+        handlers.sound_fold_toggle();assert(fact.sound_unfolded and fact.sound_focus_kind==0)
+        handlers.sound_focus_move(1);assert(fact.sound_focus_kind==1 and fact.sound_focus_index==0)
+        handlers.sound_focus_move(1);assert(fact.sound_focus_kind==3 and fact.sound_focus_index==0, 'no microphone row without a default input')
+        fact['sound_apps.0.id']=9;handlers.audio_report();assert(#calls==5 and fact.sound_focus_kind==3, 'a replaced stream keeps the row without issuing a request')
         fact['sound_apps.0.id']=8;handlers.audio_report()
         fact['sound_inputs.0.default']=true;handlers.audio_report()
         handlers.audio_set(0.2);handlers.audio_input_set(0.7);handlers.audio_input_set(0.8)
         assert(#calls==6 and calls[6].name=='audio.volume' and calls[6].value==0.2)
         fact.sound_input_dragging=true;handlers.panel_close()
         assert(#calls==7 and calls[7].name=='audio.input' and calls[7].value==0.8 and not fact.sound_input_dragging and timers[1]==nil)
-        handlers.sound_details_step(1);assert(calls[8].name=='audio.app_volume' and calls[8].value==8)
-        handlers.sound_details_activate();assert(calls[9].name=='audio.app_mute' and calls[9].value==8)
-        handlers.sound_tab(0);handlers.sound_details_activate();assert(calls[10].name=='audio.default' and calls[10].value==0)
-        handlers.sound_tab(1);handlers.sound_details_step(-1);assert(calls[11].name=='audio.input' and calls[11].value==0.45)
-        handlers.sound_details_activate();assert(calls[12].name=='audio.input_mute')
-        handlers.sound_tab(2);fact['sound_apps.count']=0;fact.sound_list_page=8;handlers.audio_report()
-        assert(fact.sound_list_page==0)
+        assert(not fact.sound_unfolded, 'closing folds the popup')
+        handlers.sound_open_request();handlers.sound_fold_toggle()
+        for _=1,3 do handlers.sound_focus_move(1) end;assert(fact.sound_focus_kind==3)
+        handlers.sound_focus_step(1);assert(calls[8].name=='audio.app_volume' and calls[8].value==8 and calls[8].extra==1)
+        handlers.sound_focus_activate();assert(calls[9].name=='audio.app_mute' and calls[9].value==8)
+        handlers.sound_focus_move(-1);handlers.sound_focus_move(-1);handlers.sound_focus_activate()
+        assert(calls[10].name=='audio.default' and calls[10].value==0)
+        handlers.sound_focus_move(1);handlers.sound_focus_step(-1);assert(calls[11].name=='audio.input' and calls[11].value==0.45)
+        handlers.sound_focus_activate();assert(calls[12].name=='audio.input_mute')
+        fact['sound_apps.count']=0;fact.sound_app_page=8;handlers.audio_report()
+        assert(fact.sound_app_page==0 and fact.sound_focus_kind==2)
     "#).exec().unwrap();
 }
 
@@ -131,7 +139,7 @@ fn failures_are_reported_and_later_native_success_clears_them() {
         assert(last_status.error=='' and calls[1].value==-0.05)
         handlers.sound_toggle(); assert(fact.sound_open)
         handlers.sound_toggle(); assert(not fact.sound_open)
-        handlers.sound_open_request(); assert(fact.sound_open and fact.sound_focus==1)
+        handlers.sound_open_request(); assert(fact.sound_open and fact.sound_focus_kind==0 and not fact.sound_unfolded)
         handlers.panel_close(); assert(not fact.sound_open and not fact.sound_dragging)
     "#,
     )
@@ -190,8 +198,8 @@ fn command_error_has_a_visible_panel_boundary() {
     assert!(view.contains("text audio_error"));
     assert!(view.contains("Audio request failed"));
     assert!(view.contains("show: audio_failed"));
-    assert!(view.contains("116 + sound_details * 316 + audio_failed * 62"));
-    assert!(root.contains("116 + sound_details * 316 + audio_failed * 62"));
+    assert!(view.contains("sound_h + 6"));
+    assert!(root.contains("max(190, sound_open_h) + audio_failed * 54"));
 }
 
 #[test]
