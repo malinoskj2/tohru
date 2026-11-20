@@ -58,7 +58,7 @@ require("bar/bell")()
 require("bar/launcher")()
 local calendar = require("calendar/controller")(make_rail(1))
 local network = require("network/controller")()
-local bluetooth = require("bluetooth/controller")()
+local bluetooth = require("bluetooth/controller")(make_rail(3))
 local info = require("info/controller")(tohru_info.snapshot)
 local about
 local function close_panels(keep)

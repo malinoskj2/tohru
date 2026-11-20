@@ -25,6 +25,7 @@ fn shared_water_shader_parses_and_validates() {
 fn network_and_bluetooth_share_one_water_with_eight_values() {
     for (scene, name) in [
         (include_str!("../shell/network/water.plm"), "net_water_shader"),
+        (include_str!("../shell/bluetooth/tank.plm"), "bt_water_shader"),
     ] {
         assert!(
             scene.contains(&format!("shader {name} = file \"../water.wgsl\"")),

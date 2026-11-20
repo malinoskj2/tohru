@@ -2,28 +2,102 @@ part BluetoothState {
     // Root measured button center; negative uses the native screen-relative default.
     prop bt_button_x = -1 ~0ms
     fact bt_open = false
+    fact bt_unfolded = false
     fact bt_scan_owned = false
     fact bt_has_target = false
+    fact bt_failed = false
     fact bt_page = 0
     fact bt_selected = -1
+    // Worked out by the controller from its own watch of the service.
+    fact bt_stop = 0
+    fact bt_paired = 0
+    fact bt_connected = 0
+    fact bt_active = -1
+    fact bt_active_battery = -1
+    fact bt_connecting = -1
+    fact bt_minis_right = 0
+    repeat i in 0..24 { fact bt_kind.$i = 0 }
+    repeat k in 0..4 {
+        fact bt_mini.$k = -1
+        fact bt_mini_kind.$k = 0
+        fact bt_mini_level.$k = -1
+        fact bt_mini_on.$k = false
+    }
     text bt_target = ""
     text bt_target_name = ""
     text bt_request = ""
     text bt_answer = ""
-    model bt_devices max 24 { name: text; address: text; paired: bool; connected: bool; battery: number = -1; icon: image 24, 24 }
+    text bt_code = ""
+    text bt_active_name = "Bluetooth"
+    model bt_devices max 24 { name: text; address: text; paired: bool; connected: bool; battery: number = -1 }
     service bluetooth as bt { present: bool; powered: bool; discovering: bool; devices: bt_devices; pairing: none | pin | passkey | confirm | display | authorize; pairing_id: number; pairing_address: text; pairing_name: text; pairing_code: text }
     event bluetooth_open ->
     event bluetooth_close ->
     event bluetooth_toggle ->
+    event bluetooth_fold_toggle ->
     event bluetooth_select ->
     event bluetooth_activate ->
     event bluetooth_connect ->
+    event bluetooth_row ->
     event bluetooth_forget ->
+    event bluetooth_forget_row ->
     event bluetooth_power ->
     event bluetooth_scan ->
+    event bluetooth_rail ->
+    event bluetooth_rail_press ->
+    event bluetooth_rail_drag ->
+    event bluetooth_rail_release ->
     event bluetooth_answer ->
     event bluetooth_cancel ->
     event bluetooth_question ->
     event bluetooth_page ->
     event bluetooth_move ->
+
+    image bt_icon = file "device.svg", 14, 14
+    image bt_headphones = file "headphones.svg", 14, 14
+    image bt_keyboard = file "keyboard.svg", 14, 14
+    image bt_mouse = file "mouse.svg", 14, 14
+    image bt_speaker = file "speaker.svg", 14, 14
+    image bt_gamepad = file "gamepad.svg", 14, 14
+    image bt_phone = file "phone.svg", 14, 14
+    image bt_forget_icon = file "forget.svg", 14, 14
+
+    // 0 is the tank, 1 the rows (or the pairing question). The sound popup's spring.
+    let bt_pairing_shown = bt.pairing != none
+    prop bt_fold = 0 ~spring(196, 21.84)
+    follow bt_fold = if(bt_unfolded or bt_pairing_shown, 1, 0)
+    let bt_fc = clamp(bt_fold, 0, 1)
+    let bt_on = bt.present and bt.powered
+    let bt_quiet = if(bt_on, 0, 1)
+
+    // The rows: the user's own devices, then Nearby under its heading, six to a page.
+    let bt_pages = max(1, ceil(bt_devices.count / 6))
+    let bt_page_rows = max(0, min(6, bt_devices.count - bt_page * 6))
+    let bt_mine_rows = max(0, min(bt_page_rows, bt_paired - bt_page * 6))
+    let bt_nearby_shown = if(bt_page_rows > bt_mine_rows or (bt.discovering and bt_page == bt_pages - 1 and bt_page_rows < 6), 1, 0)
+    let bt_pager_shown = if(bt_devices.count > 6, 1, 0)
+    let bt_list_end = 53 + 26 * if(bt_on, max(if(bt_nearby_shown == 1, 0, 1), bt_page_rows), 1) + 29 * bt_nearby_shown * if(bt_on, 1, 0)
+    let bt_rows_h = bt_list_end + 12 + 36 * bt_pager_shown * if(bt_on, 1, 0) + if(bt_failed, 20, 0)
+    let bt_open_h = if(bt_pairing_shown, 234, bt_rows_h)
+    let bt_w = 260 + 20 * bt_fold
+    let bt_h = 190 + (bt_open_h - 190) * bt_fold
+
+    // The water: the active device's battery as the line through its number, a horizon through a row that
+    // is connecting, and off the bottom of the panel otherwise. The level spring is the sound tank's; an
+    // adapter that is off drains it below the panel.
+    let bt_level = if(bt_active_battery >= 0, bt_active_battery, if(bt_active >= 0, 0.5, 0.3))
+    prop bt_water = 0 ~spring(56.25, 13.8)
+    follow bt_water = if(bt_on, bt_level, -3.5)
+    let bt_tank_line = 46 + 42 * (1 - bt_water)
+    let bt_tide_row = bt_connecting >= 0 and floor(bt_connecting / 6) == bt_page and not bt_pairing_shown
+    prop bt_tide = 360 ~spring(120, 19)
+    follow bt_tide = if(bt_tide_row, 66 + 26 * (bt_connecting - bt_page * 6) + if(bt_connecting < bt_paired, 0, 29), bt_open_h + 40)
+    let bt_waterline = mix(bt_tank_line, bt_tide, bt_fc)
+    let bt_big = round(clamp(bt_water, 0, 1) * 100)
+
+    on change bt_open {
+        bt_fold: if(bt_unfolded or bt_pairing_shown, 1, 0) ~0ms
+        bt_water: if(bt_on, bt_level, -3.5) ~0ms
+        bt_tide: bt_open_h + 40 ~0ms
+    }
 }
