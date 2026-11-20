@@ -1,9 +1,15 @@
-return function(make_usage, search, geometry, output)
+return function(make_usage, search, geometry, output, make_track)
+    local track = make_track and make_track(function(t)
+        fact.launcher_fill_start, fact.launcher_fill_end, fact.launcher_fill_swell = t.start, t.finish, t.swell
+        fact.launcher_fill_round, fact.launcher_fill_glow, fact.launcher_fill_tint = t.round, t.glow, t.tint
+        fact.launcher_track_n, fact.launcher_waves = t.columns, #t.slices > 0
+        model.launcher_track = t.slices
+    end, os.clock, every and {every = every, cancel = cancel})
     local ok, saved = pcall(sys.ask, "files.read", "launcher.json", "json")
     if not ok then text.launcher_error = tostring(saved) end
     local usage = make_usage(ok and saved or nil)
     local catalog, shown, context = {}, {}, nil
-    local choices, menu_scroll, menu_selected = {}, 0, 0
+    local choices, menu_scroll = {}, 0
     local columns, viewport, scroll = 8, 432, 0
     local tab, selected, query = 0, -1, ""
     local groups = {
@@ -27,7 +33,7 @@ return function(make_usage, search, geometry, output)
         local success, err = pcall(sys.call, "files.write", "launcher.json", usage.state)
         text.launcher_error = success and "" or tostring(err)
     end
-    local function close_menu() context = nil; choices = {}; model.launcher_choices = {}; fact.launcher_menu = false end
+    local function close_menu() context = nil; choices = {}; model.launcher_choices = {}; fact.launcher_menu = false; fact.launcher_menu_selected = -1 end
     local function publish_menu()
         local height = math.min(360, #choices * 30 + 12)
         menu_scroll = math.max(0, math.min(menu_scroll, #choices * 30 + 12 - height))
@@ -40,7 +46,7 @@ return function(make_usage, search, geometry, output)
         end
         model.launcher_choices = rows
         fact.launcher_menu_height = height
-        fact.launcher_menu_selected = menu_selected
+        fact.launcher_menu_offset = menu_scroll
     end
     local function rebuild()
         local by_id = {}
@@ -49,8 +55,9 @@ return function(make_usage, search, geometry, output)
         local pinned_count = 0
         local searching = query:find("%S") ~= nil
         fact.launcher_searching = searching
+        fact.launcher_typed = query ~= ""
         if searching then
-            shown = search(query, catalog)
+            shown = search(query, catalog, usage.state.counts)
         elseif tab == 0 then
             for _, id in ipairs(usage.state.pins) do
                 if by_id[id] then shown[#shown + 1] = by_id[id]; pinned_count = pinned_count + 1 end
@@ -81,25 +88,46 @@ return function(make_usage, search, geometry, output)
             local x, y = position(index - 1)
             if y + 72 >= scroll - 72 and y <= scroll + viewport + 72 then
                 tiles[#tiles + 1] = {position = index - 1, x = x * 72, y = y, name = app.local_name and app.local_name ~= "" and app.local_name or app.name,
-                    id = app.id, icon = app.icon, pinned = usage.pinned(app.id)}
+                    id = app.id, icon = app.icon, iconless = not app.icon_found, pinned = usage.pinned(app.id)}
             end
         end
         model.launcher_tiles = tiles
+        if #shown > 0 then text.launcher_message = ""
+        elseif searching then text.launcher_message = "No apps match \u{201c}" .. query:match("^%s*(.-)%s*$") .. "\u{201d}"
+        elseif tab == 0 or #catalog == 0 then text.launcher_message = "No applications installed"
+        else text.launcher_message = "No apps in this category" end
+    end
+    -- The bar raises itself over the scrim and tints sky from what this says (shell/bar/launcher.luau).
+    local function bar(state)
+        fact.launcher_bar_state = state
+        pcall(sys.call, "say", "tohru", "emit launcher_bar " .. state)
     end
     local function show()
         -- Repeated open keeps the same focused native role: no fresh enter is
         -- promised. A closed-to-open cycle must establish ownership anew.
         if not fact.launcher_visible then fact.launcher_focus_armed = false end
+        fact.launcher_pointer, fact.launcher_hovered = false, -1
         tab, selected, scroll, query = 0, -1, 0, ""
         text.launcher_query = ""
+        local was = fact.launcher_visible
         close_menu(); rebuild(); if output then output.open() end; fact.launcher_visible = true
+        if not was then bar(1); if track then track.snap(38) end end
     end
-    local function hide() fact.launcher_focus_armed = false; fact.launcher_visible = false; close_menu(); if output then output.close() end end
+    local function hide()
+        fact.launcher_focus_armed = false; fact.launcher_visible = false; close_menu(); if output then output.close() end
+        bar(3)
+    end
     -- Native focus events preserve arrival order. A removed layer can report
     -- its leave after the next open; it must not dismiss an as-yet unfocused
     -- replacement. Reset on closed-to-open/hide; preserve repeated visible
     -- open and VM reload ownership because neither promises a fresh enter.
-    on("focus", function() if fact.launcher_visible then fact.launcher_focus_armed = true end end)
+    on("focus", function()
+        if fact.launcher_visible then fact.launcher_focus_armed = true; if fact.launcher_bar_state == 1 then bar(2) end end
+    end)
+    on("launcher_mapped", function() if fact.launcher_visible and fact.launcher_bar_state == 1 then bar(2) end end)
+    if output then output.unmapped = function() bar(0) end end
+    on("launcher_report", function() bar(fact.launcher_bar_state or 0) end)
+    on("launcher_caret", function(width) if track and fact.launcher_visible then track.retarget(38 + (tonumber(width) or 0)) end end)
     on("blur", function()
         local owned = fact.launcher_focus_armed
         fact.launcher_focus_armed = false
@@ -112,10 +140,12 @@ return function(make_usage, search, geometry, output)
         if value ~= math.floor(value) then return end
         tab, selected, scroll, query = value % 7, -1, 0, ""
         text.launcher_query = ""
+        fact.launcher_pointer = false
         close_menu(); rebuild()
     end)
     on("text:launcher_query", function(value)
-        query, selected, scroll = value, 0, 0
+        query, selected, scroll = value, value:find("%S") and 0 or -1, 0
+        fact.launcher_pointer = false
         close_menu(); rebuild()
     end)
     on("launcher_escape", function()
@@ -126,9 +156,10 @@ return function(make_usage, search, geometry, output)
     on("launcher_layout", function(value)
         if value ~= math.floor(value) or value < 3 or value > 8 then return end
         columns = value; rebuild()
+        if track then track.resize(columns * 72 - 12) end
     end)
     on("launcher_viewport", function(value) viewport = math.max(72, math.min(value, 452)); rebuild() end)
-    on("launcher_scroll", function(value) scroll = scroll - value * 72; close_menu(); rebuild() end)
+    on("launcher_scroll", function(value) scroll = scroll - value * 72; selected = -1; close_menu(); rebuild() end)
     on("launcher_select", function(value)
         if value == math.floor(value) and value >= 0 and value < #shown then
             selected = value
@@ -142,11 +173,12 @@ return function(make_usage, search, geometry, output)
         local from = math.max(0, selected)
         selected = vertical and geometry.neighbour(columns, fact.launcher_pins, from, #shown, value) or math.max(0, math.min(from + value, #shown - 1))
         scroll = geometry.follow(columns, fact.launcher_pins, selected, scroll, viewport)
+        fact.launcher_pointer = false
         close_menu(); rebuild()
     end
     on("launcher_move", function(value) move(value, false) end)
     on("launcher_vertical", function(value) if value == -1 or value == 1 then move(value, true) end end)
-    on("launcher_page", function(value) scroll = scroll + value * viewport; selected = -1; close_menu(); rebuild() end)
+    on("launcher_page", function(value) scroll = scroll + value * viewport; selected = -1; fact.launcher_pointer = false; close_menu(); rebuild() end)
     local function launch(app, action)
         if not app then return end
         local exec = action and action.exec or app.exec
@@ -164,7 +196,8 @@ return function(make_usage, search, geometry, output)
         if not app then return end
         context = app
         choices = {{label = "Open", action = -1}}
-        menu_scroll, menu_selected = 0, 0
+        menu_scroll = 0
+        fact.launcher_menu_selected = -1
         for index, action in ipairs(app.actions or {}) do
             choices[#choices + 1] = {label = action.local_name and action.local_name ~= "" and action.local_name or action.name, action = index}
         end
@@ -181,7 +214,8 @@ return function(make_usage, search, geometry, output)
         else launch(app, app.actions[action]) end
     end)
     on("launcher_menu_move", function(value)
-        menu_selected = math.max(0, math.min(menu_selected + value, #choices - 1))
+        local menu_selected = math.max(0, math.min((fact.launcher_menu_selected or -1) + value, #choices - 1))
+        fact.launcher_menu_selected = menu_selected
         local y = menu_selected * 30
         local viewport_height = fact.launcher_menu_height - 12
         if y < menu_scroll then menu_scroll = y elseif y + 30 > menu_scroll + viewport_height then menu_scroll = y + 30 - viewport_height end
@@ -190,8 +224,18 @@ return function(make_usage, search, geometry, output)
     on("launcher_menu_close", close_menu)
     on("launcher_menu_scroll", function(value) menu_scroll = menu_scroll - value * 30; publish_menu() end)
     if not sys.watch("apps", function(value)
-        catalog = value
+        -- j2bar's order: by name whatever its case, then as written, then by id.
+        catalog = {}
+        for index, app in ipairs(value) do catalog[index] = app end
+        local function shown(app) return app.local_name and app.local_name ~= "" and app.local_name or app.name or "" end
+        table.sort(catalog, function(a, b)
+            local x, y = shown(a):lower(), shown(b):lower()
+            if x ~= y then return x < y end
+            if shown(a) ~= shown(b) then return shown(a) < shown(b) end
+            return (a.id or "") < (b.id or "")
+        end)
         close_menu(); rebuild()
     end) then text.launcher_error = "Application service unavailable" end
     rebuild()
+    bar(fact.launcher_bar_state or 0)
 end

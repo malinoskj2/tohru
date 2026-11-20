@@ -84,6 +84,8 @@ def verify(root, runtime, evidence, env, start, say, expect, wait_for):
     say('launcher', 'key Menu')
     expect('launcher', 'launcher_menu', 'true')
     expect('launcher', 'launcher_choices.2.label', 'Pin')
+    expect('launcher', 'launcher_menu_selected', '-1')
+    say('launcher', 'key Down')
     say('launcher', 'key Down')
     say('launcher', 'key Down')
     expect('launcher', 'launcher_menu_selected', '2')
@@ -95,6 +97,7 @@ def verify(root, runtime, evidence, env, start, say, expect, wait_for):
     # Use the real desktop action path, not app launch directly from the test.
     say('launcher', 'key Shift+F10')
     expect('launcher', 'launcher_menu', 'true')
+    say('launcher', 'key Down')
     say('launcher', 'key Down')
     expect('launcher', 'launcher_menu_selected', '1')
     say('launcher', 'key Return')

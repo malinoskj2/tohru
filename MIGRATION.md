@@ -32,9 +32,11 @@ importing old state (40).
 
 Accepted differences from j2bar that stay:
 
-- Panels, launcher and OSD use Pleamar's native glass, springs, glow and blur.
+- Panels and OSD use Pleamar's native glass, springs, glow and blur.
   Dimensions, content and interactions follow j2bar; j2bar's custom
-  Warp/turbulence/Slosh effects are not reproduced.
+  Warp/turbulence/Slosh effects are not reproduced. The launcher is the
+  exception: it draws j2bar's capsule, surge, reveal and Fill track in its own
+  WGSL (`shell/launcher/README.md` lists what still differs).
 - Popups opened from the CLI (no pointer click) close with Escape or
   `tohru panel close`, not an outside click: that needs an xdg_popup grab,
   and a grab needs a real input serial. Grabbing with a stale or zero serial
@@ -94,8 +96,8 @@ Accepted differences from j2bar that stay:
 - [x] Polkit: hyprpolkitagent is the only polkit agent (stop j2bar polkit-agent).
 - [x] Effects plugin: fix the first-pass `hl.animation` ordering (its animation calls run before
       `hl.plugin.load` registers them, so they only apply after a reload),
-      run its visual/unload/damage checks in a nested Hyprland, then move
-      `hyprland/` to its own repository as planned.
+      and run its visual/unload/damage checks in a nested Hyprland. The plugin
+      stays in this repository under `hyprland/`.
 - [x] Settings window: it lays out at whatever size the compositor gives it
       (tiled or floating). It asks for 760×640, which Pleamar also makes its
       minimum size; no window rule is needed.

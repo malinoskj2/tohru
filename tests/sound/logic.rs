@@ -258,6 +258,10 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         ),
         ("bar/bell", include_str!("../../shell/bar/bell.luau")),
         (
+            "bar/launcher",
+            include_str!("../../shell/bar/launcher.luau"),
+        ),
+        (
             "network/controller",
             include_str!("../../shell/network/controller.luau"),
         ),

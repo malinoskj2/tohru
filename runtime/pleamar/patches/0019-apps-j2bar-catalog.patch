@@ -1,0 +1,147 @@
+diff --git a/src/platform/desktop.rs b/src/platform/desktop.rs
+index c2eca8c..83a790e 100644
+--- a/src/platform/desktop.rs
++++ b/src/platform/desktop.rs
+@@ -13,6 +13,8 @@ struct App {
+     id: String,
+     wmclass: String,
+     local_name: String,
++    names: Vec<String>,
++    exec_line: String,
+     categories: String,
+     generic_name: String,
+     comment: String,
+@@ -119,6 +121,10 @@ fn parse(text: &str, id: &str, lang: &str) -> Option<App> {
+     if e.get("Type").is_some_and(|t| *t != "Application") || e.get("NoDisplay") == Some(&"true") || e.get("Hidden") == Some(&"true") {
+         return None;
+     }
++    let desktops = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
++    if !for_desktop(&get(e, "OnlyShowIn"), &get(e, "NotShowIn"), &desktops) || !installed_program(&get(e, "TryExec"), &std::env::var_os("PATH").unwrap_or_default()) {
++        return None;
++    }
+     // Only the ones `Actions=` lists, in its order, and only with something to run.
+     let actions = get(e, "Actions")
+         .split(';')
+@@ -136,6 +142,8 @@ fn parse(text: &str, id: &str, lang: &str) -> Option<App> {
+         id: id.to_owned(),
+         wmclass: get(e, "StartupWMClass"),
+         local_name: local(e, "Name").unwrap_or_default(),
++        names: e.iter().filter(|(k, _)| k.starts_with("Name[")).map(|(_, v)| v.to_string()).collect(),
++        exec_line: get(e, "Exec"),
+         categories: get(e, "Categories"),
+         generic_name: local(e, "GenericName").unwrap_or_default(),
+         comment: local(e, "Comment").unwrap_or_default(),
+@@ -145,6 +153,43 @@ fn parse(text: &str, id: &str, lang: &str) -> Option<App> {
+     })
+ }
+ 
++/// Whether `OnlyShowIn` and `NotShowIn` let an entry show on the desktops `XDG_CURRENT_DESKTOP`
++/// names, the first that either list names deciding. With no desktop known, only `OnlyShowIn`
++/// keeps an entry out.
++fn for_desktop(only: &str, not: &str, desktops: &str) -> bool {
++    let named = |list: &str, desktop: &str| list.split(';').any(|d| d.trim() == desktop);
++    for desktop in desktops.split(':').filter(|d| !d.is_empty()) {
++        if named(only, desktop) {
++            return true;
++        }
++        if named(not, desktop) {
++            return false;
++        }
++    }
++    only.split(';').all(|d| d.trim().is_empty())
++}
++
++/// Whether the program `TryExec` names can be run: a path that is an executable file, or a name
++/// found as one in `path`. An entry without `TryExec` always can.
++fn installed_program(program: &str, path: &std::ffi::OsStr) -> bool {
++    use std::os::unix::fs::PermissionsExt;
++    let runs = |p: &std::path::Path| std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0);
++    let program = program.trim();
++    if program.is_empty() {
++        return true;
++    }
++    if program.starts_with('/') {
++        return runs(std::path::Path::new(program));
++    }
++    std::env::split_paths(path).filter(|d| !d.as_os_str().is_empty()).any(|d| runs(&d.join(program)))
++}
++
++/// Whether the image loader will find `Icon=`: a file by its path, or a name in the icon themes.
++fn found_icon(name: &str) -> bool {
++    let path = std::path::Path::new(name);
++    !name.is_empty() && if path.is_absolute() { path.is_file() } else { crate::platform::icon(name).is_some() }
++}
++
+ /// `Exec=firefox %u` → `firefox`: the field codes are for a file manager, not for us.
+ fn command(exec: &str) -> String {
+     exec.split_whitespace().filter(|p| !p.starts_with('%')).collect::<Vec<_>>().join(" ")
+@@ -156,11 +201,15 @@ impl App {
+         SysValue::Map(vec![
+             ("name".into(), text(self.name)),
+             ("exec".into(), text(self.exec)),
++            ("icon_found".into(), SysValue::Bool(found_icon(&self.icon))),
+             ("icon".into(), text(self.icon)),
+             ("id".into(), text(self.id)),
+             ("wmclass".into(), text(self.wmclass)),
+             // `Name[es]`, as the user's language says it (the name itself if it has none).
+             ("local_name".into(), text(self.local_name)),
++            // Every `Name[…]` and `Exec=` as written, for a search that matches what j2bar matched.
++            ("names".into(), SysValue::List(self.names.into_iter().map(text).collect())),
++            ("exec_line".into(), text(self.exec_line)),
+             // `Categories=`, as written: `Utility;Calculator;`.
+             ("categories".into(), text(self.categories)),
+             // These three in the user's language, like `local_name`, and "" when it has none:
+@@ -358,6 +407,14 @@ Exec=/usr/lib/firefox/firefox --ProfileManager
+         assert_eq!(parse(FIREFOX, "firefox", "").unwrap().actions[1].local_name, "New Private Window");
+     }
+ 
++    #[test]
++    fn an_entry_brings_every_name_and_its_exec_as_written() {
++        let mpv = parse("[Desktop Entry]\nType=Application\nName=mpv Media Player\nName[fr]=Lecteur multimédia mpv\nName[de]=mpv Medienspieler\nExec=mpv -- %U\nIcon=/nonexistent/mpv.svg\n", "mpv", "fr").unwrap();
++        assert_eq!(mpv.names, ["mpv Medienspieler", "Lecteur multimédia mpv"]);
++        assert_eq!((mpv.exec.as_str(), mpv.exec_line.as_str()), ("mpv --", "mpv -- %U"));
++        assert!(!found_icon(&mpv.icon) && !found_icon(""));
++    }
++
+     #[test]
+     fn a_terminal_entry_says_so() {
+         assert!(!parse(FIREFOX, "firefox", "").unwrap().terminal);
+@@ -365,6 +422,38 @@ Exec=/usr/lib/firefox/firefox --ProfileManager
+         assert!(btop.terminal && btop.actions.is_empty() && btop.keywords.is_empty());
+     }
+ 
++    #[test]
++    fn an_entry_shows_only_on_the_desktops_it_allows() {
++        assert!(for_desktop("", "", ""));
++        assert!(for_desktop("", "KDE;", "Hyprland"));
++        assert!(!for_desktop("", "Hyprland;", "Hyprland"));
++        assert!(!for_desktop("GNOME;KDE;", "", "Hyprland"));
++        assert!(for_desktop("GNOME;Hyprland;", "", "Hyprland"));
++        assert!(!for_desktop("GNOME;", "", ""));
++        assert!(!for_desktop("Hyprland;", "GNOME;", "GNOME:Hyprland"));
++        assert!(for_desktop("Hyprland;", "GNOME;", "Hyprland:GNOME"));
++    }
++
++    #[test]
++    fn an_entry_whose_try_exec_is_missing_is_no_app() {
++        use std::os::unix::fs::PermissionsExt;
++        let dir = std::env::temp_dir().join(format!("pleamar-tryexec-{}", std::process::id()));
++        std::fs::create_dir_all(&dir).unwrap();
++        std::fs::write(dir.join("present"), "x").unwrap();
++        std::fs::set_permissions(dir.join("present"), std::fs::Permissions::from_mode(0o755)).unwrap();
++        std::fs::write(dir.join("plain"), "x").unwrap();
++        std::fs::set_permissions(dir.join("plain"), std::fs::Permissions::from_mode(0o644)).unwrap();
++        let path = std::env::join_paths(["/nonexistent".into(), dir.clone()]).unwrap();
++        assert!(installed_program("", &path));
++        assert!(installed_program("present", &path));
++        assert!(installed_program(&dir.join("present").display().to_string(), &path));
++        assert!(!installed_program("missing", &path));
++        assert!(!installed_program("plain", &path));
++        assert!(!installed_program("/nonexistent/present", &path));
++        assert!(!installed_program(&dir.display().to_string(), &path));
++        std::fs::remove_dir_all(&dir).unwrap();
++    }
++
+     #[test]
+     fn a_hidden_entry_or_a_link_is_no_app() {
+         assert_eq!(parse("[Desktop Entry]\nName=Hidden\nExec=x\nNoDisplay=true\n", "x", ""), None);

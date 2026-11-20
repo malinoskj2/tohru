@@ -1,5 +1,5 @@
 local make_usage = assert(loadfile("shell/launcher/usage.luau"))()
-local search = assert(loadfile("shell/launcher/search.luau"))()
+local search = assert(loadfile("shell/launcher/search.luau"))()(assert(loadfile("shell/launcher/fuzzy.luau"))())
 local geometry = assert(loadfile("shell/launcher/geometry.luau"))()
 local usage = make_usage({counts = {a = 2, bad = -1}, pins = {"", "a", "a", "b"}, recent = {"a", "a", "b"}})
 assert(usage.state.counts.a == 2 and not usage.state.counts.bad)
@@ -30,16 +30,26 @@ _G.sys = {
     end,
     watch = function(name, callback) watches[name] = callback; return true end,
 }
+local function launched()
+    for i = #calls, 1, -1 do if calls[i][1] == "apps.launch" then return calls[i][2] end end
+end
+local function barred()
+    for i = #calls, 1, -1 do
+        if calls[i][1] == "say" and calls[i][2] == "tohru" then return calls[i][3] end
+    end
+end
 assert(loadfile("shell/launcher/controller.luau"))()(make_usage, search, geometry)
+assert(barred() == "emit launcher_bar 0" and fact.launcher_bar_state == 0)
 local actions = {}
 for i = 1, 100 do actions[i] = {name = "Action " .. i, exec = "action" .. i} end
 watches.apps({
-    {id = "a", name = "Art", local_name = "", icon = "art", categories = "Graphics;Development;", exec = "art", actions = actions},
-    {id = "b", name = "Code", local_name = "", icon = "code", categories = "Development;", exec = "code"},
-    {id = "c", name = "Music", local_name = "", icon = "music", categories = "AudioVideo;", exec = "refused"},
+    {id = "a", name = "Art", local_name = "", icon = "art", icon_found = true, categories = "Graphics;Development;", exec = "art", actions = actions},
+    {id = "b", name = "Code", local_name = "", icon = "code", icon_found = true, categories = "Development;", exec = "code"},
+    {id = "c", name = "Music", local_name = "", icon = "", categories = "AudioVideo;", exec = "refused"},
 })
 handlers.launcher_open()
 assert(fact.launcher_visible and fact.launcher_total == 3)
+assert(not model.launcher_tiles[1].iconless and model.launcher_tiles[3].iconless)
 handlers.launcher_tab(1)
 assert(fact.launcher_total == 1 and model.launcher_tiles[1].id == "a")
 handlers.launcher_tab(2)
@@ -60,7 +70,7 @@ handlers.launcher_menu_scroll(-200)
 assert(model.launcher_choices[#model.launcher_choices].label == "Pin")
 handlers.launcher_choice(100)
 assert(saved.counts.a == 1 and saved.recent[1] == "a")
-assert(calls[#calls - 1][1] == "apps.launch" and calls[#calls - 1][2] == "action100")
+assert(launched() == "action100")
 -- Catalog virtualization covers entries beyond native model capacity.
 local apps = {}
 for i = 1, 1200 do apps[i] = {id = "x" .. i, name = "X" .. i, exec = "true", icon = "", categories = "Utility;"} end
@@ -74,11 +84,11 @@ print("Production launcher grid/category/pin/action/history fixtures passed")
 watches.apps({{id = "many", name = "Many", exec = "main", icon = "", categories = "Utility;", actions = actions}})
 handlers.launcher_open()
 handlers.launcher_context(0)
-for _ = 1, 100 do handlers.launcher_menu_move(1) end
+for _ = 1, 101 do handlers.launcher_menu_move(1) end
 assert(fact.launcher_menu_selected == 100)
 assert(model.launcher_choices[#model.launcher_choices].position == 100)
 handlers.launcher_choice(100)
-assert(calls[#calls - 1][1] == "apps.launch" and calls[#calls - 1][2] == "action100")
+assert(launched() == "action100")
 print("Menu keyboard virtualization passed")
 -- Native input text callback rebuilds results; Escape clears before closing.
 handlers.launcher_open()
@@ -108,11 +118,39 @@ assert(fact.launcher_total == 1 and model.launcher_tiles[1].id == "art")
 handlers.launcher_tab(2)
 assert(fact.launcher_total == 1 and model.launcher_tiles[1].id == "dev")
 handlers.launcher_tab(0)
+assert(model.launcher_tiles[1].id == "art" and model.launcher_tiles[2].id == "dev")
 handlers.launcher_select(1)
 assert(fact.launcher_selected_x == 72 and fact.launcher_selected_y == 0)
 handlers.launcher_context(fact.launcher_selected)
 assert(fact.launcher_menu and model.launcher_choices[1].label == "Open")
+assert(fact.launcher_menu_selected == -1)
+handlers.launcher_menu_move(1)
 handlers.launcher_menu_move(1)
 handlers.launcher_choice(fact.launcher_menu_selected)
-assert(saved.pins[#saved.pins] == "art")
+assert(saved.pins[#saved.pins] == "dev")
 print("Q-L1 token/precedence and Q-L2 selected context/keyboard pin fixtures passed")
+
+-- The bar is told what it needs to rise over the scrim and tint sky, and when to come back down.
+watches.apps({{id = "one", name = "One", exec = "true", icon = "", categories = "Utility;"}})
+handlers.launcher_open()
+assert(barred() == "emit launcher_bar 1")
+handlers.launcher_mapped()
+assert(barred() == "emit launcher_bar 2" and fact.launcher_bar_state == 2)
+handlers.launcher_open()
+assert(barred() == "emit launcher_bar 2")
+handlers.launcher_report(0)
+assert(barred() == "emit launcher_bar 2")
+handlers.blur()
+handlers.launcher_open(); handlers.focus()
+assert(barred() == "emit launcher_bar 2")
+handlers.launcher_close()
+assert(barred() == "emit launcher_bar 3" and fact.launcher_bar_state == 3)
+handlers.launcher_mapped()
+assert(barred() == "emit launcher_bar 3")
+local said = #calls
+local real = sys.call
+sys.call = function(name, ...) if name == "say" then error("tohru is not running") end return real(name, ...) end
+handlers.launcher_open()
+assert(fact.launcher_visible and fact.launcher_bar_state == 1 and #calls == said)
+sys.call = real
+print("Launcher-to-bar state: open, mapped, repeated open, report, closing, and a missing bar")
