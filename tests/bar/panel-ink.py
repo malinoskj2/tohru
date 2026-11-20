@@ -40,6 +40,19 @@ with tempfile.TemporaryDirectory(prefix='panel-ink-', dir=root / '.tmp') as dire
         result = check(path)
         assert (result.returncode == 0) == ok, (name, result.stdout, result.stderr)
         assert message in result.stdout + result.stderr, (name, result.stdout, result.stderr)
+    # Patch 0023: a layer surface tells it too, from a fact it may declare after the property.
+    surfaces = [
+        ('surface-fact', ' fact seen = 0\n', ' bright: seen\n', '', True, ''),
+        ('surface-inside', '', ' bright: later\n', ' fact later = 0\n', True, ''),
+        ('surface-unknown', '', ' bright: nowhere\n', '', False, 'no fact'),
+    ]
+    for name, before, bright, inside, ok, message in surfaces:
+        path = directory / f'{name}.plm'
+        path.write_text('scene Bright {\n surface { size: 1, 1; open: false }\n' + before + ' surface deck {\n size: 300, 200\n'
+                        + bright + inside + ' body { color: #181825; glass: 100%\n  box { from: 0, 0; size: 300, 200; corner: 12 }\n }\n }\n}\n')
+        result = check(path)
+        assert (result.returncode == 0) == ok, (name, result.stdout, result.stderr)
+        assert message in result.stdout + result.stderr, (name, result.stdout, result.stderr)
 
 scenes = ['bar.plm', 'session/menu.plm'] + [f'{f}/entry.plm' for f in ('calendar', 'network', 'bluetooth', 'info', 'about')]
 for scene in scenes:
