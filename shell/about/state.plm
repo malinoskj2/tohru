@@ -2,8 +2,9 @@ part AboutState {
     fact about_visible = false
     text about_name = "Unknown"
     text about_version = "Unknown"
+    text about_short = "—"
     text about_error = ""
-    image about_mark = file "../bar/mooncoil.svg", 42, 42
+    image about_mark = file "../bar/mooncoil.svg", 28, 28
     model about_specs max 6 { label: text; value: text }
     event about_open ->
     event about_close ->

@@ -2,13 +2,26 @@ part InformationState {
     include "power-state.plm"
     fact info_visible = false
     fact info_page = 0
+    fact info_unfolded = false
     fact info_offset = 0
     fact info_total = 0
     fact info_cache_valid = false
     fact info_cached_page = -1
+    fact info_partial = false
     text info_error = ""
     text info_generation = "Unknown"
     text info_current_user = "Unknown"
+    // Each page's hero, written from the snapshot; pages 2 and 6 are drawn from live services instead.
+    repeat i in 0..7 {
+        text info_big.$i = "—"
+        text info_unit.$i = ""
+        text info_note.$i = ""
+    }
+    text info_caption = ""
+    text info_storage_caption = ""
+    text info_generation_caption = ""
+    image info_mark = file "../bar/mooncoil.svg", 14, 14
+    image info_refresh_icon = file "refresh.svg", 12, 12
     model info_rows max 8 { label: text; value: text }
     model info_cache max 256 { label: text; value: text }
     service clock as info_clock { date: text; time: text; year: number; month: number; day: number; hour: number; minute: number }
@@ -16,6 +29,18 @@ part InformationState {
     event info_close ->
     event info_toggle ->
     event info_page ->
+    event info_unfold ->
+    event info_fold ->
+    event info_fold_toggle ->
+    event info_step ->
     event info_refresh ->
     event info_scroll ->
+
+    // 0 is the overview bento, 1 a page unfolded from its tile. The network and sound popups' spring.
+    prop info_fold = 0 ~spring(196, 21.84)
+    on change info_unfolded { info_fold: if(info_unfolded, 1, 0) }
+    on change info_visible { info_fold: if(info_unfolded, 1, 0) ~0ms }
+    let info_fc = clamp(info_fold, 0, 1)
+    let info_w = 312 + 144 * info_fold
+    let info_h = 330 + 102 * info_fold
 }

@@ -7,6 +7,7 @@ return function(snapshot, more)
         else text.about_error=#(data.issues or {})>0 and "Some system facts are unavailable" or "" end
         local system=data.system or {}
         text.about_name=value(system.os_name);text.about_version=value(system.os_version)
+        text.about_short=type(system.os_version)=="string" and system.os_version:match("^(%d+%.%d+)") or "—"
         local startup
         for _,mount in ipairs(data.mounts or {}) do
             if mount.path=="/" then
