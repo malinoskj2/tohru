@@ -1,16 +1,12 @@
-return function(make_usage, search, geometry, output, make_track)
-    local track = make_track and make_track(function(t)
-        fact.launcher_fill_start, fact.launcher_fill_end, fact.launcher_fill_swell = t.start, t.finish, t.swell
-        fact.launcher_fill_round, fact.launcher_fill_glow, fact.launcher_fill_tint = t.round, t.glow, t.tint
-        fact.launcher_track_n, fact.launcher_waves = t.columns, #t.slices > 0
-        model.launcher_track = t.slices
-    end, os.clock, every and {every = every, cancel = cancel})
+-- `rail` is the sidebar's ribbon (bar/rail.luau as rail 0, a slot per tab).
+return function(make_usage, search, geometry, output, rail)
+    local names = {"Home", "Create", "Code", "Media", "Web", "Office", "System"}
     local ok, saved = pcall(sys.ask, "files.read", "launcher.json", "json")
     if not ok then text.launcher_error = tostring(saved) end
     local usage = make_usage(ok and saved or nil)
     local catalog, shown, context = {}, {}, nil
     local choices, menu_scroll = {}, 0
-    local columns, viewport, scroll = 8, 432, 0
+    local columns, viewport, scroll = 7, 440, 0
     local tab, selected, query = 0, -1, ""
     local groups = {
         {"graphics", "photography", "2dgraphics", "3dgraphics"},
@@ -68,6 +64,12 @@ return function(make_usage, search, geometry, output, make_track)
                 if (tab == 0 and not usage.pinned(app.id)) or (tab ~= 0 and category(app) == tab) then shown[#shown + 1] = app end
             end
         end
+        local per_tab = {[0] = #catalog, 0, 0, 0, 0, 0, 0}
+        for _, app in ipairs(catalog) do
+            local index = category(app)
+            per_tab[index] = per_tab[index] + 1
+        end
+        for index = 0, 6 do fact["launcher_tab_count." .. index] = per_tab[index] end
         -- Pins absent from the current catalog never consume visual space.
         fact.launcher_pins = pinned_count
         fact.launcher_tab = tab
@@ -82,20 +84,29 @@ return function(make_usage, search, geometry, output, make_track)
         fact.launcher_content = content
         fact.launcher_pin_rows = pin_rows
         local sx, sy = position(math.max(0, selected))
-        fact.launcher_selected_x, fact.launcher_selected_y = sx * 72, sy
+        fact.launcher_selected_x, fact.launcher_selected_y = sx * geometry.cell, sy
         local tiles = {}
         for index, app in ipairs(shown) do
             local x, y = position(index - 1)
-            if y + 72 >= scroll - 72 and y <= scroll + viewport + 72 then
-                tiles[#tiles + 1] = {position = index - 1, x = x * 72, y = y, name = app.local_name and app.local_name ~= "" and app.local_name or app.name,
+            if y + geometry.row >= scroll - geometry.row and y <= scroll + viewport + geometry.row then
+                tiles[#tiles + 1] = {position = index - 1, x = x * geometry.cell, y = y, name = app.local_name and app.local_name ~= "" and app.local_name or app.name,
                     id = app.id, icon = app.icon, iconless = not app.icon_found, pinned = usage.pinned(app.id)}
             end
         end
         model.launcher_tiles = tiles
+        text.launcher_count = string.format("%02d", #shown)
+        text.launcher_count_label = searching and (#shown > 0 and "Search results" or "No matches") or names[tab + 1] .. " \u{00b7} apps"
+        if searching then text.launcher_heading = "All tabs \u{00b7} " .. #shown .. (#shown == 1 and " match" or " matches")
+        elseif tab == 0 then text.launcher_heading = pinned_count > 0 and "Pinned" or "Applications"
+        else text.launcher_heading = names[tab + 1] end
+        text.launcher_hint = ""
         if #shown > 0 then text.launcher_message = ""
-        elseif searching then text.launcher_message = "No apps match \u{201c}" .. query:match("^%s*(.-)%s*$") .. "\u{201d}"
-        elseif tab == 0 or #catalog == 0 then text.launcher_message = "No applications installed"
-        else text.launcher_message = "No apps in this category" end
+        elseif searching then
+            text.launcher_message = "No applications match \u{201c}" .. query:match("^%s*(.-)%s*$") .. "\u{201d}"
+            text.launcher_hint = "Clear the search with Esc or pick a tab on the rail"
+        elseif #catalog == 0 then text.launcher_message = "No applications installed"
+        else text.launcher_message = "No applications in this tab" end
+        if rail then rail.observe(7, tab + 1) end
     end
     -- The bar raises itself over the scrim and tints sky from what this says (shell/bar/launcher.luau).
     local function bar(state)
@@ -110,8 +121,9 @@ return function(make_usage, search, geometry, output, make_track)
         tab, selected, scroll, query = 0, -1, 0, ""
         text.launcher_query = ""
         local was = fact.launcher_visible
+        if not was and rail then rail.reset() end
         close_menu(); rebuild(); if output then output.open() end; fact.launcher_visible = true
-        if not was then bar(1); if track then track.snap(38) end end
+        if not was then bar(1) end
     end
     local function hide()
         fact.launcher_focus_armed = false; fact.launcher_visible = false; close_menu(); if output then output.close() end
@@ -127,7 +139,6 @@ return function(make_usage, search, geometry, output, make_track)
     on("launcher_mapped", function() if fact.launcher_visible and fact.launcher_bar_state == 1 then bar(2) end end)
     if output then output.unmapped = function() bar(0) end end
     on("launcher_report", function() bar(fact.launcher_bar_state or 0) end)
-    on("launcher_caret", function(width) if track and fact.launcher_visible then track.retarget(38 + (tonumber(width) or 0)) end end)
     on("blur", function()
         local owned = fact.launcher_focus_armed
         fact.launcher_focus_armed = false
@@ -154,18 +165,17 @@ return function(make_usage, search, geometry, output, make_track)
         else hide() end
     end)
     on("launcher_layout", function(value)
-        if value ~= math.floor(value) or value < 3 or value > 8 then return end
+        if value ~= math.floor(value) or value < 3 or value > 7 then return end
         columns = value; rebuild()
-        if track then track.resize(columns * 72 - 12) end
     end)
-    on("launcher_viewport", function(value) viewport = math.max(72, math.min(value, 452)); rebuild() end)
-    on("launcher_scroll", function(value) scroll = scroll - value * 72; selected = -1; close_menu(); rebuild() end)
+    on("launcher_viewport", function(value) viewport = math.max(geometry.row, math.min(value, 440)); rebuild() end)
+    on("launcher_scroll", function(value) scroll = scroll - value * geometry.row; selected = -1; close_menu(); rebuild() end)
     on("launcher_select", function(value)
         if value == math.floor(value) and value >= 0 and value < #shown then
             selected = value
             fact.launcher_selected = selected
             local x, y = geometry.position(columns, fact.launcher_pins, selected)
-            fact.launcher_selected_x, fact.launcher_selected_y = x * 72, y
+            fact.launcher_selected_x, fact.launcher_selected_y = x * geometry.cell, y
         end
     end)
     local function move(value, vertical)

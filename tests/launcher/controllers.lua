@@ -120,7 +120,7 @@ assert(fact.launcher_total == 1 and model.launcher_tiles[1].id == "dev")
 handlers.launcher_tab(0)
 assert(model.launcher_tiles[1].id == "art" and model.launcher_tiles[2].id == "dev")
 handlers.launcher_select(1)
-assert(fact.launcher_selected_x == 72 and fact.launcher_selected_y == 0)
+assert(fact.launcher_selected_x == 80 and fact.launcher_selected_y == 26)
 handlers.launcher_context(fact.launcher_selected)
 assert(fact.launcher_menu and model.launcher_choices[1].label == "Open")
 assert(fact.launcher_menu_selected == -1)
@@ -154,3 +154,43 @@ handlers.launcher_open()
 assert(fact.launcher_visible and fact.launcher_bar_state == 1 and #calls == said)
 sys.call = real
 print("Launcher-to-bar state: open, mapped, repeated open, report, closing, and a missing bar")
+
+-- The deck's sidebar: per-tab counts, the numeral and its label, the stage's headings and the empty state,
+-- and the rail's bead put on the tab's slot.
+handlers, watches, calls, saved = {}, {}, {}, {pins = {"code"}}
+_G.text, _G.fact, _G.model = {}, {}, {}
+local observed, resets = {}, 0
+local rail = {observe = function(slots, slot) observed[#observed + 1] = slots .. ":" .. slot end, reset = function() resets = resets + 1 end}
+assert(loadfile("shell/launcher/controller.luau"))()(make_usage, search, geometry, nil, rail)
+watches.apps({
+    {id = "art", name = "Art", exec = "true", icon = "", categories = "Graphics;"},
+    {id = "code", name = "Code", exec = "true", icon = "", categories = "Development;"},
+    {id = "edit", name = "Edit", exec = "true", icon = "", categories = "TextEditor;"},
+    {id = "play", name = "Play", exec = "true", icon = "", categories = "AudioVideo;"},
+    {id = "tool", name = "Tool", exec = "true", icon = "", categories = "Utility;"},
+})
+handlers.launcher_open()
+assert(resets == 1 and observed[#observed] == "7:1")
+assert(fact["launcher_tab_count.0"] == 5 and fact["launcher_tab_count.1"] == 1 and fact["launcher_tab_count.2"] == 2)
+assert(fact["launcher_tab_count.3"] == 1 and fact["launcher_tab_count.4"] == 0 and fact["launcher_tab_count.6"] == 1)
+assert(text.launcher_count == "05" and text.launcher_count_label == "Home \u{00b7} apps")
+assert(text.launcher_heading == "Pinned" and fact.launcher_pins == 1)
+local _, first_app = geometry.position(7, 1, 1)
+assert(model.launcher_tiles[1].y == 26 and model.launcher_tiles[2].y == first_app and first_app == 134)
+handlers.launcher_tab(2)
+assert(observed[#observed] == "7:3" and text.launcher_heading == "Code" and text.launcher_count == "02")
+assert(text.launcher_count_label == "Code \u{00b7} apps" and model.launcher_tiles[2].x == 80)
+handlers["text:launcher_query"]("e")
+assert(text.launcher_heading == "All tabs \u{00b7} " .. fact.launcher_total .. " matches" and text.launcher_count_label == "Search results")
+handlers["text:launcher_query"]("wqv")
+assert(fact.launcher_total == 0 and text.launcher_count == "00" and text.launcher_count_label == "No matches")
+assert(text.launcher_message == "No applications match \u{201c}wqv\u{201d}" and text.launcher_hint ~= "")
+handlers.launcher_escape()
+assert(text.launcher_hint == "" and text.launcher_message == "" and observed[#observed] == "7:3")
+handlers.launcher_tab(4)
+assert(text.launcher_message == "No applications in this tab" and text.launcher_count == "00")
+handlers.launcher_open()
+assert(resets == 1 and observed[#observed] == "7:1")
+handlers.launcher_close(); handlers.launcher_open()
+assert(resets == 2)
+print("Deck sidebar counts, numeral, headings, empty state and rail slots passed")

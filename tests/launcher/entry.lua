@@ -1,6 +1,6 @@
 -- Execute the actual private entry with native frontier fixtures, not a parallel factory.
 local events,watches={},{}
-_G.fact={launcher_visible=false,launcher_closing=false,launcher_outputs_known=false,launcher_output_count=0}
+_G.fact={launcher_visible=false,launcher_closing=false,launcher_outputs_known=false,launcher_output_count=0,["rail.goal.0"]=16,["rail.land.0"]=0,["rail.serial.0"]=0}
 _G.text={launcher_outputs="",["screen.0.name"]="DP-1",["screen.1.name"]="DP-2"}
 _G.model={}
 _G.on=function(name,fn)events[name]=fn end

@@ -50,3 +50,15 @@ local reborn = assert(loadfile("shell/bar/rail.luau"))()(3, 21)
 reborn.observe(12, 1)
 assert(fact["rail.serial.3"] == 2, "a reloaded logic finds the slot from the pitch")
 print("Rail pitch and drag-then-settle passed")
+
+-- The launcher's sidebar: 32 px slots, and a reload finds the slot its goal is the middle of.
+for key, value in pairs({present = false, goal = 16, serial = 0, land = 0}) do fact["rail." .. key .. ".2"] = value end
+local tabs = assert(loadfile("shell/bar/rail.luau"))()(2, 32)
+tabs.observe(7, 1)
+assert(fact["rail.goal.2"] == 16 and fact["rail.land.2"] == 1)
+tabs.observe(7, 7)
+assert(fact["rail.goal.2"] == 208 and fact["rail.serial.2"] == 1)
+local reloaded_tabs = assert(loadfile("shell/bar/rail.luau"))()(2, 32)
+reloaded_tabs.observe(7, 7)
+assert(fact["rail.serial.2"] == 1, "a reload keeps the slot")
+print("Rail slots of any pitch passed")

@@ -1,0 +1,155 @@
+diff --git a/docs/11-language-reference.md b/docs/11-language-reference.md
+index 8ea401e..50e6236 100644
+--- a/docs/11-language-reference.md
++++ b/docs/11-language-reference.md
+@@ -547,6 +547,8 @@ Each element accepts these properties and no others; another one is an error, wi
+ | `row` `column` | `at` · `anchor` · `gap` · `padding` · `align:` `start` `center` `end` · `fill` · `corner` · `opacity` · `cursor` · `show` · `size: w, h` · `view: w, h` · `step` · `content` · `wrap: n` |
+ | `grid` | `at` · `columns` · `width` · `gap` · `row` (the height of every row) · `show` · `opacity`; and on its children, `span`. What it is: below |
+ 
++A layer `surface` takes the same `bright:` a fact: the share of what is behind all of its lens glass that is bright. Unlike a popup's, it keeps its last value when the surface closes and opens again, until the next capture is taken in.
++
+ `anchor` of a text: `left` `center` `right` and `top` `center` `bottom`, one or both (`anchor: left center`). Of a layout: `left` `center` `right` and `top` `middle` `bottom` —with no anchor, `at` is its top left corner—. `cursor:` `default` `pointer` `text` `grab` `grabbing`, and for stretching and carrying `ew_resize` `ns_resize` `nwse_resize` `nesw_resize` `move`, `not_allowed`, `crosshair`; and any other standard one, with `_` between its words (`help`, `progress`, `wait`, `context_menu`, `zoom_in`, `col_resize`…: the cursor-shape protocol's list). Or **one that changes while it runs**: an expression in which each cursor's name is that cursor, `cursor: if(held, grabbing, grab)` or `cursor: pick(tool, pointer, text, wait)`. It is read while the zone is dragged too —the cursor of a drag is the pressed zone's, wherever the mouse goes—, so a hand can close for as long as it holds something. Inside a `cursor:` a bare cursor name is the cursor before anything of the scene's (`pointer.x` is still the mouse), and an `if` takes one or the other, never a blend: halfway, the nearer one.
+ 
+ **A text's `size:` and `weight:`, and a body's `rim:`, are expressions** like
+@@ -1898,7 +1900,7 @@ This is the output of `pleamar --grammar`, copied. It is not a second list: thes
+ language: 0.9
+ statements: surface permissions model service spring prop pose fact event text image figure font shader blur lens particles measure let zone body ellipse box arc line path input clip group popup component children repeat for row column grid pages space between layer on every blink wave spin follow look gesture posture translations windows window terminal
+ library: let spring component permissions fact text model service event image figure font shader prop pose gesture posture layer translations
+-properties.surface: size anchor margin level reserve screens keyboard open kind title app_id rate captures agent
++properties.surface: size anchor margin level reserve screens keyboard open kind title app_id layer_namespace bright rate captures agent
+ properties.permissions: run services env
+ properties.blur: passes values reach
+ properties.shape: rotate stroke color opacity blend glass lens shine refraction dispersion dome ripple frost smoke milk tint vivid mirror highlight active show cursor carries carry_icon grow label agent role value checked selected handle yields place
+diff --git a/src/language/compiler.rs b/src/language/compiler.rs
+index 69bd71f..89d5b80 100644
+--- a/src/language/compiler.rs
++++ b/src/language/compiler.rs
+@@ -303,6 +303,8 @@ struct Compiler<'a> {
+     row_scrolls: std::collections::HashSet<String>,
+     /// Surfaces whose `open:` is resolved at the end: (which one, the fact, where it is written).
+     pending_surfaces: Vec<(usize, &'a [Token], (usize, usize))>,
++    /// A surface's `bright:`, read once the scene is: the fact can be declared inside the surface.
++    pending_brights: Vec<(usize, &'a [Token], (usize, usize))>,
+     /// The zones the scene names with `.hover` or `.pressed`, as written
+     /// (`tile.$t`), and the springs made for them, to tie to their zones at the end.
+     hover_mentions: std::collections::HashSet<String>,
+@@ -505,7 +507,7 @@ pub fn compile<'a>(tree: &'a [Entry], files: &'a [String], dirs: &'a [std::path:
+             other => unreachable!("'{other}' is in the vocabulary, but it has no stiffness or damping"),
+         })).collect(),
+         under: Vec::new(), candidates: Vec::new(), zparents: vec![0], next_zparent: 1, zblock: None, rules: Vec::new(), errors: Vec::new(), declared: Vec::new(), used: Default::default(), current_class: String::new(),
+-        scrolls: Vec::new(), row_scrolls: Default::default(), pending_surfaces: Vec::new(), pending_levels: Vec::new(), pending_reserves: Vec::new(), pending_keyboards: Vec::new(), pending_rates: Vec::new(), hover_mentions: Default::default(), zone_springs: Vec::new(), pending_anchors: Vec::new(), pending_screens: Vec::new(), files, dirs, strict_files, libraries, boundary_of: HashMap::new(), permissions_of: HashMap::new(), pass: 0, next_origin: 0.0, values: HashMap::new(), ambiguous: Default::default(), instance_children: Vec::new(), from_library: Default::default(), unrequested: Default::default(), unwatched: Default::default(), hiding_noted: Default::default(), extra_noted: Default::default(), in_letters: Default::default(), in_cursor: Default::default(), scopes: Vec::new(), components: HashMap::new(), copies: 0, let_props: HashMap::new(), copy_props: Default::default(), later_copy: false, effects_depth: 0, in_slot: false, last_size: None, imposed_measure: None, pending_keyboard: None, prop_sites: HashMap::new(), arrays: HashMap::new(), elements: HashMap::new(), hoisted: HashSet::new(), in_hoisted: 0, hoisting: None, top: &[], rows: HashSet::new(), fold_scope: None, turns: HashMap::new(), folds: HashMap::new(), image_sites: HashMap::new(), type_index: Default::default(),
++        scrolls: Vec::new(), row_scrolls: Default::default(), pending_surfaces: Vec::new(), pending_brights: Vec::new(), pending_levels: Vec::new(), pending_reserves: Vec::new(), pending_keyboards: Vec::new(), pending_rates: Vec::new(), hover_mentions: Default::default(), zone_springs: Vec::new(), pending_anchors: Vec::new(), pending_screens: Vec::new(), files, dirs, strict_files, libraries, boundary_of: HashMap::new(), permissions_of: HashMap::new(), pass: 0, next_origin: 0.0, values: HashMap::new(), ambiguous: Default::default(), instance_children: Vec::new(), from_library: Default::default(), unrequested: Default::default(), unwatched: Default::default(), hiding_noted: Default::default(), extra_noted: Default::default(), in_letters: Default::default(), in_cursor: Default::default(), scopes: Vec::new(), components: HashMap::new(), copies: 0, let_props: HashMap::new(), copy_props: Default::default(), later_copy: false, effects_depth: 0, in_slot: false, last_size: None, imposed_measure: None, pending_keyboard: None, prop_sites: HashMap::new(), arrays: HashMap::new(), elements: HashMap::new(), hoisted: HashSet::new(), in_hoisted: 0, hoisting: None, top: &[], rows: HashSet::new(), fold_scope: None, turns: HashMap::new(), folds: HashMap::new(), image_sites: HashMap::new(), type_index: Default::default(),
+     };
+     // Two facts that always exist: what the surface really measures. The
+     // render sets them when the compositor configures it.
+@@ -690,6 +692,27 @@ pub fn compile<'a>(tree: &'a [Entry], files: &'a [String], dirs: &'a [std::path:
+             }
+         }
+     }
++    for (which, tokens, (l, col)) in std::mem::take(&mut o.pending_brights) {
++        o.scopes.clear();
++        let mut c = Cur::new(tokens, l, col);
++        let fact = c.id("the fact that hears how bright it is behind").and_then(|n| {
++            c.expect_end()?;
++            let h = o.global(&n);
++            match o.facts.get(&h) {
++                Some(h) => Ok(*h),
++                None => o.unknown(&c, "no fact", &h, o.facts.keys().collect()),
++            }
++        });
++        match fact {
++            Ok(h) => {
++                let owner = o.e.surfaces[which].name.clone();
++                for s in o.e.surfaces.iter_mut().filter(|s| s.name == owner) {
++                    s.bright = Some(h);
++                }
++            }
++            Err(f) => o.errors.push(f),
++        }
++    }
+     for (which, tokens, (l, col)) in std::mem::take(&mut o.pending_keyboards) {
+         o.scopes.clear();
+         let mut c = Cur::new(tokens, l, col);
+@@ -4787,6 +4810,10 @@ impl<'a> Compiler<'a> {
+             // Like the keyboard's `while`: it can name a fact declared further down.
+             self.pending_surfaces.push((which, fact, pos));
+         }
++        if let Some(c) = p.get_mut("bright") {
++            self.pending_brights.push((which, &c.tokens[c.i..], c.pos()));
++            c.i = c.tokens.len();
++        }
+         let s = &mut self.e.surfaces[which];
+         if let Some(c) = p.get_mut("size") {
+             // `size: full, 36`: the whole width of the monitor; `full, full`, all of it.
+diff --git a/src/language/vocabulary.rs b/src/language/vocabulary.rs
+index 7e04f41..aa7ddaa 100644
+--- a/src/language/vocabulary.rs
++++ b/src/language/vocabulary.rs
+@@ -18,7 +18,7 @@ pub const LIBRARY_STATEMENTS: &[&str] = &["let", "spring", "component", "permiss
+ 
+ /// Which properties each element accepts. `shape` are the ones common to all shapes.
+ pub const PROPERTIES: &[(&str, &[&str])] = &[
+-    ("surface", &["size", "anchor", "margin", "level", "reserve", "screens", "keyboard", "open", "kind", "title", "app_id", "layer_namespace", "rate", "captures", "agent"]),
++    ("surface", &["size", "anchor", "margin", "level", "reserve", "screens", "keyboard", "open", "kind", "title", "app_id", "layer_namespace", "bright", "rate", "captures", "agent"]),
+     ("permissions", &["run", "services", "env"]),
+     ("blur", &["passes", "values", "reach"]),
+     ("shape", &["rotate", "stroke", "color", "opacity", "blend", "glass", "lens", "shine", "refraction", "dispersion", "dome", "ripple", "frost", "smoke", "milk", "tint", "vivid", "mirror", "highlight", "active", "show", "cursor", "carries", "carry_icon", "grow", "label", "agent", "role", "value", "checked", "selected", "handle", "yields", "place"]),
+diff --git a/src/render.rs b/src/render.rs
+index a1cb1ab..0a6b5a5 100644
+--- a/src/render.rs
++++ b/src/render.rs
+@@ -4660,8 +4660,8 @@ pub fn run(
+                 }
+             }
+             l.wants_lens = !with_lens.is_empty() || !read.is_empty();
+-            // `bright:` on a popup: how bright it is behind its glass, the box all of it fits in.
+-            let tells_bright = l.view.popup.and_then(|k| scene.popups.get(k)).is_some_and(|p| p.bright.is_some());
++            // `bright:` on a popup or a surface: how bright it is behind its glass, the box all of it fits in.
++            let tells_bright = bright_of(&scene, &l.view).is_some();
+             let scale = l.scale;
+             if let Some(lens) = &mut l.lens {
+                 lens.bright_area = with_lens.iter().copied().reduce(|a, b| [a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])]).filter(|_| tells_bright).map(|b| {
+@@ -5176,7 +5176,7 @@ pub fn run(
+             // again, so it does not paint the monitor, and the capture the nudge is for is never answered (#118).
+             let was_painted = g.paint(l, &draw, &uniforms, asks || others || fifo, (knows_where && l.painted == Some(where_) && !nudge).then(|| with_owed.as_deref().unwrap_or(&changed[..])));
+             if let Some(share) = l.lens.as_mut().and_then(|x| x.bright_share.take()) {
+-                if let Some(h) = l.view.popup.and_then(|k| scene.popups.get(k)).and_then(|p| p.bright) {
++                if let Some(h) = bright_of(&scene, &l.view) {
+                     let h = h.0 as usize;
+                     if (facts[h] - share).abs() > 0.001 {
+                         facts[h] = share;
+@@ -7222,3 +7222,11 @@ mod rule_index_tests {
+         assert_eq!(index.awake_with_events.len(), 1);
+     }
+ }
++
++/// The fact a sheet writes how bright it is behind its glass into: its popup's, or its own surface's.
++fn bright_of(scene: &crate::scene::Scene, view: &crate::gpu::View) -> Option<crate::scene::FactId> {
++    match view.popup {
++        Some(k) => scene.popups.get(k).and_then(|p| p.bright),
++        None => scene.surfaces.get(view.surface).and_then(|s| s.bright),
++    }
++}
+diff --git a/src/scene.rs b/src/scene.rs
+index c417459..249f24e 100644
+--- a/src/scene.rs
++++ b/src/scene.rs
+@@ -150,6 +150,9 @@ pub struct Surface {
+     pub app_id: Option<String>,
+     /// Static layer-shell namespace. None preserves the native "pleamar" default.
+     pub layer_namespace: Option<String>,
++    /// `bright: fact`: as a popup's, the share, 0 to 1, of what is behind its lens glass that is
++    /// bright, written each time a capture is taken in. It keeps its last value while the surface is closed.
++    pub bright: Option<FactId>,
+     /// If it is the lock screen: a surface that does NOT exist until its
+     /// `open:` becomes true, and that, once it exists, has the session really
+     /// locked —the compositor guarantees it, not the drawing—, on all
+@@ -209,7 +212,7 @@ pub enum Keyboard {
+ impl Default for Surface {
+     fn default() -> Self {
+         // Neutral: full width, at the top, on all monitors. Whatever the scene asks for wins.
+-        Surface { name: String::new(), instance: 0, origin: (0.0, 0.0), open: None, window: None, app_id: None, layer_namespace: None, lock_screen: false, width: 0, size_props: None, cursor_props: None, height: 40, anchor: SurfaceAnchor::Top, anchor_from: None, level_while: None, margin: [0; 4], level: Level::Above, exclusive_zone: 0, reserve_while: None, max_fps: 0, rate_said: false, rate_while: Vec::new(), screens: Screens::All, screens_from: None, keyboard: Keyboard::Never, keyboard_while: false, keyboard_said: false, keyboard_when: None, right_click_quits: true, hidden_from_captures: false, agent_hidden: false }
++        Surface { name: String::new(), instance: 0, origin: (0.0, 0.0), open: None, window: None, app_id: None, layer_namespace: None, bright: None, lock_screen: false, width: 0, size_props: None, cursor_props: None, height: 40, anchor: SurfaceAnchor::Top, anchor_from: None, level_while: None, margin: [0; 4], level: Level::Above, exclusive_zone: 0, reserve_while: None, max_fps: 0, rate_said: false, rate_while: Vec::new(), screens: Screens::All, screens_from: None, keyboard: Keyboard::Never, keyboard_while: false, keyboard_said: false, keyboard_when: None, right_click_quits: true, hidden_from_captures: false, agent_hidden: false }
+     }
+ }
+ 

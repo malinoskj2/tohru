@@ -40,20 +40,35 @@ with tempfile.TemporaryDirectory(prefix='panel-ink-', dir=root / '.tmp') as dire
         result = check(path)
         assert (result.returncode == 0) == ok, (name, result.stdout, result.stderr)
         assert message in result.stdout + result.stderr, (name, result.stdout, result.stderr)
+    # Patch 0023: a layer surface tells it too, from a fact it may declare after the property.
+    surfaces = [
+        ('surface-fact', ' fact seen = 0\n', ' bright: seen\n', '', True, ''),
+        ('surface-inside', '', ' bright: later\n', ' fact later = 0\n', True, ''),
+        ('surface-unknown', '', ' bright: nowhere\n', '', False, 'no fact'),
+    ]
+    for name, before, bright, inside, ok, message in surfaces:
+        path = directory / f'{name}.plm'
+        path.write_text('scene Bright {\n surface { size: 1, 1; open: false }\n' + before + ' surface deck {\n size: 300, 200\n'
+                        + bright + inside + ' body { color: #181825; glass: 100%\n  box { from: 0, 0; size: 300, 200; corner: 12 }\n }\n }\n}\n')
+        result = check(path)
+        assert (result.returncode == 0) == ok, (name, result.stdout, result.stderr)
+        assert message in result.stdout + result.stderr, (name, result.stdout, result.stderr)
 
-scenes = ['bar.plm', 'session/menu.plm'] + [f'{f}/entry.plm' for f in ('calendar', 'network', 'bluetooth', 'info', 'about')]
+scenes = ['bar.plm', 'session/menu.plm', 'launcher/entry.plm'] + [f'{f}/entry.plm' for f in ('calendar', 'network', 'bluetooth', 'info', 'about')]
 for scene in scenes:
     result = check(shell / scene)
     assert result.returncode == 0, (scene, result.stdout, result.stderr)
 
 # Every panel tells its brightness, and none keeps a dark-only colour of its own.
 popups = {'bar.plm': 1, 'calendar/popup.plm': 1, 'network/popup.plm': 1, 'bluetooth/popup.plm': 1,
-          'info/popup.plm': 1, 'about/popup.plm': 1, 'session/menu.plm': 1}
+          'info/popup.plm': 1, 'about/popup.plm': 1, 'session/menu.plm': 1, 'launcher/entry.plm': 1}
 for name, count in popups.items():
     text = (shell / name).read_text()
     assert len(re.findall(r'\bbright: panel_bright\b', text)) == count, name
 panel_files = ['sound/panel.plm', 'sound/details.plm', 'calendar/popup.plm', 'network/popup.plm',
                'bluetooth/popup.plm', 'info/popup.plm', 'info/content.plm', 'about/popup.plm']
+# The launcher's only literal is the scrim's j2bar colour, and its bead's light ink.
+assert set(re.findall(r'#[0-9a-fA-F]{6}\b', (shell / 'launcher/entry.plm').read_text())) == {'#0e0816', '#1c1826', '#ffffff'}
 for name in panel_files:
     literals = re.findall(r'#[0-9a-fA-F]{6}\b', (shell / name).read_text())
     assert not literals, (name, literals)
