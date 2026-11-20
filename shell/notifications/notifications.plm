@@ -1,11 +1,13 @@
 language 0.4
 scene TohruNotifications {
-    surface { size: 420, 380; anchor: top_right; margin: 42, 12, 0, 0; level: overlay; keyboard: none; screens: each }
-    permissions { services: "notifications", "sound", "files", "files.write", "say:tohru" }
+    surface { size: 404, 620; anchor: bottom_right; margin: 0; level: overlay; keyboard: none; screens: all }
+    permissions { services: "notifications", "notifications.*", "sound", "files", "files.write", "say:tohru" }
     fact last_id = 0
     fact power_level = 0
     fact unread = false
     fact dnd = false
+    fact dnd_pill = false
+    fact toasts_open = false
     event notices_seen ->
     event notices_dnd ->
     event notices_report ->
@@ -13,14 +15,114 @@ scene TohruNotifications {
     event power_warning_low ->
     event power_warning_critical ->
     event power_warning_empty ->
-    model banners max 4 { title: text; body: text }
-    column stack { at: 12, 8; gap: 8
-        for notice in banners { Banner(notice) }
+    event toast_enter ->
+    event toast_leave ->
+    event toast_close ->
+    event toast_open ->
+    event toast_action ->
+    model toasts max 4 {
+        live: bool; serial: number; y: number; h: number; depth: number
+        app: text; title: text; body: text; lines: number; clock: text
+        icon: image 16, 16; has_icon: bool; pic: image 46, 46; has_pic: bool
+        critical: bool; counting: bool; held: bool; left: number
+        acts: number; a1: text; a2: text; a3: text; opens: bool
     }
-    component Banner(notice: record) {
-        size: 396, 80
-        box { from: 0, 0; size: 396, 80; color: #171219; opacity: 94% }
-        text notice.title { at: 12, 9; width: 372; lines: 1; size: 13; weight: 600; color: #ffffff }
-        text notice.body { at: 12, 31; width: 372; lines: 3; size: 12; color: #ffffff }
+    include "../panel-ink.plm"
+    shader glass_fill = file "../sound/fill.wgsl"
+    shader capillary = file "bevel.wgsl"
+    shader rail_shader = file "../bar/ribbon.wgsl"
+    image toast_bell = file "../service-assets/bell-filled.svg", 16, 16
+    image toast_bell_off = file "../service-assets/bell-off-filled.svg", 14, 14
+    prop pill_seen = 0 ~spring(196, 24)
+    follow pill_seen = if(dnd_pill, 1, 0)
+    let toast_x = 16
+    popup toasts_glass {
+        at: 0, 0
+        size: 404, 620
+        open: toasts_open
+        bright: panel_bright
+        for t in toasts { Toast(t) }
+        include "pill.plm"
+    }
+    component Toast(t: record) {
+        prop seen = 0 ~spring(196, 24)
+        follow seen = if(t.live, 1, 0)
+        prop ty = 608 ~spring(170, 26)
+        follow ty = t.y
+        prop cap = 1 ~spring(400, 40)
+        follow cap = t.left
+        prop dim = 1 ~180ms
+        follow dim = pick(min(t.depth, 2), 1, 0.93, 0.84)
+        prop shut = 0 ~140ms
+        on change t.serial { ty: t.y ~0ms; cap: t.left ~0ms; shut: 0 ~0ms }
+        let ink_title = ink_white
+        let tw = if(t.has_pic, 287, 344)
+        let top = if(t.critical, 49, 41)
+        let numeral_x = 360 - 24 * shut
+        let seg = 374 / max(t.acts, 1)
+        group {
+            move: toast_x + (1 - seen) * 28, ty
+            opacity: clamp(seen, 0, 1) * dim
+            show: seen > 0.002
+            body {
+                color: ink_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+                shadow: 0, 4, 10, 0.22 - 0.1 * pk
+                box { from: 0, 0; size: 374, t.h; corner: 15 }
+            }
+            shader glass_fill { at: 0, 0; size: 374, t.h; corner: 15; values: 0.62, 0.46, 0.65, pk, 0; colors: ink_glass }
+            zone box card { from: 0, 0; size: 374, t.h; corner: 15; cursor: if(t.opens, pointer, default); active: t.live; label: "{t.app}: {t.title}" }
+            on enter card { shut: 1; emit toast_enter(t.index) }
+            on leave card { shut: 0; emit toast_leave(t.index) }
+            on press card { emit toast_open(t.index) }
+
+            image t.icon { at: 16, 12; size: 16, 16; show: t.has_icon }
+            image toast_bell { at: 16, 12; size: 16, 16; tint: ink_white; opacity: 64%; show: not t.has_icon }
+            measure app_name
+            text t.app { at: 38, 20; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 0%; measure: app_name }
+            text t.app { at: 38, 20; anchor: left center; width: 200; lines: 1; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 64% }
+            text "· CRITICAL" { at: 38 + min(200, app_name.width) + 5, 20; anchor: left center; size: 11; weight: 600; family: "SF Pro Text"; color: ink_red; show: t.critical }
+            text t.clock { at: numeral_x, 23; anchor: right center; size: 26; weight: 200; family: "SF Pro Text:tnum"; color: ink_white; opacity: 66%; letter_move: -0.9 * letter, 0; show: not t.critical }
+            text t.clock { at: numeral_x, 27; anchor: right center; size: 36; weight: 200; family: "SF Pro Text:tnum"; color: ink_red; letter_move: -1.2 * letter, 0; show: t.critical }
+
+            text t.title { at: 16, top + 8.5; anchor: left center; width: tw; lines: 1; size: 13; weight: 600; family: "SF Pro Text"; color: ink_title; opacity: 94% }
+            text t.body { at: 16, top + 19; width: tw; lines: t.lines; size: 12; line_height: 1.375; family: "SF Pro Text"; color: ink_white; opacity: 74% - 2% * pk }
+            group {
+                show: t.has_pic
+                clip box { from: 314, top + 1; size: 46, 46; corner: 9 }
+                image t.pic { at: 314, top + 1; size: 46, 46; fit: cover }
+            }
+            box { from: 314.5, top + 1.5; size: 45, 45; corner: 8.5; stroke: 1; color: ink_white; opacity: 18% - 6% * pk; show: t.has_pic }
+
+            group {
+                show: t.acts > 0
+                clip box { from: 0, 0; size: 374, t.h; corner: 15 }
+                box { from: 0, t.h - 30; size: 374, 30; color: ink_white; opacity: 3% - 0.5% * pk }
+                box { from: 0, t.h - 30; size: 374, 1; color: ink_white; opacity: 8% - 1.5% * pk }
+                box { from: seg, t.h - 26; size: 1, 22; color: ink_white; opacity: 7.5% - 1.5% * pk; show: t.acts > 1 }
+                box { from: 2 * seg, t.h - 26; size: 1, 22; color: ink_white; opacity: 7.5% - 1.5% * pk; show: t.acts > 2 }
+                repeat k in 0..3 {
+                    zone box act { from: k * seg, t.h - 30; size: seg, 30; cursor: pointer; active: t.live and t.acts > k; label: pick(k, t.a1, t.a2, t.a3) }
+                    box { from: k * seg, t.h - 30; size: seg, 30; color: ink_white; opacity: max(act.hover * 6%, act.pressed * 10%); show: t.acts > k }
+                    on press act { emit toast_action(t.index * 4 + k + 1) }
+                }
+                text t.a1 { at: seg / 2, t.h - 15; anchor: center; width: seg - 16; lines: 1; align: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 96% }
+                text t.a2 { at: seg * 1.5, t.h - 15; anchor: center; width: seg - 16; lines: 1; align: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 66%; show: t.acts > 1 }
+                text t.a3 { at: seg * 2.5, t.h - 15; anchor: center; width: seg - 16; lines: 1; align: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 66%; show: t.acts > 2 }
+            }
+
+            box { from: 0.5, 0.5; size: 373, t.h - 1; corner: 14.5; stroke: 1; color: ink_white; opacity: 0.75 * (26% - 10% * pk); show: not t.critical }
+            box { from: 0.5, 0.5; size: 373, t.h - 1; corner: 14.5; stroke: 1; color: ink_red; opacity: 48% - 12% * pk; show: t.critical }
+            shader capillary { at: 0, 0; size: 374, t.h; corner: 15; values: cap, pk, if(t.critical, 1, 0), if(t.counting, 1, 0), if(t.held, 1, 0) }
+
+            group {
+                opacity: shut
+                show: shut > 0.01
+                zone box close_hit { from: 340, 11; size: 22, 22; corner: 11; cursor: pointer; active: t.live and shut > 0.5; label: "Close notification" }
+                box { from: 342, 13; size: 18, 18; corner: 9; color: ink_white; opacity: 10% - 2% * pk + max(close_hit.hover * 8%, close_hit.pressed * 12%) }
+                path { at: 351, 22; stroke: 1.3; color: ink_white; opacity: 72%; move -3, -3; line 3, 3 }
+                path { at: 351, 22; stroke: 1.3; color: ink_white; opacity: 72%; move 3, -3; line -3, 3 }
+                on press close_hit { emit toast_close(t.index) }
+            }
+        }
     }
 }

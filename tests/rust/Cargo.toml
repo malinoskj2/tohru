@@ -28,3 +28,7 @@ path = "../bar/workspace-shader.rs"
 [[test]]
 name = "water-shader"
 path = "../water-shader.rs"
+
+[[test]]
+name = "notifications-bevel-shader"
+path = "../session/bevel-shader.rs"

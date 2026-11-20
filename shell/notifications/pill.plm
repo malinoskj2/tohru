@@ -1,0 +1,19 @@
+part DndPill {
+    group {
+        move: 96 + (1 - pill_seen) * 28, 562
+        opacity: clamp(pill_seen, 0, 1)
+        show: pill_seen > 0.002
+        body {
+            color: ink_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+            shadow: 0, 4, 10, 0.22 - 0.1 * pk
+            box { from: 0, 0; size: 294, 46; corner: 15 }
+        }
+        shader glass_fill { at: 0, 0; size: 294, 46; corner: 15; values: 0.62, 0.46, 0.34, pk, 0.85; colors: ink_glass }
+        box { from: 0.5, 0.5; size: 293, 45; corner: 14.5; stroke: 1; color: ink_white; opacity: 0.75 * (26% - 10% * pk) }
+        image toast_bell_off { at: 14, 16; size: 14, 14; tint: ink_white; opacity: 78% }
+        text "Do Not Disturb · On" { at: 36, 16.5; anchor: left center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 94% }
+        text "Right-click bell to resume" { at: 36, 31; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 54% }
+        box { from: 226, 22; size: 54, 2; corner: 1; color: ink_white; opacity: pk * 22% }
+        shader rail_shader { at: 214, 2; size: 78, 42; values: 42.2, 0, 2, 0, 0, 0, 0, 1; colors: mix(#c2b0fb, #1c1826, 0.35 * pk), #ffffff; opacity: 81% }
+    }
+}
