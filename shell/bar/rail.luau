@@ -1,7 +1,10 @@
 -- One rail's goal and per-switch draws. The motion itself is the scene's springs (bar/rail-state.plm).
-return function(index)
+-- Slots are `pitch` pixels apart (16 unless given), the bead resting in the middle of one.
+return function(index, pitch)
+    pitch = pitch or 16
     local function key(name) return "rail." .. name .. "." .. index end
-    local active = fact[key("present")] and math.floor((fact[key("goal")] - 8) / 16) + 1 or nil
+    local target, heading = fact[key("target")] or 8, 0
+    local active = fact[key("present")] and math.floor(fact[key("goal")] / pitch) + 1 or nil
     -- A switch to another place, with fresh draws for its spring, reach and life.
     local function switch(goal)
         fact[key("goal")] = goal
@@ -20,17 +23,18 @@ return function(index)
         local from = active
         active = slot
         if not slot then return end
+        local goal = (slot - 1) * pitch + pitch / 2
+        target, heading = goal, 0
         if not from then
             -- A bead that appears lands in place.
-            fact[key("goal")] = (slot - 1) * 16 + 8
+            fact[key("goal")] = goal
             fact[key("land")] = fact[key("land")] + 1
             return
         end
-        switch((slot - 1) * 16 + 8)
+        switch(goal)
     end
     -- A rail with no slots (the sound popup's volume) moves in pixels, with the sound mock's fixed draws.
     local function bump(name) fact[key(name)] = (fact[key(name)] or 0) + 1 end
-    local target, heading = fact[key("target")] or 8, 0
     local function place(goal)
         target, heading = goal, 0
         fact[key("goal")] = goal
@@ -46,7 +50,9 @@ return function(index)
         bump("serial")
     end
     -- The bead chases a dragged goal through its own spring; turning back starts a fresh crest.
+    -- A dragged bead rests in no slot, so the next observe switches it back into one.
     local function chase(goal)
+        if active then active = 0 end
         local delta = goal - target
         if math.abs(delta) > 1e-4 then
             local direction = delta > 0 and 1 or -1

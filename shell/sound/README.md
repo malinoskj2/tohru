@@ -86,5 +86,5 @@ Run them from the repository root; the Lua tests need Lua 5.4. `tests/native-set
 - Input devices cannot be chosen: Pleamar's input and output device IDs can collide.
 - There is no balance control or peak meter.
 - An app without an icon leaves its icon slot empty.
-- On light glass the master rail gets an ink track under the ribbon, and its bead is darkened, so that it shows.
+- On light glass the ribbon draws the master rail's track in dark ink and its bead is darkened, so that it shows.
 - When opened from the CLI, the popup closes with Escape or `tohru panel close`, not with a click outside it.

@@ -89,7 +89,7 @@ part BluetoothPopup {
         // The rail: two stops on the folded Off panel, Off / On / Scan unfolded. One bead serves both.
         let bt_off_k = bt_ck * if(bt.present and not bt.powered, 1, 0)
         box { from: bt_ox + 170, 161; size: 62, 2; corner: 1; color: ink_white; opacity: bt_off_k * pk * 22% }
-        shader rail_shader { at: bt_ox + 158, 141; size: 86, 42; values: rail.x.4, vel(rail.x.4), rail.bead.4, rail.c.4, rail.amp.4, rail.wash.4, rail.wc.4, rail.wave.4; colors: mix(rgb(rail.red.4, rail.green.4, rail.blue.4), #1c1826, 0.35 * pk), #ffffff; opacity: bt_off_k * 70%; show: bt_off_k > 0.001 }
+        shader rail_shader { at: bt_ox + 158, 141; size: 86, 42; values: rail.x.4, vel(rail.x.4), rail.bead.4, rail.c.4, rail.amp.4, rail.wash.4, rail.wc.4, rail.wave.4; colors: mix(rgb(rail.red.4, rail.green.4, rail.blue.4), #1c1826, 0.35 * pk), ink_white; opacity: bt_off_k * 70%; show: bt_off_k > 0.001 }
         zone box bt_power_rail { from: bt_ox + 12, 140; size: 236, 46; corner: 9; cursor: pointer; active: bt.present and not bt.powered and not bt_unfolded and not bt_pairing_shown; label: "Turn Bluetooth on"; role: slider }
         on press bt_power_rail { emit bluetooth_rail_press(local.x - bt_ox - 170) }
         on drag bt_power_rail { emit bluetooth_rail_drag(local.x - bt_ox - 170) }
@@ -103,7 +103,7 @@ part BluetoothPopup {
             box { from: bt_ox + 8, 13; size: 24, 22; corner: 7; color: ink_white; opacity: max(bt_fold_hit.hover * 10%, bt_fold_hit.pressed * 16%) }
             image bt_icon { at: bt_ox + 13, 17; size: 14, 14; tint: ink_white; opacity: 92% }
             box { from: bt_ox + 40, 23; size: 172, 2; corner: 1; color: ink_white; opacity: pk * 22% }
-            shader rail_shader { at: bt_ox + 28, 3; size: 196, 42; values: rail.x.4, vel(rail.x.4), rail.bead.4, rail.c.4, rail.amp.4, rail.wash.4, rail.wc.4, rail.wave.4; colors: mix(rgb(rail.red.4, rail.green.4, rail.blue.4), #1c1826, 0.35 * pk), #ffffff; show: bt.present }
+            shader rail_shader { at: bt_ox + 28, 3; size: 196, 42; values: rail.x.4, vel(rail.x.4), rail.bead.4, rail.c.4, rail.amp.4, rail.wash.4, rail.wc.4, rail.wave.4; colors: mix(rgb(rail.red.4, rail.green.4, rail.blue.4), #1c1826, 0.35 * pk), ink_white; show: bt.present }
             text pick(bt_stop, "Off", "On", "Scan") { at: bt_right + 2, 24; anchor: right center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 68% }
             repeat s in 0..3 {
                 text pick(s, "Off", "On", "Scan") { at: bt_ox + 48 + 78 * s, 41; anchor: center; size: 10; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(bt_stop == s, 92%, 38%) }

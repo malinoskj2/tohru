@@ -8,13 +8,11 @@ part InformationRail {
     let info_rail_k = if(info_rail_up, smooth(0.55, 0.85, info_fold), 1 - smooth(0.15, 0.45, info_fold))
     let info_rail_scale = (info_rail_len - 16) / 96
     let info_rail_x = 8 + (rail.x.3 - 8) * info_rail_scale
-    // The ribbon draws its track in white, which light glass hides; an ink track shows it there.
-    box { from: info_rail_left, info_rail_y - 2; size: info_rail_len, 4; corner: 2; color: ink_white; opacity: 12% * pk * info_rail_k; show: info_visible and pk > 0.01 }
     shader rail_shader {
         at: info_rail_left - 12, info_rail_y - 21
         size: info_rail_len + 24, 42
-        values: info_rail_x, vel(rail.x.3) * info_rail_scale, rail.bead.3, info_rail_x + rail.c.3 - rail.x.3, rail.amp.3, rail.wash.3, info_rail_x + rail.wc.3 - rail.x.3, rail.wave.3
-        colors: mix(rgb(rail.red.3, rail.green.3, rail.blue.3), #1c1826, 0.35 * pk), if(rail.present.3, #ffffff, #000000)
+        values: info_rail_x, vel(rail.x.3) * info_rail_scale, if(rail.present.3, rail.bead.3, -1), info_rail_x + rail.c.3 - rail.x.3, rail.amp.3, rail.wash.3, info_rail_x + rail.wc.3 - rail.x.3, rail.wave.3
+        colors: mix(rgb(rail.red.3, rail.green.3, rail.blue.3), #1c1826, 0.35 * pk), ink_white
         opacity: info_rail_k
         show: info_visible and info_rail_k > 0.001
     }

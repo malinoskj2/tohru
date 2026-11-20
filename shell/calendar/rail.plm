@@ -1,7 +1,11 @@
-part CalendarRibbon {
-    shader rail_shader { at: 52, 76 + cal_weeks * 30; size: 216, 42; values: rail.x.1, vel(rail.x.1), rail.bead.1, rail.c.1, rail.amp.1, rail.wash.1, rail.wc.1, rail.wave.1; colors: rgb(rail.red.1, rail.green.1, rail.blue.1), if(rail.present.1, #ffffff, #000000) }
+part CalendarHorizon {
+    // The year's months as rail 1 of ../bar/rail-state.plm, 21 px apart (controller.luau's pitch).
+    shader rail_shader { at: cal_rx - 12, cal_ry - 21; size: 276, 42; values: rail.x.1, vel(rail.x.1), if(rail.present.1, rail.bead.1, -1), rail.c.1, rail.amp.1, rail.wash.1, rail.wc.1, rail.wave.1; colors: mix(rgb(rail.red.1, rail.green.1, rail.blue.1), ink_white, 0.35 * pk), ink_white }
     repeat i in 1..13 {
-        zone box cal_rail.$i { from: 64 + (i - 1) * 16, 86 + cal_weeks * 30; size: 16, 22; cursor: pointer; label: "Month {i}" }
-        on press cal_rail.$i { emit calendar_month(i) }
+        text pick(i - 1, "J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D") { at: cal_rx + (i - 0.5) * 21, cal_ry + 22; anchor: center; size: 8.5; weight: if(cal_month == i, 600, 500); family: "SF Pro Text"; color: ink_white; opacity: if(cal_month == i, 92%, 38%) }
     }
+    zone box cal_horizon { from: cal_rx - 10, cal_ry - 14; size: 272, 46; cursor: pointer; label: "Month"; role: slider; value: cal_month }
+    on press cal_horizon { emit calendar_scrub_press(local.x - cal_rx) }
+    on drag cal_horizon { emit calendar_scrub(local.x - cal_rx) }
+    on release cal_horizon { emit calendar_scrub_release }
 }

@@ -1,40 +1,116 @@
 part CalendarPopup {
+    // Fades the left column's numeral and swaps its foot when another month is shown.
+    prop cal_away = 0 ~spring(220, 29.66)
+    follow cal_away = if(cal_current, 0, 1)
+    // A month change slides the grid in from the side it came from; a scrub dims it until release.
+    prop cal_slide = 0 ~spring(240, 30.98)
+    follow cal_slide = 0
+    on change cal_turn { cal_slide: 14 * cal_dir ~0ms }
+    prop cal_scrub_k = 0 ~160ms
+    follow cal_scrub_k = if(cal_scrubbing, 1, 0)
+    measure cal_chip_measure
+    prop cal_rows_k = 5 ~spring(260, 32.25)
+    follow cal_rows_k = cal_rows
+    let cal_h = 106 + 26 * cal_rows_k
+    let cal_ox = 12
+    let cal_cw = 271 / 7
+    // The horizon: twelve 21 px months, centred in the right column.
+    let cal_ry = 70 + 26 * cal_rows_k
+    let cal_rx = cal_ox + 171
+
     popup calendar {
-        at: screen.width - 430, 36
-        size: 320, 165 + cal_weeks * 30
+        at: screen.width - 558, 37
+        // The surface keeps a six-week month's size: resizing a popup closes and reopens it.
+        size: 470, 106 + 26 * 6 + 18
         open: cal_open
         bright: panel_bright
+
         body {
-            color: ink_body; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 0.25 - 0.11 * pk
-            box { from: 0, 0; size: 320, 165 + cal_weeks * 30; corner: 22 }
+            color: ink_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+            shadow: 0, 4, 10, 0.22 - 0.1 * pk
+            box { from: cal_ox, 0; size: 446, cal_h; corner: 15 }
         }
-        text cal_title { at: 20, 29; anchor: left center; size: 17; weight: 600; color: ink_text }
-        box cal_previous { from: 246, 13; size: 28, 28; corner: 7; color: ink_text; opacity: 6%; cursor: pointer }
-        box cal_next { from: 278, 13; size: 28, 28; corner: 7; color: ink_text; opacity: 6%; cursor: pointer }
-        text "‹" { at: 260, 27; anchor: center; size: 22; color: ink_text }
-        text "›" { at: 292, 27; anchor: center; size: 22; color: ink_text }
+        box { from: cal_ox + 0.5, 0.5; size: 445, cal_h - 1; corner: 14.5; stroke: 1; color: ink_white; opacity: 0.6 * (26% - 10% * pk) }
+
+        group {
+            clip box { from: cal_ox, 0; size: 446, cal_h; corner: 15 }
+            box { from: cal_ox, 0; size: 146, cal_h; color: ink_white; opacity: 3.2% }
+        }
+        box { from: cal_ox + 146, 14; size: 1, cal_h - 28; color: ink_white; opacity: 10% }
+
+        text cal_month_name { at: cal_ox + 18, 24; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+        text cal_year_text { at: cal_ox + 18, 40; anchor: left center; size: 11; family: "SF Pro Text:tnum"; color: ink_white; opacity: 60% }
+        // Today's day, still whatever the grid shows.
+        text cal_today_day {
+            at: cal_ox + 15, 112; anchor: left center; size: 68; weight: 200; family: "SF Pro Text:tnum"; color: ink_white
+            letter_move: -2.8 * letter, 0
+            opacity: 92% - 54% * cal_away
+        }
+
+        text cal_today_line { at: cal_ox + 18, cal_h - 40; anchor: left center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 72% * (1 - smooth(0, 0.5, cal_away)); show: cal_away < 0.5 }
+        group {
+            opacity: smooth(0.5, 1, cal_away)
+            show: cal_away > 0.5
+            zone box cal_today_hit { from: cal_ox + 18, cal_h - 50; size: cal_chip_measure.width + 24, 20; corner: 6; cursor: pointer; active: not cal_current; label: "Back to today" }
+            box { from: cal_ox + 18, cal_h - 50; size: cal_chip_measure.width + 24, 20; corner: 6; color: ink_white; opacity: 10% + max(cal_today_hit.hover * 6%, cal_today_hit.pressed * 12%) }
+            box { from: cal_ox + 18.5, cal_h - 49.5; size: cal_chip_measure.width + 23, 19; corner: 5.5; stroke: 1; color: ink_white; opacity: 10% }
+            group {
+                glow: 3.5, 45%, ink_white
+                box { from: cal_ox + 26, cal_h - 41.5; size: 3, 3; color: ink_white }
+            }
+            text cal_today_chip { at: cal_ox + 34, cal_h - 40; anchor: left center; size: 10.5; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 92%; measure: cal_chip_measure }
+        }
+        on press cal_today_hit { emit calendar_today }
+        group {
+            glow: 3.5, 45%, ink_white
+            show: cal_hovering
+            box { from: cal_ox + 19, cal_h - 23.5; size: 3, 3; color: ink_white }
+        }
+        text cal_note { at: cal_ox + 18 + if(cal_hovering, 10, 0), cal_h - 22; anchor: left center; width: 124; lines: 1; size: 10.5; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 60% }
+
+        zone box cal_previous { from: cal_ox + 391, 9; size: 20, 20; corner: 6; cursor: pointer; label: "Previous month" }
+        zone box cal_next { from: cal_ox + 414, 9; size: 20, 20; corner: 6; cursor: pointer; label: "Next month" }
+        box { from: cal_ox + 391, 9; size: 20, 20; corner: 6; color: ink_white; opacity: 7% + max(cal_previous.hover * 7%, cal_previous.pressed * 12%) }
+        box { from: cal_ox + 414, 9; size: 20, 20; corner: 6; color: ink_white; opacity: 7% + max(cal_next.hover * 7%, cal_next.pressed * 12%) }
+        text "‹" { at: cal_ox + 401, 18; anchor: center; size: 14; family: "SF Pro Text"; color: ink_white; opacity: 72% }
+        text "›" { at: cal_ox + 424, 18; anchor: center; size: 14; family: "SF Pro Text"; color: ink_white; opacity: 72% }
         on press cal_previous { emit calendar_previous }
         on press cal_next { emit calendar_next }
-        text "S" { at: 12 + (0 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: ink_overlay }
-        text "M" { at: 12 + (1 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: ink_overlay }
-        text "T" { at: 12 + (2 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: ink_overlay }
-        text "W" { at: 12 + (3 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: ink_overlay }
-        text "T" { at: 12 + (4 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: ink_overlay }
-        text "F" { at: 12 + (5 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: ink_overlay }
-        text "S" { at: 12 + (6 + 0.5) * 296 / 7, 63; anchor: center; size: 11; color: ink_overlay }
-        for d in cal_days {
-            zone box cal_cell.$d.index { from: 12 + d.col * 296 / 7, 76 + d.row * 30; size: 296 / 7, 30; cursor: pointer }
-            text d.day { at: 12 + (d.col + 0.5) * 296 / 7, 91 + d.row * 30; anchor: center; size: 13; weight: 400 + 200 * d.today; color: if(d.outside, ink_overlay, if(d.col == 0 or d.col == 6, ink_sub0, ink_text)) }
-            box { from: 12 + (d.col + 0.5) * 296 / 7 - 7, 99 + d.row * 30; size: 14, 3; color: pick(d.col, ink_peach, ink_yellow, ink_green, ink_teal, ink_blue, ink_lavender, ink_mauve); show: d.selected }
-            box { from: 12 + (d.col + 0.5) * 296 / 7 - 7, 100 + d.row * 30; size: 14, 3; color: ink_overlay; show: d.today and not d.selected }
-            on press cal_cell.$d.index { emit calendar_day(d.index) }
+        on scroll cal_previous { emit calendar_scroll(wheel) }
+        on scroll cal_next { emit calendar_scroll(wheel) }
+
+        repeat c in 0..7 {
+            text pick(c, "S", "M", "T", "W", "T", "F", "S") { at: cal_ox + 161 + (c + 0.5) * cal_cw, 40; anchor: center; size: 10; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 38% }
         }
+        zone box cal_grid { from: cal_ox + 161, 30; size: 271, 20 + 26 * cal_weeks }
+        on scroll cal_grid { emit calendar_scroll(wheel) }
+        group {
+            move: cal_slide, 0
+            opacity: (1 - 0.4 * min(1, abs(cal_slide) / 14)) * (1 - 0.2 * cal_scrub_k)
+            repeat k in 0..42 {
+                let cal_col = mod(k, 7)
+                let cal_x = cal_ox + 161 + cal_col * cal_cw
+                let cal_y = 50 + floor(k / 7) * 26
+                let cal_out = cal_days.$k.outside
+                group {
+                    show: k < cal_days.count
+                    zone box cal_cell.$k { from: cal_x, cal_y; size: cal_cw, 26; cursor: pointer; active: k < cal_days.count; label: cal_days.$k.day }
+                    box { from: cal_x + 2, cal_y + 1.5; size: cal_cw - 4, 23; corner: 7; color: ink_white; opacity: 10% * cal_cell.$k.hover * (1 - cal_scrub_k) }
+                    box { from: cal_x + 2.5, cal_y + 2; size: cal_cw - 5, 22; corner: 6.5; stroke: 1; color: ink_white; opacity: max(14% * cal_cell.$k.hover * (1 - cal_scrub_k), if(cal_days.$k.selected and not cal_days.$k.today, 10%, 0%)) }
+                    text cal_days.$k.day { at: cal_x + cal_cw / 2, cal_y + 13; anchor: center; size: 12.5; weight: if(cal_out, 400, if(cal_days.$k.today, 600, 500)); family: "SF Pro Text:tnum"; color: ink_white; opacity: if(cal_out, 38%, if(cal_col == 0 or cal_col == 6, 72%, 92%)) }
+                    group {
+                        glow: 3.5, 45%, ink_white
+                        show: cal_days.$k.today
+                        box { from: cal_x + cal_cw / 2 - 1.5, cal_y + 22; size: 3, 3; color: ink_white }
+                    }
+                }
+                on press cal_cell.$k { emit calendar_day(k) }
+                on enter cal_cell.$k { emit calendar_hover(k) }
+                on leave cal_cell.$k { emit calendar_unhover(k) }
+            }
+        }
+
         include "rail.plm"
-        text cal_footer { at: 20, 133 + cal_weeks * 30; anchor: left center; size: 13; color: ink_text }
-        text cal_week { at: 300, 133 + cal_weeks * 30; anchor: right center; size: 11; color: ink_sub0 }
-        zone box cal_today_hit { from: 150, 13; size: 90, 28; active: not cal_current; cursor: pointer }
-        text "Today" { at: 215, 27; anchor: center; size: 11; color: ink_text; show: not cal_current }
-        on press cal_today_hit { emit calendar_today }
     }
     on key Escape { cal_open = false }
     on blur { cal_open = false }

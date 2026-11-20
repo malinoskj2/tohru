@@ -13,7 +13,6 @@ part DndPill {
         image toast_bell_off { at: 14, 16; size: 14, 14; tint: ink_white; opacity: 78% }
         text "Do Not Disturb · On" { at: 36, 16.5; anchor: left center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 94% }
         text "Right-click bell to resume" { at: 36, 31; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 54% }
-        box { from: 226, 22; size: 54, 2; corner: 1; color: ink_white; opacity: pk * 22% }
-        shader rail_shader { at: 214, 2; size: 78, 42; values: 42.2, 0, 2, 0, 0, 0, 0, 1; colors: mix(#c2b0fb, #1c1826, 0.35 * pk), #ffffff; opacity: 81% }
+        shader rail_shader { at: 214, 2; size: 78, 42; values: 42.2, 0, 2, 0, 0, 0, 0, 1; colors: mix(#c2b0fb, #1c1826, 0.35 * pk), ink_white; opacity: 81% }
     }
 }

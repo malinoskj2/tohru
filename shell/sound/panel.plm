@@ -45,9 +45,7 @@ part SoundPanel {
    image sound_glyph_x { at: sound_ox + 20 - 7 * sound_vs, 19 - 7 * sound_vs; size: 14 * sound_vs, 14 * sound_vs; tint: sound_ink; opacity: 92% * smooth(0.3, 1, sound_fc); show: sound_quiet == 1 or sound_shown < 0.005 }
    image sound_glyph_1 { at: sound_ox + 20 - 7 * sound_vs, 19 - 7 * sound_vs; size: 14 * sound_vs, 14 * sound_vs; tint: sound_ink; opacity: 92% * smooth(0.3, 1, sound_fc); show: sound_quiet == 0 and sound_shown >= 0.005 and sound_shown < 0.5 }
    image sound_glyph_2 { at: sound_ox + 20 - 7 * sound_vs, 19 - 7 * sound_vs; size: 14 * sound_vs, 14 * sound_vs; tint: sound_ink; opacity: 92% * smooth(0.3, 1, sound_fc); show: sound_quiet == 0 and sound_shown >= 0.5 }
-   // The ribbon's own track is white; on light glass it needs one in ink to show.
-   box { from: sound_ox + 40, 18; size: 194, 2; corner: 1; color: sound_ink; opacity: sound_rk * pk * 22% }
-   shader rail_shader { at: sound_ox + 28, -2; size: 218, 42; values: rail.x.2, vel(rail.x.2), rail.bead.2, rail.c.2, rail.amp.2, rail.wash.2, rail.wc.2, rail.wave.2; colors: mix(rgb(rail.red.2, rail.green.2, rail.blue.2), #1c1826, 0.35 * pk), #ffffff; opacity: sound_rk * if(sound_quiet == 1, 38%, 100%); show: sound_rk > 0.001 }
+   shader rail_shader { at: sound_ox + 28, -2; size: 218, 42; values: rail.x.2, vel(rail.x.2), rail.bead.2, rail.c.2, rail.amp.2, rail.wash.2, rail.wc.2, rail.wave.2; colors: mix(rgb(rail.red.2, rail.green.2, rail.blue.2), #1c1826, 0.35 * pk), sound_ink; opacity: sound_rk * if(sound_quiet == 1, 38%, 100%); show: sound_rk > 0.001 }
    repeat n in 0..101 { text "{n}" { at: sound_ox + 266.5, 18.3; anchor: right center; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: 0.1%; show: sound_open } }
    zone box sound_rail_hit { from: sound_ox + 40, 8; size: 194, 22; cursor: pointer; active: sound_unfolded and sound_outputs.count > 0; label: "Volume"; role: slider; value: "{sound_percent} %" }
    text "{sound_percent}" { at: sound_ox + 266.5, 18.3; anchor: right center; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: sound_ink; opacity: smooth(0.7, 1, sound_fc) * if(sound_quiet == 1, 38%, 92%) }

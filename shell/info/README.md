@@ -22,7 +22,7 @@ A read-only System Information popup, a glass capsule whose overview of four til
 
 The popup opens folded on the overview. Choosing a tile, a stop on the rail, Return or Tab unfolds a page: the chosen tile grows into the page's hero while the other tiles recede and fade, and the page's rows fade in. Pages without a tile (Displays, Date & Time, Users) grow from their stop on the rail. "‹ Overview" or Tab folds back. `info_fold` springs between the two (ω 14, damping ratio 0.78, as the network and sound popups' fold).
 
-The rail's bead marks the chosen page and glides between stops with the workspace ribbon's draws. Folded, it sits under the tiles with the page names below it; while unfolding it fades there and comes back under the page's header. On light glass an ink track is drawn under the ribbon, whose own track is white.
+The rail's bead marks the chosen page and glides between stops with the workspace ribbon's draws. Folded, it sits under the tiles with the page names below it; while unfolding it fades there and comes back under the page's header.
 
 | Key | Folded | Unfolded |
 |---|---|---|
