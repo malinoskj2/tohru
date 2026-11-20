@@ -1,0 +1,57 @@
+part InformationOverview {
+    // Tiles 0 to 3 stand for pages 0, 4, 5 and 6; pages 1 to 3 unfold from their stop on the rail.
+    let info_tile_page = pick(info_page, 0, -1, -1, -1, 1, 2, 3)
+    group {
+        show: info_ok > 0.001
+        opacity: info_ok
+        image info_mark { at: info_ox + 15, 14; size: 14, 14; tint: ink_white; opacity: 85% }
+        text "System Overview" { at: info_ox + 35, 21; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+        text "7 pages" { at: info_ox + 298, 21; anchor: right center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_fc < 0.02 and not info_partial }
+        text "Partial facts" { at: info_ox + 298, 21; anchor: right center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_peach; opacity: 80%; show: info_fc < 0.02 and info_partial }
+        text pick(info_page, "Unfolding System…", "Unfolding Displays…", "Unfolding Date & Time…", "Unfolding Users…", "Unfolding Storage…", "Unfolding Generations…", "Unfolding Power…") { at: info_ox + 298, 21; anchor: right center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_fc >= 0.02 }
+    }
+    repeat t in 0..3 { measure info_tile_measure.$t }
+    measure info_power_measure
+    let info_recede = smooth(0, 1, info_fc)
+    repeat t in 0..4 {
+        let tx = 14 + mod(t, 2) * 146
+        let ty = 39 + floor(t / 2) * 118
+        let tp = pick(t, 0, 4, 5, 6)
+        group {
+            show: info_ok > 0.001 and not (info_tile_page == t and info_fc > 0.001)
+            opacity: info_ok * (1 - 0.3 * info_recede)
+            pivot: info_ox + tx + 69, ty + 55
+            scale: 1 - 0.05 * info_recede
+            zone box info_tile.$t { from: info_ox + tx, ty; size: 138, 110; corner: 11; cursor: pointer; active: info_visible and not info_unfolded; label: pick(t, "System", "Storage", "Generations", "Power"); role: tab; selected: info_page == tp }
+            box { from: info_ox + tx, ty; size: 138, 110; corner: 11; color: ink_white; opacity: if(info_page == tp, 10%, 6%) - 1.5% * pk + max(info_tile.$t.hover * 4%, info_tile.$t.pressed * 8%) }
+            box { from: info_ox + tx + 0.5, ty + 0.5; size: 137, 109; corner: 10.5; stroke: 1; color: ink_white; opacity: 0.6 * (14% + if(info_page == tp, 8%, 0%)) }
+            text pick(t, "System", "Storage", "Generations", "Power") { at: info_ox + tx + 12, ty + 15; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+        }
+        on press info_tile.$t { emit info_page(tp) }
+    }
+    // The tiles' numbers and captions, over the boxes above: three from the snapshot, Power from the battery.
+    repeat t in 0..3 {
+        let tx = 14 + mod(t, 2) * 146
+        let ty = 39 + floor(t / 2) * 118
+        group {
+            show: info_ok > 0.001 and not (info_tile_page == t and info_fc > 0.001)
+            opacity: info_ok * (1 - 0.3 * info_recede)
+            pivot: info_ox + tx + 69, ty + 55
+            scale: 1 - 0.05 * info_recede
+            text pick(t, info_big.0, info_big.4, info_big.5) { at: info_ox + tx + 11, ty + 70 + 0.308 * 40; anchor: left bottom; size: 40; weight: 200; family: "SF Pro Text"; color: ink_white; opacity: 92%; letter_move: -1.4 * letter, 0; measure: info_tile_measure.$t }
+            text pick(t, info_unit.0, info_unit.4, info_unit.5) { at: info_ox + tx + 15 + info_tile_measure.$t.width, ty + 66; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+            text pick(t, info_caption, info_storage_caption, info_generation_caption) { at: info_ox + tx + 12, ty + 94; anchor: left center; width: 114; lines: 1; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+        }
+    }
+    group {
+        show: info_ok > 0.001 and not (info_tile_page == 3 and info_fc > 0.001)
+        opacity: info_ok * (1 - 0.3 * info_recede)
+        pivot: info_ox + 229, 212
+        scale: 1 - 0.05 * info_recede
+        text "{round(power_percent * 100)}" { at: info_ox + 171, 227 + 0.308 * 40; anchor: left bottom; size: 40; weight: 200; family: "SF Pro Text"; color: ink_white; opacity: 92%; letter_move: -1.4 * letter, 0; measure: info_power_measure; show: power_present and power_known }
+        text "—" { at: info_ox + 171, 227 + 0.308 * 40; anchor: left bottom; size: 40; weight: 200; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: not (power_present and power_known) }
+        text "%" { at: info_ox + 175 + info_power_measure.width, 223; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: power_present and power_known }
+        text if(power_charging, "Charging", "Not charging") { at: info_ox + 172, 251; anchor: left center; size: 10.5; weight: 500; family: "SF Pro Text"; color: if(power_charging, ink_green, ink_white); opacity: if(power_charging, 100%, 60%); show: power_present }
+        text "No battery" { at: info_ox + 172, 251; anchor: left center; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: not power_present }
+    }
+}

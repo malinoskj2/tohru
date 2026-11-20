@@ -59,7 +59,7 @@ require("bar/launcher")()
 local calendar = require("calendar/controller")(make_rail(1))
 local network = require("network/controller")()
 local bluetooth = require("bluetooth/controller")()
-local info = require("info/controller")(tohru_info.snapshot)
+local info = require("info/controller")(tohru_info.snapshot, nil, make_rail(3))
 local about
 local function close_panels(keep)
     if keep ~= "sound" then sound.close() end
@@ -71,7 +71,7 @@ local function close_panels(keep)
 end
 about = require("about/controller")(tohru_info.snapshot, function(page)
     close_panels("info")
-    info.open(page)
+    info.overview(page)
 end)
 require("info/power")()
 -- Real native handlers run first; callbacks close other controllers directly.

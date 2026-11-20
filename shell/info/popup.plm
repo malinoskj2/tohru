@@ -1,18 +1,34 @@
 part InformationPopup {
     popup information {
-        at: (screen.width - 600) / 2, 48
-        size: 600, 520
+        at: (screen.width - 480) / 2, 37
+        size: 480, 450
         open: info_visible
         bright: panel_bright
-        body { color: ink_body; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 0.25 - 0.11 * pk
-            box { from: 0, 0; size: 600, 520; corner: 22 }
+        let info_ox = 12 + (456 - info_w) / 2
+        // The overview fades out as the page grows; the page fades in over the second half.
+        let info_ok = 1 - smooth(0, 0.55, info_fc)
+        let info_uk = smooth(0.35, 1, info_fc)
+
+        body {
+            color: ink_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+            shadow: 0, 4, 10, 0.22 - 0.1 * pk
+            box { from: info_ox, 0; size: info_w, info_h; corner: 15 }
         }
-        include "content.plm"
+        box { from: info_ox + 0.5, 0.5; size: info_w - 1, info_h - 1; corner: 14.5; stroke: 1; color: ink_white; opacity: 0.6 * (26% - 10% * pk) }
+        include "frost.plm"
+        include "overview.plm"
+        include "page.plm"
+        include "rail.plm"
     }
-    on key Escape { info_visible = false }
-    on key Down while info_visible { emit info_scroll(1) }
-    on key Up while info_visible { emit info_scroll(-1) }
-    on key Next while info_visible { emit info_scroll(8) }
-    on key Prior while info_visible { emit info_scroll(-8) }
-    on blur { info_visible = false }
+    on key Escape while info_visible { emit info_close }
+    on key Tab while info_visible { emit info_fold_toggle }
+    on key Left while info_visible { emit info_step(-1) }
+    on key Right while info_visible { emit info_step(1) }
+    on key Return while info_visible and not info_unfolded { emit info_unfold }
+    on key space while info_visible and not info_unfolded { emit info_unfold }
+    on key Down while info_visible and info_unfolded { emit info_scroll(1) }
+    on key Up while info_visible and info_unfolded { emit info_scroll(-1) }
+    on key Next while info_visible and info_unfolded { emit info_scroll(8) }
+    on key Prior while info_visible and info_unfolded { emit info_scroll(-8) }
+    on blur { emit info_close }
 }
