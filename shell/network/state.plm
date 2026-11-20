@@ -2,11 +2,13 @@ part NetworkState {
     // Root measured button center; negative uses the native screen-relative default.
     prop net_button_x = -1 ~0ms
     fact net_open = false
+    fact net_unfolded = false
     fact net_page = 0
     fact net_selected = -1
     fact net_joining = false
     fact net_target_active = false
     fact net_target_known = false
+    fact net_has_request = false
     text net_request = ""
     text net_target = ""
     text net_password = ""
@@ -15,14 +17,55 @@ part NetworkState {
     event network_toggle ->
     event network_open ->
     event network_close ->
+    event network_fold_toggle ->
     event network_select ->
     event network_join ->
     event network_cancel ->
     event network_scan ->
     event network_power ->
     event network_disconnect ->
+    event network_disconnect_active ->
     event network_forget ->
+    event network_forget_row ->
     event network_move ->
     event network_activate ->
     event network_page ->
+
+    image net_wifi_full = file "../service-assets/wifi-filled.svg", 14, 14
+    image net_wifi_high = file "../service-assets/wifi-high-filled.svg", 14, 14
+    image net_wifi_low = file "../service-assets/wifi-low-filled.svg", 14, 14
+    image net_wifi_zero = file "../service-assets/wifi-zero-filled.svg", 14, 14
+    image net_wifi_off = file "../service-assets/wifi-off-filled.svg", 14, 14
+    image net_ethernet = file "../service-assets/ethernet-port-filled.svg", 14, 14
+    image net_scan_icon = file "scan.svg", 14, 14
+    image net_lock_icon = file "lock.svg", 11, 11
+
+    // 0 is the compact Atlas Water Chamber, 1 is the unfolded list. Same spring as sound_fold.
+    prop net_fold = 0 ~spring(196, 21.84)
+    on change net_unfolded { net_fold: if(net_unfolded, 1, 0) }
+    let net_fc = clamp(net_fold, 0, 1)
+
+    // Water height tracks live Wi-Fi signal, fills full when wired, and drains when offline.
+    let net_wired = net.online and net.kind == wired
+    let net_wifi_connected = net.online and net.kind == wifi
+    let net_online_num = net_wifi_connected or net_wired
+    let net_quiet = if(net_online_num, 0, 1)
+    let net_target_level = if(net_wired, 1, if(net_wifi_connected, clamp(net.strength, 0, 1), 0))
+    prop net_water = 0 ~spring(56.25, 13.8)
+    follow net_water = net_target_level
+    let net_big = if(net_wired, 100, round(clamp(net_water, 0, 1) * 100))
+
+    on change net_open {
+        net_fold: if(net_unfolded, 1, 0) ~0ms
+        net_water: net_target_level ~0ms
+    }
+
+    // Dynamic unfolded height: header (48) + up to 7 rows (28 each) + optional pager (26) + footer (34).
+    let net_pages = max(1, ceil(net_rows.count / 7))
+    let net_page_rows = max(0, min(7, net_rows.count - net_page * 7))
+    let net_pager_shown = if(net_rows.count > 7 and not net_joining, 1, 0)
+    let net_list_end = 52 + max(1, net_page_rows) * 28
+    let net_open_h = if(net_joining, 224, net_list_end + net_pager_shown * 26 + 38)
+    let net_w = 272 + 16 * net_fold
+    let net_h = 200 + (net_open_h - 200) * net_fold
 }

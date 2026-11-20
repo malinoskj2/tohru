@@ -1,0 +1,38 @@
+part NetworkWater {
+    shader net_water_shader = file "water.wgsl"
+    measure net_hero_measure
+    // Above 0 it stands in for the clock, so a capture can be matched deterministically.
+    fact net_water_clock = 0
+    let net_hero_digits = if(net_big >= 100, 3, if(net_big >= 10, 2, 1))
+    let net_hero_w = if(net_online_num, max(28, net_hero_measure.width - 1.6 * net_hero_digits), 36)
+
+    // Subtle slosh on fold/unfold and when signal strength changes.
+    prop net_water_open_kick = 0 ~spring(400, 100)
+    prop net_water_shut_kick = 0 ~spring(240, 100)
+    follow net_water_open_kick = 0
+    follow net_water_shut_kick = 0
+    on change net_fold > 0.02 while net_fold > 0.02 { net_water_open_kick: 1.0 ~0ms }
+    on change net_fold < 0.04 while net_fold < 0.04 and vel(net_fold) < 0 { net_water_shut_kick: 1.8 ~0ms }
+    let net_water_slosh = 1 + net_water_open_kick + net_water_shut_kick + min(2.0, abs(vel(net_water)) * 4)
+
+    // Pre-shape every integer 0..100 once so live signal updates never lag a frame.
+    repeat n in 0..101 { text "{n}" { at: 16, 138 + 0.308 * 54; anchor: left bottom; size: 54; weight: 200; family: "SF Pro Text"; color: ink_white; opacity: 0.1%; show: net_open } }
+
+    group {
+        show: net_open
+        shader: net_water_shader, net_fold, net_water, net_water_slosh, net_w, net_hero_w, pk, net_quiet, net_water_clock
+        box { from: 0, 0; size: net_w, net_h; color: ink_glass; opacity: 1% }
+        text "{net_big}" {
+            at: 16, 138 + 0.308 * 54
+            anchor: left bottom; size: 54; weight: 200; family: "SF Pro Text"; color: ink_white
+            letter_move: -1.6 * letter, 0
+            measure: net_hero_measure
+            show: net_online_num
+        }
+        text "—" {
+            at: 16, 138 + 0.308 * 54
+            anchor: left bottom; size: 54; weight: 200; family: "SF Pro Text"; color: ink_white
+            show: not net_online_num
+        }
+    }
+}

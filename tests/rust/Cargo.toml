@@ -24,3 +24,7 @@ path = "../settings-ui/logic.rs"
 [[test]]
 name = "workspace-shader"
 path = "../bar/workspace-shader.rs"
+
+[[test]]
+name = "network-water-shader"
+path = "../network/water-shader.rs"
