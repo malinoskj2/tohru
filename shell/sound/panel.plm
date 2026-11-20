@@ -15,7 +15,7 @@ part SoundPanel {
    shadow: 0, 4, 10, 0.22 - 0.1 * pk
    box { from: sound_ox, 0; size: sound_w, sound_h; corner: 15 }
   }
-  shader sound_fill { at: sound_ox, 0; size: sound_w, sound_h; corner: 15; values: 0.62, 0.46; colors: sound_glass; opacity: sound_fc; show: sound_fc > 0.001 }
+  shader sound_fill { at: sound_ox, 0; size: sound_w, sound_h; corner: 15; values: 0.62, 0.46, sound_water, pk, sound_quiet; colors: sound_glass; opacity: sound_fc; show: sound_open and sound_fc > 0.001 }
   // The mock's 0.6 px hairline at 26 %: on 1x pixels a centred stroke spreads over two, so it is a
   // 1 px stroke inset by half a pixel, as bright in total as the hairline.
   box { from: sound_ox + sound_bw / 2, sound_bw / 2; size: sound_w - sound_bw, sound_h - sound_bw; corner: 15 - sound_bw / 2; stroke: sound_bw; color: sound_ink; opacity: (0.6 + 0.4 * sound_fc) * (26% - 10% * pk) }
