@@ -1,37 +1,41 @@
--- Retained visual-row policy, including the Home section gap.
+-- Rows of 82 px (78 px tiles and a 4 px gap) under 26 px section headings; Home's applications get a
+-- heading of their own below the pins.
+local heading, row = 26, 82
 local function position(columns, pinned, index)
-    if pinned == 0 then return index % columns, math.floor(index / columns) * 72 end
-    if index < pinned then return index % columns, 29 + math.floor(index / columns) * 72 end
+    if index < pinned then return index % columns, heading + math.floor(index / columns) * row end
     local rest = index - pinned
-    return rest % columns, 58 + math.ceil(pinned / columns) * 72 + math.floor(rest / columns) * 72
+    local top = heading + (pinned > 0 and math.ceil(pinned / columns) * row + heading or 0)
+    return rest % columns, top + math.floor(rest / columns) * row
 end
 local function content(columns, pinned, total)
-    local rows = pinned > 0 and (math.ceil(pinned / columns) + math.ceil((total - pinned) / columns)) or math.ceil(total / columns)
-    return rows * 72 + (pinned > 0 and 58 or 0) + 12
+    if total == 0 then return 0 end
+    local rows = math.ceil(pinned / columns) + math.ceil((total - pinned) / columns)
+    return heading + rows * row + (pinned > 0 and heading or 0) + 8
 end
 local function neighbour(columns, pinned, index, total, down)
     local x, y = position(columns, pinned, index)
-    local row
+    local nearest
     for candidate = 0, total - 1 do
         local _, cy = position(columns, pinned, candidate)
         local dy = (cy - y) * down
-        if dy > 10 and (not row or dy < row) then row = dy end
+        if dy > 10 and (not nearest or dy < nearest) then nearest = dy end
     end
-    if not row then return index end
+    if not nearest then return index end
     local chosen, distance = index, math.huge
     for candidate = 0, total - 1 do
         local cx, cy = position(columns, pinned, candidate)
         local dy = (cy - y) * down
-        if dy > 10 and dy < row + 6 and math.abs(cx - x) < distance then
+        if dy > 10 and dy < nearest + 6 and math.abs(cx - x) < distance then
             chosen, distance = candidate, math.abs(cx - x)
         end
     end
     return chosen
 end
+-- Scrolls just enough to show the tile, with its section's heading when it is in the first row.
 local function follow(columns, pinned, index, scroll, viewport)
     local _, y = position(columns, pinned, index)
-    if y - 30 < scroll then return math.max(0, y - 30) end
-    if y + 82 > scroll + viewport then return y + 82 - viewport end
+    if y - heading < scroll then return math.max(0, y - heading) end
+    if y + row + 4 > scroll + viewport then return y + row + 4 - viewport end
     return scroll
 end
-return {position = position, content = content, neighbour = neighbour, follow = follow}
+return {position = position, content = content, neighbour = neighbour, follow = follow, heading = heading, row = row, cell = 80}
