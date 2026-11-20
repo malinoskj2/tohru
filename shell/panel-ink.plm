@@ -17,6 +17,8 @@ part PanelInk {
     let ink_overlay = mix(#6c7086, #9ca0b0, pk)
     let ink_surface = mix(#45475a, #bcc0cc, pk)
     let ink_body = mix(#181825, #fafafc, pk)
+    let ink_white = mix(#ffffff, #1c1826, pk)
+    let ink_glass = mix(#140a1e, #fafafc, pk)
     let ink_sky = mix(#89dceb, #04a5e5, pk)
     let ink_green = mix(#a6e3a1, #40a02b, pk)
     let ink_red = mix(#f38ba8, #d20f39, pk)
