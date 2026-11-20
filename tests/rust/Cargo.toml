@@ -26,5 +26,5 @@ name = "workspace-shader"
 path = "../bar/workspace-shader.rs"
 
 [[test]]
-name = "network-water-shader"
-path = "../network/water-shader.rs"
+name = "water-shader"
+path = "../water-shader.rs"

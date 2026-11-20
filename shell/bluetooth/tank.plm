@@ -1,0 +1,38 @@
+part BluetoothTank {
+    shader bt_water_shader = file "../water.wgsl"
+    measure bt_number
+    // Above 0 it stands in for the clock, so a capture can be matched deterministically.
+    fact bt_water_clock = 0
+    let bt_number_shown = bt_on and bt_active >= 0 and bt_active_battery >= 0
+    let bt_digits = if(bt_big >= 100, 3, if(bt_big >= 10, 2, 1))
+    let bt_number_w = if(bt_number_shown, max(28, bt_number.width - 1.8 * bt_digits), 96)
+
+    // The surface sloshes as the panel starts to unfold, as it lands folded, when the level moves and when
+    // the horizon reaches a connecting row.
+    prop bt_open_kick = 0 ~spring(400, 100)
+    prop bt_shut_kick = 0 ~spring(240, 100)
+    follow bt_open_kick = 0
+    follow bt_shut_kick = 0
+    on change bt_fold > 0.02 while bt_fold > 0.02 { bt_open_kick: 1.2 ~0ms }
+    on change bt_fold < 0.04 while bt_fold < 0.04 and vel(bt_fold) < 0 { bt_shut_kick: 2.2 ~0ms }
+    let bt_slosh = 1 + bt_open_kick + bt_shut_kick + min(2.2, abs(vel(bt_water)) * 4) + min(1.6, abs(vel(bt_tide)) * 0.012)
+
+    // Every value is laid out once and kept, so a new battery level never waits for shaping.
+    repeat n in 0..101 { text "{n}" { at: 16, 88 + 0.308 * 60; anchor: left bottom; size: 60; weight: 200; family: "SF Pro Text"; color: ink_white; opacity: 0.1%; show: bt_open } }
+
+    group {
+        show: bt_open
+        shader: bt_water_shader, bt_fold, bt_waterline, bt_slosh, bt_w, bt_number_w, pk, clamp(bt_water, 0, 1) + 2 * bt_quiet, bt_water_clock
+        box { from: 0, 0; size: bt_w, bt_h; color: ink_glass; opacity: 1% }
+        text "{bt_big}" {
+            at: 16, 88 + 0.308 * 60
+            anchor: left bottom; size: 60; weight: 200; family: "SF Pro Text"; color: ink_white
+            letter_move: -1.8 * letter, 0
+            measure: bt_number
+            show: bt_number_shown
+        }
+        text "—" { at: 16, 88 + 0.308 * 60; anchor: left bottom; size: 60; weight: 200; family: "SF Pro Text"; color: ink_white; show: bt_on and bt_active >= 0 and bt_active_battery < 0 }
+        text "On" { at: 14, 88 + 0.308 * 56; anchor: left bottom; size: 56; weight: 200; family: "SF Pro Text"; color: ink_white; show: bt_on and bt_active < 0 }
+        text "Off" { at: 14, 88 + 0.308 * 56; anchor: left bottom; size: 56; weight: 200; family: "SF Pro Text"; color: ink_white; show: bt.present and not bt.powered }
+    }
+}

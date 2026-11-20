@@ -1,10 +1,10 @@
 part InformationFrost {
-    // The network popup's water at rest unfolded: frost and drifting palette light, with no water or numeral.
-    shader info_frost = file "../network/water.wgsl"
+    // The shared water (shell/water.wgsl) at rest unfolded, its waterline below the panel: frost and drifting palette light, with no water or numeral.
+    shader info_frost = file "../water.wgsl"
     group {
         show: info_visible
         move: info_ox, 0
-        shader: info_frost, 1, 0, 1, info_w, 0, pk, 0, 0
+        shader: info_frost, 1, info_h + 400, 1, info_w, 0, pk, 0, 0
         box { from: 0, 0; size: info_w, info_h; color: ink_glass; opacity: 1% }
     }
 }

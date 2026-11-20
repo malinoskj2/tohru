@@ -10,12 +10,12 @@ part AboutPopup {
             box { from: 12, 0; size: 312, 368; corner: 15 }
         }
         box { from: 12.5, 0.5; size: 311, 367; corner: 14.5; stroke: 1; color: ink_white; opacity: 0.6 * (26% - 10% * pk) }
-        // The network popup's water at rest unfolded: frost and drifting palette light.
-        shader about_frost = file "../network/water.wgsl"
+        // The shared water (shell/water.wgsl) at rest unfolded, its waterline below the panel: frost and drifting palette light.
+        shader about_frost = file "../water.wgsl"
         group {
             show: about_visible
             move: 12, 0
-            shader: about_frost, 1, 0, 1, 312, 0, pk, 0, 0
+            shader: about_frost, 1, 768, 1, 312, 0, pk, 0, 0
             box { from: 0, 0; size: 312, 368; color: ink_glass; opacity: 1% }
         }
 

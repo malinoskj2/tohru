@@ -1,65 +1,223 @@
 part BluetoothPopup {
+    let bt_anchor_x = if(bt_button_x < 0, screen.width - 305, bt_button_x)
     popup bluetooth {
-        at: clamp(if(bt_button_x < 0, screen.width - 305, bt_button_x) - 195, 8, max(8, screen.width - 398)), 36
-        size: 390, 520
+        at: clamp(bt_anchor_x - 140, 8, max(8, screen.width - 288)) - 12, 37
+        size: 304, max(190, bt_open_h) + 18
         open: bt_open
         bright: panel_bright
-        body { color: ink_body; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 0.25 - 0.11 * pk
-            box { from: 0, 0; size: 390, 520; corner: 22 }
+        // The popup keeps its widest size; the panel is centred under the button inside it as it grows.
+        let bt_ox = clamp(bt_anchor_x - bt_w / 2, 8, max(8, screen.width - 8 - bt_w)) - clamp(bt_anchor_x - 140, 8, max(8, screen.width - 288)) + 12
+        let bt_ck = 1 - smooth(0, 0.45, bt_fc)
+        let bt_uk = smooth(0.35, 1, bt_fc)
+        let bt_rows_k = bt_uk * if(bt_pairing_shown, 0, 1)
+        let bt_ask_k = bt_uk * if(bt_pairing_shown, 1, 0)
+        let bt_right = bt_ox + bt_w - 16
+
+        body {
+            color: ink_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+            shadow: 0, 4, 10, 0.22 - 0.1 * pk
+            box { from: bt_ox, 0; size: bt_w, bt_h; corner: 15 }
         }
-        text "Bluetooth" { at: 20, 27; size: 17; weight: 600; color: ink_text }
-        text "No Bluetooth adapter reported" { at: 20, 57; size: 13; color: ink_sub0; show: not bt.present }
-        box bt_power { from: 20, 76; size: 170, 30; corner: 8; color: ink_text; opacity: 8%; cursor: pointer; show: bt.present }
-        text "Power On" { at: 105, 91; anchor: center; size: 13; color: ink_green; show: bt.present and bt.powered }
-        text "Power Off" { at: 105, 91; anchor: center; size: 13; color: ink_text; show: bt.present and not bt.powered }
-        box bt_scan { from: 200, 76; size: 170, 30; corner: 8; color: ink_text; opacity: 8%; cursor: pointer; show: bt.present and bt.powered }
-        text "Discover" { at: 285, 91; anchor: center; size: 13; color: ink_text; show: bt.present and bt.powered and not bt.discovering }
-        text "Stop discovery" { at: 285, 91; anchor: center; size: 13; color: ink_green; show: bt.present and bt.powered and bt.discovering }
-        on press bt_power { emit bluetooth_power }
-        on press bt_scan { emit bluetooth_scan }
-        for d in bt_devices {
-            zone box bt_row.$d.index { from: 16, 118 + (d.index - floor(d.index / 6) * 6) * 34; size: 358, 32; active: floor(d.index / 6) == bt_page and bt.pairing == none; cursor: pointer; label: "{d.name}" }
-            box { from: 18, 118 + (d.index - floor(d.index / 6) * 6) * 34; size: 354, 32; corner: 8; color: ink_text; opacity: 8%; show: d.index == bt_selected and floor(d.index / 6) == bt_page and bt.pairing == none }
-            text d.name { at: 24, 134 + (d.index - floor(d.index / 6) * 6) * 34; width: 230; anchor: left center; size: 13; color: if(d.connected, ink_green, ink_text); show: floor(d.index / 6) == bt_page and bt.pairing == none }
-            text "Connected" { at: 365, 134 + (d.index - floor(d.index / 6) * 6) * 34; anchor: right center; size: 11; color: ink_green; show: d.connected and floor(d.index / 6) == bt_page and bt.pairing == none }
-            text "Paired" { at: 365, 134 + (d.index - floor(d.index / 6) * 6) * 34; anchor: right center; size: 11; color: ink_sub0; show: d.paired and not d.connected and floor(d.index / 6) == bt_page and bt.pairing == none }
-            on press bt_row.$d.index { emit bluetooth_select(d.index) }
+        // The bar's and the sound popup's hairline.
+        box { from: bt_ox + 0.5, 0.5; size: bt_w - 1, bt_h - 1; corner: 14.5; stroke: 1; color: ink_white; opacity: 0.6 * (26% - 10% * pk) }
+
+        group {
+            move: bt_ox, 0
+            show: bt_open
+            include "tank.plm"
         }
-        text "No devices reported" { at: 24, 140; size: 13; color: ink_sub0; show: bt_devices.count == 0 and bt.pairing == none }
-        text bt.pairing_name { at: 24, 140; width: 340; size: 15; color: ink_text; show: bt.pairing != none }
-        text bt.pairing_address { at: 24, 166; width: 340; size: 12; color: ink_sub0; show: bt.pairing != none }
-        text "Enter the device PIN" { at: 24, 198; size: 13; color: ink_text; show: bt.pairing == pin }
-        text "Enter the device passkey" { at: 24, 198; size: 13; color: ink_text; show: bt.pairing == passkey }
-        text "Do these codes match? {bt.pairing_code}" { at: 24, 198; width: 340; size: 13; color: ink_text; show: bt.pairing == confirm }
-        text "Enter this code on the device: {bt.pairing_code}" { at: 24, 198; width: 340; size: 13; color: ink_text; show: bt.pairing == display }
-        text "Allow this device to pair?" { at: 24, 198; size: 13; color: ink_text; show: bt.pairing == authorize }
-        input bt_answer { at: 24, 232; width: 340; size: 14; color: ink_text; placeholder: "Code"; secret: true; agent: no; show: bt.pairing == pin or bt.pairing == passkey; label: "Bluetooth code" }
-        box bt_confirm { from: 24, 270; size: 160, 32; corner: 8; color: ink_green; opacity: 15%; show: bt.pairing != none and bt.pairing != display; cursor: pointer }
-        text "Continue" { at: 104, 286; anchor: center; size: 13; color: ink_text; show: bt.pairing != none and bt.pairing != display }
-        box bt_cancel { from: 198, 270; size: 160, 32; corner: 8; color: ink_text; opacity: 8%; show: bt.pairing != none; cursor: pointer }
-        text "Cancel" { at: 278, 286; anchor: center; size: 13; color: ink_text; show: bt.pairing != none }
+
+        // The heading: the active device (or "Bluetooth") over the tank, which becomes that device's row.
+        measure bt_name
+        let bt_name_w = min(170, bt_name.width)
+        let bt_name_rides = bt_active >= 0 and bt_page == 0 and bt_on
+        let bt_dx = bt_ox + 16 + if(bt_name_rides, 22, 0) * bt_fold
+        let bt_dy = 10 + if(bt_name_rides, 45, 0) * bt_fold
+        let bt_name_k = if(bt_name_rides, 1 - bt_ask_k, bt_ck)
+        zone box bt_head { from: bt_dx - 6, bt_dy; size: bt_name_w + 28, 22; corner: 7; cursor: pointer; active: bt.present and bt_name_k > 0.5; label: if(bt_unfolded, "Fold Bluetooth panel", "Unfold Bluetooth panel") }
+        box { from: bt_dx - 6, bt_dy; size: bt_name_w + 28, 22; corner: 7; color: ink_white; opacity: bt_name_k * max(bt_head.hover * 10%, bt_head.pressed * 16%) }
+        text bt_active_name { at: bt_dx, bt_dy + 11; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 0%; measure: bt_name }
+        text bt_active_name { at: bt_dx, bt_dy + 11; anchor: left center; width: 170; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: bt_name_k * if(bt_on, 92%, 55%) }
+        group {
+            pivot: bt_dx + bt_name_w + 11, bt_dy + 12
+            rotate: bt_fold * 3.14159
+            opacity: bt_name_k
+            path {
+                at: bt_dx + bt_name_w + 11, bt_dy + 12
+                stroke: 1.25; color: ink_white; opacity: 60%
+                move -2.5, -1.25
+                line 0, 1.25
+                line 2.5, -1.25
+            }
+        }
+        on press bt_head { emit bluetooth_fold_toggle }
+
+        // Folded: the count, the minis and, with the adapter off, its power rail.
+        group {
+            show: bt_ck > 0.001
+            opacity: bt_ck
+            text "{bt_connected} connected" { at: bt_right, 21; anchor: right center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 55%; show: bt_on and bt_connected > 0 }
+            text "Scanning…" { at: bt_right, 21; anchor: right center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: bt_on and bt_connected == 0 and bt.discovering }
+            text "Not connected" { at: bt_right, 21; anchor: right center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: bt_on and bt_connected == 0 and not bt.discovering }
+            image bt_icon { at: bt_right - 12, 14; size: 14, 14; tint: ink_white; opacity: 38%; show: not bt_on }
+            text "%" { at: bt_ox + 20 + bt_number_w, 88 + 0.308 * 18; anchor: left bottom; size: 18; weight: 300; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: bt_number_shown }
+
+            repeat k in 0..4 {
+                let m_x = bt_ox + if(k == 0, 26, 233 - 34 * (bt_minis_right - k))
+                let m_shown = bt_on and bt_mini.$k >= 0 and (k == 0 or k <= bt_minis_right)
+                let m_a = if(bt_mini_on.$k, 92%, 38%)
+                group {
+                    show: m_shown
+                    image bt_icon { at: m_x - 7, 158; size: 14, 14; tint: ink_white; opacity: m_a; show: bt_mini_kind.$k == 0 }
+                    image bt_headphones { at: m_x - 7, 158; size: 14, 14; tint: ink_white; opacity: m_a; show: bt_mini_kind.$k == 1 }
+                    image bt_keyboard { at: m_x - 7, 158; size: 14, 14; tint: ink_white; opacity: m_a; show: bt_mini_kind.$k == 2 }
+                    image bt_mouse { at: m_x - 7, 158; size: 14, 14; tint: ink_white; opacity: m_a; show: bt_mini_kind.$k == 3 }
+                    image bt_speaker { at: m_x - 7, 158; size: 14, 14; tint: ink_white; opacity: m_a; show: bt_mini_kind.$k == 4 }
+                    image bt_gamepad { at: m_x - 7, 158; size: 14, 14; tint: ink_white; opacity: m_a; show: bt_mini_kind.$k == 5 }
+                    image bt_phone { at: m_x - 7, 158; size: 14, 14; tint: ink_white; opacity: m_a; show: bt_mini_kind.$k == 6 }
+                    box { from: m_x - 8, 180; size: 16, 2; corner: 1; color: ink_white; opacity: 22% }
+                    box { from: m_x - 8, 180; size: max(2, 16 * bt_mini_level.$k), 2; corner: 1; color: ink_white; opacity: if(bt_mini_on.$k, 92%, 42%); show: bt_mini_level.$k >= 0 }
+                }
+            }
+
+            text "No devices connected" { at: bt_ox + 16, 162; anchor: left center; size: 11.5; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: bt_on and bt_active < 0 and bt_paired == 0 }
+            text "No Bluetooth adapter" { at: bt_ox + 16, 162; anchor: left center; size: 11.5; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: not bt.present }
+            text "Slide or click to power on" { at: bt_ox + 16, 162; anchor: left center; size: 11.5; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: bt.present and not bt.powered and not bt_failed }
+            text bt_request { at: bt_ox + 16, 162; anchor: left center; width: 136; lines: 1; size: 11; family: "SF Pro Text"; color: ink_red; show: bt.present and not bt.powered and bt_failed }
+        }
+
+        // The rail: two stops on the folded Off panel, Off / On / Scan unfolded. One bead serves both.
+        let bt_off_k = bt_ck * if(bt.present and not bt.powered, 1, 0)
+        box { from: bt_ox + 170, 161; size: 62, 2; corner: 1; color: ink_white; opacity: bt_off_k * pk * 22% }
+        shader rail_shader { at: bt_ox + 158, 141; size: 86, 42; values: rail.x.4, vel(rail.x.4), rail.bead.4, rail.c.4, rail.amp.4, rail.wash.4, rail.wc.4, rail.wave.4; colors: mix(rgb(rail.red.4, rail.green.4, rail.blue.4), #1c1826, 0.35 * pk), #ffffff; opacity: bt_off_k * 70%; show: bt_off_k > 0.001 }
+        zone box bt_power_rail { from: bt_ox + 12, 140; size: 236, 46; corner: 9; cursor: pointer; active: bt.present and not bt.powered and not bt_unfolded and not bt_pairing_shown; label: "Turn Bluetooth on"; role: slider }
+        on press bt_power_rail { emit bluetooth_rail_press(local.x - bt_ox - 170) }
+        on drag bt_power_rail { emit bluetooth_rail_drag(local.x - bt_ox - 170) }
+        on release bt_power_rail { emit bluetooth_rail_release }
+
+        group {
+            show: bt_rows_k > 0.001
+            opacity: bt_rows_k
+
+            zone box bt_fold_hit { from: bt_ox + 8, 13; size: 24, 22; corner: 7; cursor: pointer; active: bt_unfolded and not bt_pairing_shown; label: "Fold Bluetooth panel" }
+            box { from: bt_ox + 8, 13; size: 24, 22; corner: 7; color: ink_white; opacity: max(bt_fold_hit.hover * 10%, bt_fold_hit.pressed * 16%) }
+            image bt_icon { at: bt_ox + 13, 17; size: 14, 14; tint: ink_white; opacity: 92% }
+            box { from: bt_ox + 40, 23; size: 172, 2; corner: 1; color: ink_white; opacity: pk * 22% }
+            shader rail_shader { at: bt_ox + 28, 3; size: 196, 42; values: rail.x.4, vel(rail.x.4), rail.bead.4, rail.c.4, rail.amp.4, rail.wash.4, rail.wc.4, rail.wave.4; colors: mix(rgb(rail.red.4, rail.green.4, rail.blue.4), #1c1826, 0.35 * pk), #ffffff; show: bt.present }
+            text pick(bt_stop, "Off", "On", "Scan") { at: bt_right + 2, 24; anchor: right center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 68% }
+            repeat s in 0..3 {
+                text pick(s, "Off", "On", "Scan") { at: bt_ox + 48 + 78 * s, 41; anchor: center; size: 10; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(bt_stop == s, 92%, 38%) }
+            }
+            zone box bt_rail_hit { from: bt_ox + 36, 10; size: 180, 38; cursor: pointer; active: bt_unfolded and bt.present and not bt_pairing_shown; label: "Bluetooth"; role: slider; value: bt_stop }
+
+            for d in bt_devices {
+                let d_row = d.index - bt_page * 6
+                let d_mine = d.index < bt_paired
+                let d_y = 53 + 26 * d_row + if(d_mine, 0, 29)
+                let d_shown = floor(d.index / 6) == bt_page and bt_on
+                let d_active = d.index == bt_active
+                let d_connecting = d.index == bt_connecting
+                let d_start = if(d_active and bt_name_rides, 38 + bt_name_w + 18, 8)
+                group {
+                    show: d_shown
+                    zone box bt_row.$d.index { from: bt_ox + d_start, d_y; size: bt_w - 8 - d_start - if(d_mine, 26, 0), 26; corner: 7; active: bt_unfolded and d_shown and not bt_pairing_shown; cursor: pointer; label: if(d.connected, "Disconnect {d.name}", "Connect {d.name}") }
+                    zone box bt_forget.$d.index { from: bt_right - 18, d_y + 4; size: 20, 18; corner: 6; cursor: pointer; active: bt_unfolded and d_shown and d_mine and not bt_pairing_shown; label: "Forget {d.name}" }
+                    let d_cross = d_mine and not d_connecting and (d.index == bt_selected or bt_row.$d.index.hover > 0.5 or bt_forget.$d.index.hover > 0.5)
+                    let d_meta_x = bt_right - if(d_cross, 22, 0)
+                    box { from: bt_ox + 8, d_y; size: bt_w - 16, 26; corner: 7; color: ink_white; opacity: max(if(d.index == bt_selected, 12%, 0%), max(max(bt_row.$d.index.hover, bt_forget.$d.index.hover) * 10%, bt_row.$d.index.pressed * 16%)) }
+                    group {
+                        glow: 9, 35%, if(d_connecting, ink_lavender, ink_white)
+                        show: d.connected or d_connecting
+                        box { from: bt_ox + 18, d_y + 11; size: 4, 4; color: if(d_connecting, ink_lavender, ink_white) }
+                    }
+                    group {
+                        glow: 3.5, 45%, if(d_connecting, ink_lavender, ink_white)
+                        show: d.connected or d_connecting
+                        box { from: bt_ox + 18, d_y + 11; size: 4, 4; color: if(d_connecting, ink_lavender, ink_white) }
+                    }
+                    group {
+                        show: not d_mine
+                        image bt_icon { at: bt_ox + 14, d_y + 7; size: 12, 12; tint: ink_white; opacity: 38%; show: bt_kind[d.index] == 0 }
+                        image bt_headphones { at: bt_ox + 14, d_y + 7; size: 12, 12; tint: ink_white; opacity: 38%; show: bt_kind[d.index] == 1 }
+                        image bt_keyboard { at: bt_ox + 14, d_y + 7; size: 12, 12; tint: ink_white; opacity: 38%; show: bt_kind[d.index] == 2 }
+                        image bt_mouse { at: bt_ox + 14, d_y + 7; size: 12, 12; tint: ink_white; opacity: 38%; show: bt_kind[d.index] == 3 }
+                        image bt_speaker { at: bt_ox + 14, d_y + 7; size: 12, 12; tint: ink_white; opacity: 38%; show: bt_kind[d.index] == 4 }
+                        image bt_gamepad { at: bt_ox + 14, d_y + 7; size: 12, 12; tint: ink_white; opacity: 38%; show: bt_kind[d.index] == 5 }
+                        image bt_phone { at: bt_ox + 14, d_y + 7; size: 12, 12; tint: ink_white; opacity: 38%; show: bt_kind[d.index] == 6 }
+                    }
+                    text d.name { at: bt_ox + 38, d_y + 13; width: 150; lines: 1; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(d.connected or d_connecting, 92%, 68%); show: not (d_active and bt_name_rides) }
+                    text "{round(d.battery * 100)}%" { at: d_meta_x, d_y + 13; anchor: right center; size: 12; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: if(d.connected, 92%, 55%); show: d_mine and not d_connecting and d.battery >= 0 }
+                    text "Connected" { at: d_meta_x, d_y + 13; anchor: right center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: d.connected and d.battery < 0 }
+                    text "Paired" { at: d_meta_x, d_y + 13; anchor: right center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: d_mine and not d.connected and not d_connecting and d.battery < 0 }
+                    text "Connecting…" { at: d_meta_x, d_y + 13; anchor: right center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_lavender; show: d_connecting }
+                    text "Pair" { at: d_meta_x, d_y + 13; anchor: right center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: not d_mine and not d_connecting }
+                    image bt_forget_icon { at: bt_right - 15, d_y + 6; size: 14, 14; tint: ink_red; opacity: 62% + bt_forget.$d.index.hover * 30%; show: d_cross }
+                    on press bt_row.$d.index { emit bluetooth_row(d.index) }
+                    on press bt_forget.$d.index { emit bluetooth_forget_row(d.index) }
+                }
+            }
+
+            let bt_label_y = 53 + 26 * bt_mine_rows + 18
+            text "Nearby" { at: bt_ox + 38, bt_label_y; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: bt_on and bt_nearby_shown == 1 }
+            text "Scanning…" { at: bt_right, bt_label_y; anchor: right center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 42%; show: bt_on and bt_nearby_shown == 1 and bt.discovering }
+            text "No devices — slide to Scan" { at: bt_ox + 38, 66; anchor: left center; size: 13; family: "SF Pro Text"; color: ink_white; opacity: 58%; show: bt_on and bt_devices.count == 0 and not bt.discovering }
+            text "Bluetooth is off" { at: bt_ox + 38, 66; anchor: left center; size: 13; family: "SF Pro Text"; color: ink_white; opacity: 58%; show: bt.present and not bt.powered }
+            text "No Bluetooth adapter" { at: bt_ox + 38, 66; anchor: left center; size: 13; family: "SF Pro Text"; color: ink_white; opacity: 58%; show: not bt.present }
+
+            group {
+                show: bt_on and bt_pager_shown == 1
+                text "{bt_page + 1} of {bt_pages}" { at: bt_ox + 38, bt_list_end + 13; anchor: left center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 55% }
+                zone box bt_prev { from: bt_ox + bt_w - 62, bt_list_end + 2; size: 24, 22; corner: 7; active: bt_unfolded and bt_page > 0 and not bt_pairing_shown; cursor: pointer; label: "Previous devices" }
+                zone box bt_next { from: bt_ox + bt_w - 36, bt_list_end + 2; size: 24, 22; corner: 7; active: bt_unfolded and bt_page + 1 < bt_pages and not bt_pairing_shown; cursor: pointer; label: "More devices" }
+                box { from: bt_ox + bt_w - 62, bt_list_end + 2; size: 24, 22; corner: 7; color: ink_white; opacity: max(bt_prev.hover * 10%, bt_prev.pressed * 16%) }
+                box { from: bt_ox + bt_w - 36, bt_list_end + 2; size: 24, 22; corner: 7; color: ink_white; opacity: max(bt_next.hover * 10%, bt_next.pressed * 16%) }
+                text "‹" { at: bt_ox + bt_w - 50, bt_list_end + 12; anchor: center; size: 16; color: ink_white; opacity: if(bt_page > 0, 92%, 38%) }
+                text "›" { at: bt_ox + bt_w - 24, bt_list_end + 12; anchor: center; size: 16; color: ink_white; opacity: if(bt_page + 1 < bt_pages, 92%, 38%) }
+            }
+            text bt_request { at: bt_ox + 16, bt_rows_h - 18; width: bt_w - 32; lines: 1; anchor: left center; size: 11; family: "SF Pro Text"; color: ink_red; show: bt_failed }
+        }
+        on press bt_fold_hit { emit bluetooth_fold_toggle }
+        on press bt_rail_hit { emit bluetooth_rail_press(local.x - bt_ox - 40) }
+        on drag bt_rail_hit { emit bluetooth_rail_drag(local.x - bt_ox - 40) }
+        on release bt_rail_hit { emit bluetooth_rail_release }
+        on press bt_prev { emit bluetooth_page(-1) }
+        on press bt_next { emit bluetooth_page(1) }
+
+        // The pairing question.
+        group {
+            show: bt_ask_k > 0.001
+            opacity: bt_ask_k
+            text bt.pairing_name { at: bt_ox + 16, 20; anchor: left center; width: 220; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+            text bt.pairing_address { at: bt_ox + 16, 36; anchor: left center; size: 11; family: "SF Pro Text:tnum"; color: ink_white; opacity: 55% }
+            image bt_icon { at: bt_right - 12, 13; size: 14, 14; tint: ink_white; opacity: 60% }
+            text pick(bt.pairing, "", "Enter the device PIN", "Enter the device passkey", "Confirm this code matches the device", "Type this code on the device", "Allow this device to pair?") { at: bt_ox + 16, 64; anchor: left center; size: 12; family: "SF Pro Text"; color: ink_white; opacity: 68% }
+            text bt_code { at: bt_ox + 15, 106; anchor: left center; size: 40; weight: 200; family: "SF Pro Text:tnum"; color: ink_white; opacity: 92%; letter_move: 3 * letter, 0; show: bt.pairing == confirm or bt.pairing == display }
+            group {
+                show: bt.pairing == pin or bt.pairing == passkey
+                box { from: bt_ox + 16, 86; size: bt_w - 32, 36; corner: 9; color: ink_white; opacity: 7% }
+                box { from: bt_ox + 16.5, 86.5; size: bt_w - 33, 35; corner: 8.5; stroke: 1; color: ink_white; opacity: 16% - 4% * pk }
+            }
+            input bt_answer { at: bt_ox + 28, 94; width: bt_w - 56; size: 16; color: ink_white; placeholder: "Code"; secret: true; agent: no; show: bt.pairing == pin or bt.pairing == passkey; label: "Bluetooth code" }
+            zone box bt_confirm { from: bt_ox + 16, 149; size: 120, 28; corner: 8; cursor: pointer; active: bt_pairing_shown and bt.pairing != display; label: "Accept pairing" }
+            box { from: bt_ox + 16, 149; size: 120, 28; corner: 8; color: ink_green; opacity: 18% + max(bt_confirm.hover * 6%, bt_confirm.pressed * 12%); show: bt.pairing != display }
+            box { from: bt_ox + 16.5, 149.5; size: 119, 27; corner: 7.5; stroke: 1; color: ink_green; opacity: 30%; show: bt_pairing_shown and bt.pairing != display }
+            text pick(bt.pairing, "", "Continue", "Continue", "Pair", "", "Allow") { at: bt_ox + 76, 163; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92%; show: bt.pairing != display }
+            zone box bt_cancel { from: bt_ox + bt_w - 136, 149; size: 120, 28; corner: 8; cursor: pointer; active: bt_pairing_shown; label: "Cancel pairing" }
+            box { from: bt_ox + bt_w - 136, 149; size: 120, 28; corner: 8; color: ink_white; opacity: 10% + max(bt_cancel.hover * 6%, bt_cancel.pressed * 12%) }
+            text "Cancel" { at: bt_ox + bt_w - 76, 163; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+            text bt_request { at: bt_ox + 16, 202; width: bt_w - 32; lines: 1; anchor: left center; size: 11; family: "SF Pro Text"; color: ink_red; show: bt_failed }
+        }
         on press bt_confirm { emit bluetooth_answer }
         on press bt_cancel { emit bluetooth_cancel }
         on change bt.pairing_id { emit bluetooth_question }
         on change bt.pairing while bt.pairing == pin or bt.pairing == passkey { focus bt_answer }
-        zone box bt_prev { from: 20, 334; size: 80, 28; active: bt_page > 0 and bt.pairing == none; cursor: pointer }
-        zone box bt_next { from: 290, 334; size: 80, 28; active: (bt_page + 1) * 6 < bt_devices.count and bt.pairing == none; cursor: pointer }
-        text "Previous" { at: 24, 350; size: 12; color: ink_sub0; show: bt_page > 0 and bt.pairing == none }
-        text "Next" { at: 360, 350; anchor: right center; size: 12; color: ink_sub0; show: (bt_page + 1) * 6 < bt_devices.count and bt.pairing == none }
-        on press bt_prev { emit bluetooth_page(-1) }
-        on press bt_next { emit bluetooth_page(1) }
-        text bt_target_name { at: 20, 383; width: 350; size: 13; color: ink_sub0; show: bt.pairing == none }
-        box bt_connect { from: 20, 406; size: 230, 32; corner: 8; color: ink_text; opacity: 8%; show: bt_has_target and bt.pairing == none; cursor: pointer }
-        text "Connect / Disconnect" { at: 135, 422; anchor: center; size: 13; color: ink_text; show: bt_has_target and bt.pairing == none }
-        zone box bt_forget { from: 278, 406; size: 90, 32; active: bt_has_target and bt.pairing == none; cursor: pointer }
-        text "Forget" { at: 325, 422; anchor: center; size: 13; color: ink_red; show: bt_has_target and bt.pairing == none }
-        on press bt_connect { emit bluetooth_connect }
-        on press bt_forget { emit bluetooth_forget }
-        text bt_request { at: 20, 472; width: 350; size: 11; color: ink_sub0 }
     }
-    on key Down while bt_open and bt.pairing == none { emit bluetooth_move(1) }
-    on key Up while bt_open and bt.pairing == none { emit bluetooth_move(-1) }
-    on key Return while bt_open and bt.pairing == none { emit bluetooth_activate }
+    on key Tab while bt_open and not bt_pairing_shown { emit bluetooth_fold_toggle }
+    on key Down while bt_open and not bt_pairing_shown { emit bluetooth_move(1) }
+    on key Up while bt_open and not bt_pairing_shown { emit bluetooth_move(-1) }
+    on key Prior while bt_open and bt_unfolded and not bt_pairing_shown { emit bluetooth_page(-1) }
+    on key Next while bt_open and bt_unfolded and not bt_pairing_shown { emit bluetooth_page(1) }
+    on key Return while bt_open and not bt_pairing_shown { emit bluetooth_activate }
     on key Escape { bt_open = false }
     on blur { bt_open = false }
 }

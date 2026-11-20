@@ -7,7 +7,7 @@ The About Tohru popup, a 312 px glass capsule matching the information popup: a 
 | File | Contents |
 |---|---|
 | `state.plm` | `about_visible`, the name, version, short version and error texts, the `about_specs` model and the `about_*` events |
-| `popup.plm` | The 312×368 px capsule, centred horizontally 37 px from the top, on the same frosted glass as the information popup (`network/water.wgsl` at rest unfolded) |
+| `popup.plm` | The 312×368 px capsule, centred horizontally 37 px from the top, on the same frosted glass as the information popup (`water.wgsl`, shared with the network and Bluetooth popups, at rest unfolded) |
 | `controller.luau` | Fills the popup from a `tohru_info` snapshot. Returns `{open, close, toggle, refresh}` |
 | `entry.plm`, `entry.luau` | A standalone scene with an About button, for development |
 

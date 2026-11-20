@@ -1,5 +1,5 @@
 part NetworkWater {
-    shader net_water_shader = file "water.wgsl"
+    shader net_water_shader = file "../water.wgsl"
     measure net_hero_measure
     // Above 0 it stands in for the clock, so a capture can be matched deterministically.
     fact net_water_clock = 0
@@ -14,13 +14,15 @@ part NetworkWater {
     on change net_fold > 0.02 while net_fold > 0.02 { net_water_open_kick: 1.0 ~0ms }
     on change net_fold < 0.04 while net_fold < 0.04 and vel(net_fold) < 0 { net_water_shut_kick: 1.8 ~0ms }
     let net_water_slosh = 1 + net_water_open_kick + net_water_shut_kick + min(2.0, abs(vel(net_water)) * 4)
+    // Empty at 190 and full at 112; unfolding drains it off the bottom.
+    let net_waterline = mix(190, 112, clamp(net_water, 0, 1)) + 320 * net_fc
 
     // Pre-shape every integer 0..100 once so live signal updates never lag a frame.
     repeat n in 0..101 { text "{n}" { at: 16, 138 + 0.308 * 54; anchor: left bottom; size: 54; weight: 200; family: "SF Pro Text"; color: ink_white; opacity: 0.1%; show: net_open } }
 
     group {
         show: net_open
-        shader: net_water_shader, net_fold, net_water, net_water_slosh, net_w, net_hero_w, pk, net_quiet, net_water_clock
+        shader: net_water_shader, net_fold, net_waterline, net_water_slosh, net_w, net_hero_w, pk, clamp(net_water, 0, 1) + 2 * net_quiet, net_water_clock
         box { from: 0, 0; size: net_w, net_h; color: ink_glass; opacity: 1% }
         text "{net_big}" {
             at: 16, 138 + 0.308 * 54

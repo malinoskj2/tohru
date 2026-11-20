@@ -15,7 +15,7 @@ The bar is the root of the `tohru` process. `shell/bar.plm` declares the bar sur
 | `state.plm` | Texts, facts, measures and images used by the contents, and the clock's position |
 | `fill.wgsl` | The bar's fill shader |
 | `mooncoil.svg` | The Mooncoil mark, also used by the About popup |
-| `workspace.plm`, `workspace.luau`, `rail-state.plm`, `rail.luau`, `ribbon.wgsl` | The workspace switcher. `rail-state.plm` and `rail.luau` also drive the calendar's month row, the sound popup's volume rail and the information popup's page rail (rail 3) |
+| `workspace.plm`, `workspace.luau`, `rail-state.plm`, `rail.luau`, `ribbon.wgsl` | The workspace switcher. `rail-state.plm` and `rail.luau` also drive the calendar's month row, the sound popup's volume rail and the information popup's page rail (rail 3) and the Bluetooth popup's Off / On / Scan (rail 4) |
 | `bell.plm`, `bell.luau` | The notification bell |
 | `launcher.luau` | Follows the launcher's state, which raises and tints the bar |
 | `../panel-ink.plm` | The `ink_*` colours every popup draws with, and the switch between dark and light glass |

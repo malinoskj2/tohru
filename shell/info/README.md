@@ -9,7 +9,7 @@ A read-only System Information popup, a glass capsule whose overview of four til
 | `state.plm` | Popup facts (`info_visible`, `info_unfolded`, `info_page`), each page's hero texts (`info_big.N`, `info_unit.N`, `info_note.N`), the tile captions, the visible `info_rows` (8) and cached `info_cache` (256) models, the `clock` service, the `info_*` events and the `info_fold` spring |
 | `power-state.plm` | Battery facts (`power_present`, `power_known`, `power_percent`, `power_charging`), `power_warning_level` and `power_error` |
 | `popup.plm` | The glass capsule, centred horizontally 37 px from the top, and its keys. It grows from the 312×330 px overview to the 456×432 px page |
-| `frost.plm` | The frosted, drifting palette light behind the glass: `network/water.wgsl` at rest unfolded, with no water or numeral |
+| `frost.plm` | The frosted, drifting palette light behind the glass: `water.wgsl`, shared with the network and Bluetooth popups, at rest unfolded, with no water or numeral |
 | `overview.plm` | The folded "System Overview" bento: System memory, Storage, Generations and Power tiles, each a large thin number with a caption |
 | `page.plm` | The unfolded page: "‹ Overview", title, refresh, the hero tile (large thin number, unit, summary), up to eight rows, and the footer with row paging |
 | `rail.plm` | The seven-stop page rail (Sys, Disp, Time, Users, Disk, Gen, Pwr): rail 3 of `bar/rail-state.plm`, drawn with `bar/ribbon.wgsl` |
@@ -92,4 +92,3 @@ Run the Lua tests from the repository root with Lua 5.4. `python3 tests/bar/nati
 ## Known limitations
 
 - When opened from the CLI, the popup closes with Escape or `tohru panel close`, not with a click outside it.
-- The frosted backdrop is the network popup's `water.wgsl`; if that shader moves, `frost.plm` and About's popup follow it.

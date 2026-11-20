@@ -208,7 +208,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
     lua.load(r#"
         fact={['audio.volume']=0.2, ['audio.muted']=false, ['sound_outputs.count']=1,
               sound_open=false, sound_dragging=false, cal_open=false}
-        for r=0,3 do for key,value in pairs({present=false,goal=8,land=0,serial=0}) do fact['rail.'..key..'.'..r]=value end end
+        for r=0,4 do for key,value in pairs({present=false,goal=8,land=0,serial=0}) do fact['rail.'..key..'.'..r]=value end end
         text,model,handlers,timers,calls,modules={},{},{},{},{},{}
         local model_rows={}
         model=setmetatable({}, {__index=function(_,key)return model_rows[key]end,
