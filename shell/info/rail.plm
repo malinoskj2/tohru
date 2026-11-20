@@ -1,0 +1,27 @@
+part InformationRail {
+    // Rail 3 moves in the workspace rail's units, stop i at 8 + 16 i; here it is stretched over the rail's length.
+    // It stays under the tiles while the bead glides, fades, and comes back under the page's header.
+    let info_rail_up = info_fold > 0.5
+    let info_rail_len = info_w - if(info_rail_up, 40, 36)
+    let info_rail_left = info_ox + if(info_rail_up, 20, 18)
+    let info_rail_y = if(info_rail_up, 47, 287)
+    let info_rail_k = if(info_rail_up, smooth(0.55, 0.85, info_fold), 1 - smooth(0.15, 0.45, info_fold))
+    let info_rail_scale = (info_rail_len - 16) / 96
+    let info_rail_x = 8 + (rail.x.3 - 8) * info_rail_scale
+    // The ribbon draws its track in white, which light glass hides; an ink track shows it there.
+    box { from: info_rail_left, info_rail_y - 2; size: info_rail_len, 4; corner: 2; color: ink_white; opacity: 12% * pk * info_rail_k; show: info_visible and pk > 0.01 }
+    shader rail_shader {
+        at: info_rail_left - 12, info_rail_y - 21
+        size: info_rail_len + 24, 42
+        values: info_rail_x, vel(rail.x.3) * info_rail_scale, rail.bead.3, info_rail_x + rail.c.3 - rail.x.3, rail.amp.3, rail.wash.3, info_rail_x + rail.wc.3 - rail.x.3, rail.wave.3
+        colors: mix(rgb(rail.red.3, rail.green.3, rail.blue.3), #1c1826, 0.35 * pk), if(rail.present.3, #ffffff, #000000)
+        opacity: info_rail_k
+        show: info_visible and info_rail_k > 0.001
+    }
+    repeat i in 0..7 {
+        let stop = info_rail_left + 8 + i * (info_rail_len - 16) / 6
+        text pick(i, "Sys", "Disp", "Time", "Users", "Disk", "Gen", "Pwr") { at: stop, info_rail_y + 23; anchor: center; size: 9.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: info_ok * if(info_page == i, 92%, 60%); show: info_ok > 0.001 }
+        zone box info_stop.$i { from: stop - (info_rail_len - 16) / 12, info_rail_y - 11; size: (info_rail_len - 16) / 6, if(info_unfolded, 22, 44); cursor: pointer; active: info_visible; label: pick(i, "System", "Displays", "Date & Time", "Users", "Storage", "Generations", "Power"); role: tab; selected: info_page == i }
+        on press info_stop.$i { emit info_page(i) }
+    }
+}

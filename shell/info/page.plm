@@ -1,0 +1,105 @@
+part InformationPage {
+    // The chosen tile grows into the page's hero; a page without a tile grows from its stop on the rail.
+    let info_e = clamp(info_fold, 0, 1.05)
+    let info_stop_x = 26 + info_page * 260 / 6
+    let info_sx = if(info_tile_page >= 0, 14 + mod(info_tile_page, 2) * 146, info_stop_x - 30)
+    let info_sy = if(info_tile_page >= 0, 39 + floor(info_tile_page / 2) * 118, 270)
+    let info_sw = if(info_tile_page >= 0, 138, 60)
+    let info_sh = if(info_tile_page >= 0, 110, 34)
+    let info_mx = info_ox + mix(info_sx, 18, info_e)
+    let info_my = mix(info_sy, 60, info_e)
+    let info_mw = mix(info_sw, 420, info_e)
+    let info_mh = mix(info_sh, 68, info_e)
+    let info_tile_out = 1 - smooth(0.1, 0.55, info_fc)
+    let info_hero_in = smooth(0.3, 0.8, info_fc)
+    let info_bump = 4 * info_fc * (1 - info_fc)
+    let info_tone = mix(rgb(rail.red.3, rail.green.3, rail.blue.3), #1c1826, 0.35 * pk)
+    measure info_hero_measure
+    measure info_power_hero_measure
+    measure info_carry_measure
+    measure info_carry_power_measure
+
+    group {
+        show: info_fc > 0.001
+        opacity: if(info_tile_page >= 0, 1, smooth(0, 0.35, info_fc))
+        box { from: info_mx, info_my; size: info_mw, info_mh; corner: 11; color: ink_white; opacity: mix(10%, 6%, info_fc) - 1.5% * pk }
+        box { from: info_mx + 0.5, info_my + 0.5; size: info_mw - 1, info_mh - 1; corner: 10.5; stroke: 1; color: ink_white; opacity: 0.6 * 14% }
+        box { from: info_mx + 0.5, info_my + 0.5; size: info_mw - 1, info_mh - 1; corner: 10.5; stroke: 1; color: info_tone; opacity: 85% * info_bump }
+
+        // What the tile said, carried along and fading as the page arrives.
+        group {
+            show: info_tile_out > 0.001 and info_tile_page >= 0
+            opacity: info_tile_out
+            text pick(info_page, "System", "Displays", "Date & Time", "Users", "Storage", "Generations", "Power") { at: info_mx + 12, info_my + 15; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+            text pick(info_tile_page, info_big.0, info_big.4, info_big.5, info_big.6) { at: info_mx + 11, info_my + 70 + 0.308 * 40; anchor: left bottom; size: 40; weight: 200; family: "SF Pro Text"; color: ink_white; opacity: 92%; letter_move: -1.4 * letter, 0; measure: info_carry_measure; show: info_page != 6 }
+            text "{round(power_percent * 100)}" { at: info_mx + 11, info_my + 70 + 0.308 * 40; anchor: left bottom; size: 40; weight: 200; family: "SF Pro Text"; color: ink_white; opacity: 92%; letter_move: -1.4 * letter, 0; measure: info_carry_power_measure; show: info_page == 6 and power_present and power_known }
+            text pick(info_tile_page, info_unit.0, info_unit.4, info_unit.5, info_unit.6) { at: info_mx + 15 + info_carry_measure.width, info_my + 66; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_page != 6 }
+            text "%" { at: info_mx + 15 + info_carry_power_measure.width, info_my + 66; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_page == 6 and power_present and power_known }
+            text pick(info_tile_page, info_caption, info_storage_caption, info_generation_caption, info_caption) { at: info_mx + 12, info_my + 94; anchor: left center; width: 114; lines: 1; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_page != 6 }
+            text if(power_charging, "Charging", "Not charging") { at: info_mx + 12, info_my + 94; anchor: left center; size: 10.5; weight: 500; family: "SF Pro Text"; color: if(power_charging, ink_green, ink_white); opacity: if(power_charging, 100%, 60%); show: info_page == 6 and power_present }
+        }
+
+        // The page's hero: a large thin number, its unit and a summary.
+        group {
+            show: info_hero_in > 0.001
+            opacity: info_hero_in
+            text info_big[info_page] { at: info_mx + 13, info_my + 50 + 0.308 * 52; anchor: left bottom; size: 52; weight: 200; family: "SF Pro Text"; color: ink_white; opacity: 92%; letter_move: -1.6 * letter, 0; measure: info_hero_measure; show: info_page != 2 and info_page != 6 }
+            text "{info_clock.time}" { at: info_mx + 13, info_my + 50 + 0.308 * 52; anchor: left bottom; size: 52; weight: 200; family: "SF Pro Text:tnum"; color: ink_white; opacity: 92%; letter_move: -1.6 * letter, 0; show: info_page == 2 }
+            text "{round(power_percent * 100)}" { at: info_mx + 13, info_my + 50 + 0.308 * 52; anchor: left bottom; size: 52; weight: 200; family: "SF Pro Text"; color: ink_white; opacity: 92%; letter_move: -1.6 * letter, 0; measure: info_power_hero_measure; show: info_page == 6 and power_present and power_known }
+            text "—" { at: info_mx + 13, info_my + 50 + 0.308 * 52; anchor: left bottom; size: 52; weight: 200; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_page == 6 and not (power_present and power_known) }
+            text info_unit[info_page] { at: info_mx + 17 + info_hero_measure.width, info_my + 46; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_page != 2 and info_page != 6 }
+            text "%" { at: info_mx + 17 + info_power_hero_measure.width, info_my + 46; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_page == 6 and power_present and power_known }
+            text info_note[info_page] { at: info_mx + info_mw - 14, info_my + 47; anchor: right center; width: 260; lines: 1; align: right; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_page != 2 and info_page != 6 }
+            text "{info_clock.date}" { at: info_mx + info_mw - 14, info_my + 47; anchor: right center; width: 260; lines: 1; align: right; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_page == 2 }
+            text pick(if(power_present, if(power_charging, 0, 1), 2), "Charging · Battery reported", "Discharging · Battery reported", "No battery reported") { at: info_mx + info_mw - 14, info_my + 47; anchor: right center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_page == 6 }
+        }
+    }
+
+    group {
+        show: info_uk > 0.001
+        opacity: info_uk
+        zone box info_back { from: info_ox + 18, 14; size: 78, 22; corner: 7; cursor: pointer; active: info_unfolded; label: "Back to the overview" }
+        box { from: info_ox + 18, 14; size: 78, 22; corner: 7; color: ink_white; opacity: 6% + max(info_back.hover * 6%, info_back.pressed * 12%) }
+        text "‹ Overview" { at: info_ox + 57, 25; anchor: center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+        text pick(info_page, "System", "Displays", "Date & Time", "Users", "Storage", "Generations", "Power") { at: info_ox + 106, 25; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+        zone box info_refresh_hit { from: info_ox + info_w - 42, 14; size: 24, 22; corner: 7; cursor: pointer; active: info_unfolded; label: "Refresh information" }
+        box { from: info_ox + info_w - 42, 14; size: 24, 22; corner: 7; color: ink_white; opacity: 6% + max(info_refresh_hit.hover * 6%, info_refresh_hit.pressed * 12%) }
+        image info_refresh_icon { at: info_ox + info_w - 36, 19; size: 12, 12; tint: ink_white; opacity: 85% }
+
+        for row in info_rows {
+            text row.label { at: info_ox + 18, 151 + row.index * 26; anchor: left center; width: 116; lines: 1; size: 12; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_page != 6 }
+            text row.value { at: info_ox + info_w - 18, 151 + row.index * 26; anchor: right center; width: 296; lines: 1; align: right; size: 12.5; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 92%; selectable: true; show: info_page != 6 }
+        }
+        // Power reads the battery live rather than through a snapshot.
+        group {
+            show: info_page == 6
+            repeat r in 0..4 {
+                text pick(r, "Battery", "Charge", "State", "Warnings") { at: info_ox + 18, 151 + r * 26; anchor: left center; size: 12; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+            }
+            text if(power_present, "Present", "Not reported") { at: info_ox + info_w - 18, 151; anchor: right center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+            text "{round(power_percent * 100)}%" { at: info_ox + info_w - 18, 177; anchor: right center; size: 12.5; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 92%; show: power_present and power_known }
+            text "Unknown" { at: info_ox + info_w - 18, 177; anchor: right center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: not (power_present and power_known) }
+            text if(power_charging, "Charging", "Not charging") { at: info_ox + info_w - 18, 203; anchor: right center; size: 12.5; weight: 500; family: "SF Pro Text"; color: if(power_charging, ink_green, ink_white); opacity: 92%; show: power_present }
+            text "Unknown" { at: info_ox + info_w - 18, 203; anchor: right center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: not power_present }
+            text "Low 20% · Critical 5% · Empty 2%" { at: info_ox + info_w - 18, 229; anchor: right center; size: 12.5; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 92% }
+            text pick(power_warning_level, "None now", "Low battery now", "Critical battery now", "Battery empty now") { at: info_ox + info_w - 18, 255; anchor: right center; size: 12.5; weight: 500; family: "SF Pro Text"; color: if(power_warning_level > 0, ink_red, ink_white); opacity: if(power_warning_level > 0, 100%, 60%) }
+            text "Warning" { at: info_ox + 18, 255; anchor: left center; size: 12; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+        }
+
+        text info_error { at: info_ox + 18, 374; anchor: left center; width: 420; lines: 1; size: 10.5; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_page != 6 }
+        text power_error { at: info_ox + 18, 374; anchor: left center; width: 420; lines: 1; size: 10.5; family: "SF Pro Text"; color: ink_red; show: info_page == 6 }
+
+        text "{floor(info_offset / 8) + 1} of {ceil(info_total / 8)} · {info_total} generations" { at: info_ox + 18, 412; anchor: left center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 60%; show: info_page == 5 and info_total > 8 }
+        text "Tab folds back to Overview" { at: info_ox + 18, 412; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: not (info_page == 5 and info_total > 8) }
+        zone box info_scroll_up { from: info_ox + info_w - 66, 401; size: 24, 22; corner: 7; cursor: pointer; active: info_unfolded and info_offset > 0; label: "Previous rows" }
+        zone box info_scroll_down { from: info_ox + info_w - 42, 401; size: 24, 22; corner: 7; cursor: pointer; active: info_unfolded and info_offset + 8 < info_total; label: "Next rows" }
+        box { from: info_ox + info_w - 66, 401; size: 24, 22; corner: 7; color: ink_white; opacity: max(info_scroll_up.hover * 10%, info_scroll_up.pressed * 16%) }
+        box { from: info_ox + info_w - 42, 401; size: 24, 22; corner: 7; color: ink_white; opacity: max(info_scroll_down.hover * 10%, info_scroll_down.pressed * 16%) }
+        text "‹" { at: info_ox + info_w - 54, 411; anchor: center; size: 16; color: ink_white; opacity: if(info_offset > 0, 92%, 38%) }
+        text "›" { at: info_ox + info_w - 30, 411; anchor: center; size: 16; color: ink_white; opacity: if(info_offset + 8 < info_total and info_page != 6, 92%, 38%) }
+    }
+    on press info_back { emit info_fold }
+    on press info_refresh_hit { emit info_refresh }
+    on press info_scroll_up { emit info_scroll(-8) }
+    on press info_scroll_down { emit info_scroll(8) }
+}
