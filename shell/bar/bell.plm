@@ -6,12 +6,12 @@ part BarBell {
     event notices_state ->
     event bell_seen ->
     event bell_dnd ->
-    let bell_accent = #f5c2e7
+    let bell_accent = #b4befe
     zone box bar_bell_hit { from: bell_x, 4; size: 24, 22; corner: 7; cursor: pointer; label: "Notifications" }
     box { from: bell_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(bar_bell_hit.hover * 10%, bar_bell_hit.pressed * 16%) }
     image bar_bell { at: round(bell_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 92%; show: not notices_dnd }
-    image bar_bell_off { at: round(bell_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 38%; show: notices_dnd }
-    // j2bar's unread mark: a 4px square 3px in from the button's top right, glowing 3.5px at 90% and 9px at 75%.
+    image bar_bell_off { at: round(bell_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 40%; show: notices_dnd }
+    // The unread mark: a 4px lavender square 3px in from the button's top right, glowing 3.5px at 90% and 9px at 75%.
     group {
         glow: 9, 35%, bell_accent
         show: notices_unread and not notices_dnd
