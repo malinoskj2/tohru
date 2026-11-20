@@ -1,32 +1,54 @@
 part AboutPopup {
     popup about {
-        at: (screen.width - 360) / 2, 60
-        size: 360, 430
+        at: (screen.width - 336) / 2, 37
+        size: 336, 386
         open: about_visible
         bright: panel_bright
-        body { color: ink_body; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 0.25 - 0.11 * pk
-            box { from: 0, 0; size: 360, 430; corner: 22 }
+        body {
+            color: ink_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+            shadow: 0, 4, 10, 0.22 - 0.1 * pk
+            box { from: 12, 0; size: 312, 368; corner: 15 }
         }
-        zone box about_close_hit { from: 320, 8; size: 30, 30; cursor: pointer; label: "Close About" }
-        text "×" { at: 335, 23; anchor: center; size: 22; color: ink_text }
-        on press about_close_hit { emit about_close }
+        box { from: 12.5, 0.5; size: 311, 367; corner: 14.5; stroke: 1; color: ink_white; opacity: 0.6 * (26% - 10% * pk) }
+        // The network popup's water at rest unfolded: frost and drifting palette light.
+        shader about_frost = file "../network/water.wgsl"
         group {
-            glow: 4, 45%, ink_blue
-            image about_mark { at: 159, 29; size: 42, 42; opacity: 30% }
+            show: about_visible
+            move: 12, 0
+            shader: about_frost, 1, 0, 1, 312, 0, pk, 0, 0
+            box { from: 0, 0; size: 312, 368; color: ink_glass; opacity: 1% }
         }
-        text about_name { at: 180, 94; anchor: center; width: 300; size: 18; weight: 600; color: ink_text }
-        text about_version { at: 180, 119; anchor: center; width: 300; size: 13; color: ink_sub0 }
+
+        box { from: 26, 14; size: 284, 58; corner: 11; color: ink_white; opacity: 6% - 1.5% * pk }
+        box { from: 26.5, 14.5; size: 283, 57; corner: 10.5; stroke: 1; color: ink_white; opacity: 0.6 * 14% }
+        image about_mark { at: 39, 29; size: 28, 28; tint: ink_white; opacity: 88% }
+        text about_name { at: 77, 35; anchor: left center; width: 130; lines: 1; size: 16; weight: 600; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+        text about_version { at: 77, 53; anchor: left center; width: 130; lines: 1; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+        text about_short { at: 297, 56 + 0.308 * 38; anchor: right bottom; size: 38; weight: 200; family: "SF Pro Text:tnum"; color: ink_white; opacity: 92%; letter_move: -1.2 * letter, 0 }
+
+        box { from: 26, 82; size: 284, 226; corner: 11; color: ink_white; opacity: 6% - 1.5% * pk }
+        box { from: 26.5, 82.5; size: 283, 225; corner: 10.5; stroke: 1; color: ink_white; opacity: 0.6 * 14% }
         for spec in about_specs {
-            text spec.label { at: 24, 155 + spec.index * 25; width: 105; size: 12; color: ink_sub0 }
-            text spec.value { at: 135, 155 + spec.index * 25; width: 201; size: 12; color: ink_text }
+            text spec.label { at: 39, 137 + spec.index * 25; anchor: left center; width: 86; lines: 1; size: 11.5; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+            text spec.value { at: 297, 137 + spec.index * 25; anchor: right center; width: 176; lines: 1; align: right; size: 12; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 92%; selectable: true }
         }
-        box about_more_hit { from: 90, 310; size: 180, 28; corner: 8; color: ink_text; opacity: 8%; cursor: pointer }
-        text "More Info…" { at: 180, 324; anchor: center; size: 13; color: ink_text }
+        text about_error { at: 39, 292; anchor: left center; width: 258; lines: 1; size: 10; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+
+        text "github.com/malinoskj2/nix" { at: 28, 329; anchor: left center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink_blue; selectable: true }
+        text "System configuration" { at: 28, 344; anchor: left center; size: 10; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+        zone box about_more_hit { from: 216, 324; size: 92, 24; corner: 7; cursor: pointer; label: "More Info" }
+        box { from: 216, 324; size: 92, 24; corner: 7; color: ink_white; opacity: 10% - 2% * pk + max(about_more_hit.hover * 6%, about_more_hit.pressed * 12%) }
+        text "More Info" { at: 226, 336; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+        path {
+            at: 293, 336
+            stroke: 1.25; color: ink_white; opacity: 80%
+            move -2.5, -1.25
+            line 0, 1.25
+            line 2.5, -1.25
+        }
         on press about_more_hit { emit about_more }
-        text "github.com/malinoskj2/nix" { at: 180, 363; anchor: center; size: 12; color: ink_blue; selectable: true }
-        text "System configuration" { at: 180, 383; anchor: center; size: 11; color: ink_sub0 }
-        text about_error { at: 24, 408; width: 312; size: 10; color: ink_sub0 }
     }
-    on key Escape { about_visible = false }
-    on blur { about_visible = false }
+    on key Escape while about_visible { emit about_close }
+    on key Return while about_visible { emit about_more }
+    on blur { emit about_close }
 }
