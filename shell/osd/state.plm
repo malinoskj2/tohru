@@ -13,6 +13,8 @@ part VolumeOsdState {
     fact osd_last_volume = 0
     fact osd_last_muted = false
     fact osd_level = 0
+    // Above 0 it stands in for the shader clock, so a capture can be frozen deterministically.
+    fact osd_clock = 0
     text osd_label = ""
     event osd_enter ->
     event osd_leave ->

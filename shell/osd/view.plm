@@ -1,30 +1,62 @@
 part VolumeOsdView {
-    // Native spring/velocity approximation of the retained Jelly entrance.
+    shader osd_tank = file "tank.wgsl"
     surface volume_osd {
         size: 100, 260; anchor: right; margin: 20; level: overlay; reserve: -1
         screens: bar_outputs; keyboard: none
-        prop osd_seen = 0 ~spring(175, 8.5)
+        let osd_ink = #ffffff
+        let osd_glass = #140a1e
+        // Critically-damped glide (omega 14, zeta ~0.86) and smooth liquid level spring.
+        prop osd_seen = 0 ~spring(196, 24.0)
         follow osd_seen = if(osd_open, 1, 0)
-        prop osd_fill = 0 ~spring(170, 13.04)
+        prop osd_fill = 0 ~spring(110, 16.8)
         follow osd_fill = osd_level
+        prop osd_quiet = 0 ~180ms
+        follow osd_quiet = if(osd_muted, 1, 0)
+        let osd_visible = osd_open or osd_seen > 0.002 or abs(vel(osd_seen)) > 0.002
+        let osd_slosh = (0.9 + min(2.0, abs(vel(osd_fill)) * 1.4 + abs(vel(osd_seen)) * 0.6)) * (1 - motion.reduced)
+        let osd_tilt = clamp(-vel(osd_fill) * 0.9 + vel(osd_seen) * 0.5, -2.5, 2.5) * (1 - motion.reduced)
+        // Pre-shape 0..100 outside the shader group so changing levels never trail a frame behind.
+        repeat n in 0..101 { text "{n}" { at: 50, 92; anchor: center; size: 30; weight: 200; family: "SF Pro Text"; color: osd_ink; opacity: 0.1%; show: osd_visible } }
         group {
-            move: (1 - osd_seen) * 70, 0
-            pivot: 80, 130
-            scale: 0.85 + 0.15 * osd_seen + clamp(vel(osd_seen) * 0.008, -0.08, 0.08), 1 - clamp(vel(osd_seen) * 0.006, -0.08, 0.08)
+            move: (1 - osd_seen) * 24, 0
+            pivot: 81, 121
+            scale: 0.96 + 0.04 * clamp(osd_seen, 0, 1)
             opacity: clamp(osd_seen, 0, 1)
-            show: osd_open or osd_seen != 0 or vel(osd_seen) != 0
-            body { color: #181825; glass: 72%; frost: 45%; refraction: 110%; ripple: 65%; rim: 4%; shadow: 0, 4, 10, 25%
-                box { from: 28, 30; size: 44, 200; corner: 22; color: #181825; opacity: 84% }
+            show: osd_visible
+            body {
+                color: osd_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+                shadow: 0, 4, 10, 22%
+                box { from: 19, 18; size: 62, 206; corner: 15 }
             }
-            // Rounded native liquid fill remains within the glass vessel.
-            box { from: 31, 227 - clamp(osd_fill, 0, 1) * 194; size: 38, clamp(osd_fill, 0, 1) * 194; corner: min(19, clamp(osd_fill, 0, 1) * 97); color: #89dceb; opacity: 80% }
-            text osd_label { at: 50, 57; anchor: center; size: 12; weight: 600; color: #cdd6f4 }
-            image sound_speaker { at: 42, 194; size: 16, 16; tint: #cdd6f4; show: not osd_input and not osd_muted }
-            image sound_muted { at: 42, 194; size: 16, 16; tint: #cdd6f4; show: not osd_input and osd_muted }
-            image sound_mic { at: 42, 194; size: 16, 16; tint: #cdd6f4; show: osd_input and not osd_muted }
-            image sound_mic_off { at: 42, 194; size: 16, 16; tint: #cdd6f4; show: osd_input and osd_muted }
-            text osd_device { at: 50, 246; anchor: center; width: 96; lines: 1; size: 10; color: #cdd6f4 }
-            zone box osd_vessel { from: 28, 30; size: 44, 200; active: osd_open }
+            // Inset 0.6 px equivalent hairline matching shell/sound/panel.plm.
+            box { from: 19.5, 18.5; size: 61, 205; corner: 14.5; stroke: 1; color: osd_ink; opacity: 15.6% }
+            // Water tank: clear-to-frosted liquid refracting the static thin numeral and foot icon.
+            // Hidden when the OSD rests off-screen so the shader's clock stops completely.
+            group {
+                move: 19, 18
+                show: osd_visible
+                shader: osd_tank, osd_fill, osd_slosh, osd_tilt, 62, osd_quiet, 0, osd_clock, 0
+                box { from: 0, 0; size: 62, 206; color: #000000; opacity: 1% }
+                text osd_label { at: 31, 74; anchor: center; size: 30; weight: 200; family: "SF Pro Text"; color: osd_ink; show: not osd_muted }
+                text osd_label { at: 31, 72; anchor: center; size: 13; weight: 400; family: "SF Pro Text"; color: osd_ink; show: osd_muted }
+                image sound_speaker { at: 23.5, 174.5; size: 15, 15; tint: osd_ink; show: not osd_input and not osd_muted }
+                image sound_muted { at: 23.5, 174.5; size: 15, 15; tint: osd_ink; show: not osd_input and osd_muted }
+                image sound_mic { at: 23.5, 174.5; size: 15, 15; tint: osd_ink; show: osd_input and not osd_muted }
+                image sound_mic_off { at: 23.5, 174.5; size: 15, 15; tint: osd_ink; show: osd_input and osd_muted }
+            }
+            // Tohru's 4 px glowing mark (shell/sound/panel.plm) for active microphone input.
+            group {
+                glow: 9, 35%, osd_ink
+                show: osd_input and not osd_muted
+                box { from: 69, 27; size: 4, 4; color: osd_ink }
+            }
+            group {
+                glow: 3.5, 45%, osd_ink
+                show: osd_input and not osd_muted
+                box { from: 69, 27; size: 4, 4; color: osd_ink }
+            }
+            text osd_device { at: 50, 238; anchor: center; width: 96; lines: 1; align: center; size: 10; weight: 500; family: "SF Pro Text"; color: osd_ink; opacity: 82%; shadow: 0, 1, 5, 45% }
+            zone box osd_vessel { from: 19, 18; size: 62, 206; corner: 15; active: osd_open }
             on enter osd_vessel { emit osd_enter }
             on leave osd_vessel { emit osd_leave }
         }
