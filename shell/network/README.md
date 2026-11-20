@@ -8,7 +8,7 @@ The bar's network icon and the network popup (Atlas Water Chamber). Both run in 
 |---|---|
 | `state.plm` | The `network` service as `net` (online, kind, name, strength, Wi-Fi on, error, up to 64 networks in `net_rows`), native icons, fold/water spring state, popup facts and `network_*` events |
 | `popup.plm` | The adaptive-glass popup: `272 × 200 px` compact Atlas Water Chamber (Wi-Fi & Ethernet interface tiles over the refracted signal water chamber), unfolding smoothly into the `288 px` segmented `Wi-Fi \| Ethernet` header, nearby list (7 to a page), password card, Disconnect and Forget |
-| `water.plm`, `water.wgsl` | Clear partly-frosted water (`NetworkWater`) drawn from `net_water`, `net_big`, `net_fold`, `net_quiet` and `pk`: refracts and blurs the signal numeral in compact mode and transitions into drifting workspace-palette light plumes behind the unfolded list |
+| `water.plm` | Clear partly-frosted water (`NetworkWater`) drawn with `../water.wgsl`, shared with the Bluetooth popup, from `net_water`, `net_big`, `net_fold`, `net_quiet` and `pk`: refracts and blurs the signal numeral in compact mode and transitions into drifting workspace-palette light plumes behind the unfolded list |
 | `controller.luau` | Turns popup actions into `network.*` calls and manages fold, selection, pagination and password lifecycle. Returns `{open, close, toggle}` |
 | `scan.svg`, `lock.svg` | Lucide icons for scanning and secured networks (ISC; see `LICENSE.LUCIDE`) |
 | `entry.plm`, `entry.luau` | A standalone scene with a Network button, for development |
