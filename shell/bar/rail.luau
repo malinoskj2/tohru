@@ -1,7 +1,9 @@
 -- One rail's goal and per-switch draws. The motion itself is the scene's springs (bar/rail-state.plm).
-return function(index)
+-- `pitch` is a slot's length along the rail: 16 px unless said.
+return function(index, pitch)
+    pitch = pitch or 16
     local function key(name) return "rail." .. name .. "." .. index end
-    local active = fact[key("present")] and math.floor((fact[key("goal")] - 8) / 16) + 1 or nil
+    local active = fact[key("present")] and math.floor(fact[key("goal")] / pitch) + 1 or nil
     local function observe(slots, slot)
         fact[key("slots")] = slots
         if slot and (slot < 1 or slot > slots) then slot = nil end
@@ -10,7 +12,7 @@ return function(index)
         local from = active
         active = slot
         if not slot then return end
-        fact[key("goal")] = (slot - 1) * 16 + 8
+        fact[key("goal")] = (slot - 0.5) * pitch
         if not from then
             -- A bead that appears lands in place.
             fact[key("land")] = fact[key("land")] + 1
