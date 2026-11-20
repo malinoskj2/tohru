@@ -1,5 +1,5 @@
 part CalendarRibbon {
-    shader rail_shader { at: 52, 76 + cal_weeks * 30; size: 216, 42; values: rail.x.1, vel(rail.x.1), rail.bead.1, rail.c.1, rail.amp.1, rail.wash.1, rail.wc.1, rail.wave.1; colors: rgb(rail.red.1, rail.green.1, rail.blue.1), if(rail.present.1, #ffffff, #000000) }
+    shader rail_shader { at: 52, 76 + cal_weeks * 30; size: 216, 42; values: rail.x.1, vel(rail.x.1), if(rail.present.1, rail.bead.1, -1), rail.c.1, rail.amp.1, rail.wash.1, rail.wc.1, rail.wave.1; colors: rgb(rail.red.1, rail.green.1, rail.blue.1), ink_white }
     repeat i in 1..13 {
         zone box cal_rail.$i { from: 64 + (i - 1) * 16, 86 + cal_weeks * 30; size: 16, 22; cursor: pointer; label: "Month {i}" }
         on press cal_rail.$i { emit calendar_month(i) }

@@ -14,3 +14,22 @@ fn production_shader_parses_and_validates_with_eight_inputs() {
     assert!(!source.contains("s.c.") && !source.contains("s.d."));
     assert!(!source.contains("80.0"));
 }
+
+#[test]
+fn ribbon_takes_its_track_ink_and_bead_presence_from_its_inputs() {
+    let source = include_str!("../../shell/bar/ribbon.wgsl");
+    assert!(source.contains("let track=s.color2.rgb;"));
+    assert!(source.contains("select(0.0,1.0,s.a.z>=0.0)"));
+    assert!(!source.contains("vec3<f32>(0.14*rail)") && !source.contains("s.color2.r;"));
+    for scene in [
+        include_str!("../../shell/bar/workspace.plm"),
+        include_str!("../../shell/calendar/rail.plm"),
+        include_str!("../../shell/sound/panel.plm"),
+    ] {
+        let call = scene
+            .lines()
+            .find(|line| line.contains("shader rail_shader"))
+            .expect("every rail draws the shared ribbon");
+        assert!(!call.contains("#000000"), "presence rides in the bead's sign, not a black ink: {call}");
+    }
+}

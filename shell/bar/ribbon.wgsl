@@ -1,5 +1,6 @@
-// s.a: bead x, bead velocity, bead half-height + 8 * round(rounding * 255), wave crest.
+// s.a: bead x, bead velocity, bead half-height + 8 * round(rounding * 255) (negative: no bead), wave crest.
 // s.b: swell, wash, wash centre, direction * (1 + time since the switch / wave life).
+// s.color: the bead's colour; s.color2: the track's ink, white on dark glass and dark on light.
 // The bead's extent and glow, the wash's width and the chop's clock are derived from these.
 fn sq(x: f32) -> f32 { return x*x; }
 fn cap(s: Shader, x: f32) -> f32 {
@@ -7,8 +8,9 @@ fn cap(s: Shader, x: f32) -> f32 {
  if m >= 2.0 { return 1.0; }
  return sqrt(max(0.0, 1.0-sq(1.0-m/2.0)));
 }
-fn rounding(s: Shader) -> f32 { return floor(s.a.z/8.0)/255.0; }
-fn half(s: Shader) -> f32 { return s.a.z-8.0*floor(s.a.z/8.0); }
+fn packed(s: Shader) -> f32 { return max(s.a.z, 0.0); }
+fn rounding(s: Shader) -> f32 { return floor(packed(s)/8.0)/255.0; }
+fn half(s: Shader) -> f32 { return packed(s)-8.0*floor(packed(s)/8.0); }
 fn phase(s: Shader) -> f32 { return abs(s.b.w)-1.0; }
 fn wave(s: Shader, x: f32) -> vec2<f32> {
  let i = clamp(x, 0.0, s.size.x - 24.0);
@@ -77,7 +79,10 @@ fn shade(s: Shader) -> vec4<f32> {
  let tx=floor(clamp(p.x,0.0,(s.size.x-24.0)-0.001)/4.0)*4.0;
  let t0=wave(s,tx); let t1=wave(s,tx+4.0);
  let tint=mix(min(0.55,abs(t0.y)*0.35+abs(t0.x)*0.25),min(0.55,abs(t1.y)*0.35+abs(t1.x)*0.25),(clamp(p.x,0.0,s.size.x-24.0)-tx)/4.0);
- var c=vec4<f32>(vec3<f32>(0.14*rail),0.14*rail);
+ // Dark ink on light glass needs more cover than white on dark to read as the same line.
+ let track=s.color2.rgb;
+ let track_a=mix(0.24,0.14,dot(track,vec3<f32>(0.2126,0.7152,0.0722)));
+ var c=vec4<f32>(track*track_a*rail,track_a*rail);
  c=over(vec4<f32>(color*tint*rail,tint*rail),c);
  let e=span(s);
  let left=e.x; let step=(e.y-left)/28.0;
@@ -104,7 +109,7 @@ fn shade(s: Shader) -> vec4<f32> {
   glow+=(edge0-edge1)*across;
   edge0=edge1; q0=q1;
  }
- let ink=vec4<f32>(color,1.0)*s.color2.r;
+ let ink=vec4<f32>(color,1.0)*select(0.0,1.0,s.a.z>=0.0);
  c=over(ink*0.75*glow.x,c);
  c=over(ink*cover,c);
  c=over(ink*0.9*glow.y,c);
