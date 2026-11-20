@@ -6,10 +6,20 @@ part CalendarState {
     fact cal_selected_day = 0
     fact cal_month = 1
     fact cal_weeks = 5
+    fact cal_rows = 5
     fact cal_current = true
+    fact cal_hovering = false
+    fact cal_scrubbing = false
+    // Every month change counts up, with its direction: the grid slides in from that side.
+    fact cal_turn = 0
+    fact cal_dir = 1
     text cal_title = ""
-    text cal_footer = ""
-    text cal_week = ""
+    text cal_month_name = ""
+    text cal_year_text = ""
+    text cal_today_day = ""
+    text cal_today_line = ""
+    text cal_today_chip = ""
+    text cal_note = ""
     text cal_error = ""
     model cal_days max 42 { day: text; year: number; month: number; number: number; row: number; col: number; outside: bool; today: bool; selected: bool }
     event calendar_toggle ->
@@ -20,4 +30,10 @@ part CalendarState {
     event calendar_today ->
     event calendar_month ->
     event calendar_day ->
+    event calendar_hover ->
+    event calendar_unhover ->
+    event calendar_scroll ->
+    event calendar_scrub_press ->
+    event calendar_scrub ->
+    event calendar_scrub_release ->
 }
