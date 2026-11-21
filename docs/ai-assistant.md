@@ -30,6 +30,8 @@ As listed under "Services needed" in `.tmp/ai-widget-ideas/index.md`:
 
 Always on, using the default PipeWire source, and following changes of the default.
 
+- **Configurable:** users can disable voice in their config, through a setting such as `assistant.voice = false`, in `tohru config set` and in the Home Manager module. When it is disabled, none of the voice infrastructure runs: no voice service or unit, no microphone stream, and no VAD, recognition, Smart Turn or TTS models loaded. It must cost nothing in CPU, RAM or VRAM, and the bar shows no mic dot. The chat popup and the bar entry keep working. Toggling the setting at runtime starts or stops the voice service completely (stopping releases the mic and frees every model), with no restart of the shell. The Home Manager option leaves the voice unit uninstalled when disabled.
+
 - **Gate:** Silero VAD (`$MODEL_ROOT/by-name/silero-vad`, CPU). Nothing else runs without speech.
 - **Recognition:** sherpa-onnx streaming Zipformer int8 (`voice-asr`, CPU), only on VAD speech.
 - **Wake word:** deterministic. The transcript must start with "tohru" (plus close spellings such as "toru"), otherwise it is discarded. Nothing before the wake word is stored or sent anywhere.
