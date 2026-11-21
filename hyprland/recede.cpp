@@ -24,10 +24,12 @@
 #include <hyprland/src/config/shared/animation/AnimationTree.hpp>
 #include <hyprland/src/config/values/types/FloatValue.hpp>
 #include <hyprland/src/config/values/types/StringValue.hpp>
-#include <hyprland/src/desktop/Workspace.hpp>
 #include <hyprland/src/desktop/state/WindowState.hpp>
 #include <hyprland/src/desktop/view/LayerSurface.hpp>
-#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/desktop/view/window/Window.hpp>
+#include <hyprland/src/desktop/view/window/WindowEffectsController.hpp>
+#include <hyprland/src/desktop/view/window/WindowPresentation.hpp>
+#include <hyprland/src/workspace/HLWorkspace.hpp>
 #include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/helpers/math/Math.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
@@ -38,13 +40,14 @@
 #include <hyprland/src/render/Renderer.hpp>
 #include <hyprland/src/render/Shader.hpp>
 #include <hyprland/src/render/pass/RectPassElement.hpp>
+#include <hyprland/src/render/WindowRenderPresentation.hpp>
 #include <hyprland/src/render/transformer/Transformer.hpp>
+#include <hyprland/src/render/transformer/TransformerList.hpp>
 #undef protected
 #undef private
 
 #include <hyprland/src/plugins/PluginAPI.hpp>
 
-#include "LogicalFramebuffer.hpp"
 
 using Desktop::View::IGeometric;
 
@@ -61,8 +64,8 @@ static struct {
 
 // Each output pixel is traced back through the tilt to the pixel of the window's frame it shows, so
 // the window is drawn with a true perspective rather than as a flat quad. `toRender` maps the
-// buffers' texture coordinates to the monitor's logical orientation, in which the tilt is defined,
-// and `fromRender` back. The shade darkens the window's own box from the top, as the reference's
+// output buffer's texture coordinates to the monitor's render pixels, in which the tilt is defined,
+// and `fromRender` maps those pixels to the source buffer's texture coordinates. The shade darkens the window's own box from the top, as the reference's
 // gradient does, and leaves its shadow alone.
 constexpr const char* RECEDE_FRAG = R"GLSL(#version 300 es
 precision highp float;
@@ -270,12 +273,27 @@ static std::optional<SProjection> projectionFor(const SRecede& recede) {
     return projection;
 }
 
+using SMat3 = std::array<double, 9>;
+
 static Vector2D renderOffset(const PHLWINDOW& w, const PHLMONITOR& monitor) {
-    const auto WORKSPACE = w->m_workspace;
-    return (w->m_pinned || !WORKSPACE ? Vector2D{} : WORKSPACE->m_renderOffset->value()) + w->m_floatingOffset - monitor->m_position;
+    const auto PRESENTATION = w->presentation().renderPresentation();
+    return PRESENTATION.workspaceOffset + PRESENTATION.floatingOffset - monitor->m_position;
 }
 
-using SMat3 = std::array<double, 9>;
+static CBox boundsUnion(const CBox& a, const CBox& b) {
+    const double X1 = std::min(a.x, b.x), Y1 = std::min(a.y, b.y);
+    const double X2 = std::max(a.x + a.w, b.x + b.w), Y2 = std::max(a.y + a.h, b.y + b.h);
+    return {X1, Y1, X2 - X1, Y2 - Y1};
+}
+
+// Maps texture coordinates of a buffer to the render pixels of the box it holds, or back.
+static SMat3 boxToPixels(const CBox& box) {
+    return {box.w, 0.0, box.x, 0.0, box.h, box.y, 0.0, 0.0, 1.0};
+}
+
+static SMat3 pixelsToBox(const CBox& box) {
+    return {1.0 / box.w, 0.0, -box.x / box.w, 0.0, 1.0 / box.h, -box.y / box.h, 0.0, 0.0, 1.0};
+}
 
 // OpenGL ES requires a column-major matrix with transpose=false.
 static std::array<GLfloat, 9> toGL(const SMat3& m) {
@@ -293,79 +311,100 @@ class CRecedeTransformer : public Render::IWindowTransformer {
   public:
     CRecedeTransformer(PHLWINDOWREF window) : m_window(std::move(window)) {}
 
-    virtual void preWindowRender(CSurfacePassElement::SRenderData* pRenderData) override {
+    // Hyprland drops inactive transformers from the window's list.
+    void detach() {
+        m_attached = false;
+    }
+
+    virtual bool active() const override {
+        return m_attached;
+    }
+
+    virtual void preWindowRender(Render::CRenderContext&, CSurfacePassElement::SRenderData*) override {
         m_nextIsFrame = true;
     }
 
-    virtual SP<Render::IFramebuffer> transform(SP<Render::IFramebuffer> in) override {
+    // Hyprland only allocates and draws the transformed window within these extents.
+    virtual CBox transformedExtents(const CBox& currentBox) const override {
+        const auto  WINDOW  = m_window.lock();
+        const auto  MONITOR = WINDOW ? WINDOW->m_monitor.lock() : nullptr;
+        const auto* RECEDE  = recedeFor(MONITOR);
+        const auto  PROJ    = RECEDE ? projectionFor(*RECEDE) : std::nullopt;
+        if (!PROJ)
+            return currentBox;
+
+        const double SCALE = MONITOR->m_scale;
+        const auto   DRAWN = PROJ->apply(currentBox.copy().scale(SCALE).expand(2)).expand(2).scale(1.0 / SCALE);
+        return boundsUnion(currentBox, DRAWN).expand(4.0 / SCALE);
+    }
+
+    virtual CBox sourceBoxForOutput(const CBox&, const CBox& inputBox) const override {
+        return inputBox;
+    }
+
+    virtual Render::SWindowTransformBuffer transform(Render::CRenderContext& ctx, const Render::SWindowTransformBuffer& in,
+                                                     const Render::SWindowTransformContext& context) override {
         const bool IS_FRAME = std::exchange(m_nextIsFrame, false);
         const auto WINDOW   = m_window.lock();
-        const auto MONITOR  = g_pHyprRenderer->m_renderData.pMonitor.lock();
-        if (!WINDOW || !MONITOR || !in || !in->getTexture())
+        const auto MONITOR  = context.monitor.lock();
+        if (!WINDOW || !MONITOR || !in.framebuffer || !in.framebuffer->getTexture())
             return in;
 
+        auto&       gl     = Render::GL::g_pHyprOpenGL;
         const auto* RECEDE = recedeFor(MONITOR);
         // The backdrop blurs the composed desktop once. Reapplying each translucent window's
         // own live blur after tilting gives neighbouring terminals separate blur boundaries.
         // Hyprland samples the matte's red channel, so black suppresses that extra blur.
         if (!IS_FRAME && RECEDE && RECEDE->blur->value() > 1e-4F && configValues.blur->value() > 0.F) {
-            const auto GUARD = g_pHyprRenderer->bindTempFB(in);
-            Render::GL::g_pHyprOpenGL->setCapStatus(GL_SCISSOR_TEST, false);
+            Render::GL::CFramebufferBindingGuard bindings{g_pHyprRenderer->glBackend()};
+            auto                                 state = ctx.saveDrawState();
+            g_pHyprRenderer->bindFB(ctx, in.framebuffer);
+            gl->setCapStatus(GL_SCISSOR_TEST, false);
             glClearColor(0.F, 0.F, 0.F, 1.F);
             glClear(GL_COLOR_BUFFER_BIT);
             return in;
         }
 
-        const auto  PROJ   = RECEDE ? projectionFor(*RECEDE) : std::nullopt;
-        const float SHADE  = RECEDE && IS_FRAME ? std::clamp(RECEDE->shade->value(), 0.F, 1.F) * configValues.shade->value() : 0.F;
-        // Hyprland draws a transformer's result in the monitor's logical orientation, so a buffer
-        // in the output's own orientation goes through the shader even with nothing to tilt.
-        const bool LOGICAL = dynamic_cast<CLogicalFramebuffer*>(in.get()) || MONITOR->m_transform == WL_OUTPUT_TRANSFORM_NORMAL;
-        if (!PROJ && SHADE <= 0.F && LOGICAL)
+        const auto  PROJ  = RECEDE ? projectionFor(*RECEDE) : std::nullopt;
+        const float SHADE = RECEDE && IS_FRAME ? std::clamp(RECEDE->shade->value(), 0.F, 1.F) * configValues.shade->value() : 0.F;
+        if (!PROJ && SHADE <= 0.F)
             return in;
 
         if (!ensureShader())
             return in;
 
-        const auto TEX = in->getTexture();
-        auto& output = IS_FRAME ? m_frame : m_matte;
-        if (!output)
-            output = makeShared<CLogicalFramebuffer>("j2bar-recede-logical");
-        const auto FORMAT = MONITOR->useFP16() ? in->m_drmFormat : DRM_FORMAT_ARGB8888;
-        if (!output->alloc(MONITOR->m_transformedSize.x, MONITOR->m_transformedSize.y, FORMAT))
+        const auto OUTPUTCANVAS = Render::pixelBoxForLogical(context.outputBox.copy().expand(1.0 / MONITOR->m_scale), MONITOR->m_scale);
+        if (OUTPUTCANVAS.empty() || in.box.empty())
             return in;
-        output->setImageDescription(TEX->m_imageDescription);
-        const auto OUT = output;
-        auto sourceMapping = Mat3x3::identity();
-        if (!dynamic_cast<CLogicalFramebuffer*>(in.get()))
-            sourceMapping.translate({0.5, 0.5}).transform(Math::wlTransformToHyprutils(MONITOR->m_transform)).translate({-0.5, -0.5});
 
-        const auto  PROJECTION = PROJ.value_or(SProjection{});
-        const auto  OFFSET     = renderOffset(WINDOW, MONITOR);
-        const auto  BOX        = CBox{WINDOW->position(IGeometric::GEOMETRIC_CURRENT), WINDOW->size(IGeometric::GEOMETRIC_CURRENT)}.translate(OFFSET).scale(MONITOR->m_scale);
-        const auto  BOUNDS     = WINDOW->getFullWindowBoundingBox().translate(OFFSET).scale(MONITOR->m_scale).expand(2);
-        const CBox  FULL       = {{}, MONITOR->m_transformedSize};
-        const auto  DRAWN      = PROJECTION.apply(BOUNDS).expand(2).round().intersection(FULL);
+        const auto OUT = g_pHyprRenderer->getWorkBuffer(ctx, OUTPUTCANVAS.size());
+        if (!OUT)
+            return {.framebuffer = in.framebuffer, .box = in.box, .success = false};
 
-        const auto  GUARD = g_pHyprRenderer->bindTempFB(OUT);
-        auto&       gl    = Render::GL::g_pHyprOpenGL;
-        const auto PROJECTION_TYPE = g_pHyprRenderer->m_renderData.projectionType;
-        const auto FB_SIZE = g_pHyprRenderer->m_renderData.fbSize;
-        const auto TRANSFORM_DAMAGE = g_pHyprRenderer->m_renderData.transformDamage;
-        g_pHyprRenderer->m_renderData.fbSize = OUT->m_size;
-        g_pHyprRenderer->setProjectionType(Render::RPT_EXPORT);
-        g_pHyprRenderer->m_renderData.transformDamage = false;
-        const auto PROJECTION_GUARD = Render::CScopeGuard([PROJECTION_TYPE, FB_SIZE, TRANSFORM_DAMAGE] {
-            g_pHyprRenderer->m_renderData.fbSize = FB_SIZE;
-            g_pHyprRenderer->setProjectionType(PROJECTION_TYPE);
-            g_pHyprRenderer->m_renderData.transformDamage = TRANSFORM_DAMAGE;
-        });
+        const auto TEX        = in.framebuffer->getTexture();
+        const auto PROJECTION = PROJ.value_or(SProjection{});
+        const auto OFFSET     = renderOffset(WINDOW, MONITOR);
+        const auto BOX        = CBox{WINDOW->position(IGeometric::GEOMETRIC_CURRENT), WINDOW->size(IGeometric::GEOMETRIC_CURRENT)}.translate(OFFSET).scale(MONITOR->m_scale);
+        const auto BOUNDS     = WINDOW->getFullWindowBoundingBox().translate(OFFSET).scale(MONITOR->m_scale).expand(2);
+        const CBox FULL       = {{}, OUTPUTCANVAS.size()};
+        const auto DRAWN      = PROJECTION.apply(BOUNDS).expand(2).round().translate(-OUTPUTCANVAS.pos()).intersection(FULL);
+
+        Render::GL::CFramebufferBindingGuard bindings{g_pHyprRenderer->glBackend()};
+        auto                                 state      = ctx.saveDrawState();
+        auto&                                renderData = ctx.m_data;
+        g_pHyprRenderer->bindFB(ctx, OUT);
+        renderData.damage          = CRegion{FULL};
+        renderData.fbSize          = OUTPUTCANVAS.size();
+        renderData.transformDamage = false;
+        g_pHyprRenderer->setProjectionType(ctx, Render::RPT_EXPORT);
         // The renderer's clear element doesn't reliably clear this buffer.
         gl->setCapStatus(GL_SCISSOR_TEST, false);
         glClearColor(0.F, 0.F, 0.F, 0.F);
         glClear(GL_COLOR_BUFFER_BIT);
+
+        const Render::SWindowTransformBuffer RESULT = {.framebuffer = OUT, .box = OUTPUTCANVAS};
         if (DRAWN.empty())
-            return OUT;
+            return RESULT;
 
         glActiveTexture(GL_TEXTURE0);
         TEX->bind();
@@ -382,13 +421,9 @@ class CRecedeTransformer : public Render::IWindowTransformer {
         static constexpr std::array<GLfloat, 9> FULLSCREEN = {2.F, 0.F, 0.F, 0.F, 2.F, 0.F, -1.F, -1.F, 1.F};
         shader->setUniformMatrix3fv(SHADER_PROJ, 1, GL_FALSE, FULLSCREEN);
         shader->setUniformInt(SHADER_TEX, 0);
-        static constexpr SMat3 IDENTITY = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
-        const auto SOURCE_MAPPING = sourceMapping.getMatrix();
-        SMat3 source;
-        std::ranges::copy(SOURCE_MAPPING, source.begin());
-        glUniformMatrix3fv(recedeShader.toRender, 1, GL_FALSE, toGL(IDENTITY).data());
-        glUniformMatrix3fv(recedeShader.fromRender, 1, GL_FALSE, toGL(source).data());
-        glUniform2f(recedeShader.renderSize, FULL.w, FULL.h);
+        glUniformMatrix3fv(recedeShader.toRender, 1, GL_FALSE, toGL(boxToPixels(OUTPUTCANVAS)).data());
+        glUniformMatrix3fv(recedeShader.fromRender, 1, GL_FALSE, toGL(pixelsToBox(in.box)).data());
+        glUniform2f(recedeShader.renderSize, 1.F, 1.F);
         glUniform2f(recedeShader.origin, PROJECTION.origin.x, PROJECTION.origin.y);
         glUniform1f(recedeShader.scale, PROJECTION.scale);
         glUniform1f(recedeShader.sinAngle, PROJECTION.sinAngle);
@@ -398,21 +433,20 @@ class CRecedeTransformer : public Render::IWindowTransformer {
         glUniform1f(recedeShader.shade, SHADE);
         glUniform3f(recedeShader.shadeColor, SHADE_COLOR[0], SHADE_COLOR[1], SHADE_COLOR[2]);
 
-        gl->setViewport(0, 0, OUT->m_size.x, OUT->m_size.y);
+        gl->setViewport(0, 0, OUTPUTCANVAS.w, OUTPUTCANVAS.h);
         glBindVertexArray(shader->getUniformLocation(SHADER_SHADER_VAO));
-        gl->scissor(DRAWN, false);
+        gl->scissor(ctx, DRAWN, false);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        gl->scissor(nullptr);
+        gl->scissor(ctx, nullptr);
         glBindVertexArray(0);
 
-        return OUT;
+        return RESULT;
     }
 
   private:
     PHLWINDOWREF m_window;
     bool         m_nextIsFrame = true;
-    SP<Render::IFramebuffer> m_frame;
-    SP<Render::IFramebuffer> m_matte;
+    bool         m_attached    = true;
 };
 
 struct SAttached {
@@ -422,14 +456,18 @@ struct SAttached {
 
 static std::vector<SAttached> attached;
 
+static void detachFrom(const PHLWINDOW& w, CRecedeTransformer* transformer) {
+    transformer->detach();
+    w->effects().transformers()->removeInactive();
+}
+
 static void                   attach(const PHLWINDOW& w) {
     if (!Desktop::View::validMapped(w) || !recedeFor(w->m_monitor.lock()) ||
         std::ranges::any_of(attached, [&](const auto& a) { return a.window.get() == w.get(); }))
         return;
 
-    auto transformer = makeUnique<CRecedeTransformer>(PHLWINDOWREF{w});
-    attached.emplace_back(SAttached{.window = w, .transformer = transformer.get()});
-    w->m_transformers.emplace_back(std::move(transformer));
+    const auto TRANSFORMER = w->effects().transformers()->emplace<CRecedeTransformer>(PHLWINDOWREF{w});
+    attached.emplace_back(SAttached{.window = w, .transformer = TRANSFORMER});
 }
 
 // Even a no-op transformer changes Hyprland's rendering path, including output orientation.
@@ -443,7 +481,7 @@ static void syncAttachments() {
         const auto MONITOR = WINDOW->m_monitor.lock();
         if (Desktop::View::validMapped(WINDOW) && recedeFor(MONITOR))
             return false;
-        std::erase_if(WINDOW->m_transformers, [&a](const auto& t) { return t.get() == a.transformer; });
+        detachFrom(WINDOW, a.transformer);
         if (MONITOR)
             g_pHyprRenderer->damageMonitor(MONITOR);
         return true;
@@ -458,7 +496,7 @@ static void syncAttachments() {
 static void detachAll() {
     for (const auto& a : attached) {
         if (const auto WINDOW = a.window.lock())
-            std::erase_if(WINDOW->m_transformers, [&a](const auto& t) { return t.get() == a.transformer; });
+            detachFrom(WINDOW, a.transformer);
     }
     attached.clear();
 }
@@ -537,11 +575,11 @@ static void onLayerClosed(PHLLS ls) {
 
 // The blur covers everything below the layers, wallpaper included, the way the reference's
 // backdrop does, and fades in as a whole rather than growing in radius.
-static void onRenderStage(eRenderStage stage) {
-    if (stage != RENDER_POST_WINDOWS)
+static void onRenderStage(const Event::SRenderStageEvent& event) {
+    if (event.stage != RENDER_POST_WINDOWS || !event.context)
         return;
 
-    const auto MONITOR = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    const auto MONITOR = event.monitor;
     const auto* RECEDE = MONITOR ? recedeFor(MONITOR) : nullptr;
     if (!RECEDE)
         return;
@@ -555,7 +593,7 @@ static void onRenderStage(eRenderStage stage) {
     data.color = CHyprColor(0, 0, 0, 0);
     data.blur  = true;
     data.blurA = ALPHA;
-    g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(data));
+    Render::IHyprRenderer::addPassElement(event.context->get(), makeUnique<CRectPassElement>(data));
 }
 
 // A window damages the box it occupies, but receded, it's drawn somewhere else, so whatever damage
@@ -576,7 +614,7 @@ static void onRenderPre(PHLMONITOR monitor) {
     CRegion extra;
     for (const auto& a : attached) {
         const auto WINDOW = a.window.lock();
-        if (!WINDOW || !WINDOW->m_isMapped)
+        if (!WINDOW || !WINDOW->mapped())
             continue;
 
         const auto BOUNDS = WINDOW->getFullWindowBoundingBox().translate(renderOffset(WINDOW, monitor)).scale(monitor->m_scale);
@@ -647,7 +685,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO j2barRecedeInit(HANDLE handle) {
     listeners.emplace_back(Event::bus()->m_events.monitor.removed.listen([](PHLMONITOR m) { onMonitorGone(m); }));
     listeners.emplace_back(Event::bus()->m_events.monitor.destroyMon.listen([](PHLMONITOR m) { onMonitorGone(m); }));
     listeners.emplace_back(Event::bus()->m_events.render.pre.listen([](PHLMONITOR m) { onRenderPre(m); }));
-    listeners.emplace_back(Event::bus()->m_events.render.stage.listen([](eRenderStage s) { onRenderStage(s); }));
+    listeners.emplace_back(Event::bus()->m_events.render.stage.listen([](const Event::SRenderStageEvent& e) { onRenderStage(e); }));
 
     return {"hyprrecede", "Tilts and blurs the windows behind a modal layer", "jesse", "1.0"};
 }

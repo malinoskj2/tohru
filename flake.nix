@@ -3,8 +3,8 @@
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601";
 
-  # Keep the optional plugin on E's reviewed Hyprland 0.56.2 package set.
-  inputs.hyprland-nixpkgs.url = "github:NixOS/nixpkgs/8ce4ef6cb6f871616146b9fe26d2a5ae594e94fe";
+  # Keep the optional plugin on E's reviewed Hyprland 0.57.2 package set.
+  inputs.hyprland-nixpkgs.url = "github:NixOS/nixpkgs/2786a2a72088ecf32aea5b3ec52099e6a7cff78f";
 
   outputs = { self, nixpkgs, hyprland-nixpkgs }:
     let
