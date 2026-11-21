@@ -247,6 +247,25 @@ class Cli(unittest.TestCase):
         self.assertEqual(self.invoke("lock", "now", TOHRU_LOCK_RUN=str(locker)).returncode, 2)
         self.assertFalse(seen.exists())
 
+    def test_avatar_set_and_clear_updates_face_and_rejects_bad_inputs(self):
+        home = self.path / "home"
+        home.mkdir()
+        img = self.path / "avatar.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\nfake")
+        result = self.invoke("avatar", "set", str(img), HOME=str(home))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((home / ".face").read_bytes(), img.read_bytes())
+        # Re-setting from ~/.face itself should succeed rather than failing with same-file copy.
+        same = self.invoke("avatar", "set", str(home / ".face"), HOME=str(home))
+        self.assertEqual(same.returncode, 0, same.stderr)
+        cleared = self.invoke("avatar", "clear", HOME=str(home))
+        self.assertEqual(cleared.returncode, 0, cleared.stderr)
+        self.assertFalse((home / ".face").exists())
+        for bad in (("avatar",), ("avatar", "set"), ("avatar", "set", str(self.path / "missing.png")), ("avatar", "clear", "extra")):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.invoke(*bad, HOME=str(home)).returncode, 2)
+
+
 class GreeterWrapper(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory(prefix="tohru-greeter-")

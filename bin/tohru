@@ -8,6 +8,7 @@ Usage: tohru panel toggle|open sound|calendar|network|media|bluetooth|wallpaper|
        tohru session open|close|toggle
        tohru launcher toggle|open|close
        tohru lock
+       tohru avatar set FILE | clear
        tohru notifications seen | dnd on|off|toggle
        tohru routing-error
        tohru audio volume up|down
@@ -65,6 +66,47 @@ case ${1:-help} in
     lock)
         [[ $# == 1 ]] || fail 'lock takes no arguments'
         exec "${TOHRU_LOCK_RUN:-$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/tohru-lock}"
+        ;;
+    avatar)
+        case ${2:-} in
+            set)
+                [[ $# == 3 ]] || fail 'Usage: tohru avatar set FILE'
+                abs=$(readlink -f -- "$3" 2>/dev/null) || fail "Cannot resolve avatar path: $3"
+                [[ -f $abs && -r $abs && -s $abs ]] || fail "Avatar must be a readable, non-empty image file: $3"
+                uid=$(id -u)
+                updated_accounts=0
+                if command -v busctl >/dev/null 2>&1; then
+                    if busctl --system call org.freedesktop.Accounts "/org/freedesktop/Accounts/User${uid}" \
+                        org.freedesktop.Accounts.User SetIconFile s "$abs" >/dev/null 2>&1; then
+                        updated_accounts=1
+                    fi
+                fi
+                if [[ -n ${HOME:-} && -d $HOME && -w $HOME ]]; then
+                    face=$(readlink -f -- "$HOME/.face" 2>/dev/null || printf '%s/.face' "$HOME")
+                    if [[ $abs != "$face" ]]; then
+                        cp -- "$abs" "$HOME/.face"
+                    fi
+                fi
+                if [[ $updated_accounts == 1 ]]; then
+                    printf 'Updated avatar via AccountsService and ~/.face\n'
+                else
+                    printf 'Updated ~/.face (AccountsService unavailable; greeter needs accounts-daemon or services.tohru-greeter.avatars)\n'
+                fi
+                ;;
+            clear)
+                [[ $# == 2 ]] || fail 'Usage: tohru avatar clear'
+                uid=$(id -u)
+                if command -v busctl >/dev/null 2>&1; then
+                    busctl --system call org.freedesktop.Accounts "/org/freedesktop/Accounts/User${uid}" \
+                        org.freedesktop.Accounts.User SetIconFile s "" >/dev/null 2>&1 || true
+                fi
+                if [[ -n ${HOME:-} ]]; then
+                    rm -f -- "$HOME/.face" "$HOME/.face.icon"
+                fi
+                printf 'Cleared user avatar\n'
+                ;;
+            *) fail 'Usage: tohru avatar set FILE | clear' ;;
+        esac
         ;;
     routing-error)
         [[ $# == 1 ]] || fail 'routing-error takes no arguments'
