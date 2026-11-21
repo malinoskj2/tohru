@@ -23,7 +23,9 @@ pub enum Key {
     NotificationsPosition,
     AssistantVoice,
     AssistantProvider,
-    AssistantVoiceModels,
+    AssistantVadModel,
+    AssistantAsrModel,
+    AssistantTurnModel,
     AssistantTtsEngine,
     AssistantTtsVoice,
     AssistantTtsSpeed,
@@ -66,7 +68,7 @@ pub const TTS_ENGINES: [&str; 2] = ["kokoro", "espeak-ng"];
 pub const VOICE_WAKE: [&str; 2] = ["kws", "asr"];
 
 impl Key {
-    pub const ALL: [Self; 35] = [
+    pub const ALL: [Self; 37] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::InfoButton,
@@ -79,7 +81,9 @@ impl Key {
         Self::NotificationsPosition,
         Self::AssistantVoice,
         Self::AssistantProvider,
-        Self::AssistantVoiceModels,
+        Self::AssistantVadModel,
+        Self::AssistantAsrModel,
+        Self::AssistantTurnModel,
         Self::AssistantTtsEngine,
         Self::AssistantTtsVoice,
         Self::AssistantTtsSpeed,
@@ -119,7 +123,9 @@ impl Key {
             Self::NotificationsPosition => "notifications.position",
             Self::AssistantVoice => "assistant.voice",
             Self::AssistantProvider => "assistant.provider",
-            Self::AssistantVoiceModels => "assistant.voice_models",
+            Self::AssistantVadModel => "assistant.vad_model",
+            Self::AssistantAsrModel => "assistant.asr_model",
+            Self::AssistantTurnModel => "assistant.turn_model",
             Self::AssistantTtsEngine => "assistant.tts_engine",
             Self::AssistantTtsVoice => "assistant.tts_voice",
             Self::AssistantTtsSpeed => "assistant.tts_speed",
@@ -187,7 +193,9 @@ impl Key {
             Self::NotificationsPosition => (&["notifications"], "position"),
             Self::AssistantVoice => (&["assistant"], "voice"),
             Self::AssistantProvider => (&["assistant"], "provider"),
-            Self::AssistantVoiceModels => (&["assistant"], "voice_models"),
+            Self::AssistantVadModel => (&["assistant"], "vad_model"),
+            Self::AssistantAsrModel => (&["assistant"], "asr_model"),
+            Self::AssistantTurnModel => (&["assistant"], "turn_model"),
             Self::AssistantTtsEngine => (&["assistant"], "tts_engine"),
             Self::AssistantTtsVoice => (&["assistant"], "tts_voice"),
             Self::AssistantTtsSpeed => (&["assistant"], "tts_speed"),
@@ -228,7 +236,9 @@ impl Key {
             | Self::AssistantMemory => Value::Bool(true),
             Self::PreferredOutput
             | Self::AssistantProvider
-            | Self::AssistantVoiceModels
+            | Self::AssistantVadModel
+            | Self::AssistantAsrModel
+            | Self::AssistantTurnModel
             | Self::AssistantPersonaFile
             | Self::AssistantTtsModel
             | Self::AssistantKwsModel
@@ -300,7 +310,9 @@ impl Key {
                 Ok(())
             }
             (
-                Self::AssistantVoiceModels
+                Self::AssistantVadModel
+                | Self::AssistantAsrModel
+                | Self::AssistantTurnModel
                 | Self::AssistantPersonaFile
                 | Self::AssistantTtsModel
                 | Self::AssistantKwsModel,
