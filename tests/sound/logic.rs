@@ -207,7 +207,9 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
     let lua = Lua::new();
     lua.load(r#"
         fact={['audio.volume']=0.2, ['audio.muted']=false, ['sound_outputs.count']=1,
-              sound_open=false, sound_dragging=false, cal_open=false}
+              sound_open=false, sound_dragging=false, cal_open=false,
+              media_open=false, media_unfolded=false, media_seeking=false, media_focus=0, media_volume=-1,
+              media_vol_dragging=false, media_vol_requested=0}
         for r=0,1 do for key,value in pairs({present=false,goal=8,land=0,serial=0}) do fact['rail.'..key..'.'..r]=value end end
         text,model,handlers,timers,calls,modules={},{},{},{},{},{}
         local model_rows={}
@@ -264,6 +266,10 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         (
             "network/controller",
             include_str!("../../shell/network/controller.luau"),
+        ),
+        (
+            "media/controller",
+            include_str!("../../shell/media/controller.luau"),
         ),
         (
             "bluetooth/controller",
@@ -356,6 +362,10 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         dispatch('about_open'); assert(fact.about_visible and not fact.info_visible and info_reads==2)
         dispatch('about_more')
         assert(fact.info_visible and not fact.about_visible and fact.info_page==0 and info_reads==3)
+        dispatch('media_toggle'); assert(fact.media_open and not fact.info_visible and not fact.about_visible)
+        dispatch('network_open'); assert(fact.net_open and not fact.media_open)
+        dispatch('media_open'); assert(fact.media_open and not fact.net_open)
+        dispatch('media_toggle'); assert(not fact.media_open)
         dispatch('network_open'); dispatch('panel_close')
         assert(not fact.net_open and not fact.info_visible and not fact.bt_open and info_reads==3)
         tohru_settings.set=function(key,value) last_setting_key=key;last_setting_value=value;return tohru_settings.snapshot() end

@@ -25,12 +25,15 @@ part RootServiceControls {
     let root_title_limit = min(360, max(0, 2 * min(screen.width / 2 - root_left, root_tray_x - 14 - screen.width / 2)))
     let root_title_width = min(root_title_limit, bar_title_measure.width + if(bar_has_icon and root_title_limit >= 21, 20, 0))
     let media_room = root_tray_x - 2 - max(root_left, screen.width / 2 + root_title_width / 2 + 14)
-    let media_shown = bar_playing and media_room >= media_w
+    // While the popup is open the label stays, so the popup does not lose its place when the music stops.
+    let media_shown = (bar_playing or media_open) and media_room >= media_w
     follow bar_title_cap = root_title_limit
     follow net_button_x = root_net_x + 12
+    follow media_button_x = if(media_shown, media_x + media_w / 2, -1)
     follow bt_button_x = root_bt_x + 12
 
-    box { from: media_x, 4; size: media_w, 22; corner: 7; color: bar_ink; opacity: 10%; show: media_shown }
+    zone box root_media { from: media_x, 4; size: media_w, 22; corner: 7; active: media_shown; cursor: pointer; label: "Media" }
+    box { from: media_x, 4; size: media_w, 22; corner: 7; color: bar_ink; opacity: max(10%, max(media_open * 16%, max(root_media.hover * 16%, root_media.pressed * 20%))); show: media_shown }
     image root_play { at: round(media_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 92%; show: media_shown }
     text bar_media { at: media_x + 25, 15.5; anchor: left center; width: 160; lines: 1; tight: true; measure: bar_media_measure; size: 13; family: "SF Pro Text"; color: bar_ink; opacity: 92%; show: media_shown }
 
@@ -43,6 +46,7 @@ part RootServiceControls {
     image root_wifi_zero { at: round(root_net_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: if(net.online, 92%, 38%); show: net.kind != wired and net.wifi and (not net.online or net.strength < 15) }
     image root_wifi_off { at: round(root_net_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 38%; show: net.kind != wired and not net.wifi }
     on press root_network { emit network_toggle }
+    on press root_media { emit media_toggle }
 
     zone box root_bluetooth_hit { from: root_bt_x, 4; size: 24, 22; corner: 7; active: root_extra >= 1; cursor: pointer; label: "Bluetooth" }
     box { from: root_bt_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(root_bluetooth_hit.hover * 10%, root_bluetooth_hit.pressed * 16%); show: root_extra >= 1 }

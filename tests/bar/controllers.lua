@@ -97,7 +97,7 @@ assert(text.bar_media == "Second phone")
 watches.media({playing = true, players = {{id = "foo", name = "", playing = true}}})
 assert(text.bar_media == "Playing")
 watches.media({playing = false, players = {}})
-assert(not fact.bar_playing)
+assert(not fact.bar_playing and text.bar_media == "Media")
 print("Q-B-1/Q-B-2 regression fixtures passed")
 
 -- The real calendar controller drives the month rail only while visible.
