@@ -1,0 +1,15 @@
+diff --git a/src/gpu.rs b/src/gpu.rs
+index da0e56e..66f04ac 100644
+--- a/src/gpu.rs
++++ b/src/gpu.rs
+@@ -1927,7 +1927,9 @@ impl DrawList {
+         // What does not fall on the surface nor on any open popup does not exist.
+         let touches = |v: &[f32; 4]| bounds[0] < v[2] && bounds[2] > v[0] && bounds[1] < v[3] && bounds[3] > v[1];
+         let frame = [0.0, 0.0, self.size.0, self.size.1];
+-        let frame = if touches(&frame) { frame } else { self.views.iter().copied().find(|v| touches(v)).unwrap_or(frame) };
++        // Every view it falls on, together: a lock has one per monitor, and
++        // clipped to the first alone it showed on a larger monitor only as big as a smaller one.
++        let frame = std::iter::once(frame).chain(self.views.iter().copied()).filter(|v| touches(v)).reduce(|a, v| [a[0].min(v[0]), a[1].min(v[1]), a[2].max(v[2]), a[3].max(v[3])]).unwrap_or(frame);
+         let mut c = [bounds[0].max(frame[0]), bounds[1].max(frame[1]), bounds[2].min(frame[2]), bounds[3].min(frame[3])];
+         for (_, r) in clips {
+             c = [c[0].max(r[0]), c[1].max(r[1]), c[2].min(r[2]), c[3].min(r[3])];

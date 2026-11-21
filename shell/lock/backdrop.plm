@@ -1,0 +1,23 @@
+part LockBackdrop {
+ // What the screen showed before locking, always too soft to read; a plain dusk when no capture came.
+ let bg_blur = pick(style, 26, 24, 22, 22, 16, 22, 14, 16, 22, 22, 18)
+ let bg_dim = pick(style, 0.30, 0.24, 0.16, 0.14, 0, 0.16, 0, 0.12, 0.16, 0.16, 0.10) * mix(1, 0.3, pk)
+ body {
+  gradient: 960, 0 to 960, 1080, #1d1230, #0b0812
+  box { from: -4000, -4000; size: 9920, 9080 }
+ }
+ group {
+  blur: 140
+  show: not has_shot
+  ellipse { at: 620, 720; radius: 620; color: #6b3a78; opacity: 20% }
+ }
+ group {
+  blur: bg_blur
+  saturation: 1.35
+  show: has_shot
+  image lock_shot { at: -60, -34; size: 2040, 1148; fit: cover }
+ }
+ box { from: -4000, -4000; size: 9920, 9080; color: mix(#0d0914, #fafafc, pk); opacity: bg_dim }
+ // After PAM accepted the password: the desktop the lock is about to hand back.
+ image lock_shot { at: 0, 0; size: 1920, 1080; fit: cover; opacity: clamp(unlock * 1.15 - 0.15, 0, 1) * pick(style, 1, 0.8, 0.75, 0.7, 0, 0.72, 0.7, 0, 0.72, 0.8, 0.7); show: has_shot and unlocking }
+}

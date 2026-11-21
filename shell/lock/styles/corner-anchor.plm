@@ -1,0 +1,22 @@
+part LockCornerAnchor {
+ // Everything hangs off the bar's x = 100 edge, low on the left: clock, rule and field.
+ group {
+  show: style == 9
+  opacity: clamp(1 - unlock * 0.92, 0, 1)
+  text date_comma_caps { at: 104, 696; anchor: left center; size: 14; weight: 500; family: "SF Pro Text"; color: ink; opacity: 64% }
+  text clock_hm { at: 100, 774; anchor: left center; size: 136; weight: 200; family: "SF Pro Display:tnum"; color: ink; opacity: 95%; letter_move: -3.5 * letter, 0 }
+  box { from: 104, 842; size: 280, 1; color: ink; opacity: 16% }
+  text "{user}  ·  Locked" { at: 104, 868; anchor: left center; size: 13; family: "SF Pro Text"; color: ink; opacity: 56%; show: typed == 0 and not wrong and not checking and not unlocking }
+  group {
+   show: typed > 0 or wrong or checking or unlocking
+   move: shake * 0.3, 0
+   box { from: 104, 860; size: 280, 40; corner: 15; color: glass_c; opacity: if(pk > 0.5, 68%, 58%) }
+   box { from: 104.5, 860.5; size: 279, 39; corner: 14.5; stroke: if(wrong, 1.5, 1); color: if(wrong, err_c, if(unlocking, ok_c, lav_c)); opacity: if(wrong, 88%, if(unlocking, 90%, if(pk > 0.5, 55%, 48%))) }
+   LockDots(124, 880, 3.8, 15, 0, 0.92, 1)
+  }
+  text status { at: 108, 920; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: err_c; opacity: 95%; show: wrong }
+  text "Authenticated" { at: 108, 920; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ok_c; opacity: 92%; show: unlocking }
+  text "Checking…" { at: 108, 920; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 56%; show: checking and not unlocking }
+  text user { at: 108, 920; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 56%; show: typed > 0 and not wrong and not checking and not unlocking }
+ }
+}

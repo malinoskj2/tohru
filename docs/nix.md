@@ -31,6 +31,7 @@ The package contains these programs:
 | `tohru-launcher-run` | The launcher |
 | `tohru-notifications-run` | The notification daemon |
 | `tohru-settings-run` | The Settings window (normally started by `tohru settings open`) |
+| `tohru-lock` | The lock screen; exits when unlocked. `tohru-lock --running` exits 0 while one runs |
 | `tohru` | The CLI |
 
 Without flakes, the root `default.nix` takes an explicit package set: `import ./default.nix { pkgs = import <your pinned nixpkgs> { }; }`.
@@ -60,6 +61,8 @@ With a standalone Home Manager flake, pass `inputs` through `extraSpecialArgs`, 
 | `programs.tohru.settings` | `{ }` | Settings written to a read-only TOML file in the store. See [configuration.md](configuration.md) |
 | `programs.tohru.systemd.enable` | `false` | Adds the user services below |
 | `programs.tohru.systemd.target` | `"graphical-session.target"` | The user target that starts and stops those services |
+| `programs.tohru.lock.style` | `null` | Sets the managed `lock.style` |
+| `programs.tohru.lock.command` | read-only | `tohru-lock` with `TOHRU_MANAGED_CONFIG` set, for hypridle's `lock_cmd` |
 | `programs.tohru.hyprlandPlugin.package` | Plugin built against your session's Hyprland | The plugin package. Nothing loads it automatically |
 
 Everything is inert unless `enable` is true; `systemd.enable` alone adds no services.
@@ -88,6 +91,20 @@ If your Hyprland setup provides its own target, such as `hyprland-session.target
 `tohru-notifications` must be the only notification daemon. Disable mako, dunst, swaync or similar first. These units are new and have not been tested on a real session.
 
 Other programs get `TOHRU_MANAGED_CONFIG` through `home.sessionVariables`, which only applies to sessions started from a login shell. `tohru settings open` does not depend on that: when the variable is unset or empty, it asks the running bar which managed file it loaded and starts Settings with the same one.
+
+## Lock screen
+
+```nix
+services.hypridle.settings.general.lock_cmd = config.programs.tohru.lock.command;
+```
+
+and on NixOS:
+
+```nix
+security.pam.services.tohru-lock = { };
+```
+
+Without that service the locker uses `pleamar`'s or `hyprlock`'s PAM service if one exists, else `login`'s. On Hyprland keep `misc:allow_session_lock_restore = true`, so that after a crash the plain style can take over the lock. The session menu's Lock and Sleep go through `loginctl lock-session`, which hypridle answers with `lock_cmd`; `tohru lock` starts the locker directly.
 
 ## Hyprland plugin
 

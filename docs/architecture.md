@@ -17,10 +17,24 @@ Each role is its own `pleamar` process, started by a wrapper in `bin/`. Each can
 | `tohru-launcher` | `shell/launcher/entry.plm` | `tohru-launcher-run` | Launcher: a full-screen scrim layer named `tohru-launcher-backdrop` under a full-screen layer with the deck (a frosted tab sidebar beside a clearer grid stage) |
 | `tohru-notifications` | `shell/notifications/notifications.plm` | `tohru-notifications-run` | Owns `org.freedesktop.Notifications`; must be the only notification daemon. Keeps whether something arrived unseen (saved across restarts) and Do Not Disturb (not saved) |
 | `tohru-settings` | `shell/settings/settings.plm` | `tohru-settings-run` | Settings window, started on demand. Sets `TOHRU_SHELL=1` |
+| `tohru-lock` | `shell/lock/lock.plm`, else `shell/lock/plain.plm` | `tohru-lock` | The lock screen, started by hypridle's `lock_cmd` or `tohru lock`. Sets `TOHRU_SHELL=1` and `TOHRU_LOCKER=1`. Exits when unlocked |
 
 The wrappers run `pleamar --scene <scene> --no-hud --stall 0 --answer-as <role>`. The role name is what other processes and the CLI address.
 
-Tohru has no lock screen, idle handling, polkit agent, wallpaper or screenshot tool. The session menu's Lock runs `loginctl lock-session`, which hypridle's `lock_cmd` answers by starting hyprlock. Sleep runs `loginctl lock-session` and, only if that succeeds, `systemctl suspend`. Restart, Shut Down and Log Out use Pleamar's session services.
+Tohru has no idle handling, polkit agent, wallpaper or screenshot tool. The session menu's Lock runs `loginctl lock-session`, which hypridle's `lock_cmd` answers by starting `tohru-lock`. Sleep runs `loginctl lock-session` and, only if that succeeds, `systemctl suspend`. Restart, Shut Down and Log Out use Pleamar's session services.
+
+## Lock screen
+
+`tohru-lock` locks with ext-session-lock-v1 and checks the password with PAM. The service is the first of `tohru-lock`, `pleamar` and `hyprlock` in `/etc/pam.d`, else `login`. Failures keep the session locked:
+
+- One locker per session (`flock` on `$XDG_RUNTIME_DIR/tohru-lock.lock`); without `flock` it locks anyway, and the compositor refuses a second lock (exit 3, not retried).
+- Before locking, the wrapper runs `pleamar --check` on the styled scene, which compiles its shaders. A scene that fails locks with `plain.plm`, which has no shaders and no screen capture.
+- Any other exit than 0 (a crash, a kill, exit 75 for a quit while still locked) starts the plain scene again. The compositor keeps the session locked meanwhile; Hyprland needs `misc:allow_session_lock_restore = true` to let the new locker take over.
+- Only the native side reads the password field. Luau sees bullets and a verdict (`lock_auth`: 0 idle, 1 checking, 2 accepted, 3 rejected, 4 PAM unavailable). The password is zeroed once PAM has answered.
+- Unlocking needs a PAM success for the lock cycle that is still held; a permit does not carry over to the next lock. `--say` requests to a locker are refused, it does not hot-reload, and it does not relaunch itself when its binary changes.
+- A monitor plugged in while locked gets its own face. A stalled locker leaves the compositor's lock in place.
+
+The styles are parts in `shell/lock/styles/`, all in one scene and picked by the `style` fact (`lock.style`; 0 is plain). They draw a blurred capture of the screen taken before locking, never a live one. Limits: each face lays the style out in a 1920 × 1080 box centred on its monitor, unscaled, so a smaller monitor crops it and a larger one shows more backdrop; the capture comes from one output (`bar.preferred_output`, else the focused one) and every face shows it; the bar drawn on the lock is a still copy with the workspaces as they were at locking.
 
 ## How the parts talk
 
@@ -58,6 +72,9 @@ Requests report that Pleamar accepted them, not that the action finished. If no 
 | `0023-surface-bright` | Lets a layer `surface` take the same `bright: fact` as a popup (patch 0020), counted over all of its lens glass. The fact may be declared inside the surface, and it keeps its last value while the surface is closed instead of going back to 0, so the launcher reopens over the same desktop in the same ink |
 | `0024-media-players-volume` | The `media` report gives each player's title, artist and artwork in `players`, and the reported player's MPRIS `Volume` as `volume` (`-1` when it has none); `media.volume <0..1>` sets it, and fails for a player without one. The media popup lists the players and sets the player's own volume with it |
 | `0025-notification-hold` | The `notifications` service reports each notification's `timeout` and the `left` of it, in milliseconds (0 for one that does not expire), and `notifications.hold(id, true/false)` stops and restarts its expiry where it was. The notification daemon's capillary line shows that time and pauses it while the pointer is on a toast, and an expiry is still closed by the server with reason 1 |
+| `0026-lock-authority` | Tohru's lock authority (`tohru_lock`, from `bindings/lock.rs`): the native password check, the per-cycle unlock permit that the render and Wayland code check before releasing the lock, and the locker mode (`TOHRU_LOCKER=1`) that refuses `--say`, hot reload and relaunch |
+| `0027-lock-pam` | PAM picks the `tohru-lock` service first, the password copy is zeroed with volatile writes on every path, and the `tohru-test-pam` feature (never in a shipped build) lets `TOHRU_TEST_PAM_CONFDIR` point the check at a private service for nested-compositor tests |
+| `0028-lock-views-together` | An element on more than one view (a lock face per monitor) is clipped to all of them together. Clipped to the first alone, a face drew the backdrop only as large as a smaller monitor plugged in while locked |
 
 Numbers 0002 to 0004 and 0007 to 0009 belonged to features that were removed or moved into the scenes.
 

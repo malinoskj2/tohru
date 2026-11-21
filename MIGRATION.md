@@ -14,7 +14,7 @@ new packages on `PATH`) up to date. What is still open is unchecked below.
 
 | Area | Decision | Replacement |
 |---|---|---|
-| Lock boundary patch (0002) and Tohru's lock screen (row 23) | Remove from Tohru | hyprlock, started through `loginctl lock-session` |
+| Lock boundary patch (0002) and Tohru's lock screen (row 23) | Back in Tohru as `tohru-lock` (patches 0026–0028, ten styles) | Started through `loginctl lock-session` and hypridle's `lock_cmd`; hyprlock stays on hosts without Tohru |
 | Settings window lifecycle patch (0003) | Remove; Settings becomes its own process | `pleamar --scene` per open, like any Pleamar window app |
 | Still-image wallpaper (row 26) | Remove from Tohru | Plain Hyprland configuration (no effects plugin) |
 | Video wallpaper (row 26) | Remove from Tohru | mpvpaper, through the existing `~/nix` wallpaper units |
@@ -197,6 +197,82 @@ Idle (hypridle):
       unlocked ones (approximate by a shorter screen-off listener that checks
       whether the session is locked).
 
+Lock screen (`tohru-lock`):
+
+- [ ] After this branch is merged, `nix flake update tohru`, then apply the change
+      below. It switches the locker on hosts that run Tohru and keeps hyprlock on
+      the others (mac-vm). `security.pam.services.tohru-lock` gives the locker its
+      PAM service (otherwise it uses hyprlock's, then `login`'s). `tohru-lock` sets
+      and clears logind's `LockedHint` itself, so `session-lock` is not needed for
+      wallpaper-autopause, and `lock.command --running` replaces `pidof hyprlock`
+      in the listeners. Keep `misc.allow_session_lock_restore = true` in
+      `hyprland.lua`: it is what lets the plain style take over after a crash.
+
+```diff
+--- a/hosts/common/optional/hyprland.nix
++++ b/hosts/common/optional/hyprland.nix
+@@ -9,6 +9,8 @@
+   programs.hyprland.enable = true;
+   # The locker, with its PAM service; Home Manager configures it.
+   programs.hyprlock.enable = true;
++  # Tohru's locker checks passwords against its own PAM service.
++  security.pam.services.tohru-lock = { };
+ 
+   environment.sessionVariables = {
+     GSETTINGS_SCHEMA_DIR = "${schemas}/share/gsettings-schemas/${schemas.name}/glib-2.0/schemas";
+--- a/users/jesse/hyprland-desktop/lock.nix
++++ b/users/jesse/hyprland-desktop/lock.nix
+@@ -41,12 +41,18 @@
+     '';
+   };
+ 
+-  # Runs only while hyprlock is up, so the unlocked session keeps its own, longer timeouts.
+-  whileLocked = command: "${pidof} hyprlock >/dev/null && ${command}";
++  # Tohru's locker where Tohru runs; hyprlock on hosts without it (mac-vm).
++  tohru = config.programs.tohru.enable;
++  tohruLock = config.programs.tohru.lock.command;
++
++  # Runs only while the session is locked, so the unlocked session keeps its own, longer timeouts.
++  whileLocked =
++    command:
++    if tohru then "${tohruLock} --running && ${command}" else "${pidof} hyprlock >/dev/null && ${command}";
+ in
+ {
+   programs.hyprlock = {
+-    enable = true;
++    enable = !tohru;
+     # The NixOS module installs it with its PAM service.
+     package = osConfig.programs.hyprlock.package;
+     settings = {
+@@ -124,7 +130,8 @@
+     enable = true;
+     settings = {
+       general = {
+-        lock_cmd = lib.getExe lock;
++        # tohru-lock sets logind's LockedHint itself, and asking again while locked does nothing.
++        lock_cmd = if tohru then tohruLock else lib.getExe lock;
+         before_sleep_cmd = "loginctl lock-session";
+         after_sleep_cmd = dpms "on";
+         # Suspend waits for the lock surface, so the session never wakes unlocked.
+@@ -157,5 +164,5 @@
+     };
+   };
+ 
+-  home.packages = [ lock ];
++  home.packages = lib.optional (!tohru) lock;
+ }
+--- a/users/jesse/hyprland-desktop/tohru.nix
++++ b/users/jesse/hyprland-desktop/tohru.nix
+@@ -18,6 +18,7 @@
+     package = lib.mkIf (package != null) package;
+     systemd.enable = true;
+     settings.bar.preferred_output = config.desktop.monitors.main.output;
++    lock.style = "flooded-monolith";
+   };
+ 
+   services.hyprpolkitagent.enable = true;
+```
+
 Polkit (hyprpolkitagent):
 
 - [x] Enable `services.hyprpolkitagent` in Home Manager (a user service bound to
@@ -279,8 +355,9 @@ a live check. Things only the real session can prove:
 - Bar on the preferred output only, and on each monitor with it unset; hotplug
   and reconnect, rotation and fractional scale.
 - Glass and adaptive ink against j2bar screenshots over the same wallpaper.
-- hyprlock: session menu Lock and Sleep, Super+Shift+Escape, wrong password,
-  lock before sleep. hyprpolkitagent prompts with real PAM.
+- tohru-lock: session menu Lock and Sleep, Super+Shift+Escape, wrong password,
+  lock before sleep, a monitor waking while locked, the real `tohru-lock` PAM
+  service. hyprpolkitagent prompts with real PAM.
 - hypridle: screen-off, lock, suspend, lock before sleep, inhibitors from
   video players, DPMS back on after resume.
 - Notifications from real apps; exactly one notification daemon and one polkit agent.

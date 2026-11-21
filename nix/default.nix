@@ -1,5 +1,6 @@
 { lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage
-, fontconfig, wayland, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3 }:
+, fontconfig, wayland, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3
+, util-linux, systemd, procps, coreutils }:
 let
   pin = builtins.fromJSON (builtins.readFile ../runtime/pleamar/pin.json);
   # Keep documentation/flake/test changes from rebuilding the full runtime.
@@ -27,6 +28,7 @@ let
       for binding in settings info; do
         cp ${foundationSource}/runtime/pleamar/bindings/''${binding}_luau.rs src/tohru_$binding.rs
       done
+      cp ${foundationSource}/runtime/pleamar/bindings/lock.rs src/tohru_lock.rs
       mkdir -p tests/runtime
       cp ${foundationSource}/runtime/pleamar/tests/role-install.rs tests/runtime/
       cp ${../runtime/pleamar/Cargo.lock} Cargo.lock
@@ -60,7 +62,7 @@ in stdenvNoCC.mkDerivation {
     cp -r shell $out/share/tohru/
     cp LICENSE $out/share/tohru/LICENSE
     cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-session-run \
-      bin/tohru-launcher-run bin/tohru-notifications-run $out/bin/
+      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar
     wrapProgram $out/bin/tohru-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
@@ -77,6 +79,11 @@ in stdenvNoCC.mkDerivation {
     wrapProgram $out/bin/tohru-notifications-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_NOTIFICATIONS_SCENE $out/share/tohru/shell/notifications/notifications.plm
+    wrapProgram $out/bin/tohru-lock \
+      --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
+      --set TOHRU_LOCK_SCENE $out/share/tohru/shell/lock/lock.plm \
+      --set TOHRU_LOCK_PLAIN_SCENE $out/share/tohru/shell/lock/plain.plm \
+      --prefix PATH : ${lib.makeBinPath [ util-linux systemd procps coreutils ]}
     runHook postInstall
   '';
   passthru = { inherit runtime; };

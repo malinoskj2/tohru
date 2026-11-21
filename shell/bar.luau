@@ -38,6 +38,13 @@ on("setting_palette", function(index)
     if not palette then text.settings_error = "Invalid retained palette"; return end
     change(function() return tohru_settings.set("appearance.palette", palette) end)
 end)
+on("setting_lock_style", function(index)
+    local styles = {[0]="still-glass", "ribbon-key", "flooded-monolith", "drifting-frost-veil", "unfolding-glass-capsule",
+        "edge-glass-drawer", "horizon-meniscus", "refractive-typographic-lens", "corner-anchor", "bar-drop-curtain"}
+    local style = styles[index]
+    if not style then text.settings_error = "Invalid lock style"; return end
+    change(function() return tohru_settings.set("lock.style", style) end)
+end)
 on("setting_corners", function(n)
     change(function() return tohru_settings.set("appearance.corners", n ~= 0) end)
 end)

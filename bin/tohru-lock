@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -uo pipefail
+root=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd)
+runtime=${TOHRU_RUNTIME:-pleamar}
+styled=${TOHRU_LOCK_SCENE:-$root/shell/lock/lock.plm}
+plain=${TOHRU_LOCK_PLAIN_SCENE:-$root/shell/lock/plain.plm}
+# For hypridle's listeners: whether a locker runs. It reads the process list, since probing
+# the flock would make a locker starting at that moment think another one holds the session.
+if [[ ${1:-} == --running ]]; then
+    exec pgrep -u "$(id -u)" -f -- '--answer-as tohru-lock( |$)' >/dev/null
+fi
+[[ -n ${XDG_RUNTIME_DIR:-} && -d $XDG_RUNTIME_DIR ]] || { printf 'tohru-lock: XDG_RUNTIME_DIR is not set\n' >&2; exit 2; }
+
+# One locker per session: hypridle, loginctl lock-session and a keybind may all ask at once.
+# Without flock, or its file, lock anyway: a second locker is refused by the compositor (exit 3).
+if exec 9>"$XDG_RUNTIME_DIR/tohru-lock.lock" && command -v flock >/dev/null; then
+    flock -n 9 || exit 0
+fi
+
+session_path() {
+    command -v busctl >/dev/null || return 1
+    local id=${XDG_SESSION_ID:-$(loginctl show-user "$USER" --property=Display --value 2>/dev/null)}
+    [[ -n $id ]] || return 1
+    local reply
+    reply=$(busctl --system call org.freedesktop.login1 /org/freedesktop/login1 \
+        org.freedesktop.login1.Manager GetSession s "$id" 2>/dev/null) || return 1
+    reply=${reply#o \"}
+    printf '%s\n' "${reply%\"}"
+}
+# logind's LockedHint, which wallpaper-autopause and others read. It stays set if the
+# locker dies, since the compositor then keeps the session locked.
+hint() {
+    [[ -n ${session:-} ]] || return 0
+    busctl --system call org.freedesktop.login1 "$session" \
+        org.freedesktop.login1.Session SetLockedHint b "$1" >/dev/null 2>&1 || true
+}
+session=$(session_path) || session=
+
+export TOHRU_SHELL=1 TOHRU_LOCKER=1
+hint true
+scene=$styled
+# A style that does not compile (a shader, a typo) never gets the chance to fail mid-lock.
+if ! "$runtime" --check "$styled" >/dev/null 2>&1; then
+    printf 'tohru-lock: %s does not load; using the plain style\n' "$styled" >&2
+    scene=$plain
+fi
+delay=0
+while :; do
+    "$runtime" --scene "$scene" --no-hud --stall 0 --answer-as tohru-lock "$@"
+    status=$?
+    case $status in
+        0) hint false; exit 0 ;;
+        # The compositor refused: another locker holds the session.
+        3) exit 3 ;;
+    esac
+    # Anything else may have left the session locked with nobody to unlock it. Hyprland
+    # lets a new locker take over (misc:allow_session_lock_restore); the plain style has
+    # no shaders or captures that could fail the same way again.
+    printf 'tohru-lock: the locker ended with status %s; starting the plain style\n' "$status" >&2
+    scene=$plain
+    sleep "$delay"
+    (( delay < 5 )) && delay=$((delay + 1))
+done

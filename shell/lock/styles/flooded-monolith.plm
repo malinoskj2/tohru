@@ -1,0 +1,34 @@
+part LockFloodedMonolith {
+ shader lock_tank = file "tank.wgsl"
+ prop fm_level = 0.36 ~spring(120, 16)
+ follow fm_level = if(unlocking, 0.5, if(wrong, 0.44, if(typed > 0 or checking, 0.5, 0.36)))
+ prop fm_slosh = 1 ~420ms
+ follow fm_slosh = if(unlocking, 2.4, if(wrong, 3.2, if(typed > 0 or checking, 1.95, 1)))
+ let fm_x = 800 + shake * 0.3
+ let fm_y = 322 + unlock * 22
+ group {
+  show: style == 3
+  opacity: 1 - pow(unlock, 1.5)
+  body {
+   color: glass_c
+   opacity: if(pk > 0.5, 48%, 52%)
+   shadow: 0, 8, 24, if(pk > 0.5, 12%, 28%)
+   box { from: fm_x, fm_y; size: 320, 436; corner: 15 }
+  }
+  group {
+   shader: lock_tank, fm_level, fm_slosh, err * 0.92, 320, pk, kick, unlock, 0
+   box { from: fm_x, fm_y; size: 320, 436; color: #000000; opacity: 1% }
+   text clock_h { at: fm_x + 160, fm_y + 166; anchor: center; size: 120; weight: 200; family: "SF Pro Display:tnum"; color: #ffffff; letter_move: -4 * letter, 0 }
+   text clock_m { at: fm_x + 160, fm_y + 278; anchor: center; size: 120; weight: 200; family: "SF Pro Display:tnum"; color: #ffffff; letter_move: -4 * letter, 0 }
+  }
+  text date_short { at: fm_x + 18, fm_y + 24; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink; opacity: 86% }
+  text user { at: fm_x + 302, fm_y + 24; anchor: right center; size: 13; weight: 500; family: "SF Pro Text"; color: ink; opacity: 56% }
+  text "Type password to unlock" { at: fm_x + 160, fm_y + 404; anchor: center; size: 12; family: "SF Pro Text"; color: ink; opacity: 50%; show: typed == 0 and not checking and not wrong and not unlocking }
+  LockDots(fm_x + 160, fm_y + 388, 4.2, 18, if(wrong, 0, 1), 0.92)
+  text status { at: fm_x + 160, fm_y + 414; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: err_c; opacity: 95%; show: wrong }
+  text "Draining…" { at: fm_x + 160, fm_y + 414; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 78%; show: unlocking }
+  text "Checking…" { at: fm_x + 160, fm_y + 414; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 60%; show: checking and not unlocking }
+  text "Press Return to unlock" { at: fm_x + 160, fm_y + 414; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 52%; show: typed > 0 and not wrong and not checking and not unlocking }
+  box { from: fm_x + 0.5, fm_y + 0.5; size: 319, 435; corner: 14.5; stroke: 0.95; color: if(wrong, err_c, ink); opacity: if(wrong, 65%, if(pk > 0.5, 12%, 18%)) }
+ }
+}

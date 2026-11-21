@@ -26,6 +26,7 @@ cp -r "$package/src" "$package/tests" "$destination/foundation/"
 for binding in settings info; do
     cp "$here/bindings/${binding}_luau.rs" "$destination/src/tohru_$binding.rs"
 done
+cp "$here/bindings/lock.rs" "$destination/src/tohru_lock.rs"
 mkdir -p "$destination/tests/runtime"
 cp "$here/tests/role-install.rs" "$destination/tests/runtime/"
 cp "$here/Cargo.lock" "$destination/Cargo.lock"

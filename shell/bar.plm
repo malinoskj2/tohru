@@ -36,6 +36,7 @@ scene Tohru {
  event setting_corners ->
  event setting_corner_size ->
  event setting_output ->
+ event setting_lock_style ->
  body {
   gradient: 0, 0 to 0, 31, #140a1e, #140a1e
   opacity: 14%

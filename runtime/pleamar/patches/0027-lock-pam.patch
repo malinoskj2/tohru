@@ -1,0 +1,86 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index e9fffd6..cb132e1 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -61,3 +61,6 @@ cosmic-text = { version = "0.19.0", default-features = false, features = ["fontc
+ [features]
+ default = ["luau"]
+ luau = ["dep:mlua"]
++# Lets TOHRU_TEST_PAM_CONFDIR point the locker at a private PAM service for nested
++# compositor checks. Never enabled in a shipped build.
++tohru-test-pam = []
+diff --git a/src/platform/auth.rs b/src/platform/auth.rs
+index 1685bc3..47674ff 100644
+--- a/src/platform/auth.rs
++++ b/src/platform/auth.rs
+@@ -36,6 +36,7 @@ struct Conversation {
+ #[link(name = "pam")]
+ unsafe extern "C" {
+     fn pam_start(service: *const c_char, user: *const c_char, conv: *const Conversation, handle: *mut *mut c_void) -> c_int;
++    fn pam_start_confdir(service: *const c_char, user: *const c_char, conv: *const Conversation, confdir: *const c_char, handle: *mut *mut c_void) -> c_int;
+     fn pam_authenticate(handle: *mut c_void, flags: c_int) -> c_int;
+     fn pam_acct_mgmt(handle: *mut c_void, flags: c_int) -> c_int;
+     fn pam_end(handle: *mut c_void, status: c_int) -> c_int;
+@@ -76,17 +77,42 @@ fn user() -> Option<CString> {
+     }
+ }
+ 
++/// The PAM service: Tohru's locker's own, else pleamar's, else hyprlock's (the
++/// locker it stands in for, so a desktop set up for it already has one), else `login`'s.
++fn service() -> &'static str {
++    ["tohru-lock", "pleamar", "hyprlock"]
++        .into_iter()
++        .find(|s| std::path::Path::new("/etc/pam.d").join(s).exists())
++        .unwrap_or("login")
++}
++
+ /// `true` if that is the password of whoever holds the session.
+ pub fn verify(password: &str) -> Result<bool, String> {
++    #[cfg(feature = "tohru-test-pam")]
++    if let Some(dir) = std::env::var_os("TOHRU_TEST_PAM_CONFDIR") {
++        eprintln!("lock   · TEST BUILD: checking against the private PAM service in {}", dir.to_string_lossy());
++        return verify_with("tohru-test", Some(std::path::Path::new(&dir)), password);
++    }
++    verify_with(service(), None, password)
++}
++
++/// The same against a named service, read from `confdir` instead of /etc/pam.d
++/// when one is given (only tests do).
++pub fn verify_with(service: &str, confdir: Option<&std::path::Path>, password: &str) -> Result<bool, String> {
+     let user = user().ok_or("I cannot tell who owns this session")?;
+     let password = CString::new(password).map_err(|_| "a password cannot carry a zero byte")?;
+-    // With its own file in /etc/pam.d, that one; otherwise `login`'s, which is always there.
+-    let service = CString::new(if std::path::Path::new("/etc/pam.d/pleamar").exists() { "pleamar" } else { "login" }).unwrap();
++    let service = CString::new(service).map_err(|_| "a PAM service name cannot carry a zero byte")?;
++    let confdir = confdir.map(|d| CString::new(d.as_os_str().as_encoded_bytes()).map_err(|_| "a PAM directory cannot carry a zero byte")).transpose()?;
+     let conv = Conversation { converse, data: password.as_ptr() as *mut c_void };
+     let mut handle: *mut c_void = std::ptr::null_mut();
+     let ok = unsafe {
+-        let r = pam_start(service.as_ptr(), user.as_ptr(), &conv, &mut handle);
++        let r = match &confdir {
++            Some(d) => pam_start_confdir(service.as_ptr(), user.as_ptr(), &conv, d.as_ptr(), &mut handle),
++            None => pam_start(service.as_ptr(), user.as_ptr(), &conv, &mut handle),
++        };
+         if r != SUCCESS {
++            let mut bytes = password.into_bytes();
++            bytes.iter_mut().for_each(|b| std::ptr::write_volatile(b, 0));
+             return Err(format!("PAM would not start (code {r})"));
+         }
+         let mut r = pam_authenticate(handle, 0);
+@@ -99,6 +125,15 @@ pub fn verify(password: &str) -> Result<bool, String> {
+     };
+     // Whatever was left of it in memory, zeroed before letting it go.
+     let mut bytes = password.into_bytes();
+-    bytes.iter_mut().for_each(|b| *b = 0);
++    bytes.iter_mut().for_each(|b| unsafe { std::ptr::write_volatile(b, 0) });
+     Ok(ok)
+ }
++
++/// Where libpam keeps its modules: `security/` beside the libpam this process loaded.
++#[cfg(test)]
++pub fn module_dir() -> Option<std::path::PathBuf> {
++    let maps = std::fs::read_to_string("/proc/self/maps").ok()?;
++    let lib = maps.lines().filter_map(|l| l.split_whitespace().nth(5)).find(|p| p.contains("/libpam.so"))?;
++    let dir = std::path::Path::new(lib).parent()?.join("security");
++    dir.join("pam_exec.so").exists().then_some(dir)
++}

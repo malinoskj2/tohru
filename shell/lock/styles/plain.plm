@@ -1,0 +1,15 @@
+part LockPlain {
+ // The fallback: no shaders, captures or effects, so nothing in it can fail the way a styled scene might.
+ group {
+  show: style == 0
+  text date_long { at: 960, 330; anchor: center; size: 17; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 72% }
+  text clock_hm { at: 960, 420; anchor: center; size: 120; weight: 200; family: "SF Pro Display:tnum"; color: #ffffff; opacity: 94% }
+  box { from: 820 + shake * 0.2, 540; size: 280, 42; corner: 15; color: #140a1e; opacity: 70% }
+  box { from: 820.5 + shake * 0.2, 540.5; size: 279, 41; corner: 14.5; stroke: 1; color: if(wrong, #f38ba8, #b4befe); opacity: if(wrong, 85%, 45%) }
+  LockDots(960 + shake * 0.2, 561, 4, 15, 0, 0.92)
+  text "Type your password" { at: 960, 561; anchor: center; size: 13; family: "SF Pro Text"; color: #ffffff; opacity: 45%; show: typed == 0 and not checking }
+  text user { at: 960, 520; anchor: center; size: 13; family: "SF Pro Text"; color: #ffffff; opacity: 52% }
+  text status { at: 960, 604; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: #f38ba8; show: wrong }
+  text "Checking…" { at: 960, 604; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 60%; show: checking }
+ }
+}
