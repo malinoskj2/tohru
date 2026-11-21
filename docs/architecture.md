@@ -20,7 +20,7 @@ Each role is its own `pleamar` process, started by a wrapper in `bin/`. Each can
 
 The wrappers run `pleamar --scene <scene> --no-hud --stall 0 --answer-as <role>`. The role name is what other processes and the CLI address.
 
-Tohru has no lock screen, idle handling, polkit agent, wallpaper or screenshot tool. The session menu's Lock runs `loginctl lock-session`, which hypridle's `lock_cmd` answers by starting hyprlock. Sleep runs `loginctl lock-session` and, only if that succeeds, `systemctl suspend`. Restart, Shut Down and Log Out use Pleamar's session services.
+Tohru has no lock screen, idle handling, polkit agent, wallpaper player or screenshot tool. The bar's wallpaper popup chooses what the `~/nix` mpvpaper units play, through `bin/tohru-wallpaper`; it plays nothing itself. The session menu's Lock runs `loginctl lock-session`, which hypridle's `lock_cmd` answers by starting hyprlock. Sleep runs `loginctl lock-session` and, only if that succeeds, `systemctl suspend`. Restart, Shut Down and Log Out use Pleamar's session services.
 
 ## How the parts talk
 
@@ -77,7 +77,7 @@ The bindings in `runtime/pleamar/bindings/` are copied into the Pleamar source a
 |---|---|
 | `shell/bar.plm`, `shell/bar.luau`, `shell/services.plm` | Root scene: bar layout and service buttons |
 | `shell/bar/` | Bar contents and the workspace switcher |
-| `shell/sound/`, `shell/calendar/`, `shell/network/`, `shell/bluetooth/`, `shell/info/`, `shell/about/` | Popups shown by the bar |
+| `shell/sound/`, `shell/calendar/`, `shell/network/`, `shell/bluetooth/`, `shell/wallpaper/`, `shell/info/`, `shell/about/` | Popups shown by the bar |
 | `shell/osd/`, `shell/corners/` | Volume OSD and screen corners, also in the bar process |
 | `shell/session/`, `shell/launcher/`, `shell/notifications/`, `shell/settings/` | Scenes that run as their own processes |
 | `shell/service-assets/` | Shared icons |

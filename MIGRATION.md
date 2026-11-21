@@ -170,7 +170,27 @@ Wallpaper:
       (hyprlock's wrapper in `~/nix`) sets and clears.
 - [x] `pkgs/wallpaper-select`: it uses `j2bar dmenu`, which is dropped. Replace
       the picker (e.g. a small Tohru launcher mode, fuzzel/rofi) or drop the script.
-      Dropped; nothing bound it.
+      Dropped; nothing bound it. The bar's wallpaper popup (`shell/wallpaper/`)
+      now does its job through `tohru-wallpaper`, with the same state file and IPC.
+- [ ] Optional: keep a chosen wallpaper across logins. `wallpaper-outputs`
+      randomizes every output when the session starts, so a choice made in the
+      popup lasts until the next login, as one made with `wallpaper-select` did.
+      To keep it, randomize only outputs without a playable assignment. In
+      `pkgs/wallpaper-outputs/wallpaper-outputs.sh`, `follow_monitors`, replace
+      `wallpaper-randomize "${monitors[@]}"` with:
+
+      ```bash
+      local -a unassigned=()
+      local state="${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper/assignments.json" path
+      for monitor in "${monitors[@]}"; do
+        path="$(jq -r --arg m "$monitor" '.assignments[$m] // empty' "$state" 2>/dev/null)"
+        [[ -n "$path" && -f "$path" ]] || unassigned+=("$monitor")
+      done
+      ((${#unassigned[@]} == 0)) || wallpaper-randomize "${unassigned[@]}"
+      ```
+
+      `jq` is already in that package's runtime inputs. The popup's Randomize All
+      still gives a fresh set on demand.
 - [x] `pkgs/wallpaper-randomize`: check for j2bar references.
 
 Screenshots (grimblast):

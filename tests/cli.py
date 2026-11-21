@@ -99,6 +99,8 @@ class Cli(unittest.TestCase):
             (("panel", "toggle", "sound"), ["--say", "tohru", "emit sound_toggle"]),
             (("panel", "open", "calendar"), ["--say", "tohru", "emit calendar_open"]),
             (("panel", "toggle", "calendar"), ["--say", "tohru", "emit calendar_toggle"]),
+            (("panel", "open", "wallpaper"), ["--say", "tohru", "emit wall_open_request"]),
+            (("panel", "toggle", "wallpaper"), ["--say", "tohru", "emit wall_toggle"]),
             (("panel", "close"), ["--say", "tohru", "emit panel_close"]),
             (("audio", "volume", "up"), ["--say", "tohru", "emit audio_step 1"]),
             (("audio", "volume", "down"), ["--say", "tohru", "emit audio_step -1"]),

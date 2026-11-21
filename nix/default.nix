@@ -1,5 +1,5 @@
 { lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage
-, fontconfig, wayland, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3 }:
+, fontconfig, wayland, jq, socat, ffmpeg-headless, util-linux, coreutils, findutils, gnugrep, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3 }:
 let
   pin = builtins.fromJSON (builtins.readFile ../runtime/pleamar/pin.json);
   # Keep documentation/flake/test changes from rebuilding the full runtime.
@@ -60,7 +60,7 @@ in stdenvNoCC.mkDerivation {
     cp -r shell $out/share/tohru/
     cp LICENSE $out/share/tohru/LICENSE
     cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-session-run \
-      bin/tohru-launcher-run bin/tohru-notifications-run $out/bin/
+      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-wallpaper $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar
     wrapProgram $out/bin/tohru-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
@@ -77,6 +77,9 @@ in stdenvNoCC.mkDerivation {
     wrapProgram $out/bin/tohru-notifications-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_NOTIFICATIONS_SCENE $out/share/tohru/shell/notifications/notifications.plm
+    # hyprctl is left to the session's PATH so it always matches the running compositor.
+    wrapProgram $out/bin/tohru-wallpaper \
+      --prefix PATH : ${lib.makeBinPath [ jq socat ffmpeg-headless util-linux coreutils findutils gnugrep ]}
     runHook postInstall
   '';
   passthru = { inherit runtime; };
