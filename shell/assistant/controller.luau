@@ -1,5 +1,5 @@
 -- What is shown always comes from tohru-assistant: the providers it finds, the chats it saves and the lines
--- it streams. settings = {provider = function() -> id, choose = function(id)}.
+-- it streams. settings = {provider = function() -> id, choose = function(id), value = function(key) -> value}.
 return function(settings)
     local helper = "tohru-assistant"
     local providers, current = {}, nil
@@ -10,8 +10,42 @@ return function(settings)
     local answer_listeners = {}
     local probing, probed_at = false, -1
     local PROBE_AGAIN = 30000
+    local MEMORY_CHARS = 72
+    -- A chat counts as ended, and is handed to memory, five minutes after its last answer or when it is left.
+    local IDLE_ENDS = 300000
     local clock = 0
-    every(1000, function() clock = clock + 1000 end)
+    local unremembered = {}
+    local remember
+    every(1000, function()
+        clock = clock + 1000
+        for id, at in pairs(unremembered) do
+            if clock - at >= IDLE_ENDS and not (live and live.conversation == id) then remember(id) end
+        end
+    end)
+
+    local function setting(key, default)
+        local value = settings.value and settings.value(key)
+        if value == nil then return default end
+        return value
+    end
+    local PROVIDER_IDS = {"claude", "codex", "gemini", "agy", "opencode"}
+    local function model_flags(id)
+        return {"--model", setting("assistant.models." .. id .. ".model", ""), "--effort", setting("assistant.models." .. id .. ".effort", "")}
+    end
+    local function memory_on() return setting("assistant.memory", true) == true end
+    local function models_config()
+        local models = {}
+        for _, id in ipairs(PROVIDER_IDS) do
+            models[id] = {model = setting("assistant.models." .. id .. ".model", ""), effort = setting("assistant.models." .. id .. ".effort", "")}
+        end
+        return models
+    end
+
+    function remember(id)
+        unremembered[id] = nil
+        if not id or not memory_on() then return end
+        run(helper, {"remember", id, "--memory", "on", "--models", json.encode(models_config())}, nil, {output = false})
+    end
 
     local function decode(line)
         local ok, value = pcall(json.decode, line)
@@ -73,7 +107,7 @@ return function(settings)
     local function probe(force)
         if probing or (not force and probed_at >= 0 and clock - probed_at < PROBE_AGAIN) then return end
         probing = true
-        run(helper, {"providers"}, function(out, code)
+        run(helper, {"providers", "--models", json.encode(models_config())}, function(out, code)
             probing = false
             probed_at = clock
             local list = code == 0 and decode(out) or nil
@@ -138,10 +172,17 @@ return function(settings)
         end
     end
 
+    local function leave(next)
+        if conversation and conversation ~= next and unremembered[conversation] and not (live and live.conversation == conversation) then
+            remember(conversation)
+        end
+    end
+
     local function load(id, done)
         run(helper, {"show", id}, function(out, code)
             local data = code == 0 and decode(out) or nil
             if not data then fail("That chat could not be opened"); return end
+            leave(data.id)
             conversation = data.id
             show_turns(data.turns or {})
             refresh_live()
@@ -156,6 +197,9 @@ return function(settings)
         refresh_live()
         if not finished then return end
         if event.event == "error" then fail(event.message or "The answer failed") end
+        if finished.conversation and (event.event == "done" or event.event == "stopped") then
+            unremembered[finished.conversation] = clock
+        end
         local here = conversation == finished.conversation
         if here then
             load(finished.conversation)
@@ -182,7 +226,14 @@ return function(settings)
             args[#args + 1] = conversation
         end
         if voice then args[#args + 1] = "--voice" end
-        live = {conversation = conversation, slot = provider.slot, text = "", voice = voice == true}
+        for _, flag in ipairs(model_flags(provider.id)) do args[#args + 1] = flag end
+        args[#args + 1] = "--persona"
+        args[#args + 1] = setting("assistant.persona", true) == true and "on" or "off"
+        args[#args + 1] = "--persona-file"
+        args[#args + 1] = setting("assistant.persona_file", "")
+        args[#args + 1] = "--memory"
+        args[#args + 1] = memory_on() and "on" or "off"
+        live = {conversation = conversation, slot = provider.slot, text = "", voice = voice == true, provider = provider.id}
         local turns = {}
         for _, turn in ipairs(shown_turns) do turns[#turns + 1] = turn end
         turns[#turns + 1] = {role = "user", text = prompt, voice = voice}
@@ -225,9 +276,14 @@ return function(settings)
         fact.ai_open = false
         fact.ai_picker = false
         fact.ai_menu_open = false
+        fact.ai_forget_armed = false
+        if conversation and unremembered[conversation] and not (live and live.conversation == conversation) then
+            remember(conversation)
+        end
     end
 
     local function new_chat()
+        leave(nil)
         conversation = nil
         show_turns({})
         fact.ai_view = 0
@@ -265,6 +321,34 @@ return function(settings)
             history = rows
             model.ai_history = rows
             fact.ai_history_sel = -1
+        end)
+    end
+
+    local memories = {}
+    local function list_memory()
+        fact.ai_memory_on = memory_on()
+        fact.ai_forget_armed = false
+        run(helper, {"memory", "list", "--json"}, function(out, code)
+            local data = code == 0 and decode(out) or {}
+            memories = data.memories or {}
+            local rows = {}
+            for i, m in ipairs(memories) do
+                if i > 40 then break end
+                local line = m.text or ""
+                if #line > MEMORY_CHARS then
+                    line = line:sub(1, MEMORY_CHARS):gsub("%s+%S*$", "") .. "…"
+                end
+                rows[#rows + 1] = {id = m.id, text = line, kind = m.kind or "fact"}
+            end
+            model.ai_memories = rows
+            local state = data.relationship or {}
+            if not fact.ai_memory_on then
+                text.ai_memory_note = "Memory is off: chats are kept in history, nothing else is learned."
+            elseif (state.conversations or 0) > 0 then
+                text.ai_memory_note = string.format("%d remembered from %d chats. Say \"forget that\" in a chat to drop it.", #memories, state.conversations)
+            else
+                text.ai_memory_note = "Things Tohru learns about you appear here."
+            end
         end)
     end
 
@@ -312,9 +396,28 @@ return function(settings)
     end)
     on("assistant_choose", function(index) choose(index) end)
     on("assistant_signin", function(index) signin(index) end)
+    on("assistant_memory", function()
+        fact.ai_picker = false
+        fact.ai_view = 2
+        list_memory()
+    end)
+    on("assistant_memory_forget", function(index)
+        local row = model.ai_memories and model.ai_memories[index + 1]
+        if not row then return end
+        run(helper, {"memory", "forget", row.id}, function() list_memory() end)
+    end)
+    on("assistant_memory_clear", function()
+        if not fact.ai_forget_armed then
+            fact.ai_forget_armed = true
+            after(4000, function() fact.ai_forget_armed = false end)
+            return
+        end
+        fact.ai_forget_armed = false
+        run(helper, {"memory", "clear"}, function() list_memory() end)
+    end)
     on("assistant_history", function()
         fact.ai_picker = false
-        if fact.ai_view == 1 then fact.ai_view = 0; seen(); return end
+        if fact.ai_view ~= 0 then fact.ai_view = 0; seen(); return end
         fact.ai_view = 1
         text.ai_search = ""
         list_history()
@@ -390,6 +493,7 @@ return function(settings)
             list_history()
         end,
         listening = function(on) fact.ai_listening = on == true end,
+        remember = function(id) if id then remember(id) end end,
         choose = choose,
         signin = signin,
         settle = function() if #providers > 0 then settle() end end,

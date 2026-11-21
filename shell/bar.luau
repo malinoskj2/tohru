@@ -5,6 +5,7 @@ local close_panels
 local bell = require("bar/bell")(function() if close_panels then close_panels("notifications") end end)
 local PALETTE_INDEX = {mocha=0, macchiato=1, rose_pine=2, nord=3, gruvbox=4, tokyo_night=5, dracula=6, everforest=7}
 local last_palette = nil
+local voice
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
@@ -26,6 +27,7 @@ local function publish(settings)
     local position = settings["notifications.position"]
     bell.place(position and position.value == "bottom-right" and 1 or 0)
     text.settings_status = json.encode({schema = 7, settings = settings})
+    if voice then voice.configure(settings) end
 end
 local function change(operation)
     local ok, result, warning = pcall(operation)
@@ -96,6 +98,26 @@ local assistant = require("assistant/controller")({
     provider = function() return tohru_settings.snapshot()["assistant.provider"].value end,
     choose = function(id) change(function() return tohru_settings.set("assistant.provider", id) end) end,
 })
+voice = require("assistant/voice")(assistant)
+voice.configure(tohru_settings.snapshot())
+on("setting_assistant", function()
+    local key, raw = text.setting_key or "", text.setting_value or ""
+    local current = tohru_settings.snapshot()[key]
+    if key:sub(1, 10) ~= "assistant." or not current then
+        text.settings_error = "Unknown setting key " .. key
+        return
+    end
+    local value = raw
+    if type(current.value) == "boolean" then
+        if raw ~= "true" and raw ~= "false" then text.settings_error = key .. " must be true or false"; return end
+        value = raw == "true"
+    elseif type(current.value) == "number" then
+        value = tonumber(raw)
+        if not value or value % 1 ~= 0 then text.settings_error = key .. " must be a whole number"; return end
+        value = math.floor(value)
+    end
+    change(function() return tohru_settings.set(key, value) end)
+end)
 local about
 function close_panels(keep)
     if keep ~= "sound" then sound.close() end

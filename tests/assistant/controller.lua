@@ -27,6 +27,7 @@ end
 
 local chosen = {}
 local provider_setting = "codex"
+local values = {["assistant.memory"] = true, ["assistant.models.claude.model"] = "claude-sonnet-5-5", ["assistant.models.claude.effort"] = "high"}
 outputs.providers = json.encode({
     {id = "claude", name = "Claude", slot = 0, signed_in = true, model = "Opus 5.5"},
     {id = "codex", name = "Codex", slot = 1, signed_in = false, model = ""},
@@ -35,7 +36,18 @@ outputs.providers = json.encode({
 local assistant = assert(loadfile("shell/assistant/controller.luau"))()({
     provider = function() return provider_setting end,
     choose = function(id) chosen[#chosen + 1] = id end,
+    value = function(key) return values[key] end,
 })
+local function has(list, a, b)
+    for i = 1, #list - 1 do if list[i] == a and list[i + 1] == b then return true end end
+    return false
+end
+local function runs_of(name)
+    local found = {}
+    for _, r in ipairs(runs) do if r.args[1] == name then found[#found + 1] = r end end
+    return found
+end
+assert(runs_of("providers")[1].args[2] == "--models" and runs_of("providers")[1].args[3].claude.model == "claude-sonnet-5-5")
 
 -- A configured provider that is signed out is passed over for the first signed-in one.
 assert(fact.ai_loaded and fact.ai_current == 0 and text.ai_provider_name == "Claude" and fact.ai_signed_in)
@@ -48,6 +60,8 @@ text.ai_prompt = "How many ounces in a cup?"
 emit("assistant_send")
 assert(#spawned == 1 and spawned[1].how.input == "How many ounces in a cup?")
 assert(spawned[1].args[1] == "chat" and spawned[1].args[3] == "claude")
+assert(has(spawned[1].args, "--model", "claude-sonnet-5-5") and has(spawned[1].args, "--effort", "high"))
+assert(has(spawned[1].args, "--persona", "on") and has(spawned[1].args, "--memory", "on"))
 assert(fact.ai_streaming and fact.ai_live_here and text.ai_prompt == "")
 spawned[1].line(json.encode({event = "start", conversation = "c1", slot = 0}))
 spawned[1].line(json.encode({event = "delta", text = "Eight "}))
@@ -60,6 +74,7 @@ assert(#killed == 1 and killed[1][1] == 1 and killed[1][2] == "int")
 outputs.show = json.encode({id = "c1", provider = "claude", turns = {
     {role = "user", text = "How many ounces in a cup?"}, {role = "assistant", text = "Eight ounces."}}})
 assistant.close()
+assert(#runs_of("remember") == 0)
 spawned[1].line(json.encode({event = "done", conversation = "c1"}))
 assert(not fact.ai_streaming and fact.ai_ready and fact.ai_ready_slot == 0)
 emit("assistant_open")
@@ -112,7 +127,9 @@ assistant.close()
 emit("assistant_choose", 0)
 assert(assistant.ask("tell me a joke", nil))
 local voice = spawned[#spawned]
-assert(voice.args[#voice.args] == "--voice")
+local voiced = false
+for _, a in ipairs(voice.args) do voiced = voiced or a == "--voice" end
+assert(voiced)
 voice.line(json.encode({event = "start", conversation = "v1"}))
 voice.line(json.encode({event = "delta", text = "Why?"}))
 voice.line(json.encode({event = "done", conversation = "v1"}))
@@ -130,4 +147,49 @@ assistant.listening(true)
 assert(fact.ai_listening)
 assistant.listening(false)
 assert(not fact.ai_listening)
-print("Assistant provider choice, streaming, Stop, ready mark, sign-in, history and voice-turn fixtures passed")
+-- A finished chat is handed to memory once when it is left; with memory off nothing is spawned for it.
+emit("assistant_open")
+emit("assistant_new")
+local before = #runs_of("remember")
+text.ai_prompt = "Remember me?"
+emit("assistant_send")
+spawned[#spawned].line(json.encode({event = "start", conversation = "m1"}))
+spawned[#spawned].line(json.encode({event = "done", conversation = "m1"}))
+assistant.close()
+local remembered = runs_of("remember")
+assert(#remembered == before + 1 and remembered[#remembered].args[2] == "m1" and remembered[#remembered].how.output == false)
+assistant.close()
+assert(#runs_of("remember") == before + 1)
+values["assistant.memory"] = false
+emit("assistant_open")
+emit("assistant_new")
+text.ai_prompt = "Private"
+emit("assistant_send")
+assert(has(spawned[#spawned].args, "--memory", "off"))
+spawned[#spawned].line(json.encode({event = "start", conversation = "m2"}))
+spawned[#spawned].line(json.encode({event = "done", conversation = "m2"}))
+assistant.close()
+emit("assistant_new")
+assert(#runs_of("remember") == before + 1)
+values["assistant.memory"] = true
+
+-- The Memory view lists what is remembered; forgetting everything takes a second press.
+local long = string.rep("Keeps a sourdough starter called Clint ", 4)
+outputs.memory = json.encode({memories = {{id = "aa", text = "Bakes bread", kind = "fact"}, {id = "bb", text = long, kind = "fact"}}, relationship = {conversations = 3}})
+emit("assistant_memory")
+assert(fact.ai_view == 2 and #model.ai_memories == 2 and text.ai_memory_note:find("3 chats"))
+assert(model.ai_memories[2].text:sub(-3) == "…" and #model.ai_memories[2].text <= 75 and not model.ai_memories[2].text:find(" …"))
+emit("assistant_memory_forget", 0)
+local function memory_actions()
+    local seen = {}
+    for _, r in ipairs(runs_of("memory")) do if r.args[2] ~= "list" then seen[#seen + 1] = r.args[2] .. (r.args[3] or "") end end
+    return table.concat(seen, ",")
+end
+assert(memory_actions() == "forgetaa")
+emit("assistant_memory_clear")
+assert(fact.ai_forget_armed and memory_actions() == "forgetaa")
+emit("assistant_memory_clear")
+assert(memory_actions() == "forgetaa,clear")
+emit("assistant_history")
+assert(fact.ai_view == 0)
+print("Assistant provider choice, models, streaming, Stop, ready mark, sign-in, history, voice turn, memory hand-off and Memory view fixtures passed")

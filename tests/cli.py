@@ -242,6 +242,28 @@ class Cli(unittest.TestCase):
                 self.assertEqual(result.returncode, 2)
                 self.assertEqual(result.stdout, "")
 
+    def test_assistant_settings_are_text_requests_and_assistant_commands_reach_the_helper(self):
+        result = self.invoke("config", "set", "assistant.models.codex.effort", "high")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), ["--say", "tohru", "text setting_key assistant.models.codex.effort",
+                                                     "text setting_value high", "emit setting_assistant"])
+        for key in ("assistant", "assistant.", "assistant.Voice", "assistant.voice;rm"):
+            self.assertEqual(self.invoke("config", "set", key, "true").returncode, 2, key)
+        helper = Path(self.directory.name) / "fake-assistant"
+        helper.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\"\n")
+        helper.chmod(0o755)
+        env = {"TOHRU_ASSISTANT": str(helper)}
+        for args, expected in (
+            (("memory", "list"), ["memory", "list"]),
+            (("memory", "forget", "abcd1234"), ["memory", "forget", "abcd1234"]),
+            (("export",), ["export"]),
+            (("import", "a.json", "--replace", "--yes", "--only", "memory"), ["import", "a.json", "--replace", "--yes", "--only", "memory"]),
+        ):
+            result = self.invoke("assistant", *args, **env)
+            self.assertEqual((result.returncode, result.stdout.split()), (0, expected), args)
+        for args in (("memory", "forget", "../x"), ("memory", "wipe"), ("import",), ("chat",)):
+            self.assertEqual(self.invoke("assistant", *args, **env).returncode, 2, args)
+
     def test_lock_runs_the_locker_and_takes_no_arguments(self):
         seen = self.path / "locked"
         locker = self.path / "locker"

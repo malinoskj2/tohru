@@ -24,7 +24,13 @@ Usage: tohru panel toggle|open sound|calendar|network|media|bluetooth|wallpaper|
        tohru config set appearance.corner_size 1..100
        tohru config set lock.style STYLE   (still-glass, ribbon-key, flooded-monolith, drifting-frost-veil, unfolding-glass-capsule, edge-glass-drawer, horizon-meniscus, refractive-typographic-lens, corner-anchor, bar-drop-curtain)
        tohru config set notifications.position top-right|bottom-right
+       tohru config set assistant.KEY VALUE   (voice, provider, models.PROVIDER.model, models.PROVIDER.effort,
+                                               persona, persona_file, memory, voice_models, voice_wake, kws_model, tts_*;
+                                               see docs/configuration.md)
        tohru config set bar.preferred_output OUTPUT   ('' for every output)
+       tohru assistant memory list [--json] | memory forget ID | memory clear
+       tohru assistant export [FILE]   (the whole assistant state as versioned JSON; stdout without FILE; files are 0600)
+       tohru assistant import FILE [--merge | --replace --yes] [--only history|memory|relationship]...
        tohru settings-error
        tohru help
 
@@ -256,10 +262,37 @@ case ${1:-help} in
                         case $4 in top-right) number=0 ;; bottom-right) number=1 ;; *) fail 'Choose a notification position: top-right, bottom-right' ;; esac
                         exec "$pleamar" --say tohru "emit setting_notifications_position $number"
                         ;;
+                    assistant.*)
+                        [[ $3 =~ ^assistant\.[a-z_.]+$ && $4 != *[[:cntrl:]]* && ${#4} -le 4096 ]] || fail 'Invalid assistant setting'
+                        exec "$pleamar" --say tohru "text setting_key $3" "text setting_value $4" 'emit setting_assistant'
+                        ;;
                     *) fail 'Unknown setting key' ;;
                 esac
                 ;;
             *) fail 'Usage: tohru config reload|set KEY VALUE' ;;
+        esac
+        ;;
+    assistant)
+        helper=${TOHRU_ASSISTANT:-$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/tohru-assistant}
+        case ${2:-} in
+            memory)
+                case ${3:-} in
+                    list) [[ $# == 3 || ( $# == 4 && $4 == --json ) ]] || fail 'Usage: tohru assistant memory list [--json]' ;;
+                    forget) [[ $# == 4 && $4 =~ ^[0-9a-f]{4,32}$ ]] || fail 'Usage: tohru assistant memory forget ID' ;;
+                    clear) [[ $# == 3 ]] || fail 'Usage: tohru assistant memory clear' ;;
+                    *) fail 'Usage: tohru assistant memory list|forget ID|clear' ;;
+                esac
+                exec "$helper" "${@:2}"
+                ;;
+            export)
+                [[ $# -le 3 ]] || fail 'Usage: tohru assistant export [FILE]'
+                exec "$helper" "${@:2}"
+                ;;
+            import)
+                [[ $# -ge 3 ]] || fail 'Usage: tohru assistant import FILE [--merge|--replace --yes] [--only history|memory|relationship]...'
+                exec "$helper" "${@:2}"
+                ;;
+            *) fail 'Usage: tohru assistant memory list|forget ID|clear | export [FILE] | import FILE [--merge|--replace --yes] [--only SECTION]' ;;
         esac
         ;;
     settings-error)

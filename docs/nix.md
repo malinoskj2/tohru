@@ -67,10 +67,36 @@ With a standalone Home Manager flake, pass `inputs` through `extraSpecialArgs`, 
 | `programs.tohru.systemd.target` | `"graphical-session.target"` | The user target that starts and stops those services |
 | `programs.tohru.lock.style` | `null` | Sets the managed `lock.style` |
 | `programs.tohru.notifications.position` | `null` | Sets the managed `notifications.position` |
+| `programs.tohru.assistant.voice.enable` | `true` | False writes `assistant.voice = false` and builds the package without the voice service or its Python dependencies |
+| `programs.tohru.assistant.voice.wake` | `null` | Sets the managed `assistant.voice_wake` (`kws` or `asr`) |
+| `programs.tohru.assistant.voice.models` | `null` | Sets the managed `assistant.voice_models` |
+| `programs.tohru.assistant.voice.kwsModel` | `null` | Sets the managed `assistant.kws_model` |
+| `programs.tohru.assistant.tts.model` | `null` | Sets the managed `assistant.tts_model` |
+| `programs.tohru.assistant.tts.loadOnConversation` | `null` | Sets the managed `assistant.tts_load_on_conversation` |
+| `programs.tohru.assistant.provider` | `null` | Sets the managed `assistant.provider` |
+| `programs.tohru.assistant.models.<cli>.model`, `.effort` | `null` | Set the managed `assistant.models.<cli>.*` for `claude`, `codex`, `gemini`, `agy` or `opencode` |
+| `programs.tohru.assistant.persona.enable`, `.file` | `null` | Set the managed `assistant.persona` and `assistant.persona_file` |
+| `programs.tohru.assistant.memory.enable` | `null` | Sets the managed `assistant.memory` |
 | `programs.tohru.lock.command` | read-only | `tohru-lock` with `TOHRU_MANAGED_CONFIG` set, for hypridle's `lock_cmd` |
 | `programs.tohru.hyprlandPlugin.package` | Plugin built against your session's Hyprland | The plugin package. Nothing loads it automatically |
 
 Everything is inert unless `enable` is true; `systemd.enable` alone adds no services.
+
+### Voice
+
+The package takes `withVoice ? true`. With it, `tohru-voice` is installed with a Python carrying numpy, onnxruntime, sherpa-onnx and misaki (with num2words, phonemizer and spaCy's `en_core_web_sm` for its fallback), and `pulseaudio` (`parec`, `pacat`, `pactl`) and `espeak-ng` on its `PATH`; it sets `HF_HUB_OFFLINE=1` and `OPENBLAS_NUM_THREADS=1`. Without it, none of that is in the closure and the bar never starts a voice service.
+
+No weights are packaged or downloaded. The voice service reads them from `assistant.voice_models`, by default `$MODEL_ROOT/by-name`, so the host's local-models catalog needs:
+
+| Alias | Source | Files |
+|---|---|---|
+| `silero-vad` | Silero VAD v6.2.3 | `silero-vad-v6.2.3.onnx` |
+| `voice-asr` | `csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-21` | `encoder-epoch-99-avg-1.int8.onnx`, `decoder-epoch-99-avg-1.onnx`, `joiner-epoch-99-avg-1.int8.onnx`, `tokens.txt` |
+| `voice-turn` | `pipecat-ai/smart-turn-v3` | `smart-turn-v3.2-cpu.onnx` |
+| `voice-kokoro` (not yet in the catalog) | `onnx-community/Kokoro-82M-v1.0-ONNX` | `onnx/model.onnx` (fp32, 325,532,232 bytes) as `model.onnx`, `tokenizer.json`, and `voices/*.bin` for stock voices other than tide |
+| `voice-kws` (optional, only for `voice_wake = "kws"`; not yet in the catalog) | k2-fsa/sherpa-onnx GitHub release `kws-models`, `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2` | `encoder-`, `decoder-` and `joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx`, `tokens.txt` |
+
+Tohru's own voicepack, tide, ships in the package. When `voice-kokoro` is missing the dragon speaks with espeak-ng and the bar shows the error.
 
 ### Services
 

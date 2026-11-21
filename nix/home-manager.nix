@@ -9,6 +9,22 @@ let
     else if systemHyprland != null then systemHyprland
     else pkgs.hyprland;
   format = pkgs.formats.toml { };
+  assistant = cfg.assistant;
+  providers = [ "claude" "codex" "gemini" "agy" "opencode" ];
+  efforts = [ "minimal" "low" "medium" "high" "xhigh" "max" ];
+  assistantSettings = lib.optionalAttrs (!assistant.voice.enable) { voice = false; }
+    // lib.optionalAttrs (assistant.tts.loadOnConversation != null) { tts_load_on_conversation = assistant.tts.loadOnConversation; }
+    // lib.optionalAttrs (assistant.persona.enable != null) { persona = assistant.persona.enable; }
+    // lib.optionalAttrs (assistant.memory.enable != null) { memory = assistant.memory.enable; }
+    // lib.optionalAttrs (assistant.voice.wake != null) { voice_wake = assistant.voice.wake; }
+    // lib.optionalAttrs (assistant.voice.models != null) { voice_models = assistant.voice.models; }
+    // lib.optionalAttrs (assistant.voice.kwsModel != null) { kws_model = assistant.voice.kwsModel; }
+    // lib.optionalAttrs (assistant.tts.model != null) { tts_model = assistant.tts.model; }
+    // lib.optionalAttrs (assistant.provider != null) { provider = assistant.provider; }
+    // lib.optionalAttrs (assistant.persona.file != null) { persona_file = "${assistant.persona.file}"; }
+    // lib.optionalAttrs (assistant.models != { }) {
+      models = lib.mapAttrs (_: m: lib.filterAttrs (_: v: v != null) { inherit (m) model effort; }) assistant.models;
+    };
   managed = format.generate "tohru-managed.toml"
     (lib.recursiveUpdate cfg.settings (lib.optionalAttrs cfg.polkit.enable { polkit.agent = true; }));
   # hypridle runs outside the login shell, so the locker is told where the managed file is.
@@ -35,7 +51,8 @@ in {
     enable = lib.mkEnableOption "the Tohru shell package and its managed settings";
     package = lib.mkOption {
       type = lib.types.package;
-      default = pkgs.callPackage ./default.nix { };
+      default = pkgs.callPackage ./default.nix { withVoice = cfg.assistant.voice.enable; };
+      defaultText = lib.literalExpression "tohru with the voice service when programs.tohru.assistant.voice.enable";
     };
     hyprlandPlugin.package = lib.mkOption {
       type = lib.types.package;
@@ -104,6 +121,81 @@ in {
         so disable any other (such as `services.hyprpolkitagent`) first.
       '';
     };
+    assistant = {
+      voice.enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Whether the assistant listens for "Tohru". Disabled, the managed
+          `assistant.voice` is false and the default package leaves out the voice
+          service and its speech dependencies, so nothing can open the microphone
+          or load a model; the chat popup keeps working. Enabled, the setting is
+          left to the user's config (on unless they turn it off).
+        '';
+      };
+      voice.wake = lib.mkOption {
+        type = lib.types.nullOr (lib.types.enum [ "kws" "asr" ]);
+        default = null;
+        description = "How the wake word is spotted, written to the managed `assistant.voice_wake`; `null` leaves it to the user's config (`asr`).";
+      };
+      voice.models = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "/mnt/models/by-name";
+        description = "The folder holding `silero-vad`, `voice-asr`, `voice-turn`, `voice-kokoro` and, for `wake = \"kws\"`, `voice-kws`, for `assistant.voice_models`; `null` uses `$MODEL_ROOT/by-name`.";
+      };
+      voice.kwsModel = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "The sherpa-onnx keyword-spotter folder for `assistant.kws_model`; `null` uses `voice-kws` in the voice models folder.";
+      };
+      tts.loadOnConversation = lib.mkOption {
+        type = lib.types.nullOr lib.types.bool;
+        default = null;
+        description = ''
+          Load the speech model only for a voice conversation and unload it when
+          the conversation ends (`assistant.tts_load_on_conversation`). By default
+          it stays loaded (about 0.8 to 1.2 GB) while voice is on, so answers
+          speak at once. `null` leaves it to the user's config.
+        '';
+      };
+      tts.model = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "The Kokoro folder (`model.onnx`, `tokenizer.json`, `voices/`), for `assistant.tts_model`; `null` uses the `voice-kokoro` model under the voice models.";
+      };
+      provider = lib.mkOption {
+        type = lib.types.nullOr (lib.types.enum providers);
+        default = null;
+        description = "The provider CLI the assistant uses, written to `assistant.provider`; `null` picks the first installed and signed-in one in the order claude, codex, gemini, agy, opencode.";
+      };
+      models = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.submodule {
+          options = {
+            model = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; description = "The model ID passed to the CLI."; };
+            effort = lib.mkOption { type = lib.types.nullOr (lib.types.enum efforts); default = null; description = "The reasoning effort passed to the CLI."; };
+          };
+        });
+        default = { };
+        example = lib.literalExpression ''{ codex = { model = "gpt-6.2-sol"; effort = "high"; }; }'';
+        description = "Per-provider model and effort, written to `assistant.models.<provider>`; unset ones use Tohru's defaults (see docs/ai-assistant.md).";
+      };
+      persona.enable = lib.mkOption {
+        type = lib.types.nullOr lib.types.bool;
+        default = null;
+        description = "Whether answers come from Tohru's persona (`assistant.persona`, default on); off sends no system prompt at all. `null` leaves it to the user's config.";
+      };
+      persona.file = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = "A persona file used instead of the shipped one (`assistant.persona_file`).";
+      };
+      memory.enable = lib.mkOption {
+        type = lib.types.nullOr lib.types.bool;
+        default = null;
+        description = "Whether Tohru remembers facts and summaries between chats (`assistant.memory`, default on); off keeps history only. `null` leaves it to the user's config.";
+      };
+    };
     systemd.target = lib.mkOption {
       type = lib.types.str;
       default = "graphical-session.target";
@@ -118,6 +210,13 @@ in {
     (lib.mkIf (cfg.lock.style != null) {
       programs.tohru.settings.lock.style = cfg.lock.style;
     })
+    (lib.mkIf (assistantSettings != { }) { programs.tohru.settings.assistant = assistantSettings; })
+    {
+      assertions = [{
+        assertion = builtins.all (name: builtins.elem name providers) (builtins.attrNames assistant.models);
+        message = "programs.tohru.assistant.models takes only ${lib.concatStringsSep ", " providers}";
+      }];
+    }
     (lib.mkIf (cfg.notifications.position != null) {
       programs.tohru.settings.notifications.position = cfg.notifications.position;
     })

@@ -24,6 +24,22 @@ Only the bar and Settings processes read settings; the bar forwards `notificatio
 | `notifications.position` | string | `"top-right"` | Where notification toasts stack: `top-right`, just under the bar with the newest nearest it, or `bottom-right`, with the newest at the bottom edge. Any other value is an error. The bar sends it to `tohru-notifications`, which moves its toasts at once |
 | `polkit.agent` | boolean | `false` | Let `tohru-polkit` become the session's polkit authentication agent. Read when `tohru-polkit` starts; another agent such as hyprpolkitagent must not be running. See [MIGRATION.md](../MIGRATION.md#polkit-agent) |
 | `assistant.provider` | string | `""` | The CLI answers go to: `claude`, `codex`, `gemini`, `agy` or `opencode`. Empty, or one that is missing or signed out, means the first installed one that is signed in. The popup's provider menu sets it |
+| `assistant.models.<cli>.model` | string, up to 128 of `A-Z a-z 0-9 . _ : / @ # + -` | `""` | The model for `claude`, `codex`, `gemini`, `agy` or `opencode`, passed to that CLI as is. Empty means Tohru's default for it: `claude-opus-5-5`, `gpt-6.2-sol`, `gemini-4-neon`, `gemini-4-neon`, and opencode's own configured model. A model the CLI rejects shows its error; nothing falls back |
+| `assistant.models.<cli>.effort` | string | `""` | Reasoning effort: `minimal`, `low`, `medium`, `high`, `xhigh` or `max`, mapped to what each CLI accepts. Empty means `medium` for claude and codex, `high` for gemini and agy, and opencode's default |
+| `assistant.persona` | boolean | `true` | Speak as Tohru (`shell/assistant/persona.md`). False sends prompts without the persona |
+| `assistant.persona_file` | absolute path or `""` | `""` | A Markdown file used in place of the shipped persona |
+| `assistant.memory` | boolean | `true` | Learn facts and preferences after a chat ends and give answers a short memory block. False runs no extraction and sends no memory; history is still kept |
+| `assistant.voice` | boolean | `true` | Run the voice service: wake word, conversation mode and the speaking dragon. False stops it, frees the microphone and every model, and hides the mic dot; the chat popup keeps working. Applies at once |
+| `assistant.voice_models` | absolute path or `""` | `""` | Folder holding `silero-vad/`, `voice-asr/`, `voice-turn/`, `voice-kokoro/` and, for `kws`, `voice-kws/`. Empty means `$MODEL_ROOT/by-name` |
+| `assistant.voice_wake` | string | `"asr"` | How "Tohru" is heard: `asr` runs the recogniser on all speech; `kws` runs a small keyword spotter first and the recogniser only after it fires. Both confirm the wake word from the transcript. See [ai-assistant.md](ai-assistant.md#wake-word) for the measurements behind the default |
+| `assistant.kws_model` | absolute path or `""` | `""` | The sherpa-onnx keyword-spotter folder for `kws`. Empty means `voice-kws` in the voice models folder |
+| `assistant.tts_engine` | string | `"kokoro"` | The dragon's speech engine: `kokoro` (Kokoro-82M v1.0 on the CPU) or `espeak-ng`. Kokoro falls back to espeak-ng, with an error, when its files are missing |
+| `assistant.tts_model` | absolute path or `""` | `""` | Kokoro's folder, holding `model.onnx`, `tokenizer.json` and `voices/`. Empty means `voice-kokoro` in the voice models folder. Nothing is downloaded |
+| `assistant.tts_voicepack` | string or absolute path | `"tide"` | Kokoro's voice: `tide` (Tohru's, shipped in `shell/assistant/voice/`), a stock pack name such as `af_heart` from the model's `voices/`, or a path to a 510×256 float32 `.bin` |
+| `assistant.tts_load_on_conversation` | boolean | `false` | False keeps Kokoro loaded while voice is on (about 670 MB, answers start sooner). True loads it when a conversation starts and frees it when the conversation ends |
+| `assistant.tts_voice` | string, 1 to 64 of `A-Z a-z 0-9 + - _ .` | `"en-us+f3"` | espeak-ng's voice name |
+| `assistant.tts_speed` | integer, 50 to 200 | `100` | espeak-ng's speaking rate, in percent of its normal |
+| `assistant.tts_pitch` | integer, −12 to 12 | `3` | espeak-ng's pitch shift in semitones |
 
 Example `config.toml`:
 

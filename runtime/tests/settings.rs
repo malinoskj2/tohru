@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use tohru_shell::settings::{Key, LockStyle, Origin, Owner, Palette, Value};
+use tohru_shell::settings::{Cli, Key, LockStyle, Origin, Owner, Palette, Value};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -469,12 +469,12 @@ fn assistant_settings_default_to_voice_on_and_validate() {
         Value::Text(String::new())
     );
     assert_eq!(
-        owner.get(Key::AssistantModels).value,
+        owner.get(Key::AssistantVoiceModels).value,
         Value::Text(String::new())
     );
     assert_eq!(
         owner.get(Key::AssistantTtsEngine).value,
-        Value::Text("espeak-ng".into())
+        Value::Text("kokoro".into())
     );
     assert_eq!(
         owner.get(Key::AssistantTtsVoice).value,
@@ -491,7 +491,7 @@ fn assistant_settings_default_to_voice_on_and_validate() {
         .unwrap();
     owner
         .set(
-            Key::AssistantModels,
+            Key::AssistantVoiceModels,
             Value::Text("/mnt/models/by-name".into()),
         )
         .unwrap();
@@ -516,8 +516,31 @@ fn assistant_settings_default_to_voice_on_and_validate() {
         (Key::AssistantTtsEngine, Value::Text("say".into())),
         (Key::AssistantTtsVoice, Value::Text("en us; rm".into())),
         (Key::AssistantTtsVoice, Value::Text(String::new())),
-        (Key::AssistantModels, Value::Text("relative/path".into())),
+        (
+            Key::AssistantVoiceModels,
+            Value::Text("relative/path".into()),
+        ),
         (Key::AssistantTtsSpeed, Value::Integer(10)),
+        (
+            Key::AssistantEffort(Cli::Codex),
+            Value::Text("extreme".into()),
+        ),
+        (
+            Key::AssistantModel(Cli::Claude),
+            Value::Text("opus; rm -rf".into()),
+        ),
+        (Key::AssistantPersonaFile, Value::Text("persona.md".into())),
+        (Key::AssistantMemory, Value::Text("off".into())),
+        (
+            Key::AssistantTtsVoicepack,
+            Value::Text("../../etc/passwd".into()),
+        ),
+        (
+            Key::AssistantTtsVoicepack,
+            Value::Text("relative/pack.bin".into()),
+        ),
+        (Key::AssistantVoiceWake, Value::Text("always".into())),
+        (Key::AssistantTtsModel, Value::Text("kokoro".into())),
         (Key::AssistantTtsPitch, Value::Integer(13)),
         (Key::AssistantVoice, Value::Text("true".into())),
     ];
@@ -530,4 +553,95 @@ fn assistant_settings_default_to_voice_on_and_validate() {
     let owner = files.owner();
     assert_eq!(owner.get(Key::AssistantVoice).value, Value::Bool(true));
     assert_eq!(owner.get(Key::AssistantVoice).origin, Origin::Nix);
+}
+
+#[test]
+fn assistant_speech_defaults_to_kokoro_with_the_tide_pack() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    let mut owner = files.owner();
+    assert_eq!(
+        owner.get(Key::AssistantTtsVoicepack).value,
+        Value::Text("tide".into())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantTtsLoadOnConversation).value,
+        Value::Bool(false)
+    );
+    assert_eq!(
+        owner.get(Key::AssistantVoiceWake).value,
+        Value::Text("asr".into())
+    );
+    owner
+        .set(Key::AssistantTtsVoicepack, Value::Text("af_heart".into()))
+        .unwrap();
+    owner
+        .set(Key::AssistantVoiceWake, Value::Text("kws".into()))
+        .unwrap();
+    let restarted = files.owner();
+    assert_eq!(
+        restarted.get(Key::AssistantTtsVoicepack).value,
+        Value::Text("af_heart".into())
+    );
+    assert_eq!(
+        restarted.get(Key::AssistantVoiceWake).value,
+        Value::Text("kws".into())
+    );
+}
+
+#[test]
+fn assistant_models_nest_under_each_provider() {
+    let files = Fixture::new();
+    fs::write(
+        files.managed(),
+        "[assistant.models.gemini]\nmodel = \"gemini-4-neon\"\neffort = \"high\"\n",
+    )
+    .unwrap();
+    let mut owner = files.owner();
+    assert_eq!(owner.get(Key::AssistantPersona).value, Value::Bool(true));
+    assert_eq!(owner.get(Key::AssistantMemory).value, Value::Bool(true));
+    assert_eq!(
+        owner.get(Key::AssistantModel(Cli::Claude)).value,
+        Value::Text(String::new())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantModel(Cli::Gemini)).value,
+        Value::Text("gemini-4-neon".into())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantEffort(Cli::Gemini)).origin,
+        Origin::Nix
+    );
+    owner
+        .set(
+            Key::AssistantModel(Cli::Codex),
+            Value::Text("gpt-6.2-sol".into()),
+        )
+        .unwrap();
+    owner
+        .set(
+            Key::AssistantEffort(Cli::Codex),
+            Value::Text("xhigh".into()),
+        )
+        .unwrap();
+    owner.set(Key::AssistantMemory, Value::Bool(false)).unwrap();
+    let written = fs::read_to_string(files.user()).unwrap();
+    assert!(written.contains("[assistant.models.codex]"), "{written}");
+    let restarted = files.owner();
+    assert_eq!(
+        restarted.get(Key::AssistantModel(Cli::Codex)).value,
+        Value::Text("gpt-6.2-sol".into())
+    );
+    assert_eq!(
+        restarted.get(Key::AssistantEffort(Cli::Codex)).value,
+        Value::Text("xhigh".into())
+    );
+    assert_eq!(
+        restarted.get(Key::AssistantMemory).value,
+        Value::Bool(false)
+    );
+    assert_eq!(
+        Key::parse("assistant.models.opencode.effort").unwrap(),
+        Key::AssistantEffort(Cli::Opencode)
+    );
 }

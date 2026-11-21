@@ -28,6 +28,21 @@ let
     programs.tohru = { enable = true; inherit settings; systemd.enable = true; polkit.enable = true; notifications.position = "bottom-right"; };
   } ]).config;
   agentManaged = builtins.readFile agent.home.sessionVariables.TOHRU_MANAGED_CONFIG;
+  quiet = (home tohru.homeManagerModules.tohru [ {
+    programs.tohru = {
+      enable = true;
+      assistant = {
+        voice.enable = false;
+        memory.enable = false;
+        voice.wake = "kws";
+        voice.kwsModel = "/k";
+        provider = "codex";
+        models.codex = { model = "gpt-6.2-sol"; effort = "high"; };
+        models.claude.effort = "low";
+      };
+    };
+  } ]).config;
+  quietManaged = builtins.readFile quiet.home.sessionVariables.TOHRU_MANAGED_CONFIG;
   servicesOnly = (home tohru.homeManagerModules.tohru [ { programs.tohru.systemd.enable = true; } ]).config;
   roles = {
     tohru-bar = "tohru-run";
@@ -70,6 +85,12 @@ assert agent.systemd.user.services.tohru-polkit.Service.ExecStart == [ "${agent.
 assert agent.systemd.user.services.tohru-polkit.Unit.PartOf == [ "graphical-session.target" ];
 assert pkgs.lib.hasInfix "[polkit]\nagent = true" agentManaged;
 assert pkgs.lib.hasInfix "preferred_output = \"DP-CHECK\"" agentManaged;
+assert !(pkgs.lib.hasInfix "assistant" (builtins.readFile managed));
+assert config.programs.tohru.package.passthru.withVoice;
+assert !quiet.programs.tohru.package.passthru.withVoice;
+assert pkgs.lib.hasInfix "[assistant]\nkws_model = \"/k\"\nmemory = false\nprovider = \"codex\"\nvoice = false\nvoice_wake = \"kws\"" quietManaged;
+assert pkgs.lib.hasInfix "[assistant.models.codex]\neffort = \"high\"\nmodel = \"gpt-6.2-sol\"" quietManaged;
+assert pkgs.lib.hasInfix "[assistant.models.claude]\neffort = \"low\"" quietManaged;
 assert serviced.systemd.user.services.tohru-launcher.Service.KillMode == "process";
 assert builtins.all (name: !(serviced.systemd.user.services.${name}.Service ? KillMode))
   [ "tohru-bar" "tohru-session" "tohru-notifications" ];

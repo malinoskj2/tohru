@@ -10,6 +10,10 @@ The AI assistant described in [docs/ai-assistant.md](../../docs/ai-assistant.md)
 | `menu.plm` | The mark's right-click menu: the providers with **Sign in…** inline, New chat and History |
 | `popup.plm` | The Pocket popup (direction 01): heading, provider picker, sign-in note, empty chat, the chat column, the field and history |
 | `controller.luau` | Runs `tohru-assistant` for providers, chats and history, streams the answer, and keeps the bar's streaming and ready state. Takes `{provider, choose}` for the `assistant.provider` setting and returns `{open, close, toggle, new_chat, show_history, choose, signin, settle, ask, stop, streaming, on_answer, show, status}` |
+| `voice.luau` | Runs `tohru-voice` while `assistant.voice` is on and kills it when off; sends voice turns to the controller and its answers back to be spoken; drives the mic dot, mouth level and overlay. Restarts a crashed service after 2, 4, … s, up to five times, and never after exit 3 (missing models or tools) |
+| `dragon.plm` | The speaking dragon overlay at the bottom right; a click opens the conversation |
+| `persona.md` | Tohru's persona, sent with every chat unless `assistant.persona` is off |
+| `voice/` | `tohru-tide.bin`, Tohru's Kokoro voicepack (provenance in its README), and `wake-keywords.txt` for the keyword spotter |
 | `*.svg` | Lucide icons (ISC; see `LICENSE.LUCIDE`) |
 
 ## The bar entry
@@ -52,31 +56,40 @@ The bar process owns the one answer in flight, so its state survives closing the
 
 ## The service: `bin/tohru-assistant`
 
-A Python helper (standard library only) that the bar runs with `sys.spawn`. Each command prints JSON on stdout.
+A Python helper (standard library only) that the bar runs with `sys.spawn`. Each command prints JSON on stdout. `tohru assistant memory|export|import …` runs it too.
 
 | Command | Output |
 |---|---|
 | `providers` | The installed CLIs among `claude`, `codex`, `gemini`, `agy` and `opencode`, in that order, with `slot` (their fixed palette position, 0 to 4), `signed_in` and `model`. Anything else on `PATH` is never listed |
 | `signin ID` | Opens the CLI's login in a terminal, waits for the terminal to close, then prints that provider's line again |
-| `chat --provider ID [--conversation CID] [--voice]` | Reads the prompt on stdin and prints `start`, `delta` (text), then `done`, `stopped` or `error` events, one per line |
+| `chat --provider ID [--conversation CID] [--voice] [--model M] [--effort E] [--persona on\|off] [--persona-file F] [--memory on\|off]` | Reads the prompt on stdin and prints `start` (with the model), `delta` (text), then `done`, `stopped` or `error` events, one per line |
+| `remember CID [--model M] [--effort E] [--memory on\|off]` | Extracts memories from a finished conversation with one headless call; prints `remembered` with the count, or nothing to do |
+| `memory list [--json]`, `memory forget ID`, `memory clear` | What is remembered, and dropping it |
+| `export [FILE]`, `import FILE [--merge\|--replace --yes] [--only history\|memory\|relationship]` | Versioned JSON of everything, written 0600; import validates the whole file first |
 | `history [--query Q] [--provider ID] [--since T] [--limit N]` | Conversations, newest first, with the matching snippet when `--query` is given |
 | `show CID`, `delete CID` | One conversation, or remove it |
 
 - **Auth probes** never prompt: stdin is closed, each probe has 6 s, and they run in parallel. `claude auth status` and `codex login status` where the CLI has one; otherwise the credential file (`~/.gemini/oauth_creds.json`, `~/.gemini/antigravity-cli/antigravity-oauth-token`, `~/.local/share/opencode/auth.json`). **Sign in…** runs `claude auth login`, `codex login`, `opencode auth login`, or the bare CLI for `gemini` and `agy`, in `TOHRU_TERMINAL`, `xdg-terminal-exec`, `$TERMINAL -e` or the first common terminal found.
-- **Models** come from each CLI's own config (`~/.claude/settings.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`, `opencode.json`); `agy` has none to read.
+- **Models** come from `assistant.models.<cli>.model` and `.effort`, with Tohru's defaults when empty (see [docs/ai-assistant.md](../../docs/ai-assistant.md#as-built)); `providers --models JSON` reports what each will use.
 - **The runner** starts the CLI in an empty scratch directory (`$XDG_STATE_HOME/tohru/assistant/scratch`) in its own process group, with no tools where the CLI can turn them off: Claude gets `--tools ""`, `--strict-mcp-config` and only project settings (so no user hooks); Codex runs `--sandbox read-only` with no MCP servers; Antigravity runs in `plan` mode; Gemini keeps its default approval mode, which refuses tools in headless runs. Each conversation keeps one resumable session per provider (`--session-id`/`--resume`, `codex exec resume`, `--conversation`, `--resume`, `--session`). The first turn sent to a provider that joins a conversation part-way carries the earlier transcript.
 - **Stop** is SIGINT to the helper, which passes it to the CLI's process group, saves the partial answer marked `stopped` and prints `stopped`.
-- **History** is one JSON file per conversation in `$XDG_DATA_HOME/tohru/assistant/chats/` (mode 0700): `id`, `title` (the first question, up to 48 characters), `provider`, `created`, `updated`, `voice`, the CLI `sessions` and `turns` (`role`, `text`, `time`, and `provider`, `stopped`, `error` or `voice`). Writes are atomic. Search is case-insensitive over titles and every turn. `TOHRU_ASSISTANT_DATA` and `TOHRU_ASSISTANT_SCRATCH` move both folders (the tests use them).
+- **History and memory** live in `$XDG_DATA_HOME/tohru/assistant.sqlite` (0600, WAL, FTS5). Conversations keep `title` (the first question, up to 48 characters), `provider`, `voice`, the CLI `sessions` and their turns. Search covers titles and every turn. `TOHRU_ASSISTANT_DATA` and `TOHRU_ASSISTANT_SCRATCH` move the data and scratch folders (the tests use them).
 
 Only `claude`, `codex` and `agy` were run for real while this was written. The Gemini and OpenCode event formats follow their documentation and are unverified.
+
+## The voice service: `bin/tohru-voice`
+
+Python with numpy, onnxruntime and sherpa-onnx; misaki for Kokoro. It reads 16 kHz mono from the default source with `parec`, plays with `pacat`, and talks JSON lines: events on stdout (`ready`, `listening`, `conversation`, `wake`, `turn`, `barge`, `speaking`, `mouth`, `paused`, `error`), commands on stdin (`say`, `hush`, `thinking`, `end`, `tts`). Models come from `--models` (default `$MODEL_ROOT/by-name`): `silero-vad`, `voice-asr`, `voice-turn`, `voice-kokoro` and, for `--wake kws`, `voice-kws`. Nothing is downloaded. Kokoro runs in a child process (`--tts-worker`) so freeing it returns its memory. It pauses while the session is locked or another app records.
 
 ## Tests
 
 ```sh
 python3 tests/assistant/service.py
+python3 tests/assistant/voice.py
 lua5.4 tests/assistant/controller.lua
+lua5.4 tests/assistant/voice-controller.lua
 ```
 
-The first drives the helper against fake `claude` and `codex` scripts: discovery, probes that would prompt, streaming, session resume, provider hand-over, Stop, history search and conversation IDs that try to leave the folder.
+`service.py` drives the helper against fake `claude`, `codex` and `agy` scripts: discovery, probes that would prompt, streaming, session resume, provider hand-over, Stop, history search, conversation IDs that try to leave the folder, models and rejected models, the persona per CLI, memory extraction (malformed JSON rejected, the 600-token budget, nothing spawned with memory off), forgetting, migrations, and an export/import round trip. `voice.py` covers wake gating with and without the keyword spotter, follow-ups, spoken text shaping, the Kokoro load policy and the echo guard (the last needs numpy).
 
-The second drives `controller.luau` with stand-ins for `run`, `spawn` and `kill`: provider choice, streaming, Stop, the ready mark, sign-in, history rows and a voice turn.
+`controller.lua` drives `controller.luau` with stand-ins for `run`, `spawn` and `kill`: provider choice, models, streaming, Stop, the ready mark, sign-in, history rows, a voice turn, the memory hand-off and the Memory view. `voice-controller.lua` drives `voice.luau`: gating, turns, spoken answers, barge-in, the overlay, settings and restarts.

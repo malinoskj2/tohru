@@ -21,7 +21,7 @@ part AssistantPopup {
         // The heading: the provider (or "History") with the fold chevron, then history and new chat.
         measure ai_name
         let ai_name_w = min(150, ai_name.width)
-        let ai_dot_w = if(ai_view == 1 and not ai_picker, 0, 13)
+        let ai_dot_w = if(ai_view >= 1 and not ai_picker, 0, 13)
         zone box ai_head { from: ai_ox + 10, 10; size: ai_name_w + ai_dot_w + 28, 22; corner: 7; cursor: pointer; label: if(ai_picker, "Fold providers", "Choose provider") }
         box { from: ai_ox + 10, 10; size: ai_name_w + ai_dot_w + 28, 22; corner: 7; color: ink_white; opacity: max(if(ai_picker, 8%, 0%), max(ai_head.hover * 10%, ai_head.pressed * 16%)) }
         group {
@@ -30,8 +30,9 @@ part AssistantPopup {
             ellipse { at: ai_ox + 19, 21; radius: 3; color: ai_colour }
         }
         ellipse { at: ai_ox + 19, 21; radius: 2.4; stroke: 1.2; color: ai_colour; show: ai_dot_w > 0 and not ai_signed_in }
-        text pick(if(ai_view == 1 and not ai_picker, 1, 0), ai_provider_name, "History") { at: ai_ox + 16 + ai_dot_w, 21; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 0%; measure: ai_name }
-        text pick(if(ai_view == 1 and not ai_picker, 1, 0), ai_provider_name, "History") { at: ai_ox + 16 + ai_dot_w, 21; anchor: left center; width: 150; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+        text pick(if(ai_picker, 0, ai_view), ai_provider_name, "History", "Memory") { at: ai_ox + 16 + ai_dot_w, 21; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 0%; measure: ai_name }
+        text pick(if(ai_picker, 0, ai_view), ai_provider_name, "History", "Memory") { at: ai_ox + 16 + ai_dot_w, 21; anchor: left center; width: 150; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+        text ai_provider_model { at: ai_ox + 16 + ai_dot_w + ai_name_w + 22, 21.5; anchor: left center; width: ai_w - ai_dot_w - ai_name_w - 108; lines: 1; size: 11; family: "SF Pro Text"; color: ink_white; opacity: 50%; show: not ai_picker and ai_view == 0 and ai_signed_in }
         group {
             pivot: ai_ox + 16 + ai_dot_w + ai_name_w + 11, 22
             rotate: if(ai_picker, 3.14159, 0)
@@ -45,8 +46,8 @@ part AssistantPopup {
         }
         on press ai_head { emit assistant_picker }
 
-        zone box ai_history_hit { from: ai_right - 50, 10; size: 24, 22; corner: 7; cursor: pointer; label: if(ai_view == 1, "Back to chat", "History") }
-        box { from: ai_right - 50, 10; size: 24, 22; corner: 7; color: ink_white; opacity: max(if(ai_view == 1 and not ai_picker, 14%, 0%), max(ai_history_hit.hover * 10%, ai_history_hit.pressed * 16%)) }
+        zone box ai_history_hit { from: ai_right - 50, 10; size: 24, 22; corner: 7; cursor: pointer; label: if(ai_view >= 1, "Back to chat", "History") }
+        box { from: ai_right - 50, 10; size: 24, 22; corner: 7; color: ink_white; opacity: max(if(ai_view >= 1 and not ai_picker, 14%, 0%), max(ai_history_hit.hover * 10%, ai_history_hit.pressed * 16%)) }
         image ai_history_icon { at: ai_right - 45, 14; size: 14, 14; tint: ink_white; opacity: 80% }
         zone box ai_new_hit { from: ai_right - 24, 10; size: 24, 22; corner: 7; cursor: pointer; label: "New chat" }
         box { from: ai_right - 24, 10; size: 24, 22; corner: 7; color: ink_white; opacity: max(ai_new_hit.hover * 10%, ai_new_hit.pressed * 16%) }
@@ -163,10 +164,14 @@ part AssistantPopup {
         // History: search, then the chats under Today, Yesterday, This week and Earlier.
         group {
             show: not ai_picker and ai_view == 1
-            box { from: ai_ox + 10, 42; size: ai_w - 20, 28; corner: 8; color: ink_white; opacity: 7% }
-            box { from: ai_ox + 10.5, 42.5; size: ai_w - 21, 27; corner: 7.5; stroke: 1; color: ink_white; opacity: 16% - 4% * pk }
+            box { from: ai_ox + 10, 42; size: ai_w - 90, 28; corner: 8; color: ink_white; opacity: 7% }
+            box { from: ai_ox + 10.5, 42.5; size: ai_w - 91, 27; corner: 7.5; stroke: 1; color: ink_white; opacity: 16% - 4% * pk }
             image ai_search_icon { at: ai_ox + 19, 49.5; size: 13, 13; tint: ink_white; opacity: 55% }
-            input ai_search { at: ai_ox + 38, 48; width: ai_w - 58; size: 12.5; family: "SF Pro Text"; color: ink_white; placeholder: "Search chats"; label: "Search chats" }
+            zone box ai_memory_hit { from: ai_right - 72, 42; size: 72, 28; corner: 8; cursor: pointer; active: ai_view == 1 and not ai_picker; label: "What Tohru remembers" }
+            box { from: ai_right - 72, 42; size: 72, 28; corner: 8; color: ink_white; opacity: 7% + max(ai_memory_hit.hover * 6%, ai_memory_hit.pressed * 12%) }
+            text "Memory" { at: ai_right - 36, 56; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 85% }
+            on press ai_memory_hit { emit assistant_memory }
+            input ai_search { at: ai_ox + 38, 48; width: ai_w - 128; size: 12.5; family: "SF Pro Text"; color: ink_white; placeholder: "Search chats"; label: "Search chats" }
             column ai_hist {
                 at: ai_ox + 6, 76
                 view: ai_w - 12, 292
@@ -189,6 +194,35 @@ part AssistantPopup {
                 }
             }
             text if(ai_searching, "No chats match", "No chats yet") { at: ai_ox + 140, 120; anchor: center; size: 12; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: ai_history.count == 0 }
+        }
+
+        // Memory: what Tohru remembers, each with a forget button, and forget everything.
+        group {
+            show: not ai_picker and ai_view == 2
+            text ai_memory_note { at: ai_ox + 16, 50; anchor: left center; width: ai_w - 32; lines: 0; size: 11; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+            column ai_mem {
+                at: ai_ox + 6, 70
+                view: ai_w - 12, 262
+                gap: 0
+                for m in ai_memories {
+                    group { size: ai_w - 12, 40
+                        box { from: 0, 0; size: ai_w - 12, 38; corner: 7; color: ink_white; opacity: max(ai_mforget.$m.index.hover * 4%, 0%) }
+                        text m.text { at: 10, 19; anchor: left center; width: ai_w - 60; lines: 0; size: 12; family: "SF Pro Text"; color: ink_white; opacity: 88% }
+                        zone box ai_mforget.$m.index { from: ai_w - 42, 8; size: 24, 22; corner: 7; cursor: pointer; active: ai_view == 2; label: "Forget {m.text}" }
+                        box { from: ai_w - 42, 8; size: 24, 22; corner: 7; color: ink_white; opacity: max(ai_mforget.$m.index.hover * 10%, ai_mforget.$m.index.pressed * 16%) }
+                        text "×" { at: ai_w - 30, 19; anchor: center; size: 15; family: "SF Pro Text"; color: ink_white; opacity: 70% }
+                        on press ai_mforget.$m.index { emit assistant_memory_forget(m.index) }
+                    }
+                }
+            }
+            text if(ai_memory_on, "Nothing remembered yet", "Memory is off") { at: ai_ox + 140, 140; anchor: center; size: 12; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: ai_memories.count == 0 }
+            zone box ai_forget_all { from: ai_ox + 10, 340; size: ai_w - 20, 28; corner: 8; cursor: pointer; active: ai_view == 2 and ai_memories.count > 0; label: "Forget everything" }
+            group {
+                show: ai_memories.count > 0
+                box { from: ai_ox + 10, 340; size: ai_w - 20, 28; corner: 8; color: if(ai_forget_armed, ink_red, ink_white); opacity: if(ai_forget_armed, 30%, 7%) + max(ai_forget_all.hover * 6%, ai_forget_all.pressed * 12%) }
+                text if(ai_forget_armed, "Press again to forget everything", "Forget everything") { at: ai_ox + 140, 354; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 88% }
+            }
+            on press ai_forget_all { emit assistant_memory_clear }
         }
         on change ai_open while ai_open and ai_view == 0 and not ai_picker { focus ai_prompt }
         on change ai_view while ai_open and ai_view == 1 { focus ai_search }
