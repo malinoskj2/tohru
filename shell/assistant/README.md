@@ -79,7 +79,7 @@ Only `claude`, `codex` and `agy` were run for real while this was written. The G
 
 ## The voice service: `bin/tohru-voice`
 
-Python with numpy, onnxruntime and sherpa-onnx; misaki for Kokoro. It reads 16 kHz mono from the default source with `parec`, plays with `pacat`, and talks JSON lines: events on stdout (`ready`, `listening`, `conversation`, `wake`, `turn`, `barge`, `speaking`, `mouth`, `paused`, `error`), commands on stdin (`say`, `hush`, `thinking`, `end`, `tts`). Models come from `--models` (default `$MODEL_ROOT/by-name`): `silero-vad`, `voice-asr`, `voice-turn`, `voice-kokoro` and, for `--wake kws`, `voice-kws`. Nothing is downloaded. Kokoro runs in a child process (`--tts-worker`) so freeing it returns its memory. It pauses while the session is locked or another app records.
+Python with numpy, onnxruntime and sherpa-onnx; misaki for Kokoro. It reads 16 kHz mono from the default source with `parec`, plays with `pacat`, and talks JSON lines: events on stdout (`ready`, `listening`, `conversation`, `wake`, `turn`, `barge`, `speaking`, `mouth`, `paused`, `error`), commands on stdin (`say`, `hush`, `thinking`, `end`, `tts`). Models are explicit paths: `--vad-model`, `--asr-model`, `--turn-model` (optional), `--tts-model` and, for `--wake kws`, `--kws-model`, from the matching `assistant.*_model` settings. It checks them before loading anything and exits with code 3 and one `error` naming every missing setting; `ready` carries a `warning` for a missing Kokoro or a bad Smart Turn file. Nothing is downloaded. Kokoro runs in a child process (`--tts-worker`) so freeing it returns its memory. It pauses while the session is locked or another app records.
 
 ## Tests
 

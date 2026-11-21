@@ -27,6 +27,7 @@ part AssistantState {
     fact ai_speaking = false
     fact ai_mouth = 0
     text ai_voice_error = ""
+    fact ai_voice_failed = false
     prop ai_glow = 0 ~400ms
     follow ai_glow = if(ai_streaming and not ai_open, 1, 0)
     prop ai_dragon_k = 0 ~spring(170, 20)
@@ -102,7 +103,7 @@ part AssistantState {
     // The popup's heights: the picker's rows, history, the sign-in note, the empty chat, or as tall as the chat.
     let ai_picker_h = 44 + 30 * max(1, ai_providers.count) + 36
     let ai_chat_h = clamp(44 + ai_chat.content + 52, 230, 440)
-    let ai_open_h = if(ai_picker, ai_picker_h, if(ai_view >= 1, 380, if(ai_needs_signin, 262, if(ai_has_chat, ai_chat_h, 230))))
+    let ai_open_h = if(ai_picker, ai_picker_h, if(ai_view >= 1, 380, if(ai_needs_signin, 262, if(ai_has_chat, ai_chat_h, if(ai_voice_failed, 262, 230)))))
     prop ai_h = 230 ~spring(196, 21.84)
     follow ai_h = ai_open_h
     on change ai_open { ai_h: ai_open_h ~0ms }

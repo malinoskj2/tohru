@@ -115,11 +115,54 @@ def speakable(text):
     return cut + " The rest is in the chat."
 
 
-def model_root(configured):
-    if configured:
-        return Path(configured)
-    root = os.environ.get("MODEL_ROOT")
-    return Path(root) / "by-name" if root else Path("/nonexistent")
+TRANSDUCER_FILES = "tokens.txt, encoder*.onnx, decoder*.onnx and joiner*.onnx"
+
+
+def transducer_missing(folder):
+    if not folder.is_dir():
+        return None
+    names = [p.name for p in folder.iterdir()]
+    missing = [] if (folder / "tokens.txt").is_file() else ["tokens.txt"]
+    for part in ("encoder", "decoder", "joiner"):
+        if not any(n.startswith(part) and n.endswith(".onnx") for n in names):
+            missing.append(f"{part}*.onnx")
+    return missing
+
+
+def onnx_problem(setting, configured, what):
+    if not configured:
+        return f"{setting} is not set ({what})"
+    path = Path(configured).expanduser()
+    if not path.is_file() or path.suffix != ".onnx":
+        return f"{setting}: {path} is not an .onnx file ({what})"
+    return None
+
+
+def folder_problem(setting, configured, what):
+    if not configured:
+        return f"{setting} is not set ({what} holding {TRANSDUCER_FILES})"
+    folder = Path(configured).expanduser()
+    missing = transducer_missing(folder)
+    if missing is None:
+        return f"{setting}: {folder} is not a folder ({what} holding {TRANSDUCER_FILES})"
+    if missing:
+        return f"{setting}: {folder} has no {', '.join(missing)} ({what} holding {TRANSDUCER_FILES})"
+    return None
+
+
+def check_models(vad, asr, turn, wake, kws):
+    """Validates the configured model paths without loading anything: (errors that stop voice, warnings)."""
+    errors = [problem for problem in (
+        onnx_problem("assistant.vad_model", vad, "the Silero VAD v6.2.3 .onnx file"),
+        folder_problem("assistant.asr_model", asr, "the sherpa-onnx streaming Zipformer folder"),
+        folder_problem("assistant.kws_model", kws, "the sherpa-onnx keyword-spotter folder") if wake == "kws" else None,
+    ) if problem]
+    warnings = []
+    if turn:
+        problem = onnx_problem("assistant.turn_model", turn, "the Smart Turn v3.2 .onnx file")
+        if problem:
+            warnings.append(f"{problem}; turns end on silence only")
+    return errors, warnings
 
 
 class Silero:
@@ -199,6 +242,11 @@ def mel_filters(np, bins=201, mels=80, rate=SAMPLE_RATE):
 
 
 def transducer(folder):
+    missing = transducer_missing(folder)
+    if missing is None:
+        raise FileNotFoundError(f"{folder} is not a folder")
+    if missing:
+        raise FileNotFoundError(f"no {', '.join(missing)} in {folder}")
     files = {p.name: p for p in folder.iterdir()}
 
     def find(prefix):
@@ -332,11 +380,13 @@ KOKORO_RATE = 24_000
 
 
 def kokoro_files(settings):
-    folder = Path(settings.get("model") or model_root("") / "voice-kokoro")
+    if not settings.get("model"):
+        raise FileNotFoundError("assistant.tts_model is not set (the Kokoro folder holding model.onnx, tokenizer.json and voices/)")
+    folder = Path(settings["model"]).expanduser()
     model = next((folder / name for name in ("model.onnx", "kokoro-v1.0.onnx", "model_fp32.onnx") if (folder / name).is_file()), None)
     vocab = folder / "tokenizer.json"
     if model is None or not vocab.is_file():
-        raise FileNotFoundError(f"no Kokoro model.onnx and tokenizer.json in {folder}")
+        raise FileNotFoundError(f"assistant.tts_model: {folder} has no model.onnx and tokenizer.json")
     pack = str(settings.get("voicepack") or "tide")
     if pack.startswith("/"):
         pack_path = Path(pack)
@@ -455,15 +505,15 @@ SHIPPED_VOICES = next((p for p in (Path(__file__).resolve().parent.parent / "she
                       Path(__file__).resolve().parent.parent / "shell/assistant/voice")
 
 
-def make_engine(settings):
-    """The configured engine; Kokoro falls back to espeak-ng (with an error event) when its files are missing."""
+def make_engine(settings, warn=None):
+    """The configured engine; Kokoro falls back to espeak-ng (with an error) when its files are missing."""
     engine = ENGINES.get(settings.get("engine", "kokoro"), Kokoro)
     try:
         return engine(settings)
     except (OSError, ValueError) as error:
         if engine is Espeak:
             raise
-        emit("error", message=f"speech: {error}; using espeak-ng")
+        (warn or (lambda message: emit("error", message=message)))(f"speech: {error}; using espeak-ng")
         return Espeak(settings)
 
 
@@ -654,14 +704,13 @@ class Monitor:
 
 
 class Voice:
-    def __init__(self, models, np, ort, sherpa, smart_turn=True, wake="asr", kws=None):
+    def __init__(self, np, ort, sherpa, vad, asr, turn=None, kws=None):
         self.np = np
-        self.silero = Silero(models / "silero-vad" / "silero-vad-v6.2.3.onnx" if (models / "silero-vad" / "silero-vad-v6.2.3.onnx").exists()
-                             else next((models / "silero-vad").glob("*.onnx")), np, ort)
-        self.recognizer = Recognizer(models / "voice-asr", sherpa)
-        turn = list((models / "voice-turn").glob("*.onnx")) if smart_turn else []
-        self.turn = SmartTurn(turn[0], np, ort) if turn else None
-        self.spotter = Spotter(kws, sherpa) if wake == "kws" else None
+        self.warning = ""
+        self.silero = Silero(vad, np, ort)
+        self.recognizer = Recognizer(asr, sherpa)
+        self.turn = SmartTurn(turn, np, ort) if turn else None
+        self.spotter = Spotter(kws, sherpa) if kws else None
         self.speaker = Speaker(np, self)
         self.lock = threading.Lock()
         self.capture = None
@@ -694,10 +743,10 @@ class Voice:
             engine = self.speaker.engine
             threading.Thread(target=engine.load if on else engine.unload, daemon=True).start()
 
-    def set_engine(self, settings):
+    def set_engine(self, settings, warn=None):
         old = self.speaker.engine
         self.load_on_conversation = bool(settings.get("load_on_conversation"))
-        engine = make_engine(settings)
+        engine = make_engine(settings, warn)
         self.speaker.hush()
         self.speaker.engine = engine
         old.unload()
@@ -773,7 +822,7 @@ class Voice:
         self.reset_utterance()
 
     def run(self):
-        emit("ready", turn=self.turn is not None)
+        emit("ready", turn=self.turn is not None, warning=self.warning)
         need = WINDOW * 2
         while True:
             if self.paused_reason:
@@ -974,7 +1023,9 @@ def main():
     if len(sys.argv) == 5 and sys.argv[1] == "--tts-worker":
         return tts_worker(*sys.argv[2:])
     parser = argparse.ArgumentParser(prog="tohru-voice")
-    parser.add_argument("--models", default=os.environ.get("TOHRU_VOICE_MODELS", ""))
+    parser.add_argument("--vad-model", default="")
+    parser.add_argument("--asr-model", default="")
+    parser.add_argument("--turn-model", default="")
     parser.add_argument("--tts-engine", default="kokoro")
     parser.add_argument("--tts-model", default="")
     parser.add_argument("--tts-voicepack", default="tide")
@@ -985,13 +1036,9 @@ def main():
     parser.add_argument("--wake", choices=("kws", "asr"), default="asr")
     parser.add_argument("--kws-model", default="")
     args = parser.parse_args()
-    models = model_root(args.models)
-    kws = Path(args.kws_model).expanduser() if args.kws_model else models / "voice-kws"
-    missing = [name for name in ("silero-vad", "voice-asr") if not (models / name).is_dir()]
-    if args.wake == "kws" and not kws.is_dir():
-        missing.append(str(kws))
-    if missing:
-        emit("error", message=f"voice models missing in {models}: {', '.join(missing)}")
+    errors, warnings = check_models(args.vad_model, args.asr_model, args.turn_model, args.wake, args.kws_model)
+    if errors:
+        emit("error", message=f"Voice is off until its models are set: {'; '.join(errors)}")
         return 3
     for tool in ("parec", "pacat", "pactl", "espeak-ng"):
         if not shutil.which(tool):
@@ -1001,13 +1048,16 @@ def main():
     import onnxruntime as ort
     import sherpa_onnx as sherpa
     ort.set_default_logger_severity(3)
-    voice = Voice(models, np, ort, sherpa, wake=args.wake, kws=kws)
+    turn = Path(args.turn_model).expanduser() if args.turn_model and not warnings else None
+    voice = Voice(np, ort, sherpa, Path(args.vad_model).expanduser(), Path(args.asr_model).expanduser(), turn,
+                  Path(args.kws_model).expanduser() if args.wake == "kws" else None)
     try:
         voice.set_engine({"engine": args.tts_engine, "model": args.tts_model, "voicepack": args.tts_voicepack,
                           "voice": args.tts_voice, "speed": args.tts_speed, "pitch": args.tts_pitch,
-                          "load_on_conversation": args.tts_load_on_conversation})
+                          "load_on_conversation": args.tts_load_on_conversation}, warnings.append)
     except Exception as error:
-        emit("error", message=f"speech settings: {error}")
+        warnings.append(f"speech settings: {error}")
+    voice.warning = "; ".join(warnings)
     threading.Thread(target=read_commands, args=(voice,), daemon=True).start()
     voice.run()
     return 0

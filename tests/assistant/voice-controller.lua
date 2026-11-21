@@ -39,11 +39,13 @@ voice.configure(settings({["assistant.voice"] = false}))
 assert(#spawned == 0 and not voice.running() and not fact.ai_voice_enabled)
 
 -- Enabling starts one service with stdin open and the speech settings.
-voice.configure(settings({["assistant.voice"] = true, ["assistant.tts_voicepack"] = "tide", ["assistant.voice_models"] = "/m"}))
+voice.configure(settings({["assistant.voice"] = true, ["assistant.tts_voicepack"] = "tide", ["assistant.vad_model"] = "/v.onnx", ["assistant.asr_model"] = "/asr"}))
 assert(#spawned == 1 and spawned[1].command == "tohru-voice" and spawned[1].how.stdin == "open")
-assert(has(spawned[1].args, "--models", "/m") and has(spawned[1].args, "--tts-engine", "kokoro") and has(spawned[1].args, "--tts-voicepack", "tide"))
+assert(has(spawned[1].args, "--vad-model", "/v.onnx") and has(spawned[1].args, "--asr-model", "/asr") and has(spawned[1].args, "--turn-model", "") and has(spawned[1].args, "--tts-engine", "kokoro") and has(spawned[1].args, "--tts-voicepack", "tide"))
 for _, a in ipairs(spawned[1].args) do assert(a ~= "--tts-load-on-conversation") end
 local service = spawned[1]
+service.line({event = "ready", warning = "speech: assistant.tts_model is not set; using espeak-ng"})
+assert(text.ai_voice_error == "speech: assistant.tts_model is not set; using espeak-ng" and fact.ai_voice_failed)
 service.line({event = "listening", on = true})
 assert(fact.ai_listening)
 
@@ -81,7 +83,7 @@ service.line({event = "conversation", on = false})
 assert(remembered[1] == "v1" and not fact.ai_voice_conversation)
 
 -- Speech settings change in place; loading on conversation is passed through.
-voice.configure(settings({["assistant.voice"] = true, ["assistant.tts_voicepack"] = "af_heart", ["assistant.voice_models"] = "/m", ["assistant.tts_load_on_conversation"] = true}))
+voice.configure(settings({["assistant.voice"] = true, ["assistant.tts_voicepack"] = "af_heart", ["assistant.vad_model"] = "/v.onnx", ["assistant.asr_model"] = "/asr", ["assistant.tts_load_on_conversation"] = true}))
 assert(#spawned == 1 and written[#written].message.cmd == "tts" and written[#written].message.voicepack == "af_heart")
 assert(written[#written].message.load_on_conversation == true)
 
@@ -93,14 +95,14 @@ assert(#spawned == 1 and #timers == 0)
 
 -- A crash restarts it after a pause; missing models (exit 3) do not.
 voice.configure(settings({["assistant.voice"] = true, ["assistant.tts_load_on_conversation"] = true}))
-assert(#spawned == 2 and has(spawned[2].args, "--models", "") and spawned[2].args[#spawned[2].args] == "--tts-load-on-conversation")
+assert(#spawned == 2 and has(spawned[2].args, "--vad-model", "") and has(spawned[2].args, "--asr-model", "") and spawned[2].args[#spawned[2].args] == "--tts-load-on-conversation")
 spawned[2].exit(nil, 1)
 assert(#timers == 1)
 timers[1]()
 assert(#spawned == 3)
 spawned[3].line({event = "error", message = "voice models missing"})
 spawned[3].exit(nil, 3)
-assert(#timers == 1 and text.ai_voice_error == "voice models missing")
+assert(#timers == 1 and text.ai_voice_error == "voice models missing" and fact.ai_voice_failed)
 -- Changing how the wake word is heard restarts the service; the spotter is only asked for with kws.
 assert(has(spawned[3].args, "--wake", "asr"))
 voice.configure(settings({["assistant.voice"] = true, ["assistant.voice_wake"] = "kws", ["assistant.kws_model"] = "/k"}))
