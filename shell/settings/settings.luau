@@ -8,6 +8,9 @@ local overrides = {
     ["appearance.palette"] = function(value)
         for index, name in ipairs(palettes) do if name == value then return "setting_palette " .. (index - 1) end end
     end,
+    ["notifications.position"] = function(value)
+        return "setting_notifications_position " .. (value == "bottom-right" and 1 or 0)
+    end,
 }
 local refresh, corner_size
 local function tell_bar(command)

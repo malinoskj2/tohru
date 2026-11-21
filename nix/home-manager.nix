@@ -60,6 +60,15 @@ in {
         it to the user's config file (default `flooded-monolith`).
       '';
     };
+    notifications.position = lib.mkOption {
+      type = lib.types.nullOr (lib.types.enum [ "top-right" "bottom-right" ]);
+      default = null;
+      example = "bottom-right";
+      description = ''
+        Where notification toasts stack, written to the managed `notifications.position`;
+        `null` leaves it to the user's config file (default `top-right`, under the bar).
+      '';
+    };
     lock.command = lib.mkOption {
       type = lib.types.str;
       readOnly = true;
@@ -108,6 +117,9 @@ in {
     }
     (lib.mkIf (cfg.lock.style != null) {
       programs.tohru.settings.lock.style = cfg.lock.style;
+    })
+    (lib.mkIf (cfg.notifications.position != null) {
+      programs.tohru.settings.notifications.position = cfg.notifications.position;
     })
     (lib.mkIf cfg.systemd.enable {
       systemd.user.services = {

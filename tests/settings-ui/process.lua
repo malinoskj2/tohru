@@ -2,7 +2,8 @@ math.clamp=function(v,a,b)return math.max(a,math.min(b,v))end
 fact,text,model,handlers={settings_selected=0,settings_sidebar=false},{settings_search=''},{},{}
 function on(name,callback)handlers[name]=callback end
 local config={['bar.mooncoil']={value=false},['bar.info_button']={value=false},['bar.about_button']={value=false},['bar.preferred_output']={value=''},['appearance.corners']={value=true},['appearance.corner_size']={value=32},
-    ['appearance.palette']={value='mocha',managed=true},['lock.style']={value='flooded-monolith'}}
+    ['appearance.palette']={value='mocha',managed=true},['lock.style']={value='flooded-monolith'},
+    ['notifications.position']={value='top-right',managed=true}}
 local reloads=0
 tohru_settings={snapshot=function()return config end,
     reload=function()reloads=reloads+1;return config end,
@@ -31,4 +32,7 @@ refuse=true;search('bar.mooncoil');handlers.settings_row(0)
 assert(config['bar.mooncoil'].value and text.settings_ui_error:find('did not take'))
 refuse=false;handlers.settings_open_request();assert(reloads==1 and fact.settings_open)
 handlers.settings_close();assert(not fact.settings_open)
+said={};search('notifications.position');handlers.settings_row(0)
+local forwarded=false;for _,command in ipairs(said)do forwarded=forwarded or command=='emit setting_notifications_position 1' end
+assert(config['notifications.position'].value=='bottom-right' and said[1]=='emit config_reload' and forwarded)
 print('PASS Settings process writes through its owner, reloads the bar and forwards runtime overrides')
