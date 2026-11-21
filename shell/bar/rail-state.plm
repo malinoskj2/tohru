@@ -1,19 +1,21 @@
 part RailState {
     // Rail 0 is the workspace switcher, rail 1 the calendar's months, rail 2 the sound popup's master volume,
-    // rail 3 the information popup's seven pages, rail 4 the Bluetooth popup's Off / On / Scan.
-    let rail_count = 5
-    let rail_span[5]
-    let rail_base[5]
+    // rail 3 the information popup's seven pages, rail 4 the Bluetooth popup's Off / On / Scan, rail 5 the media popup's progress.
+    let rail_count = 6
+    let rail_span[6]
+    let rail_base[6]
     rail_span[0] = 0
     rail_span[1] = 252
     rail_span[2] = 194
     rail_span[3] = 96
     rail_span[4] = 172
+    rail_span[5] = 204
     rail_base[0] = 0
     rail_base[1] = 0
     rail_base[2] = 0
     rail_base[3] = 8
     rail_base[4] = 0
+    rail_base[5] = 0
     include "rail-springs.plm"
     include "rail-rules.plm"
     let ws_width = rail.slots.0 * 16

@@ -1,0 +1,224 @@
+part MediaPopup {
+    shader media_lens = file "lens.wgsl"
+    let media_anchor_x = if(media_button_x < 0, screen.width - 420, media_button_x)
+    popup media {
+        at: clamp(media_anchor_x - 158, 8, max(8, screen.width - 324)) - 12, 37
+        size: 340, max(166, 180 + 40 * 5) + 18
+        open: media_open
+        bright: panel_bright
+        let mx = 12
+        let m_ck = 1 - smooth(0, 0.45, media_fc)
+        let m_uk = smooth(0.35, 1, media_fc)
+        // Paused: the pane's words fade to 56 %, the numeral to 40 %, the rail and the side controls to 38 %.
+        let m_words = 1 - 0.44 * media_dim
+        let m_sw = 74 - 6 * media_fold
+        let m_sh = 150 - 38 * media_fold
+        let m_rail_x = mx + 94 - 6 * media_fold
+        let m_rail_y = 143 - 38 * media_fold
+
+        body {
+            color: ink_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+            shadow: 0, 4, 10, 0.22 - 0.1 * pk
+            box { from: mx, 0; size: media_pw, media_h; corner: 15 }
+        }
+        box { from: mx + 0.5, 0.5; size: media_pw - 1, media_h - 1; corner: 14.5; stroke: 1; color: ink_white; opacity: 0.6 * (26% - 10% * pk) }
+        zone box media_scroll { from: mx, 0; size: media_pw, media_h; corner: 15; label: "Player volume" }
+
+        // The lens: the cover sits in the strip and the shader makes the strip and the pane from it.
+        group {
+            show: media_open
+            shader: media_lens, media_fold, pk, media_dim, media_pw, if(media_has, 0, 1), if(media_has_art, 1, 0), media_lens_clock, 0
+            box { from: mx, 0; size: media_pw, media_h; color: ink_glass; opacity: 1% }
+            // Clipped to the strip, so the group's box stays the panel's and the shader's coordinates hold.
+            group {
+                clip box { from: mx + 8, 8; size: m_sw, m_sh; corner: 10 }
+                image media_art_image { at: mx + 8 + (m_sw - m_sh) / 2, 8; size: m_sh, m_sh; show: media_has_art }
+            }
+        }
+
+        // The strip's small play/pause, or the note of an empty lens.
+        group {
+            opacity: m_ck
+            show: m_ck > 0.001
+            zone box media_badge_hit { from: mx + 16, 8 + m_sh - 30; size: 24, 22; corner: 7; cursor: pointer; active: media_has and not media_unfolded; label: if(media_playing, "Pause", "Play") }
+            box { from: mx + 16, 8 + m_sh - 30; size: 24, 22; corner: 7; color: ink_glass; opacity: mix(52%, 58%, pk) + max(media_badge_hit.hover * 12%, media_badge_hit.pressed * 20%) }
+            image media_pause_glyph { at: mx + 21.5, 8 + m_sh - 24.5; size: 13, 13; tint: ink_white; opacity: 94%; show: media_has and media_playing }
+            image media_play_glyph { at: mx + 21.5, 8 + m_sh - 24.5; size: 13, 13; tint: ink_white; opacity: 94%; show: media_has and not media_playing }
+            image media_note_glyph { at: mx + 22, 8 + m_sh - 24; size: 12, 12; tint: ink_white; opacity: 50%; show: not media_has }
+        }
+
+        // A thin light edge down the right side: the player's own volume, filled from below.
+        group {
+            opacity: m_ck * if(media_vol_known, 1 - 0.6 * media_dim, 0.6)
+            show: media_has and m_ck > 0.001
+            box { from: mx + media_pw - 9.5, 16; size: 2.5, media_h - 32; corner: 1.25; color: ink_white; opacity: 22% }
+            group {
+                glow: 4, 50%, mix(rgb(rail.red.5, rail.green.5, rail.blue.5), #1c1826, 0.35 * pk)
+                show: media_vol_known
+                box { from: mx + media_pw - 9.5, 16 + (media_h - 32) * (1 - media_vol_shown); size: 2.5, (media_h - 32) * media_vol_shown; corner: 1.25; color: mix(mix(#fab387, #cba6f7, media_vol_shown), #1c1826, 0.35 * pk); opacity: 90% }
+            }
+        }
+
+        // The compact pane.
+        group {
+            opacity: m_ck
+            show: m_ck > 0.001 and media_has
+            measure media_chip_m
+            zone box media_chip_hit { from: mx + 88, 10; size: min(120, media_chip_m.width) + 27, 20; corner: 6; cursor: pointer; active: not media_unfolded; label: "Show players" }
+            box { from: mx + 88, 10; size: min(120, media_chip_m.width) + 27, 20; corner: 6; color: ink_white; opacity: mix(10%, 8%, pk) + max(media_chip_hit.hover * 6%, media_chip_hit.pressed * 10%) }
+            text media_name { at: mx + 94, 20; anchor: left center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 0%; measure: media_chip_m }
+            text media_name { at: mx + 94, 20; anchor: left center; width: 120; lines: 1; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+            path {
+                at: mx + 104.5 + min(120, media_chip_m.width), 20
+                stroke: 1.15; color: ink_white; opacity: 42%
+                move -2.5, -1.25
+                line 0, 1.25
+                line 2.5, -1.25
+            }
+            text "-{ceil(media_length - media_now), time}" { at: mx + 298, 20; anchor: right center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 38%; show: media_length > 0 and not media_seeking }
+            text "{floor(media_now), time} / {media_length, time}" { at: mx + 298, 20; anchor: right center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 38%; show: media_length > 0 and media_seeking }
+            text media_title { at: mx + 94, 51; anchor: left center; width: 204; lines: 1; size: 13.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% * m_words }
+            text media_artist { at: mx + 94, 68; anchor: left center; width: 204; lines: 1; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60% * m_words }
+            text "{floor(media_now), time}" { at: mx + 93, 120; anchor: left bottom; size: 34; weight: 200; family: "SF Pro Text:tnum"; color: ink_white; opacity: 94% - 54% * media_dim; letter_move: -1 * letter, 0 }
+
+            zone box media_prev_hit { from: mx + 221, 101; size: 24, 22; corner: 7; cursor: pointer; active: not media_unfolded; label: "Previous" }
+            zone box media_play_hit { from: mx + 247, 101; size: 24, 22; corner: 7; cursor: pointer; active: not media_unfolded; label: if(media_playing, "Pause", "Play") }
+            zone box media_next_hit { from: mx + 273, 101; size: 24, 22; corner: 7; cursor: pointer; active: not media_unfolded; label: "Next" }
+            box { from: mx + 221, 101; size: 24, 22; corner: 7; color: ink_white; opacity: max(media_prev_hit.hover * 10%, media_prev_hit.pressed * 16%) }
+            box { from: mx + 247, 101; size: 24, 22; corner: 7; color: ink_white; opacity: max(10%, media_play_hit.pressed * 16%) }
+            box { from: mx + 273, 101; size: 24, 22; corner: 7; color: ink_white; opacity: max(media_next_hit.hover * 10%, media_next_hit.pressed * 16%) }
+            image media_prev_glyph { at: mx + 226.5, 105.5; size: 13, 13; tint: ink_white; opacity: 90% * (1 - 0.62 * media_dim) }
+            image media_pause_glyph { at: mx + 252.5, 105.5; size: 13, 13; tint: ink_white; opacity: 95%; show: media_playing }
+            image media_play_glyph { at: mx + 252.5, 105.5; size: 13, 13; tint: ink_white; opacity: 95%; show: not media_playing }
+            image media_next_glyph { at: mx + 278.5, 105.5; size: 13, 13; tint: ink_white; opacity: 90% * (1 - 0.62 * media_dim) }
+        }
+        on press media_badge_hit { emit media_play }
+        on press media_chip_hit { media_keyed = false; emit media_fold_toggle }
+        on press media_prev_hit { emit media_previous }
+        on press media_play_hit { emit media_play }
+        on press media_next_hit { emit media_next }
+
+        // Nothing playing.
+        group {
+            show: not media_has
+            text "Media" { at: mx + 94, 20; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+            text "--:--" { at: mx + 93, 93; anchor: left bottom; size: 34; weight: 200; family: "SF Pro Text:tnum"; color: ink_white; opacity: 22%; letter_move: -1 * letter, 0 }
+            text "Nothing playing" { at: mx + 94, 131; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+            text "Start a player to control playback" { at: mx + 94, 146; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 38% }
+        }
+
+        // The progress rail: the workspace switcher's ribbon, as rail 5.
+        group {
+            show: media_has and media_length > 0
+            opacity: 1 - 0.62 * media_dim
+            shader rail_shader { at: m_rail_x - 12, m_rail_y - 21; size: 228, 42; values: rail.x.5, vel(rail.x.5), rail.bead.5, rail.c.5, rail.amp.5, rail.wash.5, rail.wc.5, rail.wave.5; colors: mix(rgb(rail.red.5, rail.green.5, rail.blue.5), #1c1826, 0.35 * pk), ink_white }
+            zone box media_rail_hit { from: m_rail_x, m_rail_y - 10; size: 204, 20; cursor: pointer; active: media_seekable; label: "Position"; role: slider; value: "{floor(media_now), time} of {media_length, time}" }
+        }
+        on press media_rail_hit { media_keyed = false; media_seeking = true; media_requested = clamp((local.x - m_rail_x - 8) / 188, 0, 1) * media_length; emit media_seek_press(clamp((local.x - m_rail_x - 8) / 188, 0, 1)) }
+        on drag media_rail_hit { media_requested = clamp((local.x - m_rail_x - 8) / 188, 0, 1) * media_length; emit media_seek_drag(clamp((local.x - m_rail_x - 8) / 188, 0, 1)) }
+        on release media_rail_hit { emit media_seek_release }
+
+        // The unfolded header, the players and the volume.
+        group {
+            opacity: m_uk
+            show: m_uk > 0.001 and media_has
+            group {
+                glow: 9, 60%, ink_white
+                box { from: mx + 88, 18; size: 4, 4; color: ink_white; show: media_playing }
+            }
+            group {
+                glow: 3.5, 90%, ink_white
+                box { from: mx + 88, 18; size: 4, 4; color: ink_white; show: media_playing }
+            }
+            box { from: mx + 88, 18; size: 4, 4; color: ink_white; opacity: 50%; show: not media_playing }
+            text media_name { at: mx + 97, 20; anchor: left center; width: 170; lines: 1; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+            zone box media_fold_hit { from: mx + 280, 9; size: 24, 22; corner: 7; cursor: pointer; active: media_unfolded; label: "Hide players" }
+            box { from: mx + 280, 9; size: 24, 22; corner: 7; color: ink_white; opacity: max(10%, media_fold_hit.pressed * 16%) }
+            path {
+                at: mx + 292, 20
+                stroke: 1.25; color: ink_white; opacity: 80%
+                move -2.5, 1.25
+                line 0, -1.25
+                line 2.5, 1.25
+            }
+            text media_title { at: mx + 88, 54; anchor: left center; width: 210; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% * m_words }
+            text "{media_artist} · {floor(media_now), time} / {media_length, time}" { at: mx + 88, 70; anchor: left center; width: 210; lines: 1; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 60% * m_words; show: media_length > 0 and media_has_artist }
+            text "{floor(media_now), time} / {media_length, time}" { at: mx + 88, 70; anchor: left center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 60% * m_words; show: media_length > 0 and not media_has_artist }
+            text media_artist { at: mx + 88, 70; anchor: left center; width: 210; lines: 1; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60% * m_words; show: media_length <= 0 }
+            box { from: mx + 12, 128; size: media_pw - 24, 1; color: ink_white; opacity: 11% - 1% * pk }
+
+            for pl in media_players {
+                let p_shown = pl.index < 5
+                let p_y = 138 + 40 * pl.index
+                group {
+                    show: p_shown
+                    zone box media_row.$pl.index { from: mx + 8, p_y; size: 264, 34; corner: 8; cursor: pointer; active: media_unfolded and p_shown; label: "Show {pl.name}" }
+                    box { from: mx + 8, p_y; size: media_pw - 16, 34; corner: 8; color: ink_white; opacity: max(if(pl.active, 10% - 2% * pk, 0%), max(media_row.$pl.index.hover * 7%, media_row.$pl.index.pressed * 12%)) }
+                    group {
+                        shader: media_lens, if(pl.active, 0.95, 0.45), pk, pl.index + 2, 20, 0, 0, 0, 1
+                        box { from: mx + 16, p_y + 7; size: 20, 20; color: ink_glass; opacity: 1% }
+                        image pl.art { at: mx + 16, p_y + 7; size: 20, 20; show: pl.has_art }
+                    }
+                    text pl.title { at: mx + 29, p_y + 11; anchor: left center; width: 236; lines: 1; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(pl.active, 92%, 60%) }
+                    text pl.sub { at: mx + 29, p_y + 24; anchor: left center; width: 236; lines: 1; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 38% }
+                    zone box media_row_play.$pl.index { from: mx + 276, p_y + 6; size: 24, 22; corner: 7; cursor: pointer; active: media_unfolded and p_shown; label: if(pl.playing, "Pause {pl.name}", "Play {pl.name}") }
+                    box { from: mx + 276, p_y + 6; size: 24, 22; corner: 7; color: ink_white; opacity: max(media_row_play.$pl.index.hover * 10%, media_row_play.$pl.index.pressed * 16%) }
+                    image media_pause_glyph { at: mx + 282, p_y + 11; size: 12, 12; tint: ink_white; opacity: 90%; show: pl.playing }
+                    image media_play_glyph { at: mx + 282, p_y + 11; size: 12, 12; tint: ink_white; opacity: 34%; show: not pl.playing }
+                    on press media_row.$pl.index { media_keyed = false; emit media_choose(pl.index) }
+                    on press media_row_play.$pl.index { media_keyed = false; emit media_row_play(pl.index) }
+                }
+            }
+
+            let m_vy = 138 + 40 * max(1, media_rows) + 10
+            box { from: mx + 12, m_vy - 12; size: media_pw - 24, 1; color: ink_white; opacity: 11% - 1% * pk }
+            group {
+                opacity: if(media_vol_known, 1, 38%)
+                image media_speaker_glyph { at: mx + 13, m_vy + 4; size: 14, 14; tint: ink_white; opacity: 92%; show: not media_vol_known or media_vol_shown >= 0.005 }
+                image media_quiet_glyph { at: mx + 13, m_vy + 4; size: 14, 14; tint: ink_white; opacity: 92%; show: media_vol_known and media_vol_shown < 0.005 }
+                box { from: mx + 40, m_vy + 10; size: 228, 2; corner: 1; color: ink_white; opacity: 22% }
+                box { from: mx + 40, m_vy + 9; size: 228 * media_vol_shown, 4; corner: 2; color: ink_white; opacity: 92%; show: media_vol_known }
+                box { from: mx + 32 + 228 * media_vol_shown, m_vy + 7; size: 16, 8; corner: 4; color: ink_white; opacity: 92%; show: media_vol_known }
+                text "{round(media_vol_shown * 100)}" { at: mx + 304, m_vy + 11; anchor: right center; size: 13; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 92%; show: media_vol_known }
+                text "–" { at: mx + 304, m_vy + 11; anchor: right center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92%; show: not media_vol_known }
+                zone box media_vol_hit { from: mx + 32, m_vy; size: 244, 22; cursor: pointer; active: media_unfolded and media_vol_known; label: "Player volume"; role: slider; value: "{round(media_vol_shown * 100)} %" }
+            }
+
+            // The keyboard's row.
+            let m_focus_y = if(media_focus == 0, 6, if(media_focus > media_rows, m_vy - 1, 138 + 40 * (media_focus - 1)))
+            let m_focus_h = if(media_focus == 0, 116, if(media_focus > media_rows, 24, 34))
+            box { from: mx + 5, m_focus_y - 1; size: media_pw - 10, m_focus_h + 2; corner: 9; stroke: 1; color: ink_white; opacity: 40%; show: media_keyed and media_unfolded }
+        }
+        on press media_fold_hit { media_keyed = false; emit media_fold_toggle }
+        on press media_vol_hit { media_keyed = false; media_vol_dragging = true; media_vol_requested = clamp((local.x - mx - 40) / 228, 0, 1); emit media_volume_press(clamp((local.x - mx - 40) / 228, 0, 1)) }
+        on drag media_vol_hit { media_vol_requested = clamp((local.x - mx - 40) / 228, 0, 1); emit media_volume_drag(clamp((local.x - mx - 40) / 228, 0, 1)) }
+        on release media_vol_hit { emit media_volume_release }
+        on scroll media_scroll { emit media_volume_step(wheel) }
+
+        body {
+            color: ink_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+            shadow: 0, 4, 10, 0.22 - 0.1 * pk
+            show: media_failed
+            box { from: mx, media_h + 6; size: media_pw, 40; corner: 15 }
+        }
+        text media_error { at: mx + 16, media_h + 26; anchor: left center; width: media_pw - 32; lines: 1; size: 11; family: "SF Pro Text"; color: ink_red; show: media_failed }
+    }
+
+    on key Escape while media_open { emit media_close }
+    on key Tab while media_open { emit media_fold_toggle }
+    on key space while media_open and not media_unfolded { emit media_play }
+    on key Return while media_open and not media_unfolded { emit media_play }
+    on key Left while media_open and not media_unfolded { emit media_step(-5) }
+    on key Right while media_open and not media_unfolded { emit media_step(5) }
+    on key Up while media_open and not media_unfolded { emit media_volume_step(1) }
+    on key Down while media_open and not media_unfolded { emit media_volume_step(-1) }
+    on key Up while media_open and media_unfolded { emit media_focus_move(-1) }
+    on key Down while media_open and media_unfolded { emit media_focus_move(1) }
+    on key Left while media_open and media_unfolded { emit media_focus_step(-1) }
+    on key Right while media_open and media_unfolded { emit media_focus_step(1) }
+    on key space while media_open and media_unfolded { emit media_activate }
+    on key Return while media_open and media_unfolded { emit media_activate }
+    on key Prior while media_open { emit media_previous }
+    on key Next while media_open { emit media_next }
+    on blur { emit media_close }
+}

@@ -1,0 +1,96 @@
+part MediaState {
+    permissions { services: "media", "media.*" }
+    // Root measured label centre; negative uses the native screen-relative default.
+    prop media_button_x = -1 ~0ms
+    fact media_open = false
+    fact media_unfolded = false
+    fact media_keyed = false
+    // 0 the header, 1 + n the nth player row, 1 + rows the volume.
+    fact media_focus = 0
+    fact media_has = false
+    fact media_playing = false
+    fact media_can_seek = false
+    fact media_has_art = false
+    fact media_has_artist = false
+    fact media_length = 0
+    fact media_rate = 1
+    // The player's own volume, or -1 where it has none.
+    fact media_volume = -1
+    fact media_vol_dragging = false
+    fact media_vol_requested = 0
+    fact media_seeking = false
+    fact media_requested = 0
+    // Where the song was last heard to be; the scene carries it on at `media_rate` while it plays.
+    fact media_seed = 0
+    fact media_seed_n = 0
+    fact media_failed = false
+    // Above 0 it stands in for the lens's clock, so a capture can be matched.
+    fact media_lens_clock = 0
+    text media_title = ""
+    text media_artist = ""
+    text media_name = ""
+    text media_art = ""
+    text media_error = ""
+    model media_players max 8 { id: text; name: text; title: text; sub: text; art: image 20, 20; has_art: bool; playing: bool; active: bool }
+    event media_toggle ->
+    event media_open ->
+    event media_close ->
+    event media_fold_toggle ->
+    event media_play ->
+    event media_next ->
+    event media_previous ->
+    event media_step ->
+    event media_seek_press ->
+    event media_seek_drag ->
+    event media_seek_release ->
+    event media_choose ->
+    event media_row_play ->
+    event media_volume_press ->
+    event media_volume_drag ->
+    event media_volume_release ->
+    event media_volume_step ->
+    event media_focus_move ->
+    event media_focus_step ->
+    event media_activate ->
+
+    image media_art_image = from media_art, 150, 150
+    image media_play_glyph = file "../service-assets/play-filled.svg", 13, 13
+    image media_pause_glyph = file "pause.svg", 13, 13
+    image media_prev_glyph = file "previous.svg", 13, 13
+    image media_next_glyph = file "next.svg", 13, 13
+    image media_note_glyph = file "music.svg", 12, 12
+    image media_speaker_glyph = file "../service-assets/volume-2-filled.svg", 14, 14
+    image media_quiet_glyph = file "../service-assets/volume-x-filled.svg", 14, 14
+
+    // 0 the compact strip and pane, 1 the header with the players. The sound popup's spring.
+    prop media_fold = 0 ~spring(196, 21.84)
+    on change media_unfolded { media_fold: if(media_unfolded, 1, 0) }
+    let media_fc = clamp(media_fold, 0, 1)
+    // Paused dims the artwork and the pane; with nothing playing there is nothing to dim.
+    prop media_dim = 0 ~260ms
+    follow media_dim = if(media_has and not media_playing, 1, 0)
+
+    prop media_clock = 0 ~0ms
+    spin media_clock by if(media_open and media_playing and not media_seeking, media_rate, 0)
+    on change media_seed_n { media_clock: media_seed ~0ms }
+    let media_end = if(media_length > 0, media_length, 86400)
+    let media_now = if(media_seeking, media_requested, clamp(media_clock, 0, media_end))
+    let media_progress = if(media_length > 0, clamp(media_now / media_length, 0, 1), 0)
+    let media_seekable = media_has and media_can_seek and media_length > 0
+    // The progress rail is rail 5 (bar/rail-state.plm), 204 px: the bead travels 8 + 188 × progress.
+    on change round(media_progress * 752) while media_open and not media_seeking { rail.target.5 = 8 + 188 * media_progress }
+
+    let media_vol_shown = if(media_vol_dragging, media_vol_requested, clamp(media_volume, 0, 1))
+    let media_vol_known = media_has and media_volume >= 0
+
+    on change media_open {
+        media_fold: if(media_unfolded, 1, 0) ~0ms
+        media_dim: if(media_has and not media_playing, 1, 0) ~0ms
+    }
+
+    // Header 128, then 40 px a player (up to 5), a hairline and the volume row.
+    let media_rows = min(5, media_players.count)
+    let media_open_h = 180 + 40 * max(1, media_rows)
+    let media_pw = 316
+    let media_h = 166 + (media_open_h - 166) * media_fold
+}

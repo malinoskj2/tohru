@@ -83,7 +83,7 @@ class Cli(unittest.TestCase):
 
 
     def test_service_panel_routes_are_fixed_native_events(self):
-        for panel in ['network', 'bluetooth', 'about', 'info']:
+        for panel in ['network', 'media', 'bluetooth', 'about', 'info']:
             for action in ['open', 'toggle']:
                 with self.subTest(panel=panel, action=action):
                     result = self.invoke('panel', action, panel)

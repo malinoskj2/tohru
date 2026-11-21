@@ -10,7 +10,7 @@ scene TohruLauncher {
     rail_span[0] = 192
     rail_base[0] = 16
     include "../bar/rail-springs.plm"
-    shader launcher_water = file "../network/water.wgsl"
+    shader launcher_water = file "../water.wgsl"
     shader launcher_tile = file "tile.wgsl"
     shader launcher_reveal = file "reveal.wgsl"
     fact launcher_visible = false
@@ -169,7 +169,7 @@ scene TohruLauncher {
                 pivot: card_x, card_y
                 scale: 2
                 show: launcher_visible or launcher_seen > 0.002
-                shader launcher_water { at: card_x, card_y; size: card_width / 2, card_height / 2; corner: 10; values: 1, 0, 1, card_width / 2, 0, pk, 0, launcher_clock; opacity: 0.4 + 0.6 * stage_settle }
+                shader launcher_water { at: card_x, card_y; size: card_width / 2, card_height / 2; corner: 10; values: 1, card_height + 400, 1, card_width / 2, 0, pk, 0, launcher_clock; opacity: 0.4 + 0.6 * stage_settle }
             }
             box { from: card_x + 0.5, card_y + 0.5; size: card_width - 1, card_height - 1; corner: 19.5; stroke: 1; color: ink_white; opacity: 0.6 * (26% - 10% * pk) }
             box { from: stage_x - 0.375, card_y + 14; size: 0.75, card_height - 28; color: ink_white; opacity: 12% - 2% * pk }
@@ -199,7 +199,7 @@ scene TohruLauncher {
                     pivot: card_x + 25, card_y + 19
                     rotate: 90deg
                     box { from: card_x + 25, card_y + 18; size: 224, 2; corner: 1; color: ink_white; opacity: pk * 22% }
-                    shader rail_shader { at: card_x + 13, card_y - 2; size: 248, 42; values: rail.x.0, vel(rail.x.0), rail.bead.0, rail.c.0, rail.amp.0, rail.wash.0, rail.wc.0, rail.wave.0; colors: mix(bead, #1c1826, 0.35 * pk), #ffffff; opacity: if(launcher_searching, 38%, 100%) }
+                    shader rail_shader { at: card_x + 13, card_y - 2; size: 248, 42; values: rail.x.0, vel(rail.x.0), rail.bead.0, rail.c.0, rail.amp.0, rail.wash.0, rail.wc.0, rail.wave.0; colors: mix(bead, #1c1826, 0.35 * pk), ink_white; opacity: if(launcher_searching, 38%, 100%) }
                 }
                 // The count, large and thin, at the sidebar's foot.
                 group {

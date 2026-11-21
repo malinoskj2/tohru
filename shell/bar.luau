@@ -53,7 +53,8 @@ local sound = require("sound/controller")(osd.observe)
 on("sound_open_request", osd.hide)
 on("sound_toggle", function() if fact.sound_open then osd.hide() end end)
 
-require("bar/controller")()
+local media = require("media/controller")()
+require("bar/controller")(media.observe)
 require("bar/bell")()
 require("bar/launcher")()
 local calendar = require("calendar/controller")(make_rail(1, 21))
@@ -65,6 +66,7 @@ local function close_panels(keep)
     if keep ~= "sound" then sound.close() end
     if keep ~= "calendar" then calendar.close() end
     if keep ~= "network" then network.close() end
+    if keep ~= "media" then media.close() end
     if keep ~= "bluetooth" then bluetooth.close() end
     if keep ~= "info" then info.close() end
     if about and keep ~= "about" then about.close() end
@@ -82,6 +84,8 @@ on("sound_open_request", function() close_panels("sound") end)
 on("sound_toggle", function() if fact.sound_open then close_panels("sound") end end)
 on("network_open", function() close_panels("network") end)
 on("network_toggle", function() if fact.net_open then close_panels("network") end end)
+on("media_open", function() close_panels("media") end)
+on("media_toggle", function() if fact.media_open then close_panels("media") end end)
 on("bluetooth_open", function() close_panels("bluetooth") end)
 on("bluetooth_toggle", function() if fact.bt_open then close_panels("bluetooth") end end)
 on("bluetooth_question", function() if fact.bt_open then close_panels("bluetooth") end end)

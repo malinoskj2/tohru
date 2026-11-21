@@ -36,3 +36,7 @@ path = "../session/bevel-shader.rs"
 [[test]]
 name = "launcher-deck"
 path = "../launcher/deck.rs"
+
+[[test]]
+name = "media-lens-shader"
+path = "../media/lens-shader.rs"

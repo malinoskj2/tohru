@@ -56,6 +56,7 @@ Requests report that Pleamar accepted them, not that the action finished. If no 
 | `0020-backdrop-bright-share` | Adds an optional `bright: fact` popup property. After each capture its lens takes in, the card counts the cells of a 16 × 16 grid over the popup's glass whose Rec. 709 luma is over 55 %, and only that count is read back into the fact (0 to 1). It returns to 0 when the popup opens. The panels and the session menu use it for j2bar's light and dark glass |
 | `0021-card-capture-without-shm` | When the compositor offers its captures in a shared-memory format Pleamar cannot read (a headless Sway offers 24-bit BGR888) but also offers a dmabuf, the next capture goes onto the card instead of none ever arriving. Without it no lens glass works on such a Sway |
 | `0023-surface-bright` | Lets a layer `surface` take the same `bright: fact` as a popup (patch 0020), counted over all of its lens glass. The fact may be declared inside the surface, and it keeps its last value while the surface is closed instead of going back to 0, so the launcher reopens over the same desktop in the same ink |
+| `0024-media-players-volume` | The `media` report gives each player's title, artist and artwork in `players`, and the reported player's MPRIS `Volume` as `volume` (`-1` when it has none); `media.volume <0..1>` sets it, and fails for a player without one. The media popup lists the players and sets the player's own volume with it |
 | `0025-notification-hold` | The `notifications` service reports each notification's `timeout` and the `left` of it, in milliseconds (0 for one that does not expire), and `notifications.hold(id, true/false)` stops and restarts its expiry where it was. The notification daemon's capillary line shows that time and pauses it while the pointer is on a toast, and an expiry is still closed by the server with reason 1 |
 
 Numbers 0002 to 0004 and 0007 to 0009 belonged to features that were removed or moved into the scenes.
@@ -79,7 +80,7 @@ The bindings in `runtime/pleamar/bindings/` are copied into the Pleamar source a
 |---|---|
 | `shell/bar.plm`, `shell/bar.luau`, `shell/services.plm` | Root scene: bar layout and service buttons |
 | `shell/bar/` | Bar contents and the workspace switcher |
-| `shell/sound/`, `shell/calendar/`, `shell/network/`, `shell/bluetooth/`, `shell/info/`, `shell/about/` | Popups shown by the bar |
+| `shell/sound/`, `shell/calendar/`, `shell/network/`, `shell/media/`, `shell/bluetooth/`, `shell/info/`, `shell/about/` | Popups shown by the bar |
 | `shell/osd/`, `shell/corners/` | Volume OSD and screen corners, also in the bar process |
 | `shell/session/`, `shell/launcher/`, `shell/notifications/`, `shell/settings/` | Scenes that run as their own processes |
 | `shell/service-assets/` | Shared icons |
