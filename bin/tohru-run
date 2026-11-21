@@ -2,4 +2,6 @@
 set -euo pipefail
 root=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd)
 export TOHRU_SHELL=1
+# The wallpaper popup runs tohru-wallpaper from beside this script.
+export PATH="$root/bin:$PATH"
 exec "${TOHRU_RUNTIME:-pleamar}" --scene "${TOHRU_SCENE:-$root/shell/bar.plm}" --no-hud --stall 0 --answer-as tohru "$@"

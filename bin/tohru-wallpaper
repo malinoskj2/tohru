@@ -1,0 +1,257 @@
+#!/usr/bin/env bash
+# The wallpaper picker's only door to the system. It keeps to the owner's wallpaper units: the files in
+# ~/.wallpapers/video, assignments.json under the same lock as wallpaper-randomize, and each monitor's
+# mpvpaper over its IPC socket.
+set -euo pipefail
+
+readonly wall_dir="${TOHRU_WALLPAPER_DIR:-$HOME/.wallpapers/video}"
+readonly state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper"
+readonly state_file="$state_dir/assignments.json"
+readonly cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/tohru/wallpaper"
+readonly video_re='.*\.(mp4|webm|mkv|mov|gif)'
+readonly still_re='.*\.(jpg|jpeg|png|webp)'
+
+die() {
+  printf 'tohru-wallpaper: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+Usage: tohru-wallpaper scan
+       tohru-wallpaper thumbs <file>...
+       tohru-wallpaper status
+       tohru-wallpaper snapshot <monitor>
+       tohru-wallpaper load <monitor> <file> [start-seconds]
+       tohru-wallpaper apply <monitor> <file>
+       tohru-wallpaper seek <monitor> <seconds>
+       tohru-wallpaper pause <monitor> yes|no
+EOF
+}
+
+valid_monitor() {
+  [[ "$1" =~ ^[A-Za-z0-9_.:-]+$ ]] || die "not a monitor name: $1"
+}
+
+# Only regular files directly in the wallpaper directory are ever loaded or recorded.
+valid_file() {
+  local file="$1"
+  [[ "$file" == "$wall_dir"/* && "${file#"$wall_dir"/}" != */* ]] || die "not in $wall_dir: $file"
+  [[ -f "$file" ]] || die "missing: $file"
+  printf '%s\n' "${file,,}" | grep -Eq "^($video_re|$still_re)$" || die "not a wallpaper: $file"
+}
+
+socket_of() { printf '%s/ipc-%s.sock\n' "$state_dir" "$1"; }
+
+# Sends each argument as one mpv IPC command and prints the replies, one JSON object per line.
+ipc() {
+  local monitor="$1"
+  shift
+  local socket
+  socket="$(socket_of "$monitor")"
+  [[ -S "$socket" ]] || die "no wallpaper running on $monitor"
+  printf '%s\n' "$@" | socat -t 1 - "UNIX-CONNECT:$socket" 2>/dev/null || die "mpvpaper on $monitor did not answer"
+}
+
+command_json() { jq -nc '{command: $ARGS.positional}' --args "$@"; }
+
+monitors_json() {
+  hyprctl -j monitors 2>/dev/null |
+    jq -c '[.[] | {name, width, height, focused}]' 2>/dev/null || printf '[]\n'
+}
+
+playing_of() {
+  local monitor="$1"
+  local socket
+  socket="$(socket_of "$monitor")"
+  [[ -S "$socket" ]] || { printf 'null\n'; return; }
+  {
+    printf '%s\n' \
+      '{"command":["get_property","path"],"request_id":1}' \
+      '{"command":["get_property","time-pos"],"request_id":2}' \
+      '{"command":["get_property","duration"],"request_id":3}' \
+      '{"command":["get_property","pause"],"request_id":4}' |
+      socat -t 0.5 - "UNIX-CONNECT:$socket" 2>/dev/null || true
+  } | jq -sc '
+    map(select(.request_id != null)) | map({key: (.request_id | tostring), value: .data}) | from_entries
+    | if .["1"] == null then null
+      else {path: .["1"], pos: (.["2"] // 0), duration: (.["3"] // 0), paused: (.["4"] // false)} end'
+}
+
+playing_json() {
+  local monitors="$1"
+  local name entries=()
+  while read -r name; do
+    [[ -n "$name" ]] || continue
+    entries+=(--argjson "$name" "$(playing_of "$name")")
+  done < <(jq -r '.[].name' <<<"$monitors")
+  jq -nc '$ARGS.named' "${entries[@]}"
+}
+
+files_json() {
+  [[ -d "$wall_dir" ]] || { printf '[]\n'; return; }
+  find -L "$wall_dir" -maxdepth 1 -type f -regextype egrep -iregex "$video_re|$still_re" -printf '%p\t%s\t%T@\n' |
+    LC_ALL=C sort |
+    jq -Rsc --arg video "^$video_re$" '
+      split("\n") | map(select(length > 0) | split("\t")) | map({
+        path: .[0], size: (.[1] | tonumber), mtime: (.[2] | tonumber | floor),
+        kind: (if (.[0] | ascii_downcase | test($video)) then "video" else "still" end)
+      })'
+}
+
+assignments_json() {
+  jq -c '.assignments | if type == "object" then . else {} end' "$state_file" 2>/dev/null || printf '{}\n'
+}
+
+scan() {
+  local monitors
+  monitors="$(monitors_json)"
+  jq -nc \
+    --arg dir "$wall_dir" \
+    --argjson monitors "$monitors" \
+    --argjson files "$(files_json)" \
+    --argjson assignments "$(assignments_json)" \
+    --argjson playing "$(playing_json "$monitors")" \
+    '{dir: $dir, monitors: $monitors, files: $files, assignments: $assignments, playing: $playing}'
+}
+
+status() {
+  local monitors
+  monitors="$(monitors_json)"
+  jq -nc --argjson playing "$(playing_json "$monitors")" '{playing: $playing}'
+}
+
+# One line per file as each is ready: its metadata and a 320 x 200 thumbnail and a 64 x 40 one for the
+# tank, cached under a key of the path, size and time it was changed. Files are written whole before
+# they are named, so the bar never reads half of one.
+thumb_one() {
+  local file="$1"
+  local key dir meta seek probe
+  key="$(stat -L -c '%s %Y' -- "$file" | { read -r size mtime; printf '%s\0%s\0%s' "$file" "$size" "$mtime"; } | sha1sum)"
+  dir="$cache_dir/${key%% *}"
+  meta="$dir/meta.json"
+  if [[ ! -f "$meta" ]]; then
+    mkdir -p "$dir"
+    probe="$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height,avg_frame_rate:format=duration -of json -- "$file" 2>/dev/null)" || probe='{}'
+    seek=()
+    if printf '%s\n' "${file,,}" | grep -Eq "^$video_re$"; then
+      seek=(-ss "$(jq -r '[((.format.duration // "0") | tonumber) * 0.3, 1] | min' <<<"$probe")")
+    fi
+    for size in 320x200 64x40; do
+      local w="${size%x*}" h="${size#*x}"
+      nice -n 10 ffmpeg -nostdin -v error -y "${seek[@]}" -i "$file" -frames:v 1 -threads 1 \
+        -vf "scale=$w:$h:force_original_aspect_ratio=increase,crop=$w:$h" -q:v 4 "$dir/$size.tmp.jpg" &&
+        mv "$dir/$size.tmp.jpg" "$dir/$size.jpg" || rm -f "$dir/$size.tmp.jpg"
+    done
+    jq -c '
+      (.streams[0] // {}) as $v
+      | {
+          width: ($v.width // 0), height: ($v.height // 0),
+          fps: (($v.avg_frame_rate // "0/1") | split("/") | map(tonumber) | if .[1] > 0 then .[0] / .[1] else 0 end),
+          duration: ((.format.duration // "0") | tonumber)
+        }' <<<"$probe" >"$meta.tmp" && mv "$meta.tmp" "$meta"
+  fi
+  local thumb="" soft=""
+  [[ -f "$dir/320x200.jpg" ]] && thumb="$dir/320x200.jpg"
+  [[ -f "$dir/64x40.jpg" ]] && soft="$dir/64x40.jpg"
+  jq -c --arg path "$file" --arg thumb "$thumb" --arg soft "$soft" '. + {path: $path, thumb: $thumb, soft: $soft}' "$meta"
+}
+
+thumbs() {
+  local file
+  for file in "$@"; do
+    if [[ ! -f "$file" ]]; then
+      jq -nc --arg path "$file" '{path: $path, missing: true}'
+      continue
+    fi
+    thumb_one "$file" || jq -nc --arg path "$file" '{path: $path, failed: true}'
+  done
+}
+
+# The picture the monitor shows now, for the meniscus to sweep away: a still as it is, a video's frame at
+# the time mpv reports. mpv's own screenshot cannot read hardware-decoded frames.
+snapshot() {
+  local monitor="$1"
+  local file now path pos
+  valid_monitor "$monitor"
+  now="$(playing_of "$monitor")"
+  path="$(jq -r '.path // empty' <<<"$now")"
+  [[ -f "$path" ]] || die "nothing to snapshot on $monitor"
+  if ! printf '%s\n' "${path,,}" | grep -Eq "^$video_re$"; then
+    printf '%s\n' "$path"
+    return
+  fi
+  pos="$(jq -r '.pos // 0' <<<"$now")"
+  mkdir -p "$cache_dir"
+  file="$cache_dir/snapshot-$monitor.jpg"
+  ffmpeg -nostdin -v error -y -ss "$pos" -i "$path" -frames:v 1 -q:v 3 "$file.tmp.jpg" ||
+    die "no frame of $path at $pos"
+  mv "$file.tmp.jpg" "$file"
+  printf '%s\n' "$file"
+}
+
+load() {
+  local monitor="$1" file="$2" start="${3:-}"
+  local options=()
+  valid_monitor "$monitor"
+  valid_file "$file"
+  if [[ -n "$start" ]]; then
+    [[ "$start" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "not a time: $start"
+    options=(-1 "start=$start")
+  fi
+  ipc "$monitor" "$(command_json loadfile "$file" replace "${options[@]}")" | grep -q '"error":"success"' ||
+    die "mpvpaper on $monitor refused $file"
+}
+
+# As wallpaper-select did: the running mpv loads it, and it is recorded as the monitor's assignment so a
+# restarted mpvpaper keeps it until the next session assigns a new one.
+apply() {
+  local monitor="$1" file="$2"
+  local temp_file
+  valid_monitor "$monitor"
+  valid_file "$file"
+  mkdir -p "$state_dir"
+  (
+    exec 9>"$state_dir/lock"
+    flock 9
+    if ! jq -e '.assignments | type == "object"' "$state_file" >/dev/null 2>&1; then
+      printf '{"assignments":{}}\n' >"$state_file"
+    fi
+    temp_file="$(mktemp "$state_file.XXXXXX")"
+    jq --arg monitor "$monitor" --arg target "$file" '.assignments[$monitor] = $target' \
+      "$state_file" >"$temp_file" && mv "$temp_file" "$state_file"
+  )
+  if [[ -S "$(socket_of "$monitor")" ]]; then
+    load "$monitor" "$file"
+  fi
+}
+
+seek() {
+  local monitor="$1" seconds="$2"
+  valid_monitor "$monitor"
+  [[ "$seconds" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "not a time: $seconds"
+  ipc "$monitor" "$(jq -nc --argjson s "$seconds" '{command: ["set_property", "time-pos", $s]}')" >/dev/null
+}
+
+pause() {
+  local monitor="$1" state="$2"
+  valid_monitor "$monitor"
+  case "$state" in
+    yes) ipc "$monitor" '{"command":["set_property","pause",true]}' >/dev/null ;;
+    no) ipc "$monitor" '{"command":["set_property","pause",false]}' >/dev/null ;;
+    *) die "pause takes yes or no" ;;
+  esac
+}
+
+case "${1:-}" in
+  scan) [[ $# == 1 ]] || { usage >&2; exit 2; }; scan ;;
+  status) [[ $# == 1 ]] || { usage >&2; exit 2; }; status ;;
+  thumbs) shift; thumbs "$@" ;;
+  snapshot) [[ $# == 2 ]] || { usage >&2; exit 2; }; snapshot "$2" ;;
+  load) [[ $# == 3 || $# == 4 ]] || { usage >&2; exit 2; }; load "$2" "$3" "${4:-}" ;;
+  apply) [[ $# == 3 ]] || { usage >&2; exit 2; }; apply "$2" "$3" ;;
+  seek) [[ $# == 3 ]] || { usage >&2; exit 2; }; seek "$2" "$3" ;;
+  pause) [[ $# == 3 ]] || { usage >&2; exit 2; }; pause "$2" "$3" ;;
+  -h | --help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac
