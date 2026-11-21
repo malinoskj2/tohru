@@ -400,3 +400,31 @@ fn unknown_lock_style_warns_and_uses_the_default_without_failing_the_load() {
     assert_eq!(owner.get(Key::LockStyle).origin, Origin::Nix);
     assert_eq!(owner.warnings().len(), 1);
 }
+
+#[test]
+fn notifications_position_defaults_to_top_right_and_round_trips() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    let mut owner = files.owner();
+    let setting = owner.get(Key::NotificationsPosition);
+    assert_eq!(setting.value, Value::Text("top-right".into()));
+    assert_eq!(setting.origin, Origin::Default);
+    for position in ["bottom-right", "top-right"] {
+        let parsed = Key::NotificationsPosition.parse_text(position).unwrap();
+        owner.set(Key::NotificationsPosition, parsed.clone()).unwrap();
+        assert_eq!(files.owner().get(Key::NotificationsPosition).value, parsed);
+    }
+    assert!(fs::read_to_string(files.user()).unwrap().contains("[notifications]\nposition = \"top-right\""));
+    for bad in ["top-left", "Top-Right", "bottom_right", ""] {
+        let before = fs::read(files.user()).unwrap();
+        assert!(owner.set(Key::NotificationsPosition, Value::Text(bad.into())).is_err());
+        assert_eq!(fs::read(files.user()).unwrap(), before);
+    }
+    fs::write(files.user(), "[notifications]\nposition = \"left\"\n").unwrap();
+    assert!(Owner::load(files.user(), Some(files.managed())).is_err());
+    fs::write(files.managed(), "[notifications]\nposition = \"bottom-right\"\n").unwrap();
+    fs::write(files.user(), "").unwrap();
+    let owner = files.owner();
+    assert_eq!(owner.get(Key::NotificationsPosition).value, Value::Text("bottom-right".into()));
+    assert_eq!(owner.get(Key::NotificationsPosition).origin, Origin::Nix);
+}

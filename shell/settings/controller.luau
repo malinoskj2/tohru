@@ -7,6 +7,7 @@ return function(applied)
         ["appearance.palette"]={"mocha","macchiato","rose_pine","nord","gruvbox","tokyo_night","dracula","everforest"},
         ["lock.style"]={"still-glass","ribbon-key","flooded-monolith","drifting-frost-veil","unfolding-glass-capsule",
             "edge-glass-drawer","horizon-meniscus","refractive-typographic-lens","corner-anchor","bar-drop-curtain"},
+        ["notifications.position"]={"top-right","bottom-right"},
     }
     local function choice_detail(setting)
         local provenance
@@ -50,6 +51,9 @@ return function(applied)
             {page=2, key="lock.style", title="Lock screen style", choice=true,
              detail=choice_detail(snapshot["lock.style"]), editable=true,
              managed=snapshot["lock.style"].managed, temporary=snapshot["lock.style"].runtime_override},
+            {page=2, key="notifications.position", title="Notification position", choice=true,
+             detail=choice_detail(snapshot["notifications.position"]), editable=true,
+             managed=snapshot["notifications.position"].managed, temporary=snapshot["notifications.position"].runtime_override},
             {page=3, title="Shell", detail="Tohru · pinned native Pleamar 0.7.27", editable=false},
         }
         rows = {}

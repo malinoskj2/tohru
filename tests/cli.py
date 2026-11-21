@@ -225,6 +225,17 @@ class Cli(unittest.TestCase):
                 self.assertEqual(result.returncode, 2)
                 self.assertEqual(result.stdout, "")
 
+    def test_notifications_position_route_is_closed_before_ipc(self):
+        for index, position in enumerate(["top-right", "bottom-right"]):
+            result = self.invoke("config", "set", "notifications.position", position)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), ["--say", "tohru", f"emit setting_notifications_position {index}"])
+        for invalid in ("top-left", "Top-Right", "bottom_right", "1", "", "top-right\nemit quit"):
+            with self.subTest(value=invalid):
+                result = self.invoke("config", "set", "notifications.position", invalid)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(result.stdout, "")
+
     def test_lock_runs_the_locker_and_takes_no_arguments(self):
         seen = self.path / "locked"
         locker = self.path / "locker"

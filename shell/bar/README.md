@@ -66,6 +66,9 @@ Every popup says `bright: panel_bright` (patch 0020), the share of what is behin
 | `launcher_bar N` | `tohru-launcher` | Sets `bar_launcher`: 0 closed, 1 open, 2 open and mapped, 3 closing. The bar tints sky in 1 and 2 and is on the overlay level in 2 and 3 |
 | `launcher_check` | Every second while `bar_launcher` is not 0 | Sends `emit launcher_report 0` to `tohru-launcher`; if it is not running, `bar_launcher` goes back to 0 |
 | `notices_state <n>` | `tohru-notifications` | Sets the bell: 1 unread, 2 Do Not Disturb, 3 both |
+| `notices_ask` | `tohru-notifications`, when it starts | Sends it `emit notices_position <n>` and `emit notices_cover <n>` |
+| `bar_popups <n>` | The bell part, whenever any popup opens (1) or the last one closes (0) | Sends `emit notices_cover <n>` to `tohru-notifications`, which hides its top-right toasts while a popup is open |
+| `setting_notifications_position <n>` | `tohru config set notifications.position`, Settings | Sets `notifications.position`, 0 `top-right` or 1 `bottom-right`; the bar then sends `emit notices_position <n>` to `tohru-notifications` |
 | `panel_close` | `tohru panel close` | Closes every popup |
 
 ## Tests

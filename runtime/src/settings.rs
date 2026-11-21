@@ -20,10 +20,14 @@ pub enum Key {
     Palette,
     LockStyle,
     PolkitAgent,
+    NotificationsPosition,
 }
 
+/// Where notification toasts stack: `top-right` under the bar, or `bottom-right`.
+pub const NOTIFICATION_POSITIONS: [&str; 2] = ["top-right", "bottom-right"];
+
 impl Key {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::InfoButton,
@@ -33,6 +37,7 @@ impl Key {
         Self::Palette,
         Self::LockStyle,
         Self::PolkitAgent,
+        Self::NotificationsPosition,
     ];
 
     #[must_use]
@@ -47,6 +52,7 @@ impl Key {
             Self::Palette => "appearance.palette",
             Self::LockStyle => "lock.style",
             Self::PolkitAgent => "polkit.agent",
+            Self::NotificationsPosition => "notifications.position",
         }
     }
 
@@ -88,6 +94,7 @@ impl Key {
             Self::Palette => ("appearance", "palette"),
             Self::LockStyle => ("lock", "style"),
             Self::PolkitAgent => ("polkit", "agent"),
+            Self::NotificationsPosition => ("notifications", "position"),
         }
     }
 
@@ -107,6 +114,7 @@ impl Key {
             Self::CornerSize => Value::Integer(32),
             Self::Palette => Value::Palette(Palette::Mocha),
             Self::LockStyle => Value::LockStyle(LockStyle::DEFAULT),
+            Self::NotificationsPosition => Value::Text(NOTIFICATION_POSITIONS[0].to_owned()),
         }
     }
 
@@ -117,6 +125,7 @@ impl Key {
             {
                 Ok(())
             }
+            (Self::NotificationsPosition, Value::Text(text)) if NOTIFICATION_POSITIONS.contains(&text.as_str()) => Ok(()),
             (
                 Self::Mooncoil | Self::InfoButton | Self::AboutButton | Self::Corners | Self::PolkitAgent,
                 Value::Bool(_),

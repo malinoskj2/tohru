@@ -14,6 +14,7 @@ local DEFAULT_MS = 6000
 local TICK_MS = 100
 local PILL_MS = 2600
 local WIDTH = 374
+local TOP = 6
 local BOTTOM = 608
 local GAP = 9
 local PILL_H = 46
@@ -99,27 +100,41 @@ local function row(slot, now)
     }
 end
 
+local function covered()
+    return fact.covered == true and fact.corner == "top_right"
+end
+local function showing()
+    return (#shown > 0 or fact.dnd_pill) and not covered()
+end
+
 local schedule
+-- The newest toast is nearest the corner: under the bar at the top right, at the bottom edge at the bottom right.
 local function publish()
     local now = clock()
-    local bottom = BOTTOM - (fact.dnd_pill and PILL_H + GAP or 0)
+    local pill = fact.dnd_pill and PILL_H + GAP or 0
+    local top, bottom = TOP + pill, BOTTOM - pill
     for depth, entry in ipairs(shown) do
         local slot = slots[entry.slot]
-        slot.y = bottom - entry.h
+        if fact.corner == "top_right" then
+            slot.y = top
+            top = top + entry.h + GAP
+        else
+            slot.y = bottom - entry.h
+            bottom = slot.y - GAP
+        end
         slot.depth = depth - 1
-        bottom = slot.y - GAP
     end
     local rows = {}
     for index = 1, SLOTS do rows[index] = row(slots[index], now) end
     model.toasts = rows
-    -- The popup stays open while the last toast or the pill fades out.
-    if #shown > 0 or fact.dnd_pill then
+    -- The popup stays open while the last toast or the pill fades out, or tucks away under a bar popup.
+    if showing() then
         if linger then cancel(linger); linger = nil end
         fact.toasts_open = true
     elseif fact.toasts_open and not linger then
         linger = after(LINGER_MS, function()
             linger = nil
-            if #shown == 0 and not fact.dnd_pill then fact.toasts_open = false end
+            if not showing() then fact.toasts_open = false end
         end)
     end
     schedule()
@@ -167,6 +182,22 @@ end
 
 local function find(id)
     for _, entry in ipairs(shown) do if entry.id == id then return entry end end
+end
+
+-- A toast's line stops while it is hovered or while a bar popup covers its corner.
+local function sync_hold(entry)
+    local yes = entry.hovered == true or covered()
+    if (entry.held == true) == yes or not counting(entry) then return end
+    local now = clock()
+    entry.left = left_ms(entry, now)
+    entry.stamp = now
+    entry.held = yes
+    if entry.id == POWER_ID then
+        if entry.timer then cancel(entry.timer); entry.timer = nil end
+        if not yes then entry.timer = after(entry.left, function() remove(POWER_ID); publish() end) end
+    else
+        pcall(sys.call, "notifications.hold", entry.id, yes)
+    end
 end
 
 local function timing(entry, notice, now)
@@ -229,6 +260,7 @@ local function incoming(notice, title, body)
             publish()
         end) or nil
     end
+    sync_hold(entry)
     sound.tone(tone)
 end
 
@@ -294,17 +326,9 @@ end
 
 local function hold(index, yes)
     local entry = slot_entry(index)
-    if not entry or entry.held == yes or not counting(entry) then return end
-    local now = clock()
-    entry.left = left_ms(entry, now)
-    entry.stamp = now
-    entry.held = yes
-    if entry.id == POWER_ID then
-        if entry.timer then cancel(entry.timer); entry.timer = nil end
-        if not yes then entry.timer = after(entry.left, function() remove(POWER_ID); publish() end) end
-    else
-        pcall(sys.call, "notifications.hold", entry.id, yes)
-    end
+    if not entry then return end
+    entry.hovered = yes
+    sync_hold(entry)
     publish()
 end
 
@@ -374,3 +398,21 @@ on("notices_dnd", function(mode)
     tell()
 end)
 on("notices_report", tell)
+
+local function placement()
+    for _, entry in ipairs(shown) do sync_hold(entry) end
+    publish()
+end
+-- From the bar: 0 top right, 1 bottom right (notifications.position).
+on("notices_position", function(position)
+    if position ~= 0 and position ~= 1 then return end
+    fact.corner = position == 1 and "bottom_right" or "top_right"
+    placement()
+end)
+-- From the bar: 1 while one of its popups is open, 0 when none is.
+on("notices_cover", function(open)
+    if open ~= 0 and open ~= 1 then return end
+    fact.covered = open == 1
+    placement()
+end)
+pcall(sys.call, "say", "tohru", "emit notices_ask")

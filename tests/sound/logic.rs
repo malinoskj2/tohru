@@ -233,7 +233,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         -- Match native direction: emit and fact writes do NOT call Lua handlers.
         function emit(name) table.insert(calls,{render_only=name}) end
         function require(name) return modules[name] end
-        sys={call=function(name,value) table.insert(calls,{name=name,value=value}) end,
+        sys={call=function(name,value,request) table.insert(calls,{name=name,value=value,request=request}) end,
              watch=function(name,callback)
                 if name=='audio' then audio_watch=callback
                 elseif name=='clock' then callback({year=2026,month=11,day=7,weekday=6,hour=12,minute=0})
@@ -323,6 +323,8 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         assert(fact.corners and fact.corner_size==32)
         local asked; for _,call in ipairs(calls) do if call.name=='say' and call.value=='tohru-notifications' then asked=true end end
         assert(asked, 'the bar asks the notification daemon for its state')
+        local placed; for _,call in ipairs(calls) do if call.name=='say' and call.value=='tohru-notifications' and call.request=='emit notices_position 0' then placed=true end end
+        assert(placed, 'without notifications.position the toasts stack at the top right')
         dispatch('notices_state',3); assert(fact.notices_unread and fact.notices_dnd)
         dispatch('notices_state',0); assert(not fact.notices_unread and not fact.notices_dnd)
         dispatch('audio_report'); assert(not fact.osd_open)
