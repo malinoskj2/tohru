@@ -34,6 +34,8 @@ Tohru has no idle handling, polkit agent, wallpaper or screenshot tool. The sess
 - Unlocking needs a PAM success for the lock cycle that is still held; a permit does not carry over to the next lock. `--say` requests to a locker are refused, it does not hot-reload, and it does not relaunch itself when its binary changes.
 - A monitor plugged in while locked gets its own face. A stalled locker leaves the compositor's lock in place.
 
+The styles are parts in `shell/lock/styles/`, all in one scene and picked by the `style` fact (`lock.style`; 0 is plain). They draw a blurred capture of the screen taken before locking, never a live one. Limits: each face lays the style out in a 1920 × 1080 box centred on its monitor, unscaled, so a smaller monitor crops it and a larger one shows more backdrop; the capture comes from one output (`bar.preferred_output`, else the focused one) and every face shows it; the bar drawn on the lock is a still copy with the workspaces as they were at locking.
+
 ## How the parts talk
 
 Processes send each other requests with `pleamar --say <role> "<request>"`, or from Luau with `sys.call("say", "<role>", "<request>")`. A request is `emit <event> [args]` to fire an event, `get <name>` to read a text value, `text <name> <value>` to set one, or `quit`. A scene may only `say` to roles listed in its `permissions` (`say:<role>`).
@@ -69,6 +71,7 @@ Requests report that Pleamar accepted them, not that the action finished. If no 
 | `0021-card-capture-without-shm` | When the compositor offers its captures in a shared-memory format Pleamar cannot read (a headless Sway offers 24-bit BGR888) but also offers a dmabuf, the next capture goes onto the card instead of none ever arriving. Without it no lens glass works on such a Sway |
 | `0022-lock-authority` | Tohru's lock authority (`tohru_lock`, from `bindings/lock.rs`): the native password check, the per-cycle unlock permit that the render and Wayland code check before releasing the lock, and the locker mode (`TOHRU_LOCKER=1`) that refuses `--say`, hot reload and relaunch |
 | `0023-lock-pam` | PAM picks the `tohru-lock` service first, the password copy is zeroed with volatile writes on every path, and the `tohru-test-pam` feature (never in a shipped build) lets `TOHRU_TEST_PAM_CONFDIR` point the check at a private service for nested-compositor tests |
+| `0024-lock-views-together` | An element on more than one view (a lock face per monitor) is clipped to all of them together. Clipped to the first alone, a face drew the backdrop only as large as a smaller monitor plugged in while locked |
 
 Numbers 0002 to 0004 and 0007 to 0009 belonged to features that were removed or moved into the scenes.
 

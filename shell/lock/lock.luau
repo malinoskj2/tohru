@@ -1,1 +1,1 @@
-require("controller")(false)
+require("controller")(true)

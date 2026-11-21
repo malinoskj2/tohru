@@ -1,0 +1,22 @@
+part LockStillGlass {
+ group {
+  show: style == 1
+  pivot: 960, 440
+  scale: 1 + unlock * 0.045
+  opacity: 1 - unlock * 0.85
+  text date_long { at: 960, 306; anchor: center; size: 17; weight: 500; family: "SF Pro Text"; color: ink; opacity: 72% }
+  text clock_hm { at: 960, 396; anchor: center; size: 128; weight: 200; family: "SF Pro Display:tnum"; color: ink; opacity: 94%; letter_move: -3.5 * letter, 0 }
+  text user { at: 960, 558; anchor: center; size: 13; family: "SF Pro Text"; color: ink; opacity: 45%; show: not awake and typed == 0 and not wrong and not unlocking }
+  group {
+   show: awake or typed > 0 or wrong or unlocking or checking
+   opacity: wake
+   box { from: 820 + shake * 0.27, 534; size: 280, 42; corner: 15; color: glass_c; opacity: if(pk > 0.5, 62%, 56%) }
+   box { from: 820.5 + shake * 0.27, 534.5; size: 279, 41; corner: 14.5; stroke: if(wrong, 1.5, 1); color: if(wrong, err_c, if(unlocking, ok_c, lav_c)); opacity: if(wrong, 85%, if(unlocking, 88%, if(pk > 0.5, 55%, 45%))) }
+   LockDots(960 + shake * 0.27, 555, 4, 15, 0, 0.92)
+   text user { at: 960, 516; anchor: center; size: 13; family: "SF Pro Text"; color: ink; opacity: 52%; show: not wrong and not unlocking }
+   text status { at: 960, 598; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: err_c; opacity: 92%; show: wrong }
+   text "Unlocking…" { at: 960, 598; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ok_c; opacity: 88%; show: unlocking }
+   text "Checking…" { at: 960, 598; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 52%; show: checking and not unlocking }
+  }
+ }
+}

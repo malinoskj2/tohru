@@ -1,0 +1,43 @@
+part LockRefractiveTypographicLens {
+ // Monumental numerals with a glass bar across their feet that magnifies and frosts what it covers.
+ let rl_x = 726 + shake * 0.3
+ let rl_y = 528 + unlock * 26
+ let rl_cy = 486 - unlock * 24
+ group {
+  show: style == 8
+  opacity: clamp(1 - unlock * 1.15, 0, 1)
+  text clock_hm { at: 960, rl_cy; anchor: center; size: 220; weight: 100; family: "SF Pro Display:tnum"; color: ink; opacity: 92%; letter_move: -7 * letter, 0 }
+  text "{date_long}  ·  {user}" { at: 960, 344 - unlock * 16; anchor: center; size: 14; weight: 500; family: "SF Pro Text"; color: ink; opacity: 62% * wake }
+  body {
+   color: #000000
+   opacity: 1%
+   shadow: 0, 8, 22, if(pk > 0.5, 12%, 28%)
+   box { from: rl_x, rl_y; size: 468, 64; corner: 15 }
+  }
+  group {
+   clip box { from: rl_x, rl_y; size: 468, 64; corner: 15 }
+   group {
+    blur: max(1, 10 * (1 - unlock))
+    saturation: 1.4
+    image lock_shot { at: 0, 0; size: 1920, 1080; fit: cover; show: has_shot }
+    group {
+     pivot: 960, rl_cy + 6
+     scale: 1.03, 1.09
+     text clock_hm { at: 960, rl_cy + 6; anchor: center; size: 220; weight: 100; family: "SF Pro Display:tnum"; color: ink; opacity: 85%; letter_move: -7 * letter, 0 }
+    }
+   }
+   shader lock_glass { at: rl_x, rl_y; size: 468, 64; values: 0.45 * (1 - unlock), 0.65 * (1 - unlock), 0.9, err * 0.85, pk, 15, 0, 0 }
+   group {
+    blur: 5
+    box { from: rl_x + 6, rl_y - 2; size: 456, 9; corner: 4; color: #ffffff; opacity: if(pk > 0.5, 55%, 22%) }
+    box { from: rl_x + 6, rl_y + 59; size: 456, 6; corner: 3; color: if(pk > 0.5, #1c1826, #ffffff); opacity: 8% }
+   }
+  }
+  box { from: rl_x + 0.5, rl_y + 0.5; size: 467, 63; corner: 14.5; stroke: if(wrong, 1.4, 1); color: if(wrong, err_c, ink); opacity: if(wrong, 85%, if(pk > 0.5, 16%, 24%)) }
+  text date_long { at: 960, rl_y + 32; anchor: center; size: 15; weight: 500; family: "SF Pro Text"; color: ink; opacity: 90% * (1 - wake) }
+  LockDots(960 + shake * 0.3, rl_y + 32, 4.5, 18, 1, 0.94)
+  text status { at: 960, rl_y + 88; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: err_c; opacity: 95%; show: wrong }
+  text "Lens clearing…" { at: 960, rl_y + 88; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 78%; show: unlocking }
+  text "Checking…" { at: 960, rl_y + 88; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 60%; show: checking and not unlocking }
+ }
+}

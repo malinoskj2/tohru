@@ -1,0 +1,25 @@
+part LockShaders {
+ // Only the styled scene declares shaders; the plain fallback has none to fail.
+ shader lock_glass = file "glass.wgsl"
+ shader lock_ribbon = file "../../bar/ribbon.wgsl"
+ shader lock_veil = file "veil.wgsl"
+ shader lock_bar_fill = file "../../bar/fill.wgsl"
+ image lock_i_wifi = file "../../service-assets/wifi-filled.svg", 14, 14
+ image lock_i_volume = file "../../service-assets/volume-2-filled.svg", 14, 14
+ image lock_i_bell = file "../../service-assets/bell-filled.svg", 14, 14
+ image lock_i_bluetooth = file "../../service-assets/bluetooth.svg", 14, 14
+ image lock_i_play = file "../../service-assets/play-filled.svg", 14, 14
+ image lock_i_moon = file "../icons/moon.svg", 14, 14
+ image lock_i_restart = file "../icons/rotate-ccw.svg", 14, 14
+ image lock_i_down = file "../icons/chevron-down.svg", 14, 14
+ image lock_i_up = file "../icons/chevron-up.svg", 14, 14
+ image lock_i_arrow = file "../icons/arrow-right.svg", 14, 14
+ image lock_i_lock = file "../icons/lock.svg", 14, 14
+ image lock_i_power = file "../icons/power.svg", 14, 14
+ // The workspace palette, raw: peach, yellow, green, lavender, mauve.
+ let st0 = #fab387
+ let st1 = #f9e2af
+ let st2 = #a6e3a1
+ let st3 = #b4befe
+ let st4 = #cba6f7
+}

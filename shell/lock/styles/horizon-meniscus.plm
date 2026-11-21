@@ -1,0 +1,31 @@
+part LockHorizonMeniscus {
+ // One waterline across the whole screen: the sky above is the screen, softened; below, frosted
+ // liquid. Typing raises the tide, a wrong password sloshes it red, unlocking lets it run out.
+ prop hm_y = 0.62 ~spring(90, 15)
+ follow hm_y = if(unlocking, 0.58, if(typed > 0 or wrong or checking, 0.58, 0.62))
+ prop hm_slosh = 1 ~420ms
+ follow hm_slosh = if(unlocking, 2.4, if(wrong, 3.4, if(typed > 0 or checking, 1.85, 1)))
+ let hm_line = (hm_y + unlock * 0.34) * 1080
+ group {
+  show: style == 7
+  group {
+   shader: lock_veil, unlock, err * 0.92, hm_line, pk, hm_slosh, kick, 100 + 4 * (1 - unlock), 0
+   image lock_shot { at: 0, 0; size: 1920, 1080; fit: cover; show: has_shot }
+   box { from: 0, 0; size: 1920, 1080; color: #000000; opacity: 0.5%; show: not has_shot }
+  }
+  group {
+   opacity: clamp(1 - unlock * 1.15, 0, 1)
+   text date_long { at: 960, 412; anchor: center; size: 16; weight: 500; family: "SF Pro Text"; color: ink; opacity: 72% }
+   text clock_hm { at: 960, 504; anchor: center; size: 148; weight: 200; family: "SF Pro Display:tnum"; color: ink; opacity: 94%; letter_move: -4 * letter, 0 }
+  }
+  group {
+   opacity: clamp(1 - unlock * 1.4, 0, 1)
+   text "{user}  ·  Type password to part the tide" { at: 960, hm_line + 72; anchor: center; size: 13; family: "SF Pro Text"; color: ink; opacity: 56%; show: typed == 0 and not wrong and not checking and not unlocking }
+   LockDots(960 + shake * 0.3, hm_line + 86, 4.6, 20, 1, 0.94)
+   text status { at: 960, hm_line + 118; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: err_c; opacity: 96%; show: wrong }
+   text "Tide receding…" { at: 960, hm_line + 118; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 82%; show: unlocking }
+   text "Checking…" { at: 960, hm_line + 118; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 56%; show: checking and not unlocking }
+   text user { at: 960, hm_line + 118; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 56%; show: typed > 0 and not wrong and not checking and not unlocking }
+  }
+ }
+}

@@ -1,0 +1,35 @@
+part LockDriftingFrostVeil {
+ let fv_progress = if(unlocking, 1, min(1, typed / 9.7))
+ prop fv_line = 0 ~spring(200, 22)
+ follow fv_line = fv_progress
+ group {
+  show: style == 4
+  // Never the screen itself: a copy soft enough that nothing on it reads, frosting over the blur.
+  group {
+   shader: lock_veil, unlock, err * 0.92, wake * (1 - unlock), pk, 0.165, 0.36, 7 * (1 - unlock), 0
+   image lock_shot { at: 0, 0; size: 1920, 1080; fit: cover; show: has_shot }
+   box { from: 0, 0; size: 1920, 1080; color: #000000; opacity: 0.5%; show: not has_shot }
+  }
+  group {
+   opacity: 1 - unlock * 0.88
+   text clock_hm { at: 110, 210; anchor: left center; size: 144; weight: 200; family: "SF Pro Display:tnum"; color: ink; opacity: 94%; letter_move: -4 * letter, 0 }
+   text date_caps { at: 116, 294; anchor: left center; size: 16; weight: 500; family: "SF Pro Text"; color: ink; opacity: 72% }
+   text "{user}  —  Begin typing to wake" { at: 116, 338; anchor: left center; size: 13; family: "SF Pro Text"; color: ink; opacity: 50%; show: typed == 0 and not wrong and not unlocking and not checking }
+   group {
+    show: typed > 0 or wrong or unlocking or checking
+    move: shake * 0.3, 0
+    line { from: 116, 394; to: 406, 394; width: if(wrong, 1.5, 1); color: if(wrong, err_c, ink); opacity: if(wrong, 88%, 42%) }
+    body {
+     show: not wrong and fv_line > 0.01
+     gradient: 116, 0 to 406, 0, #fab387, #a6e3a1, #cba6f7
+     box { from: 116, 393.1; size: 290 * fv_line, 1.8; corner: 0.9 }
+    }
+    LockDots(126, 372, 4.2, 20, 0, 0.92, 1)
+    text "{status} · try again" { at: 116, 414; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: err_c; opacity: 95%; show: wrong }
+    text "Frost clearing…" { at: 116, 414; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 80%; show: unlocking }
+    text "Checking…" { at: 116, 414; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 56%; show: checking and not unlocking }
+    text user { at: 116, 414; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 56%; show: not wrong and not unlocking and not checking }
+   }
+  }
+ }
+}

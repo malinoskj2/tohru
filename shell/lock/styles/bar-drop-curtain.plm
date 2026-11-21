@@ -1,0 +1,75 @@
+part LockBarDropCurtain {
+ // The bar itself has come down as a canopy holding the clock; typing lowers it to the field,
+ // unlocking draws it back up into the 31 px bar.
+ prop bc_drop = 215 ~spring(170, 17)
+ follow bc_drop = if(unlocking, 0, if(awake or typed > 0 or wrong or checking, 326, 215))
+ on change wrong while wrong { impulse bc_drop 260 }
+ let bc_r = min(16, 10 + bc_drop * 0.25)
+ let bc_b = 30.5 + bc_drop
+ let bc_bay = clamp((bc_drop - 140) / 140, 0, 1) * wake
+ let bc_goal = if(unlocking, 286, if(wrong, 34, if(typed == 0, 14, min(300, 30 + typed * 22))))
+ prop bc_bead = 14 ~spring(160, 13.9)
+ follow bc_bead = bc_goal
+ prop bc_amp = 0 ~spring(220, 23.7)
+ follow bc_amp = min(2.5, abs(vel(bc_bead)) * 0.03) + kick * 0.1
+ prop bc_t = 0 ~0ms
+ spin bc_t by 1
+ let bc_f = clamp(bc_bead / 312, 0, 1)
+ group {
+  show: style == 10
+  body {
+   color: #000000
+   opacity: 1%
+   shadow: 0, 8, 28, if(pk > 0.5, 12%, 28%)
+   box { from: 100, 0; size: 1720, bc_b; corner: bc_r }
+   box { from: 100, 0; size: 1720, bc_b - bc_r }
+  }
+  group {
+   clip path {
+    move 92.5, -0.5
+    curve 98.157, 1.843 via 95.814, -0.5
+    curve 100.5, 7.5 via 100.5, 4.186
+    line 100.5, bc_b - bc_r
+    curve 100.5 + bc_r, bc_b via 100.5, bc_b
+    line 1819.5 - bc_r, bc_b
+    curve 1819.5, bc_b - bc_r via 1819.5, bc_b
+    line 1819.5, 7.5
+    curve 1821.843, 1.843 via 1819.5, 4.186
+    curve 1827.5, -0.5 via 1824.186, -0.5
+    close
+   }
+   shader lock_glass { at: 99, 0; size: 1722, max(32, bc_b + 1); values: if(wake > 0.5, 0.72, 0.48), 0.86, 0.88, err * 0.65, pk, 0, 0, 0 }
+   group {
+    opacity: clamp(1 - unlock * 1.35, 0, 1)
+    text clock_hm { at: 960, 128 - unlock * 30; anchor: center; size: 104; weight: 200; family: "SF Pro Display:tnum"; color: ink; opacity: 95%; letter_move: -3 * letter, 0 }
+    text "{date_long}  ·  {user}" { at: 960, 196 - unlock * 30; anchor: center; size: 15; weight: 500; family: "SF Pro Text"; color: ink; opacity: 68% }
+    box { from: 938, bc_b - 12.5; size: 44, 3; corner: 1.5; color: ink; opacity: 28% * clamp(1 - wake * 3, 0, 1) }
+    group {
+     show: bc_bay > 0.001
+     opacity: bc_bay
+     box { from: 780, 232; size: 360, 1; color: ink; opacity: 10% }
+     LockDots(960 + shake * 0.3, 266, 4.2, 18, 1, 0.92)
+     text "Type your password" { at: 960, 266; anchor: center; size: 13; family: "SF Pro Text"; color: ink; opacity: 40%; show: typed == 0 and not checking and not wrong }
+     shader lock_ribbon { at: 780, 275; size: 360, 42; values: bc_bead, vel(bc_bead), min(7.99, 2 + min(3, abs(vel(bc_bead)) * 0.02)) + 8 * round(min(1, abs(vel(bc_bead)) / 50) * 255), bc_bead + if(vel(bc_bead) >= 0, 16, -16), bc_amp, bc_amp * 0.4, bc_bead - 10, if(vel(bc_bead) >= 0, 1, -1) * (1 + min(3, bc_t)); colors: if(wrong, err_c, if(bc_f < 0.25, mix(st0, st1, bc_f * 4), if(bc_f < 0.5, mix(st1, st2, bc_f * 4 - 1), if(bc_f < 0.75, mix(st2, st3, bc_f * 4 - 2), mix(st3, st4, bc_f * 4 - 3))))), #ffffff }
+     text status { at: 960, 328; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: err_c; opacity: 95%; show: wrong }
+     text "Retracting into bar…" { at: 960, 328; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 80%; show: unlocking }
+     text "Checking…" { at: 960, 328; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 60%; show: checking and not unlocking }
+     text "Press Return to unlock" { at: 960, 328; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 50%; show: typed > 0 and not wrong and not checking and not unlocking }
+    }
+   }
+  }
+  path {
+   stroke: if(wrong, 1.4, 0.95); color: if(wrong, err_c, ink); opacity: if(wrong, 85%, if(pk > 0.5, 14%, 24%))
+   move 92.5, -0.5
+   curve 98.157, 1.843 via 95.814, -0.5
+   curve 100.5, 7.5 via 100.5, 4.186
+   line 100.5, bc_b - bc_r
+   curve 100.5 + bc_r, bc_b via 100.5, bc_b
+   line 1819.5 - bc_r, bc_b
+   curve 1819.5, bc_b - bc_r via 1819.5, bc_b
+   line 1819.5, 7.5
+   curve 1821.843, 1.843 via 1819.5, 4.186
+   curve 1827.5, -0.5 via 1824.186, -0.5
+  }
+ }
+}

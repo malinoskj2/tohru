@@ -1,0 +1,45 @@
+part LockRibbonKey {
+ // The bar's workspace ribbon as the password rail: every keystroke moves the bead a slot along it.
+ let rk_goal = if(unlocking, 356, if(wrong, 34, if(typed == 0, 14, min(346, 18 + typed * 33))))
+ prop rk_x = 14 ~spring(160, 13.9)
+ follow rk_x = rk_goal
+ prop rk_c = 14 ~spring(70, 11)
+ follow rk_c = rk_x + if(vel(rk_x) >= 0, 1, -1) * 15
+ prop rk_amp = 0 ~spring(220, 23.7)
+ follow rk_amp = min(3, abs(vel(rk_x)) * 0.032) + kick * 0.12
+ prop rk_wash = 0 ~spring(840, 204)
+ follow rk_wash = max(0, -vel(rk_amp)) * 0.9 / 4.2
+ prop rk_t = 0 ~0ms
+ spin rk_t by 1
+ let rk_hh = 2 + min(3, abs(vel(rk_x)) * 0.02)
+ let rk_rd = min(1, abs(vel(rk_x)) / 50)
+ let rk_f = clamp(rk_x / 360, 0, 1)
+ let rk_col = if(wrong, err_c, if(rk_f < 0.25, mix(st0, st1, rk_f * 4), if(rk_f < 0.5, mix(st1, st2, rk_f * 4 - 1), if(rk_f < 0.75, mix(st2, st3, rk_f * 4 - 2), mix(st3, st4, rk_f * 4 - 3)))))
+ group {
+  show: style == 2
+  move: 0, -68 * unlock
+  opacity: 1 - pow(unlock, 1.35)
+  group {
+   show: pk < 0.5
+   blur: 90
+   ellipse { at: 960, 450; radius: 250; color: #140a1e; opacity: 34% }
+  }
+  text clock_hm { at: 960, 386; anchor: center; size: 132; weight: 200; family: "SF Pro Display:tnum"; color: ink; opacity: 94%; letter_move: -3.5 * letter, 0 }
+  text date_long { at: 960, 466; anchor: center; size: 16; weight: 500; family: "SF Pro Text"; color: ink; opacity: 66% }
+  repeat i in 0..10 {
+   ellipse {
+    at: 798 + i * 36, 574
+    radius: 2.2
+    color: if(i < 3, mix(st0, st1, i / 3), if(i < 5, mix(st1, st2, (i - 3) / 2), if(i < 8, mix(st2, st3, (i - 5) / 3), mix(st3, st4, (i - 8) / 2))))
+    opacity: if(pk > 0.5, 85%, 72%)
+    show: i < typed and not wrong
+   }
+  }
+  shader lock_ribbon { at: 768, 532 + 5; size: 384, 42; values: rk_x, vel(rk_x), min(7.99, rk_hh) + 8 * round(rk_rd * 255), rk_c, rk_amp, rk_wash, rk_c - 4, if(vel(rk_x) >= 0, 1, -1) * (1 + min(3, rk_t)); colors: rk_col, if(typed > 0 or wrong or unlocking or awake, #ffffff, #858585) }
+  text "{user}  ·  Type to unlock" { at: 960, 588; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 48%; show: typed == 0 and not wrong and not unlocking and not checking }
+  text user { at: 960, 590; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 62%; show: typed > 0 and not wrong and not unlocking and not checking }
+  text status { at: 960, 588; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: err_c; opacity: 94%; show: wrong }
+  text "Checking…" { at: 960, 588; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 62%; show: checking and not unlocking }
+  text "Unlocked" { at: 960, 588; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 82%; show: unlocking }
+ }
+}
