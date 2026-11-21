@@ -25,8 +25,8 @@ part SoundDetails {
   zone box sound_out_next { from: sound_ox + sound_w - 38, sound_out_pager_y; size: 24, 22; corner: 7; cursor: pointer; active: sound_unfolded and sound_out_page + 1 < sound_out_pages; label: "More outputs" }
   box { from: sound_ox + sound_w - 64, sound_out_pager_y; size: 24, 22; corner: 7; color: sound_ink; opacity: max(sound_out_prev.hover * 10%, sound_out_prev.pressed * 16%) }
   box { from: sound_ox + sound_w - 38, sound_out_pager_y; size: 24, 22; corner: 7; color: sound_ink; opacity: max(sound_out_next.hover * 10%, sound_out_next.pressed * 16%) }
-  text "‹" { at: sound_ox + sound_w - 52, sound_out_pager_y + 10; anchor: center; size: 16; color: sound_ink; opacity: if(sound_out_page > 0, 92%, 38%) }
-  text "›" { at: sound_ox + sound_w - 26, sound_out_pager_y + 10; anchor: center; size: 16; color: sound_ink; opacity: if(sound_out_page + 1 < sound_out_pages, 92%, 38%) }
+  text "‹" { at: sound_ox + sound_w - 52, sound_out_pager_y + 10; anchor: center; size: 16; family: "SF Pro Text"; color: sound_ink; opacity: if(sound_out_page > 0, 92%, 38%) }
+  text "›" { at: sound_ox + sound_w - 26, sound_out_pager_y + 10; anchor: center; size: 16; family: "SF Pro Text"; color: sound_ink; opacity: if(sound_out_page + 1 < sound_out_pages, 92%, 38%) }
  }
  on press sound_out_prev { sound_out_page = max(0, sound_out_page - 1) }
  on press sound_out_next { sound_out_page = min(sound_out_pages - 1, sound_out_page + 1) }
@@ -106,8 +106,8 @@ part SoundDetails {
   zone box sound_app_next { from: sound_ox + sound_w - 38, sound_app_pager_y; size: 24, 22; corner: 7; cursor: pointer; active: sound_unfolded and sound_app_page + 1 < sound_app_pages; label: "More apps" }
   box { from: sound_ox + sound_w - 64, sound_app_pager_y; size: 24, 22; corner: 7; color: sound_ink; opacity: max(sound_app_prev.hover * 10%, sound_app_prev.pressed * 16%) }
   box { from: sound_ox + sound_w - 38, sound_app_pager_y; size: 24, 22; corner: 7; color: sound_ink; opacity: max(sound_app_next.hover * 10%, sound_app_next.pressed * 16%) }
-  text "‹" { at: sound_ox + sound_w - 52, sound_app_pager_y + 10; anchor: center; size: 16; color: sound_ink; opacity: if(sound_app_page > 0, 92%, 38%) }
-  text "›" { at: sound_ox + sound_w - 26, sound_app_pager_y + 10; anchor: center; size: 16; color: sound_ink; opacity: if(sound_app_page + 1 < sound_app_pages, 92%, 38%) }
+  text "‹" { at: sound_ox + sound_w - 52, sound_app_pager_y + 10; anchor: center; size: 16; family: "SF Pro Text"; color: sound_ink; opacity: if(sound_app_page > 0, 92%, 38%) }
+  text "›" { at: sound_ox + sound_w - 26, sound_app_pager_y + 10; anchor: center; size: 16; family: "SF Pro Text"; color: sound_ink; opacity: if(sound_app_page + 1 < sound_app_pages, 92%, 38%) }
  }
  on press sound_app_prev { sound_app_page = max(0, sound_app_page - 1) }
  on press sound_app_next { sound_app_page = min(sound_app_pages - 1, sound_app_page + 1) }

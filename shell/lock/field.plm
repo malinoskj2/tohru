@@ -1,5 +1,5 @@
 part LockField {
  // The one password field every style shares. It is never drawn: each style shows dots for
  // its length. While the lock is engaged the runtime keeps its text from the logic.
- input password { at: 900, 1060; width: 120; size: 13; color: #ffffff; opacity: 0%; secret: true; agent: no }
+ input password { at: 900, 1060; width: 120; size: 13; family: "SF Pro Text"; color: #ffffff; opacity: 0%; secret: true; agent: no }
 }

@@ -110,8 +110,8 @@ part WallpaperLibrary {
         zone box wl_next { from: wall_ox + wall_w - 38, wl_pg_y; size: 24, 22; corner: 7; cursor: pointer; active: wall_unfolded and wall_page + 1 < wall_pages; label: "More wallpapers" }
         box { from: wall_ox + wall_w - 64, wl_pg_y; size: 24, 22; corner: 7; color: ink_white; opacity: max(wl_prev.hover * 10%, wl_prev.pressed * 16%) }
         box { from: wall_ox + wall_w - 38, wl_pg_y; size: 24, 22; corner: 7; color: ink_white; opacity: if(wall_page + 1 < wall_pages, 8%, 0%) + max(wl_next.hover * 10%, wl_next.pressed * 16%) }
-        text "‹" { at: wall_ox + wall_w - 52, wl_pg_y + 10; anchor: center; size: 16; color: ink_white; opacity: if(wall_page > 0, 92%, 35%) }
-        text "›" { at: wall_ox + wall_w - 26, wl_pg_y + 10; anchor: center; size: 16; color: ink_white; opacity: if(wall_page + 1 < wall_pages, 92%, 35%) }
+        text "‹" { at: wall_ox + wall_w - 52, wl_pg_y + 10; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if(wall_page > 0, 92%, 35%) }
+        text "›" { at: wall_ox + wall_w - 26, wl_pg_y + 10; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if(wall_page + 1 < wall_pages, 92%, 35%) }
     }
     on press wl_prev { emit wall_page_step(-1) }
     on press wl_next { emit wall_page_step(1) }
