@@ -8,7 +8,7 @@ The Bluetooth popup: adapter power, discovery, the device list, connecting, forg
 |---|---|
 | `state.plm` | The `bluetooth` service as `bt` (adapter present and powered, discovering, up to 24 devices in `bt_devices`, and the current pairing question), popup and fold facts, what the controller works out (active device, counts, minis, the connecting row, the rail's stop), the fold and water springs, device icons and the `bluetooth_*` events |
 | `popup.plm` | The Frosted Tide popup: a `260 × 190 px` tank that unfolds into `280 px` rows, and the `280 × 234 px` pairing question |
-| `tank.plm` | The water group (`BluetoothTank`): the active device's battery as a large thin number under `../water.wgsl`, the water shared with the network popup |
+| `tank.plm` | The water group (`BluetoothTank`): the active device's battery as a large thin number under `../water.wgsl`, the shared water |
 | `controller.luau` | Turns popup actions into `bluetooth.*` calls, answers pairing questions, follows the service with its own watch, and drives the Off / On / Scan rail. Takes the rail (`bar/rail.luau`) and returns `{open, close, toggle, reconcile}` |
 | `*.svg` | Lucide device icons (ISC; see `LICENSE.LUCIDE`) |
 | `entry.plm`, `entry.luau` | A standalone scene with a Bluetooth button, for development. It has no rail logic, so its bead does not move |

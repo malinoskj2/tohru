@@ -1,8 +1,9 @@
-"""Verify actual native template's unit conversion at retained presentation values."""
+"""Signal shows only as the leading arc glyph: no percentage on the tiles or the rows."""
 from pathlib import Path
-import math
+import re
 scene = Path("shell/network/popup.plm").read_text()
-assert '"{round(n.strength * 100)}%"' in scene
-for value, expected in [(0,0),(.49,49),(.8,80),(1,100)]:
-    assert math.floor(value * 100 + .5) == expected
-print("Native normalized Wi-Fi strength template: 0/49/80/100 percent")
+assert "* 100" not in scene and not re.search(r'"[^"]*%"', scene), "no percentage is drawn"
+for icon, threshold in [("net_wifi_full", "n.strength >= 0.6"), ("net_wifi_high", "n.strength >= 0.35"),
+                        ("net_wifi_low", "n.strength >= 0.15"), ("net_wifi_zero", "n.strength < 0.15")]:
+    assert re.search(rf"image {icon} \{{ at: net_ox \+ 13, n_y \+ 6;.*{re.escape(threshold)}", scene), icon
+print("Wi-Fi strength: arc glyphs at 0.15/0.35/0.6, no percentage")
