@@ -56,7 +56,7 @@ local function notice(id,title,body,time,urgency,extra)
     for key,field in pairs(extra or {}) do value[key]=field end
     return value
 end
-local function fresh() return {last_id=0,power_level=0,unread=false,dnd=false,dnd_pill=false,toasts_open=false} end
+local function fresh() return {last_id=0,power_level=0,unread=false,dnd=false,dnd_pill=false,toasts_open=false,corner='top_right',covered=false} end
 local function near(a,b) return math.abs(a-b)<0.002 end
 
 local facts=fresh();local n=boot(facts)
@@ -81,23 +81,29 @@ local long=string.rep('🌊',1000);reloaded.report({notice(22,long,long)})
 local _,row=reloaded.slot(string.rep('🌊',256))
 assert(row and utf8.len(row.body)==768 and row.lines==3)
 
--- Stacking: three at most, the newest at the bottom, each one keeping its slot as others come and go.
+-- Stacking: three at most, the newest at the top just under the bar, each one keeping its slot as others come and go.
 local stack=boot(fresh())
 stack.report({notice(1,'One')});local one=stack.slot('One')
+assert(stack.live()[1].y==6,'the first toast sits 6 px under the bar, where its popups open')
 stack.report({notice(2,'Two'),notice(1,'One')})
 stack.report({notice(3,'Three',nil,1,1,{actions={{key='open',label='Open'},{key='dismiss',label='Dismiss'}}}),notice(2,'Two'),notice(1,'One')})
 local rows=stack.live()
-assert(rows[1].title=='One' and rows[2].title=='Two' and rows[3].title=='Three')
-assert(rows[3].depth==0 and rows[2].depth==1 and rows[1].depth==2)
-assert(rows[3].y+rows[3].h==608 and rows[2].y+rows[2].h+9==rows[3].y and rows[1].y+rows[1].h+9==rows[2].y)
-assert(rows[3].acts==2 and rows[3].a1=='Open' and rows[3].h==rows[2].h+30)
+assert(rows[1].title=='Three' and rows[2].title=='Two' and rows[3].title=='One')
+assert(rows[1].depth==0 and rows[2].depth==1 and rows[3].depth==2)
+assert(rows[1].y==6 and rows[1].y+rows[1].h+9==rows[2].y and rows[2].y+rows[2].h+9==rows[3].y)
+assert(rows[1].acts==2 and rows[1].a1=='Open' and rows[1].h==rows[2].h+30)
 assert(stack.slot('One')==one)
 stack.report({notice(4,'Four'),notice(3,'Three'),notice(2,'Two'),notice(1,'One')})
-rows=stack.live();assert(#rows==3 and rows[1].title=='Two' and rows[3].title=='Four')
+rows=stack.live();assert(#rows==3 and rows[1].title=='Four' and rows[3].title=='Two')
 assert(not stack.env.model.toasts[one+1].live and stack.slot('Four')~=one,'a fading slot is not reused at once')
 -- A replacement is updated in place.
 stack.report({notice(3,'Three again'),notice(4,'Four'),notice(2,'Two')})
-rows=stack.live();assert(rows[2].title=='Three again' and rows[3].title=='Four')
+rows=stack.live();assert(rows[2].title=='Three again' and rows[1].title=='Four')
+-- The bottom right keeps the old order: the newest at the bottom edge, older ones above it.
+stack.event('notices_position',1);assert(stack.env.fact.corner=='bottom_right')
+rows=stack.live();assert(rows[3].title=='Four' and rows[3].y+rows[3].h==608 and rows[2].y+rows[2].h+9==rows[3].y)
+stack.event('notices_position',7);assert(stack.env.fact.corner=='bottom_right')
+stack.event('notices_position',0);assert(stack.env.fact.corner=='top_right' and stack.live()[1].title=='Four')
 -- Actions: buttons from the footer, the default action from the card, close from its chip.
 stack.report({notice(5,'Acts',nil,1,1,{actions={{key='default',label='Open'},{key='r',label='Reply'},{key='m',label='Mark Read'}}})})
 local acts,arow=stack.slot('Acts');assert(arow.acts==2 and arow.opens and arow.a1=='Reply' and arow.a2=='Mark Read')
@@ -130,6 +136,29 @@ expiry.report({});assert(not expiry.slot('Timed'))
 expiry.report({notice(2,'Forever',nil,1,1,{timeout=0,left=0})})
 local forever_index,forever=expiry.slot('Forever');assert(not forever.counting and forever.left==0)
 expiry.event('toast_enter',forever_index);assert(#expiry.calls==2,'nothing to hold')
+
+-- A bar popup open over the top right hides the toasts and holds their lines until it closes.
+local cover=boot(fresh())
+cover.report({notice(1,'Covered',nil,1,1,{timeout=6000,left=6000})})
+local covered_index=cover.slot('Covered')
+cover.advance(1000);cover.event('notices_cover',1);assert(cover.env.fact.covered)
+assert(cover.calls[#cover.calls][1]=='notifications.hold' and cover.calls[#cover.calls][3]==true)
+cover.advance(20000);local _,held=cover.slot('Covered');assert(held.held and near(held.left,5/6))
+assert(not cover.env.fact.toasts_open,'the glass closes under the popup, so it takes no clicks')
+cover.report({notice(2,'Arrived'),notice(1,'Covered',nil,1,1,{timeout=6000,left=5000})})
+local _,arrived=cover.slot('Arrived');assert(arrived.held,'a toast that arrives under a popup waits for it')
+cover.event('toast_enter',covered_index);cover.event('notices_cover',0)
+assert(cover.env.fact.toasts_open)
+_,held=cover.slot('Covered');assert(held.held,'the pointer still holds it');_,arrived=cover.slot('Arrived');assert(not arrived.held)
+cover.event('toast_leave',covered_index);_,held=cover.slot('Covered');assert(not held.held)
+cover.event('notices_cover',1);cover.event('notices_position',1)
+_,held=cover.slot('Covered');assert(not held.held,'bar popups do not reach the bottom right')
+cover.event('notices_cover',3);assert(cover.env.fact.covered)
+local power_cover=boot(fresh())
+power_cover.event('notices_cover',1);power_cover.event('power_warning_low',0.2)
+power_cover.advance(60000);assert(power_cover.slot('Battery low'),'a covered power warning waits')
+power_cover.event('notices_cover',0);power_cover.advance(5999);assert(power_cover.slot('Battery low'))
+power_cover.advance(1);assert(not power_cover.slot('Battery low'))
 
 -- Critical: no capillary, the numeral is the clock, and it stays until closed.
 local critical=boot(fresh())
@@ -167,7 +196,8 @@ power.advance(3999);assert(power.slot('Battery low'));power.advance(1);assert(no
 
 -- Unread: set by a new ID that is not low urgency, kept across restarts, cleared only when seen.
 local bell=boot(fresh())
-assert(bell.said[#bell.said]=='emit notices_state 0' and not bell.env.fact.unread)
+assert(bell.said[1]=='emit notices_state 0' and not bell.env.fact.unread)
+assert(bell.said[#bell.said]=='emit notices_ask','a daemon that starts asks the bar where to stack')
 bell.report({notice(1,'Quiet',nil,1,0)});assert(not bell.env.fact.unread and #bell.tones==1)
 bell.report({notice(2),notice(1,'Quiet',nil,1,0)})
 assert(bell.env.fact.unread and bell.files['notices.json'].unread==true and bell.said[#bell.said]=='emit notices_state 1')
@@ -191,9 +221,11 @@ quiet.event('notices_seen',0);assert(quiet.said[#quiet.said]=='emit notices_stat
 quiet.report({notice(2),notice(1)})
 assert(#quiet.live()==0 and #quiet.tones==1 and quiet.env.fact.unread)
 quiet.event('power_warning_low',0.2);assert(#quiet.live()==1 and #quiet.tones==2)
-assert(quiet.live()[1].y+quiet.live()[1].h==608-46-9,'a toast sits above the pill')
+assert(quiet.live()[1].y==6+46+9,'a toast sits below the pill')
+quiet.event('notices_position',1);assert(quiet.live()[1].y+quiet.live()[1].h==608-46-9,'at the bottom right it sits above it')
+quiet.event('notices_position',0)
 quiet.advance(2599);assert(quiet.env.fact.dnd_pill)
-quiet.advance(1);assert(not quiet.env.fact.dnd_pill and quiet.live()[1].y+quiet.live()[1].h==608)
+quiet.advance(1);assert(not quiet.env.fact.dnd_pill and quiet.live()[1].y==6)
 quiet.event('notices_dnd',1);quiet.event('notices_dnd',7);assert(quiet.env.fact.dnd and not quiet.env.fact.dnd_pill)
 quiet.event('notices_dnd',2);assert(not quiet.env.fact.dnd and not quiet.env.fact.dnd_pill and #quiet.live()==1)
 quiet.report({notice(3),notice(2),notice(1)});assert(#quiet.live()==2 and #quiet.tones==3)

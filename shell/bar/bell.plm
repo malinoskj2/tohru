@@ -6,6 +6,10 @@ part BarBell {
     event notices_state ->
     event bell_seen ->
     event bell_dnd ->
+    event notices_ask ->
+    event bar_popups ->
+    let bar_popup_open = sound_open or media_open or cal_open or net_open or bt_open or info_visible or about_visible or wall_open
+    on change bar_popup_open { emit bar_popups(if(bar_popup_open, 1, 0)) }
     let bell_accent = #b4befe
     zone box bar_bell_hit { from: bell_x, 4; size: 24, 22; corner: 7; cursor: pointer; label: "Notifications" }
     box { from: bell_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(bar_bell_hit.hover * 10%, bar_bell_hit.pressed * 16%) }

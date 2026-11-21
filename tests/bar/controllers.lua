@@ -143,13 +143,19 @@ print("Visible calendar reload keeps the month and the rail; close/reopen works"
 events = environment()
 local said = {}
 sys.call = function(name, role, request) assert(name == "say" and role == "tohru-notifications"); said[#said + 1] = request end
-assert(loadfile("shell/bar/bell.luau"))()()
+local bell = assert(loadfile("shell/bar/bell.luau"))()()
 assert(said[1] == "emit notices_report 0")
+bell.place(0); bell.place(0); assert(#said == 2 and said[2] == "emit notices_position 0")
+events.bar_popups(1); assert(said[3] == "emit notices_cover 1", "an open bar popup covers the toasts")
+events.notices_ask(); assert(said[4] == "emit notices_position 0" and said[5] == "emit notices_cover 1", "a daemon that starts is told where to stack")
+bell.place(1); assert(said[6] == "emit notices_position 1")
+events.bar_popups(0); assert(said[7] == "emit notices_cover 0")
+said = {}
 events.notices_state(1); assert(fact.notices_unread == true and fact.notices_dnd == false)
 events.notices_state(2); assert(fact.notices_unread == false and fact.notices_dnd == true)
 events.notices_state("garbage"); assert(fact.notices_unread == false and fact.notices_dnd == false)
 events.bell_seen(); events.bell_dnd()
-assert(said[2] == "emit notices_seen 0" and said[3] == "emit notices_dnd 2")
+assert(said[1] == "emit notices_seen 0" and said[2] == "emit notices_dnd 2")
 sys.call = function() error("tohru-notifications is not running") end
 events.bell_seen()
 print("Bell shows what the notification daemon reports and survives it being away")

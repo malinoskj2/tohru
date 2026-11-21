@@ -1,6 +1,6 @@
 language 0.4
 scene TohruNotifications {
-    surface { size: 404, 620; anchor: bottom_right; margin: 0; level: overlay; keyboard: none; screens: all }
+    surface { size: 404, 620; anchor: corner; margin: 0; level: overlay; keyboard: none; screens: all }
     permissions { services: "notifications", "notifications.*", "sound", "files", "files.write", "say:tohru" }
     fact last_id = 0
     fact power_level = 0
@@ -8,6 +8,8 @@ scene TohruNotifications {
     fact dnd = false
     fact dnd_pill = false
     fact toasts_open = false
+    fact corner: top_right | bottom_right = top_right
+    fact covered = false
     event notices_seen ->
     event notices_dnd ->
     event notices_report ->
@@ -20,6 +22,8 @@ scene TohruNotifications {
     event toast_close ->
     event toast_open ->
     event toast_action ->
+    event notices_position ->
+    event notices_cover ->
     model toasts max 4 {
         live: bool; serial: number; y: number; h: number; depth: number
         app: text; title: text; body: text; lines: number; clock: text
@@ -35,7 +39,10 @@ scene TohruNotifications {
     image toast_bell_off = file "../service-assets/bell-off-filled.svg", 14, 14
     prop pill_seen = 0 ~spring(196, 24)
     follow pill_seen = if(dnd_pill, 1, 0)
+    prop tuck = 0 ~spring(196, 24)
+    follow tuck = if(covered and corner == top_right, 1, 0)
     let toast_x = 16
+    let from_top = if(corner == top_right, 1, 0)
     popup toasts_glass {
         at: 0, 0
         size: 404, 620
@@ -47,7 +54,7 @@ scene TohruNotifications {
     component Toast(t: record) {
         prop seen = 0 ~spring(196, 24)
         follow seen = if(t.live, 1, 0)
-        prop ty = 608 ~spring(170, 26)
+        prop ty = 0 ~spring(170, 26)
         follow ty = t.y
         prop cap = 1 ~spring(400, 40)
         follow cap = t.left
@@ -61,16 +68,16 @@ scene TohruNotifications {
         let numeral_x = 360 - 24 * shut
         let seg = 374 / max(t.acts, 1)
         group {
-            move: toast_x + (1 - seen) * 28, ty
-            opacity: clamp(seen, 0, 1) * dim
-            show: seen > 0.002
+            move: toast_x + (1 - from_top) * (1 - seen) * 28, ty - from_top * (1 - seen) * 28
+            opacity: clamp(seen, 0, 1) * dim * (1 - tuck)
+            show: seen > 0.002 and tuck < 0.998
             body {
                 color: ink_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
                 shadow: 0, 4, 10, 0.22 - 0.1 * pk
                 box { from: 0, 0; size: 374, t.h; corner: 15 }
             }
             shader glass_fill { at: 0, 0; size: 374, t.h; corner: 15; values: 0.62, 0.46, 0.65, pk, 0; colors: ink_glass }
-            zone box card { from: 0, 0; size: 374, t.h; corner: 15; cursor: if(t.opens, pointer, default); active: t.live; label: "{t.app}: {t.title}" }
+            zone box card { from: 0, 0; size: 374, t.h; corner: 15; cursor: if(t.opens, pointer, default); active: t.live and tuck < 0.5; label: "{t.app}: {t.title}" }
             on enter card { shut: 1; emit toast_enter(t.index) }
             on leave card { shut: 0; emit toast_leave(t.index) }
             on press card { emit toast_open(t.index) }
@@ -101,7 +108,7 @@ scene TohruNotifications {
                 box { from: seg, t.h - 26; size: 1, 22; color: ink_white; opacity: 7.5% - 1.5% * pk; show: t.acts > 1 }
                 box { from: 2 * seg, t.h - 26; size: 1, 22; color: ink_white; opacity: 7.5% - 1.5% * pk; show: t.acts > 2 }
                 repeat k in 0..3 {
-                    zone box act { from: k * seg, t.h - 30; size: seg, 30; cursor: pointer; active: t.live and t.acts > k; label: pick(k, t.a1, t.a2, t.a3) }
+                    zone box act { from: k * seg, t.h - 30; size: seg, 30; cursor: pointer; active: t.live and tuck < 0.5 and t.acts > k; label: pick(k, t.a1, t.a2, t.a3) }
                     box { from: k * seg, t.h - 30; size: seg, 30; color: ink_white; opacity: max(act.hover * 6%, act.pressed * 10%); show: t.acts > k }
                     on press act { emit toast_action(t.index * 4 + k + 1) }
                 }
@@ -117,7 +124,7 @@ scene TohruNotifications {
             group {
                 opacity: shut
                 show: shut > 0.01
-                zone box close_hit { from: 340, 11; size: 22, 22; corner: 11; cursor: pointer; active: t.live and shut > 0.5; label: "Close notification" }
+                zone box close_hit { from: 340, 11; size: 22, 22; corner: 11; cursor: pointer; active: t.live and tuck < 0.5 and shut > 0.5; label: "Close notification" }
                 box { from: 342, 13; size: 18, 18; corner: 9; color: ink_white; opacity: 10% - 2% * pk + max(close_hit.hover * 8%, close_hit.pressed * 12%) }
                 path { at: 351, 22; stroke: 1.3; color: ink_white; opacity: 72%; move -3, -3; line 3, 3 }
                 path { at: 351, 22; stroke: 1.3; color: ink_white; opacity: 72%; move 3, -3; line -3, 3 }

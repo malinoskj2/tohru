@@ -1,8 +1,8 @@
 part DndPill {
     group {
-        move: 96 + (1 - pill_seen) * 28, 562
-        opacity: clamp(pill_seen, 0, 1)
-        show: pill_seen > 0.002
+        move: 96 + (1 - from_top) * (1 - pill_seen) * 28, if(corner == top_right, 6, 562) - from_top * (1 - pill_seen) * 28
+        opacity: clamp(pill_seen, 0, 1) * (1 - tuck)
+        show: pill_seen > 0.002 and tuck < 0.998
         body {
             color: ink_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
             shadow: 0, 4, 10, 0.22 - 0.1 * pk

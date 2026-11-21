@@ -1,6 +1,7 @@
 -- Settings ownership is in Rust, outside this reloadable VM.
 local make_rail = require("bar/rail")
 local workspace = require("bar/workspace")(make_rail(0))
+local bell = require("bar/bell")()
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
@@ -9,6 +10,8 @@ local function publish(settings)
     fact.corners = settings["appearance.corners"].value
     fact.corner_size = settings["appearance.corner_size"].value
     workspace.prefer(settings["bar.preferred_output"].value)
+    local position = settings["notifications.position"]
+    bell.place(position and position.value == "bottom-right" and 1 or 0)
     text.settings_status = json.encode({schema = 7, settings = settings})
 end
 local function change(operation)
@@ -65,7 +68,6 @@ on("sound_toggle", function() if fact.sound_open then osd.hide() end end)
 
 local media = require("media/controller")()
 require("bar/controller")(media.observe)
-require("bar/bell")()
 require("bar/launcher")()
 local calendar = require("calendar/controller")(make_rail(1, 21))
 local network = require("network/controller")()
