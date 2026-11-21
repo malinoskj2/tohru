@@ -17,7 +17,9 @@ let
     // lib.optionalAttrs (assistant.persona.enable != null) { persona = assistant.persona.enable; }
     // lib.optionalAttrs (assistant.memory.enable != null) { memory = assistant.memory.enable; }
     // lib.optionalAttrs (assistant.voice.wake != null) { voice_wake = assistant.voice.wake; }
-    // lib.optionalAttrs (assistant.voice.models != null) { voice_models = assistant.voice.models; }
+    // lib.optionalAttrs (assistant.voice.vadModel != null) { vad_model = assistant.voice.vadModel; }
+    // lib.optionalAttrs (assistant.voice.asrModel != null) { asr_model = assistant.voice.asrModel; }
+    // lib.optionalAttrs (assistant.voice.turnModel != null) { turn_model = assistant.voice.turnModel; }
     // lib.optionalAttrs (assistant.voice.kwsModel != null) { kws_model = assistant.voice.kwsModel; }
     // lib.optionalAttrs (assistant.tts.model != null) { tts_model = assistant.tts.model; }
     // lib.optionalAttrs (assistant.provider != null) { provider = assistant.provider; }
@@ -138,16 +140,29 @@ in {
         default = null;
         description = "How the wake word is spotted, written to the managed `assistant.voice_wake`; `null` leaves it to the user's config (`asr`).";
       };
-      voice.models = lib.mkOption {
+      voice.vadModel = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
-        example = "/mnt/models/by-name";
-        description = "The folder holding `silero-vad`, `voice-asr`, `voice-turn`, `voice-kokoro` and, for `wake = \"kws\"`, `voice-kws`, for `assistant.voice_models`; `null` uses `$MODEL_ROOT/by-name`.";
+        example = "/srv/models/silero-vad/silero-vad-v6.2.3.onnx";
+        description = "The Silero VAD `.onnx` file, written to `assistant.vad_model`. Required for voice; `null` leaves it to the user's config. Nothing is downloaded.";
+      };
+      voice.asrModel = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "/srv/models/sherpa-onnx-streaming-zipformer-en-2023-06-21";
+        description = "The sherpa-onnx streaming Zipformer folder (`tokens.txt`, `encoder*.onnx`, `decoder*.onnx`, `joiner*.onnx`), written to `assistant.asr_model`. Required for voice; `null` leaves it to the user's config.";
+      };
+      voice.turnModel = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "/srv/models/smart-turn-v3/smart-turn-v3.2-cpu.onnx";
+        description = "The Smart Turn v3.2 `.onnx` file, written to `assistant.turn_model`. Optional: unset, a turn ends after a silence only. `null` leaves it to the user's config.";
       };
       voice.kwsModel = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
-        description = "The sherpa-onnx keyword-spotter folder for `assistant.kws_model`; `null` uses `voice-kws` in the voice models folder.";
+        example = "/srv/models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01";
+        description = "The sherpa-onnx keyword-spotter folder, written to `assistant.kws_model`; only needed with `wake = \"kws\"`. `null` leaves it to the user's config.";
       };
       tts.loadOnConversation = lib.mkOption {
         type = lib.types.nullOr lib.types.bool;
@@ -162,7 +177,8 @@ in {
       tts.model = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
-        description = "The Kokoro folder (`model.onnx`, `tokenizer.json`, `voices/`), for `assistant.tts_model`; `null` uses the `voice-kokoro` model under the voice models.";
+        example = "/srv/models/kokoro-82m";
+        description = "The Kokoro folder (`model.onnx`, `tokenizer.json`, `voices/`), written to `assistant.tts_model`. Unset, the dragon speaks with espeak-ng. `null` leaves it to the user's config.";
       };
       provider = lib.mkOption {
         type = lib.types.nullOr (lib.types.enum providers);
