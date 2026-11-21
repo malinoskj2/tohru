@@ -306,7 +306,10 @@ fn session_discovery_honors_try_exec_dedup_ranking_and_launch_wrapping() {
 
     // UWSM launches directly without double shell wrapping
     let uwsm_launch = build_session_launch(&sessions[0]).unwrap();
-    assert_eq!(uwsm_launch.cmd[0], uwsm_bin.to_str().unwrap());
+    assert_eq!(
+        uwsm_launch.cmd[0],
+        format!("'{}'", uwsm_bin.to_str().unwrap())
+    );
     assert!(uwsm_launch.env.contains(&"XDG_SESSION_TYPE=wayland".into()));
     assert!(
         uwsm_launch
@@ -316,11 +319,11 @@ fn session_discovery_honors_try_exec_dedup_ranking_and_launch_wrapping() {
 
     // Non-UWSM wraps in login shell so NixOS + Home Manager env vars are loaded
     let direct_launch = build_session_launch(&sessions[1]).unwrap();
-    assert_eq!(direct_launch.cmd[0], "/bin/sh");
-    assert_eq!(direct_launch.cmd[1], "-lc");
+    assert_eq!(direct_launch.cmd[0], "'/bin/sh'");
+    assert_eq!(direct_launch.cmd[1], "'-lc'");
     assert_eq!(
         direct_launch.cmd.last().map(String::as_str),
-        Some("/nix/store/x/bin/start-hyprland")
+        Some("'/nix/store/x/bin/start-hyprland'")
     );
 
     // Field codes stripped cleanly
@@ -415,6 +418,69 @@ fn greeter_config_and_state_tolerate_bad_files_and_round_trip() {
     assert_eq!(snap.selected_user, "alice");
     assert_eq!(snap.selected_session, "hyprland");
     assert_eq!(snap.hostname, "home");
+}
+
+/// Run `launch.cmd` the way greetd does: joined with spaces through `/bin/sh -c`.
+fn greetd_argv(launch: &super::discovery::SessionLaunch, dump: &Path) -> Vec<String> {
+    let out = dump.with_extension("out");
+    let status = std::process::Command::new("/bin/sh")
+        .arg("-c")
+        .arg(launch.cmd.join(" "))
+        .env("ARGDUMP_OUT", &out)
+        .env("HOME", dump.parent().unwrap())
+        .env("USER", "nobody-tohru-test")
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let raw = fs::read(&out).unwrap();
+    fs::remove_file(&out).unwrap();
+    raw.split(|b| *b == 0)
+        .filter(|s| !s.is_empty())
+        .map(|s| String::from_utf8(s.to_vec()).unwrap())
+        .collect()
+}
+
+#[test]
+fn session_launch_survives_greetd_space_join_and_sh_c() {
+    let dir = TempDir::new("launch-quote");
+    let script = b"#!/bin/sh\nfor a in \"$0\" \"$@\"; do printf '%s\\0' \"$a\"; done > \"$ARGDUMP_OUT\"\n";
+    let bin_dir = dir.path().join("my bin");
+    let dump = bin_dir.join("argdump");
+    let uwsm = bin_dir.join("uwsm");
+    for bin in [&dump, &uwsm] {
+        write_file(bin, script);
+        fs::set_permissions(bin, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let exec_tail = r#""two words" 'it'\''s' "$HOME" "semi;colon" back\\slash for"#;
+    let expected_tail: Vec<String> = [
+        "two words",
+        "it's",
+        "$HOME",
+        "semi;colon",
+        "back\\slash",
+        "for",
+    ]
+    .map(String::from)
+    .to_vec();
+
+    for bin in [&dump, &uwsm] {
+        let entry = SessionEntry {
+            id: "quoted".into(),
+            name: "Quoted".into(),
+            exec: format!("\"{}\" {exec_tail}", bin.display()),
+            desktop_names: vec!["Quoted".into()],
+            kind: SessionKind::Wayland,
+        };
+        let launch = build_session_launch(&entry).unwrap();
+        let mut expected = vec![bin.to_str().unwrap().to_owned()];
+        expected.extend(expected_tail.iter().cloned());
+        assert_eq!(
+            greetd_argv(&launch, &dump),
+            expected,
+            "cmd: {}",
+            launch.cmd.join(" ")
+        );
+    }
 }
 
 #[test]
