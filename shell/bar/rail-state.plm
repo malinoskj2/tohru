@@ -1,16 +1,16 @@
 part RailState {
     // Rail 0 is the workspace switcher, rail 1 the calendar's months, rail 2 the sound popup's master
-    // volume. bar/rail.luau sets the goal and the per-switch draws; everything that moves is a spring here.
+    // volume, rails 3 and 4 the wallpaper popup's monitor tabs and playback. bar/rail.luau sets the goal and the per-switch draws; everything that moves is a spring here.
     shader rail_shader = file "ribbon.wgsl"
-    let rail.skew[3]
-    let rail.bead[3]
-    let rail.wave[3]
-    let rail.pos[3]
-    let rail.lo[3]
-    let rail.red[3]
-    let rail.green[3]
-    let rail.blue[3]
-    repeat r in 0..3 {
+    let rail.skew[5]
+    let rail.bead[5]
+    let rail.wave[5]
+    let rail.pos[5]
+    let rail.lo[5]
+    let rail.red[5]
+    let rail.green[5]
+    let rail.blue[5]
+    repeat r in 0..5 {
         fact rail.slots.$r = 5
         fact rail.present.$r = false
         fact rail.goal.$r = 8
@@ -77,8 +77,8 @@ part RailState {
         // the wave's direction in the sign of its phase.
         rail.bead[r] = clamp(rail.hh.$r, 0, 7.99) + 8 * round(clamp(rail.rd.$r, 0, 1) * 255)
         rail.wave[r] = rail.dir.$r * (1 + rail.t.$r / rail.life.$r)
-        // Workspaces take the palette slot by slot; the months and the volume spread it across the whole rail.
-        rail.pos[r] = if(r == 0, clamp((rail.x.$r - 8) / 16, 0, rail.slots.$r - 1), clamp(rail.x.$r / if(r == 1, 192, 194) * 4, 0, 4))
+        // Workspaces take the palette slot by slot; the other rails spread it across their whole length.
+        rail.pos[r] = if(r == 0, clamp((rail.x.$r - 8) / 16, 0, rail.slots.$r - 1), clamp(rail.x.$r / pick(r, 1, 192, 194, 312, 210) * 4, 0, 4))
         rail.lo[r] = min(floor(rail.pos[r]), if(r == 0, rail.slots.$r - 2, 3))
         rail.red[r] = mix(pick(mod(rail.lo[r], 5), 250, 249, 166, 180, 203), pick(mod(rail.lo[r] + 1, 5), 250, 249, 166, 180, 203), rail.pos[r] - rail.lo[r]) / 255
         rail.green[r] = mix(pick(mod(rail.lo[r], 5), 179, 226, 227, 190, 166), pick(mod(rail.lo[r] + 1, 5), 179, 226, 227, 190, 166), rail.pos[r] - rail.lo[r]) / 255
