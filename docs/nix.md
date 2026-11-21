@@ -8,7 +8,7 @@ The flake only exports `x86_64-linux`.
 |---|---|
 | `packages.x86_64-linux.tohru` (also `default`) | The shell: scenes under `share/tohru/shell`, the `tohru` CLI and every launch wrapper, all pointed at the patched runtime |
 | `packages.x86_64-linux.pleamar-runtime` | The patched Pleamar 0.7.27 runtime on its own |
-| `packages.x86_64-linux.tohru-hyprland` | The Hyprland plugin, built against Hyprland 0.56.2 from the `hyprland-nixpkgs` input |
+| `packages.x86_64-linux.tohru-hyprland` | The Hyprland plugin, built against Hyprland 0.57.2 from the `hyprland-nixpkgs` input |
 | `apps.x86_64-linux.default` (also `shell`) | Runs `tohru-run`, the bar |
 | `apps.x86_64-linux.tohru` | Runs the `tohru` CLI |
 | `overlays.default` | Adds `tohru-hyprland`, built against the Hyprland in the package set it is applied to |
@@ -112,7 +112,7 @@ Without that service the locker uses `pleamar`'s or `hyprlock`'s PAM service if 
 
 ## Hyprland plugin
 
-`tohru-hyprland` is optional. The shell works without it. It must be built against the exact Hyprland your session runs: the package asserts Hyprland 0.56.2, and the plugin refuses to load if its build headers do not match the running compositor.
+`tohru-hyprland` is optional. The shell works without it. It must be built against the exact Hyprland your session runs: the package asserts Hyprland 0.57.2, and the plugin refuses to load if its build headers do not match the running compositor.
 
 The default for `programs.tohru.hyprlandPlugin.package` uses, in order: `wayland.windowManager.hyprland.package`, the NixOS `programs.hyprland.package` when Home Manager runs as a NixOS module, then `pkgs.hyprland`. Evaluating it fails if that Hyprland is not 0.56.2. If your compositor carries local patches, build against that exact derivation:
 
@@ -138,7 +138,7 @@ Its animation leaves (`hyprfocusIn`, `hyprsheetIn`, `hyprrecedeTilt` and the res
 ## Pinning
 
 - `nixpkgs` is pinned to `4fe25e12eb9f4c744966dd3de5a05246cf098601`. It builds the `packages` outputs. You can make it follow yours with `inputs.tohru.inputs.nixpkgs.follows = "nixpkgs";`.
-- `hyprland-nixpkgs` is pinned to `8ce4ef6cb6f871616146b9fe26d2a5ae594e94fe`, the package set with Hyprland 0.56.2. It is only used for `packages.x86_64-linux.tohru-hyprland`. Do not make it follow a nixpkgs that has a different Hyprland.
+- `hyprland-nixpkgs` is pinned to `2786a2a72088ecf32aea5b3ec52099e6a7cff78f`, the package set with Hyprland 0.57.2. It is only used for `packages.x86_64-linux.tohru-hyprland`. Do not make it follow a nixpkgs that has a different Hyprland.
 - The Home Manager module builds `programs.tohru.package` and the plugin from the consumer's `pkgs`, not from the flake's pins. To use the flake's own build instead, set `programs.tohru.package = inputs.tohru.packages.x86_64-linux.default;`.
 - Pleamar is pinned separately in `runtime/pleamar/pin.json`: version 0.7.27, revision `dc902feb0ee9058b7db7c2bc2c9d59d9f655fd86`, with the archive hash. Both the Nix package and `runtime/pleamar/prepare.sh` read the archive and hash from `pin.json`, and both apply every `.patch` file in `runtime/pleamar/patches/` in name order. Changing the pin means editing `pin.json`, rebasing those patches and updating `runtime/pleamar/Cargo.lock`.
 

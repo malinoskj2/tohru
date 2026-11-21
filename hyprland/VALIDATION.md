@@ -4,9 +4,15 @@
 
 - Source provenance/scope: `make check` checks SHA-256 for every copied file,
   allowing only the recorded partial-init null guard in bar teardown.
-- Compilation: GCC 16.2.0, existing stdenv and exact reviewed Hyprland 0.56.2
-  dev output, Lua 5.5.0; `make -j1` succeeded. One inherited warning about
-  deprecated `HyprlandAPI::addConfigKeyword` in the legacy-config branch.
+- Compilation: `nix build .#tohru-hyprland` against the exact reviewed
+  Hyprland 0.57.2 dev output succeeded without compiler warnings. 0.57 has no
+  legacy config, so the deprecated `addConfigKeyword` branch is gone.
+- Nested Hyprland 0.57.2 (inside the sandbox's 0.56.2 on sway, captured from
+  a headless output): the plugin loads, `hyprctl desktop-effects-capabilities`
+  reports the 0.57.2 hash, title bars draw, focus dips shrink and restore,
+  recession tilts, shades and blurs behind a matching layer and reverses when
+  it closes, and a chooser sheet opens centred on its parent and folds back on
+  close. Unloading removed the bars without crashing.
 - `make check-abi` uses the real candidate version macros and the actual
   private ABI helper with a fake host-hash boundary; exact matching passes and
   wrong source/dependency hashes fail. Nix runs this as its package check phase.

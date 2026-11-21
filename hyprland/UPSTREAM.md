@@ -35,17 +35,17 @@ compositor configuration belongs to Nix.
 
 ## Reviewed target
 
-- Nix repository flake.lock `nixpkgs-hyprland`:
-  `8ce4ef6cb6f871616146b9fe26d2a5ae594e94fe`;
-  NAR `sha256-xB8mKMOx1IA9vTDNLmJZ6n4wCMq/cuWBBOzGCRnqxrU=`.
-- Hyprland 0.56.2, actual source commit
-  `efb50993780079460b0cbed1363e2166a2de1d9f`.
+- Root `hyprland-nixpkgs` and `hyprland/flake.nix` `nixpkgs`:
+  nixos-unstable `2786a2a72088ecf32aea5b3ec52099e6a7cff78f`;
+  NAR `sha256-f/VVvxf5RsQgWVhUtefoca5ktVg0DA2bnkMOcmSnozo=`.
+- Hyprland 0.57.2, actual source commit
+  `11cbc6c577b84ffb1edf4df3fc5b6128c3ae6947`.
 - Examined existing development output:
-  `/nix/store/cbzp6ml69cd8c2v12qkrhsdp62bhp81k-hyprland-0.56.2-dev`.
-  Its src/version.h declares aquamarine 0.15.0, hyprutils 0.14.1,
-  hyprgraphics 0.5.1, hyprcursor 0.1.13, hyprlang 0.6.8.
+  `/nix/store/k3c186wq7f8z4bb0qc3d8nwyphx2ngpc-hyprland-0.57.2-dev`.
+  Its src/version.h declares aquamarine 0.16.0, hyprutils 0.14.4,
+  hyprgraphics 0.6.0, hyprcursor 0.1.13, hyprlang 0.6.8.
 - Expected API hash from those headers:
-  `efb50993780079460b0cbed1363e2166a2de1d9f_aq_0.15_hu_0.14_hg_0.5_hc_0.1_hlg_0.6`.
+  `11cbc6c577b84ffb1edf4df3fc5b6128c3ae6947_aq_0.16_hu_0.14_hg_0.6_hc_0.1_hlg_0.6`.
 
 Nix asserts the reviewed version and C++ asserts the exact source commit.
 `Abi.hpp` privately computes the complete Hyprland API hash from the build
@@ -55,16 +55,38 @@ The API hash does not encode every local patch or compiler option: the plugin
 must be built from the same compositor derivation used by the candidate session.
 Pass that derivation explicitly as `hyprland` to package.nix.
 
-`/home/jesse/nix/hosts/home/gaming.nix` adds tearing-first-frame.patch to the
-physical compositor. That existing patch stays owned by Nix, with no copy or
-activation here. The standalone flake is the unpatched exact upstream baseline;
-it is not a claim that a separately patched desktop build has been validated.
+Hyprland 0.57 includes upstream's first-frame tearing fix (b04e606), which
+`/home/jesse/nix/hosts/home/gaming.nix` carried as tearing-first-frame.patch
+for 0.56.2. The standalone flake is the unpatched exact upstream baseline; any
+locally patched desktop build must still build the plugin from that derivation.
 
-Private internals include CWindow::sendWindowSize (focus render-only shrink),
+Private internals include Layout::CWindowTarget::sendWindowSize (focus render-only
+shrink; CWindow::sendWindowSize only forwards to it in 0.57), the four-argument
 CWindowFadeout::create (sheet close snapshot), transformer/render-pass behavior,
 window decoration/rules and animation state. Successful compilation does not
 prove hook installation, rendering parity or unload safety. Review and private
 compositor validation are required before widening this pin.
+
+## Hyprland 0.57 port
+
+`bars/` takes hyprland-plugins' API-chase commits 81516ad, a9eaa52, 2b41ad8,
+722f15a, 64d6f51 and 428bfcd, not its later feature commits. Where those commits
+changed behaviour, the 0.56 behaviour is kept: X11 windows that suggest no border
+get no bar, rule updates call `updateDecorations`, a touch drag still floats,
+resizes, pins and moves the focused window, and a bar drag starts only when the
+pointer's window accepts it, as 0.56's `changeMouseBindMode` did. Focus keeps
+its 0.56 timing instead of upstream's deferred focus.
+
+`focus/` hooks `Layout::CWindowTarget::sendWindowSize`, which layout updates
+call directly. Focus reasons are a bitmask in 0.57, so click-down and click-up
+both count as mouse focus.
+
+`sheet.cpp` and `recede.cpp` use 0.57's transformer interface: each reports its
+drawn extents and draws the cropped input canvas into a work buffer that it
+returns with its monitor-local box. `LogicalFramebuffer.hpp` is gone because 0.57
+hands transformers a canvas in logical orientation. Recession clears the blur
+matte to opaque so it keeps the frame's box. The sheet's commit listener is on
+the window's private XDG surface, reached through `CWaylandBackend`.
 
 ## Cleanup ownership limits of the pinned API
 

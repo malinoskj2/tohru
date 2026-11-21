@@ -92,7 +92,7 @@ The bindings in `runtime/pleamar/bindings/` are copied into the Pleamar source a
 
 ## Hyprland plugin
 
-`hyprland/` is a separate, optional compositor plugin, `libtohru-hyprland.so`. It does not link to or talk to the shell. It combines four effects: focus dips (from hyprfocus), thin titlebars (from hyprbars), file chooser sheets attached to their parent window, and a tilt, shrink, shade and blur of windows behind the launcher's `tohru-launcher-backdrop` layer. It is built for Hyprland 0.56.2 and checks the compositor's API hash before installing any hook.
+`hyprland/` is a separate, optional compositor plugin, `libtohru-hyprland.so`. It does not link to or talk to the shell. It combines four effects: focus dips (from hyprfocus), thin titlebars (from hyprbars), file chooser sheets attached to their parent window, and a tilt, shrink, shade and blur of windows behind the launcher's `tohru-launcher-backdrop` layer. It is built for Hyprland 0.57.2 and checks the compositor's API hash before installing any hook.
 
 ## Repository layout
 

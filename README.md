@@ -5,7 +5,7 @@ A Linux desktop shell for Hyprland, written as [Pleamar](https://github.com/k4di
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Nix flake](https://img.shields.io/badge/Nix-flake-5277C3?logo=nixos&logoColor=white)](flake.nix)
 [![Platform: x86_64-linux](https://img.shields.io/badge/platform-x86__64--linux-lightgrey)](#status)
-[![Hyprland 0.56.2](https://img.shields.io/badge/Hyprland-0.56.2-58E1FF)](hyprland/README.md)
+[![Hyprland 0.57.2](https://img.shields.io/badge/Hyprland-0.57.2-58E1FF)](hyprland/README.md)
 [![Pleamar 0.7.27](https://img.shields.io/badge/Pleamar-0.7.27-1f6feb)](runtime/pleamar/pin.json)
 [![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#status)
 
@@ -121,7 +121,7 @@ The `tohru` command sends requests to the running processes. It reports that a r
 | `tohru notifications dnd toggle` | Turn Do Not Disturb on or off (also `on`, `off`; right-click the bell) |
 | `tohru settings open` | Open Settings, starting it if needed |
 
-For example, in a Hyprland 0.56 Lua configuration:
+For example, in a Hyprland 0.57 Lua configuration:
 
 ```lua
 hl.bind("SUPER + Space", hl.dsp.exec_cmd("tohru launcher toggle"))
@@ -162,4 +162,4 @@ Tohru is MIT licensed ([LICENSE](LICENSE)).
 - [Pleamar](https://github.com/k4ditano/pleamar) is BSD-3-Clause. Its source is fetched at build time and its license and third-party notices are installed with the runtime. `tools/reference/fixtures/workspace/PLEAMAR-LICENSE` carries its notice for the reference workspace rail code, which was first written inside a vendored Pleamar tree.
 - The `J2BAR-LICENSE` files (`shell/bar/`, `shell/corners/`, `shell/sound/`, `tools/reference/fixtures/workspace/`) are j2bar's MIT notice for layouts, assets, shaders and motion code ported from j2bar.
 - `shell/sound/LICENSE.LUCIDE`, `shell/media/LICENSE.LUCIDE` and `shell/service-assets/LICENSE` are the ISC license for icons from, or based on, [Lucide](https://lucide.dev).
-- The Hyprland plugin is MIT (`hyprland/LICENSE`). Its `focus/` and `bars/` components derive from [hyprwm/hyprland-plugins](https://github.com/hyprwm/hyprland-plugins) v0.56.0, under BSD-3-Clause (`hyprland/UPSTREAM-LICENSE`). See `hyprland/UPSTREAM.md` for provenance.
+- The Hyprland plugin is MIT (`hyprland/LICENSE`). Its `focus/` and `bars/` components derive from [hyprwm/hyprland-plugins](https://github.com/hyprwm/hyprland-plugins) v0.56.0, ported to Hyprland 0.57 with upstream's API changes, under BSD-3-Clause (`hyprland/UPSTREAM-LICENSE`). See `hyprland/UPSTREAM.md` for provenance.
