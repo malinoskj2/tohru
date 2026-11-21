@@ -18,10 +18,11 @@ pub enum Key {
     Corners,
     CornerSize,
     Palette,
+    PolkitAgent,
 }
 
 impl Key {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::InfoButton,
@@ -29,6 +30,7 @@ impl Key {
         Self::Corners,
         Self::CornerSize,
         Self::Palette,
+        Self::PolkitAgent,
     ];
 
     #[must_use]
@@ -41,6 +43,7 @@ impl Key {
             Self::Corners => "appearance.corners",
             Self::CornerSize => "appearance.corner_size",
             Self::Palette => "appearance.palette",
+            Self::PolkitAgent => "polkit.agent",
         }
     }
 
@@ -77,6 +80,7 @@ impl Key {
             Self::Corners => ("appearance", "corners"),
             Self::CornerSize => ("appearance", "corner_size"),
             Self::Palette => ("appearance", "palette"),
+            Self::PolkitAgent => ("polkit", "agent"),
         }
     }
 
@@ -91,7 +95,7 @@ impl Key {
     fn default_value(self) -> Value {
         match self {
             Self::PreferredOutput => Value::Text(String::new()),
-            Self::Mooncoil | Self::InfoButton | Self::AboutButton => Value::Bool(false),
+            Self::Mooncoil | Self::InfoButton | Self::AboutButton | Self::PolkitAgent => Value::Bool(false),
             Self::Corners => Value::Bool(true),
             Self::CornerSize => Value::Integer(32),
             Self::Palette => Value::Palette(Palette::Mocha),
@@ -106,7 +110,7 @@ impl Key {
                 Ok(())
             }
             (
-                Self::Mooncoil | Self::InfoButton | Self::AboutButton | Self::Corners,
+                Self::Mooncoil | Self::InfoButton | Self::AboutButton | Self::Corners | Self::PolkitAgent,
                 Value::Bool(_),
             )
             | (Self::Palette, Value::Palette(_)) => Ok(()),

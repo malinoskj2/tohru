@@ -112,6 +112,7 @@ class Cli(unittest.TestCase):
             (("notifications", "dnd", "toggle"), ["--say", "tohru-notifications", "emit notices_dnd 2"]),
             (("config", "set", "bar.mooncoil", "true"), ["--say", "tohru", "emit setting_mooncoil 1"]),
             (("config", "set", "bar.info_button", "true"), ["--say", "tohru", "emit setting_info_button 1"]),
+            (("config", "set", "polkit.agent", "true"), ["--say", "tohru", "emit setting_polkit_agent 1"]),
             (("config", "set", "bar.about_button", "false"), ["--say", "tohru", "emit setting_about_button 0"]),
             (("config", "set", "appearance.corners", "false"), ["--say", "tohru", "emit setting_corners 0"]),
             (("config", "set", "appearance.corner_size", "1"), ["--say", "tohru", "emit setting_corner_size 1"]),

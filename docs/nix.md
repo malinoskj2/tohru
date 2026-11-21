@@ -31,6 +31,7 @@ The package contains these programs:
 | `tohru-launcher-run` | The launcher |
 | `tohru-notifications-run` | The notification daemon |
 | `tohru-settings-run` | The Settings window (normally started by `tohru settings open`) |
+| `tohru-polkit-run` | The polkit authentication agent and its dialog (idle unless `polkit.agent` is true) |
 | `tohru` | The CLI |
 
 Without flakes, the root `default.nix` takes an explicit package set: `import ./default.nix { pkgs = import <your pinned nixpkgs> { }; }`.
@@ -59,6 +60,7 @@ With a standalone Home Manager flake, pass `inputs` through `extraSpecialArgs`, 
 | `programs.tohru.package` | Built from the consumer's `pkgs` | The Tohru package to install and run |
 | `programs.tohru.settings` | `{ }` | Settings written to a read-only TOML file in the store. See [configuration.md](configuration.md) |
 | `programs.tohru.systemd.enable` | `false` | Adds the user services below |
+| `programs.tohru.polkit.enable` | `false` | Sets `polkit.agent = true` in the managed file and, with `systemd.enable`, adds the `tohru-polkit` service. Turn off any other polkit agent first: see [MIGRATION.md](../MIGRATION.md#polkit-agent) |
 | `programs.tohru.systemd.target` | `"graphical-session.target"` | The user target that starts and stops those services |
 | `programs.tohru.hyprlandPlugin.package` | Plugin built against your session's Hyprland | The plugin package. Nothing loads it automatically |
 
@@ -66,7 +68,7 @@ Everything is inert unless `enable` is true; `systemd.enable` alone adds no serv
 
 ### Services
 
-With `systemd.enable`, the module defines four user services:
+With `systemd.enable`, the module defines four user services, and a fifth with `polkit.enable`:
 
 | Unit | Runs |
 |---|---|
@@ -74,6 +76,7 @@ With `systemd.enable`, the module defines four user services:
 | `tohru-session` | `tohru-session-run` |
 | `tohru-launcher` | `tohru-launcher-run` |
 | `tohru-notifications` | `tohru-notifications-run` |
+| `tohru-polkit` | `tohru-polkit-run`, only with `polkit.enable` |
 
 Each is `WantedBy`, `PartOf` and `After` the configured target, restarts on failure after 2 seconds, and only starts when `WAYLAND_DISPLAY` is in the user manager's environment. Each gets `TOHRU_MANAGED_CONFIG` in its unit environment. `tohru-launcher` uses `KillMode=process`, so restarting it does not kill applications it launched. Settings is not a service; it starts on demand.
 
@@ -85,7 +88,7 @@ systemctl --user import-environment WAYLAND_DISPLAY PATH XDG_DATA_DIRS
 
 If your Hyprland setup provides its own target, such as `hyprland-session.target`, set `systemd.target` to it.
 
-`tohru-notifications` must be the only notification daemon. Disable mako, dunst, swaync or similar first. These units are new and have not been tested on a real session.
+`tohru-notifications` must be the only notification daemon, and `tohru-polkit` the only polkit agent. Disable mako, dunst, swaync or similar first. These units are new and have not been tested on a real session.
 
 Other programs get `TOHRU_MANAGED_CONFIG` through `home.sessionVariables`, which only applies to sessions started from a login shell. `tohru settings open` does not depend on that: when the variable is unset or empty, it asks the running bar which managed file it loaded and starts Settings with the same one.
 

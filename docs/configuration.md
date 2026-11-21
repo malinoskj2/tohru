@@ -20,6 +20,7 @@ Only the bar and Settings processes read settings. Nothing is imported from j2ba
 | `appearance.palette` | string | `"mocha"` | One of `mocha`, `macchiato`, `rose_pine`, `nord`, `gruvbox`, `tokyo_night`, `dracula`, `everforest` |
 | `appearance.corners` | boolean | `true` | Draw rounded screen corners. Corners show on every output |
 | `appearance.corner_size` | integer, 1 to 100 | `32` | Size of the screen corners |
+| `polkit.agent` | boolean | `false` | Let `tohru-polkit` become the session's polkit authentication agent. Read when `tohru-polkit` starts; another agent such as hyprpolkitagent must not be running. See [MIGRATION.md](../MIGRATION.md#polkit-agent) |
 
 Example `config.toml`:
 
@@ -61,6 +62,7 @@ tohru config set bar.mooncoil true
 tohru config set bar.info_button true
 tohru config set bar.preferred_output DP-1
 tohru config set bar.preferred_output ''    # every output
+tohru config set polkit.agent true          # takes effect when tohru-polkit restarts
 tohru config reload                         # re-read both files
 tohru status --json                         # current values and where each came from
 tohru settings-error                        # the last settings error, if any
@@ -68,4 +70,4 @@ tohru settings-error                        # the last settings error, if any
 
 These commands talk to the running bar. They report that the bar accepted the request, not that it succeeded; check `tohru status --json` or `tohru settings-error` afterwards. Changes made with the CLI reach an open Settings window the next time it is opened.
 
-The Settings window has Bar, Appearance and System pages. It shows `bar.preferred_output` but does not offer a control for it.
+The Settings window has Bar, Appearance and System pages. It shows `bar.preferred_output` but does not offer a control for it, and does not show `polkit.agent`.

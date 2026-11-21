@@ -24,6 +24,10 @@ let
   retargeted = (home tohru.homeManagerModules.tohru [ {
     programs.tohru = { enable = true; systemd.enable = true; systemd.target = "hyprland-session.target"; };
   } ]).config;
+  agent = (home tohru.homeManagerModules.tohru [ {
+    programs.tohru = { enable = true; inherit settings; systemd.enable = true; polkit.enable = true; };
+  } ]).config;
+  agentManaged = builtins.readFile agent.home.sessionVariables.TOHRU_MANAGED_CONFIG;
   servicesOnly = (home tohru.homeManagerModules.tohru [ { programs.tohru.systemd.enable = true; } ]).config;
   roles = {
     tohru-bar = "tohru-run";
@@ -58,6 +62,12 @@ assert targets serviced "graphical-session.target";
 assert targets retargeted "hyprland-session.target";
 assert builtins.all (name: serviced.systemd.user.services.${name}.Service.Environment
   == [ "TOHRU_MANAGED_CONFIG=${managed}" ]) (builtins.attrNames roles);
+assert !(pkgs.lib.hasInfix "agent" (builtins.readFile managed));
+assert builtins.attrNames agent.systemd.user.services == builtins.attrNames (roles // { tohru-polkit = ""; });
+assert agent.systemd.user.services.tohru-polkit.Service.ExecStart == [ "${agent.programs.tohru.package}/bin/tohru-polkit-run" ];
+assert agent.systemd.user.services.tohru-polkit.Unit.PartOf == [ "graphical-session.target" ];
+assert pkgs.lib.hasInfix "[polkit]\nagent = true" agentManaged;
+assert pkgs.lib.hasInfix "preferred_output = \"DP-CHECK\"" agentManaged;
 assert serviced.systemd.user.services.tohru-launcher.Service.KillMode == "process";
 assert builtins.all (name: !(serviced.systemd.user.services.${name}.Service ? KillMode))
   [ "tohru-bar" "tohru-session" "tohru-notifications" ];
