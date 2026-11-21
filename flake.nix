@@ -43,5 +43,12 @@
         tohru = import ./nix/home-manager.nix;
         default = self.homeManagerModules.tohru;
       };
+      checks = eachSystem (system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+        in import ./nix/tests/compositors.nix {
+          inherit pkgs;
+          tohru = self.packages.${system}.tohru;
+        });
     };
 }
