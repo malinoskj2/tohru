@@ -1,0 +1,158 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 3a1660a..f29d276 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -13,6 +13,7 @@ mod tohru_info;
+ #[cfg(feature = "luau")]
+ mod tohru_settings;
+ mod tohru_lock;
++mod tohru_greeter;
+ pub mod scene;
+ mod scenes;
+ mod skill;
+@@ -305,9 +306,14 @@ pub fn run_with(options: Vec<String>) {
+     // No terminal to be stopped on, for the programs it starts.
+     platform::leave_terminal();
+     // The agents' skill, written again if this pleamar is not the one it speaks of.
+-    skill::refresh_quietly();
++    if !tohru_lock::locker() && !tohru_greeter::greeter() {
++        skill::refresh_quietly();
++    }
+     let blocked = Arc::new(AtomicBool::new(false));
+     let (to_render, from_render) = channel();
++    if tohru_greeter::greeter() {
++        tohru_greeter::set_render_tx(to_render.clone());
++    }
+     terminal::set_waker(to_render.clone());
+     let _ = QUIT_TX.set(std::sync::Mutex::new(to_render.clone()));
+     // The thumbnails service's frames on the card, summed by the render.
+@@ -382,8 +388,8 @@ pub fn run_with(options: Vec<String>) {
+     if std::env::var_os("PLEAMAR_NO_PORTAL").is_none() {
+         crate::platform::watch_appearance(to_render.clone());
+     }
+-    // The locker's scene is what it was started with: an edit on disk cannot change a held lock.
+-    if std::path::Path::new(&a.scene).is_file() && !tohru_lock::locker() {
++    // A locker's or greeter's scene is what it was started with: an edit on disk cannot change it.
++    if std::path::Path::new(&a.scene).is_file() && !tohru_lock::locker() && !tohru_greeter::greeter() {
+         scenes::from_file::watch(a.scene.clone(), to_render.clone(), to_logic.clone());
+     }
+     let to_logic_for_commands = to_logic.clone();
+@@ -442,6 +448,9 @@ pub fn run_with(options: Vec<String>) {
+             if tohru_lock::locker() {
+                 return Some("? the locker takes no orders".into());
+             }
++            if tohru_greeter::greeter() {
++                return Some("? the greeter takes no orders".into());
++            }
+             // `wait saving == false 3s`: answered as soon as it holds, or when it is late.
+             if what == "wait" {
+                 let (question, answer) = std::sync::mpsc::channel();
+diff --git a/src/logic_luau.rs b/src/logic_luau.rs
+index 1c87a6a..7bf1a4a 100644
+--- a/src/logic_luau.rs
++++ b/src/logic_luau.rs
+@@ -1400,12 +1400,16 @@ impl LuauScript {
+         g.set("json", json)?;
+ 
+         if self.prefix.is_none() && std::env::var("TOHRU_SHELL").as_deref() == Ok("1") {
+-            // A locker whose settings cannot be read still locks, in its default style.
++            // A locker or greeter whose settings cannot be read still starts, in its default style.
+             match crate::tohru_settings::install(&lua) {
+                 Err(e) if crate::tohru_lock::locker() => eprintln!("lock   · settings unavailable, using defaults: {e}"),
++                Err(e) if crate::tohru_greeter::greeter() => eprintln!("greeter · settings unavailable, using defaults: {e}"),
+                 r => r?,
+             }
+             crate::tohru_info::install(&lua)?;
++            if crate::tohru_greeter::greeter() {
++                crate::tohru_greeter::install(&lua)?;
++            }
+         }
+ 
+         // The sandbox, last of all: from here on the globals are not touched.
+diff --git a/src/platform/wayland.rs b/src/platform/wayland.rs
+index 28950a7..77f80f1 100644
+--- a/src/platform/wayland.rs
++++ b/src/platform/wayland.rs
+@@ -2433,7 +2433,12 @@ impl PointerHandler for State {
+                     // As long as a scene makes no use of the right button, it closes: it's the
+                     // emergency exit of a prototype without a keyboard. A scene that uses it
+                     // is not a quick prototype, and a right click never closes it.
+-                    if btn == 1 && down && self.wanted.iter().all(|s| s.right_click_quits) {
++                    if btn == 1
++                        && down
++                        && !crate::tohru_greeter::greeter()
++                        && !crate::tohru_lock::locker()
++                        && self.wanted.iter().all(|s| s.right_click_quits)
++                    {
+                         self.quit = true;
+                         continue;
+                     }
+diff --git a/src/render.rs b/src/render.rs
+index a1ab0a2..98b1238 100644
+--- a/src/render.rs
++++ b/src/render.rs
+@@ -1237,8 +1237,8 @@ pub fn run(
+                 }
+                 ToRender::Text(name, value) => match scene.texts.iter().position(|t| t.0 == name) {
+                     Some(i) => {
+-                        // While locked, what a field held is overwritten before it goes: it may be a password.
+-                        if crate::tohru_lock::active() {
++                        // While locked or greeting, what a field held is overwritten before it goes: it may be a password.
++                        if crate::tohru_lock::active() || crate::tohru_greeter::greeter() {
+                             crate::tohru_lock::zero(&mut texts[i]);
+                         }
+                         if let Some(e) = editing.as_mut().filter(|e| e.field == i) {
+@@ -2121,9 +2121,11 @@ pub fn run(
+             if let Some(ed) = editing.as_mut().filter(|e| !ruled && draw.fields.iter().any(|f| f.text == e.field && !f.passive)) {
+                 let k = ed.field;
+                 let secret = draw.fields.iter().any(|f| f.text == k && f.secret);
+-                // A password typed while locked: one buffer, big enough not to be copied as it grows,
++                // A password typed while locked or greeting: one buffer, big enough not to be copied as it grows,
+                 // and the logic is told only how long it is.
+-                let guarded = secret && crate::tohru_lock::active();
++                let lock_guarded = secret && crate::tohru_lock::active();
++                let greeter_guarded = secret && crate::tohru_greeter::greeter();
++                let guarded = lock_guarded || greeter_guarded;
+                 if guarded && texts[k].capacity() < 512 {
+                     let mut roomy = String::with_capacity(1024);
+                     roomy.push_str(&texts[k]);
+@@ -2142,15 +2144,19 @@ pub fn run(
+                         continue;
+                     }
+                     KeyOutcome::Submitted if guarded => {
+-                        // Checked natively against the held lock; the logic hears an empty submit
+-                        // and, through `lock_auth`, the outcome.
++                        // Checked natively against the held lock or greetd; the logic hears an empty submit
++                        // and, through `lock_auth` or `greeter_auth`, the outcome.
+                         submitted.push(k);
+                         let password = std::mem::replace(&mut texts[k], String::with_capacity(1024));
+                         ed.cursor = 0;
+                         ed.anchor = 0;
+                         let _ = to_logic.send(Event::Text(scene.texts[k].0, String::new()));
+                         let _ = to_logic.send(Event::Submit(scene.texts[k].0, String::new()));
+-                        crate::tohru_lock::submit(password, op.to_self.clone());
++                        if lock_guarded {
++                            crate::tohru_lock::submit(password, op.to_self.clone());
++                        } else {
++                            crate::tohru_greeter::submit_secret(password, op.to_self.clone());
++                        }
+                         continue;
+                     }
+                     KeyOutcome::Submitted => {
+diff --git a/src/scenes/from_file.rs b/src/scenes/from_file.rs
+index 06b5155..5b344a9 100644
+--- a/src/scenes/from_file.rs
++++ b/src/scenes/from_file.rs
+@@ -164,10 +164,11 @@ fn logic_path_for(path: &str) -> String {
+ /// `PLEAMAR_NO_RELAUNCH=1` turns it off, for whoever does not want updating the
+ /// package to restart their bar.
+ fn watch_binary() {
+-    // A locker never replaces itself: the session must not depend on a new binary starting.
++    // A locker or greeter never replaces itself: the session must not depend on a new binary starting.
+     if std::env::var_os("PLEAMAR_NO_RELAUNCH").is_some()
+         || super::STAY_ON_UPDATE.load(std::sync::atomic::Ordering::Relaxed)
+         || crate::tohru_lock::locker()
++        || crate::tohru_greeter::greeter()
+     {
+         return;
+     }
