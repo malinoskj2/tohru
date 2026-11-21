@@ -1,15 +1,32 @@
-# Tohru
+<h1 align="center">Tohru</h1>
 
-A Linux desktop shell for Hyprland, written as [Pleamar](https://github.com/k4ditano/pleamar) scenes.
+<p align="center">
+  <img src="shell/brand/mascot.png" width="200" alt="Tohru's mascot, a small glass jellybean dragon">
+</p>
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Nix flake](https://img.shields.io/badge/Nix-flake-5277C3?logo=nixos&logoColor=white)](flake.nix)
-[![Platform: x86_64-linux](https://img.shields.io/badge/platform-x86__64--linux-lightgrey)](#status)
-[![Hyprland 0.56.2](https://img.shields.io/badge/Hyprland-0.56.2-58E1FF)](hyprland/README.md)
-[![Pleamar 0.7.27](https://img.shields.io/badge/Pleamar-0.7.27-1f6feb)](runtime/pleamar/pin.json)
-[![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#status)
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
+  <a href="flake.nix"><img src="https://img.shields.io/badge/Nix-flake-5277C3?logo=nixos&logoColor=white" alt="Nix flake"></a>
+  <a href="#status"><img src="https://img.shields.io/badge/platform-x86__64--linux-lightgrey" alt="Platform: x86_64-linux"></a>
+  <a href="hyprland/README.md"><img src="https://img.shields.io/badge/Hyprland-0.56.2-58E1FF" alt="Hyprland 0.56.2"></a>
+  <a href="runtime/pleamar/pin.json"><img src="https://img.shields.io/badge/Pleamar-0.7.27-1f6feb" alt="Pleamar 0.7.27"></a>
+  <a href="#status"><img src="https://img.shields.io/badge/status-experimental-orange" alt="Status: experimental"></a>
+</p>
 
-Tohru replaces my previous shell, j2bar. The shell itself is `.plm` scene files, Luau logic and WGSL shaders, run by a patched build of Pleamar 0.7.27. An optional Hyprland plugin adds window effects.
+<p align="center">
+  <b>A glassy Linux desktop shell for Hyprland, written as <a href="https://github.com/k4ditano/pleamar">Pleamar</a> scenes.</b>
+</p>
+
+Tohru (透, "clear, passing through") is a bar, its popups and the rest of a desktop shell, built from `.plm` scene files, Luau logic and WGSL shaders and run by a patched build of Pleamar 0.7.27. An optional Hyprland plugin adds window effects.
+
+## What's in it
+
+- **The bar**: a workspace ribbon with a gliding bead, the focused window's title, status icons and the clock.
+- **Popups**: sound (per-app volume, outputs and inputs), calendar, network, media, Bluetooth, wallpaper, system tray, info and about.
+- **Notifications**: toasts under the bar and a Notification Center with Do Not Disturb.
+- **Launcher, session menu, volume OSD and Settings**, with built-in colour palettes.
+- **Lock screen and polkit agent**, in the same clear-glass style.
+- **Hyprland plugin** (optional): focus dips, title bars, chooser sheets and launcher recession.
 
 ## Quickstart
 
@@ -94,12 +111,12 @@ export TOHRU_RUNTIME="$PWD/.tmp/pleamar-runtime/target/release/pleamar"
 
 **This is experimental. A lot of it is untested, and some of it is known to be broken.** Expect to read the source when something goes wrong.
 
-- It has only just replaced j2bar on one NixOS desktop (two monitors, NVIDIA). The systemd user units and the notification daemon run there; most panels have only had a short check.
-- Pleamar rasterises text with swash rather than Pango, so letter shapes differ slightly from j2bar's. Positions in the bar match within 1 px.
+- It runs daily on one NixOS desktop (two monitors, NVIDIA). The systemd user units and the notification daemon run there; most panels have only had a short check.
+- Pleamar rasterises text with swash rather than Pango, so letter shapes can differ slightly from GTK and Qt apps.
 - On light panels the calendar's month rail still draws its dark-glass track, which barely shows.
 - A popup opened from the CLI (a keybind) closes with Escape or `tohru panel close`, not with a click outside it. Closing on an outside click needs an xdg_popup grab, which needs the serial of a real input event; a grab made without one, tried in a nested Hyprland 0.56.2, left Hyprland closing every later popup the moment it opened.
 - The workspace switcher can only switch to workspaces the compositor already reports. It cannot create one.
-- The workspace switcher's motion is j2bar's rebuilt from Pleamar springs, not a replay of its equations. It starts 50 to 100 ms after the switch, because Pleamar gathers Hyprland's workspace events for 50 ms before reporting them.
+- The workspace switcher's motion is built from Pleamar springs. It starts 50 to 100 ms after the switch, because Pleamar gathers Hyprland's workspace events for 50 ms before reporting them.
 - The Hyprland plugin registers its animation leaves only once it is loaded, which at startup is after your configuration runs. Set them as shown in `hyprland/examples/effects.lua`. Its unload and damage checks have not been done.
 - The native test suites run on a private headless Sway, not Hyprland, and check behaviour rather than looks or performance. They last passed on 2026-11-11. In the bar suite's `--services-only` mode the closing `quit` once took longer than its 10 s limit.
 - There is no idle handling or screenshot tool. Use hypridle and grimblast or similar.
@@ -131,7 +148,7 @@ hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("tohru audio volume down"), { lo
 hl.bind("XF86AudioMute", hl.dsp.exec_cmd("tohru audio mute toggle"), { locked = true })
 ```
 
-The bell in the bar shows a dot while a notification has arrived unseen; left-clicking it opens the Notification Center and marks notifications seen, and right-clicking toggles Do Not Disturb. Panels switch to light glass over bright windows and back, as j2bar's do.
+The bell in the bar shows a dot while a notification has arrived unseen; left-clicking it opens the Notification Center and marks notifications seen, and right-clicking toggles Do Not Disturb. Panels switch to light glass over bright windows and back.
 
 Run `tohru help` for the full list, including per-app volume, output/input selection and `tohru config set`.
 
@@ -160,6 +177,7 @@ Run `tohru help` for the full list, including per-app volume, output/input selec
 Tohru is MIT licensed ([LICENSE](LICENSE)).
 
 - [Pleamar](https://github.com/k4ditano/pleamar) is BSD-3-Clause. Its source is fetched at build time and its license and third-party notices are installed with the runtime. `tools/reference/fixtures/workspace/PLEAMAR-LICENSE` carries its notice for the reference workspace rail code, which was first written inside a vendored Pleamar tree.
-- The `J2BAR-LICENSE` files (`shell/bar/`, `shell/corners/`, `shell/sound/`, `tools/reference/fixtures/workspace/`) are j2bar's MIT notice for layouts, assets, shaders and motion code ported from j2bar.
+- `shell/bar/`, `shell/corners/`, `shell/sound/` and `tools/reference/fixtures/workspace/` carry an additional MIT notice for layouts, assets, shaders and motion code ported from an earlier shell.
 - `shell/sound/LICENSE.LUCIDE`, `shell/media/LICENSE.LUCIDE` and `shell/service-assets/LICENSE` are the ISC license for icons from, or based on, [Lucide](https://lucide.dev).
 - The Hyprland plugin is MIT (`hyprland/LICENSE`). Its `focus/` and `bars/` components derive from [hyprwm/hyprland-plugins](https://github.com/hyprwm/hyprland-plugins) v0.56.0, under BSD-3-Clause (`hyprland/UPSTREAM-LICENSE`). See `hyprland/UPSTREAM.md` for provenance.
+- The mascot and the bar's dragon mark (`shell/brand/`) are Tohru's own, under the same MIT license.
