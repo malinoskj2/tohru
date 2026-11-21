@@ -1,0 +1,56 @@
+part AssistantMenu {
+    // The mark's right-click menu: the providers (Sign in… inline), then New chat and History.
+    let ai_menu_w = 240
+    let ai_menu_rows = max(1, ai_providers.count)
+    let ai_menu_h = 8 + 30 * ai_menu_rows + 9 + 60 + 8
+    popup assistant_menu {
+        at: clamp(ai_anchor_x - ai_menu_w / 2, 8, max(8, screen.width - 8 - ai_menu_w)) - 12, 37
+        size: ai_menu_w + 24, ai_menu_h + 18
+        open: ai_menu_open
+        bright: panel_bright
+        body {
+            color: ink_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+            shadow: 0, 4, 10, 0.22 - 0.1 * pk
+            box { from: 12, 0; size: ai_menu_w, ai_menu_h; corner: 12 }
+        }
+        box { from: 12.5, 0.5; size: ai_menu_w - 1, ai_menu_h - 1; corner: 11.5; stroke: 1; color: ink_white; opacity: 0.6 * (26% - 10% * pk) }
+        for p in ai_providers {
+            let m_y = 8 + 30 * p.index
+            let m_colour = pick(p.slot, ink_peach, ink_yellow, ink_green, ink_lavender, ink_mauve)
+            let m_on = p.index == ai_current
+            zone box ai_mrow.$p.index { from: 18, m_y; size: ai_menu_w - 12 - if(p.signed_in, 0, 78), 28; corner: 7; cursor: pointer; active: ai_menu_open; label: "Use {p.name}"; selected: m_on }
+            box { from: 18, m_y; size: ai_menu_w - 12, 28; corner: 7; color: ink_white; opacity: max(if(m_on, 12%, 0%), max(ai_mrow.$p.index.hover * 10%, ai_mrow.$p.index.pressed * 16%)) }
+            group {
+                show: p.signed_in
+                glow: 4, 40%, m_colour
+                ellipse { at: 30, m_y + 14; radius: 3; color: if(m_on, ink_white, m_colour) }
+            }
+            ellipse { at: 30, m_y + 14; radius: 2.4; stroke: 1.2; color: m_colour; show: not p.signed_in }
+            text p.name { at: 42, m_y + 14; anchor: left center; width: 110; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(p.signed_in, 92%, 62%) }
+            zone box ai_msign.$p.index { from: ai_menu_w - 68, m_y + 4; size: 74, 20; corner: 6; cursor: pointer; active: ai_menu_open and not p.signed_in; label: "Sign in to {p.name}" }
+            group {
+                show: not p.signed_in
+                box { from: ai_menu_w - 68, m_y + 4; size: 74, 20; corner: 6; color: ink_white; opacity: 12% + max(ai_msign.$p.index.hover * 6%, ai_msign.$p.index.pressed * 12%) }
+                image ai_terminal_icon { at: ai_menu_w - 61, m_y + 8; size: 12, 12; tint: ink_white; opacity: 80% }
+                text "Sign in…" { at: ai_menu_w - 45, m_y + 14; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+            }
+            on press ai_mrow.$p.index { emit assistant_choose(p.index); emit assistant_menu_close }
+            on press ai_msign.$p.index { emit assistant_signin(p.index); emit assistant_menu_close }
+        }
+        text "No AI CLIs found" { at: 30, 22; anchor: left center; size: 12; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: ai_providers.count == 0 }
+        let ai_menu_sep = 8 + 30 * ai_menu_rows + 4
+        box { from: 24, ai_menu_sep; size: ai_menu_w - 24, 1; color: ink_white; opacity: 14% }
+        zone box ai_menu_new { from: 18, ai_menu_sep + 5; size: ai_menu_w - 12, 28; corner: 7; cursor: pointer; active: ai_menu_open; label: "New chat" }
+        box { from: 18, ai_menu_sep + 5; size: ai_menu_w - 12, 28; corner: 7; color: ink_white; opacity: max(ai_menu_new.hover * 10%, ai_menu_new.pressed * 16%) }
+        image ai_plus_icon { at: 24, ai_menu_sep + 12; size: 14, 14; tint: ink_white; opacity: 80% }
+        text "New chat" { at: 42, ai_menu_sep + 19; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+        zone box ai_menu_history { from: 18, ai_menu_sep + 35; size: ai_menu_w - 12, 28; corner: 7; cursor: pointer; active: ai_menu_open; label: "History" }
+        box { from: 18, ai_menu_sep + 35; size: ai_menu_w - 12, 28; corner: 7; color: ink_white; opacity: max(ai_menu_history.hover * 10%, ai_menu_history.pressed * 16%) }
+        image ai_history_icon { at: 24, ai_menu_sep + 42; size: 14, 14; tint: ink_white; opacity: 80% }
+        text "History" { at: 42, ai_menu_sep + 49; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+        on press ai_menu_new { emit assistant_menu_close; emit assistant_new; emit assistant_open }
+        on press ai_menu_history { emit assistant_menu_close; emit assistant_show_history }
+    }
+    on key Escape while ai_menu_open { ai_menu_open = false }
+    on blur { ai_menu_open = false }
+}

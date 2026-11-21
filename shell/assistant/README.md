@@ -7,9 +7,21 @@ The AI assistant described in [docs/ai-assistant.md](../../docs/ai-assistant.md)
 | File | Contents |
 |---|---|
 | `state.plm` | Popup, picker, history and streaming facts; the `ai_providers`, `ai_turns` and `ai_history` models; the `assistant_*` events; the icons and the heights the popup springs between |
+| `menu.plm` | The mark's right-click menu: the providers with **Sign in…** inline, New chat and History |
 | `popup.plm` | The Pocket popup (direction 01): heading, provider picker, sign-in note, empty chat, the chat column, the field and history |
 | `controller.luau` | Runs `tohru-assistant` for providers, chats and history, streams the answer, and keeps the bar's streaming and ready state. Takes `{provider, choose}` for the `assistant.provider` setting and returns `{open, close, toggle, new_chat, show_history, choose, signin, settle, ask, stop, streaming, on_answer, show, status}` |
 | `*.svg` | Lucide icons (ISC; see `LICENSE.LUCIDE`) |
+
+## The bar entry
+
+The tinted dragon mark (`shell/brand/dragon.png`) in `services.plm`, left of the wallpaper button, behaving as direction 09:
+
+- While an answer streams and the popup is closed, a glow in the provider's colour breathes behind the mark (a 1.6 s breath between 45 % and 100 %, fading in and out over 400 ms).
+- When an answer is ready and unread, a 4 px glowing mark in that colour sits at its top right until the chat is opened.
+- Right-click opens the menu (`menu.plm`).
+- While the voice service has the microphone open, a small red dot sits at its foot (`ai_listening`).
+
+It is the fourth button left of the bell and, like Bluetooth and the wallpaper button, is hidden when the output is too narrow; the information and About buttons move one place left.
 
 ## The popup
 
@@ -36,6 +48,7 @@ The bar process owns the one answer in flight, so its state survives closing the
 | `assistant_send`, `assistant_stop` | Send the field (or stop the answer streaming here); stop the answer in flight |
 | `assistant_copy`, `assistant_retry` | Copy the last answer; send the last question again |
 | `assistant_pick <row>`, `assistant_move <delta>`, `assistant_activate`, `assistant_search` | Open a history row; move in history or the picker; open the selected row; search again |
+| `assistant_menu`, `assistant_menu_close`, `assistant_show_history` | Toggle or close the mark's menu; open the popup on history |
 
 ## The service: `bin/tohru-assistant`
 

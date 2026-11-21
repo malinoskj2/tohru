@@ -15,6 +15,11 @@ part AssistantState {
     fact ai_stream_slot = 0
     fact ai_ready = false
     fact ai_ready_slot = 0
+    fact ai_menu_open = false
+    // The voice service has the microphone open.
+    fact ai_listening = false
+    prop ai_glow = 0 ~400ms
+    follow ai_glow = if(ai_streaming and not ai_open, 1, 0)
     // The conversation shown is the one streaming.
     fact ai_live_here = false
     fact ai_actions = false
@@ -50,6 +55,9 @@ part AssistantState {
     event assistant_search ->
     event assistant_move ->
     event assistant_activate ->
+    event assistant_menu ->
+    event assistant_menu_close ->
+    event assistant_show_history ->
 
     image ai_history_icon = file "history.svg", 14, 14
     image ai_plus_icon = file "plus.svg", 14, 14

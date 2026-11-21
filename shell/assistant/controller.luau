@@ -211,6 +211,7 @@ return function(settings)
 
     local function open()
         fact.ai_picker = false
+        fact.ai_menu_open = false
         fact.ai_open = true
         probe(false)
         if fact.ai_ready and ready_for then
@@ -223,6 +224,7 @@ return function(settings)
     local function close()
         fact.ai_open = false
         fact.ai_picker = false
+        fact.ai_menu_open = false
     end
 
     local function new_chat()
@@ -318,6 +320,20 @@ return function(settings)
         list_history()
     end)
     on("assistant_new", function() new_chat() end)
+    on("assistant_menu", function()
+        local opening = not fact.ai_menu_open
+        fact.ai_open = false
+        fact.ai_picker = false
+        fact.ai_menu_open = opening
+        if opening then probe(false) end
+    end)
+    on("assistant_menu_close", function() fact.ai_menu_open = false end)
+    on("assistant_show_history", function()
+        open()
+        fact.ai_view = 1
+        text.ai_search = ""
+        list_history()
+    end)
     on("assistant_send", function()
         if live and live_here() then
             kill(live.id, "int")
@@ -373,6 +389,7 @@ return function(settings)
             text.ai_search = ""
             list_history()
         end,
+        listening = function(on) fact.ai_listening = on == true end,
         choose = choose,
         signin = signin,
         settle = function() if #providers > 0 then settle() end end,

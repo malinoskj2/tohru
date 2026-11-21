@@ -136,6 +136,8 @@ on("wall_toggle", function() if fact.wall_open then close_panels("wallpaper") en
 on("about_toggle", function() if fact.about_visible then close_panels("about") end end)
 on("assistant_open", function() close_panels("assistant") end)
 on("assistant_toggle", function() if fact.ai_open then close_panels("assistant") end end)
+on("assistant_menu", function() if fact.ai_menu_open then close_panels("assistant") end end)
+on("assistant_show_history", function() close_panels("assistant") end)
 on("panel_close", function() close_panels() end)
 if fact.bt_open then close_panels("bluetooth") end
 
