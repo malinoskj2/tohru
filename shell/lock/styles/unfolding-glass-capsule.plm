@@ -16,6 +16,7 @@ part LockUnfoldingGlassCapsule {
    shadow: 0, 6, 24, if(pk > 0.5, 11%, 28%)
    box { from: uc_x, uc_y; size: uc_w, uc_h; corner: 15 }
   }
+  UserAvatar(uc_x + uc_w / 2, uc_y - 40, 52)
   shader lock_glass { at: uc_x, uc_y; size: uc_w, uc_h; values: 0.55 + 0.25 * uc_f, 0.92, 0.9, err * 0.55, pk, 15, 0, 0 }
   box { from: uc_x + 0.5, uc_y + 0.5; size: uc_w - 1, uc_h - 1; corner: 14.5; stroke: if(wrong, 1, 0.9); color: if(wrong, err_c, ink); opacity: if(wrong, 0.55 * err + 0.12, if(pk > 0.5, 12%, 18%)) }
   group {
@@ -40,10 +41,12 @@ part LockUnfoldingGlassCapsule {
    text "Password" { at: uc_x + 36, uc_y + 117; anchor: left center; size: 13; family: "SF Pro Text"; color: ink; opacity: 40%; show: typed == 0 and not checking }
    box { from: uc_x + uc_w - 48, uc_y + 104; size: 24, 26; corner: 7; color: ink; opacity: 10% }
    image lock_i_arrow { at: uc_x + uc_w - 43, uc_y + 110; size: 14, 14; tint: ink; opacity: 85% }
-   text "NOW PLAYING" { at: uc_x + 20, uc_y + 154; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink; opacity: 48% }
-   image lock_i_play { at: uc_x + 20, uc_y + 169; size: 13, 13; tint: ink; opacity: 82%; show: media_known }
-   text media_title { at: uc_x + 40, uc_y + 176; anchor: left center; width: uc_w - 180; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink; opacity: 90%; show: media_known }
-   text "Nothing playing" { at: uc_x + 20, uc_y + 176; anchor: left center; size: 13; family: "SF Pro Text"; color: ink; opacity: 50%; show: not media_known }
+   text "NOW PLAYING" { at: uc_x + 20, uc_y + 154; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink; opacity: 48%; show: not is_greeter }
+   image lock_i_play { at: uc_x + 20, uc_y + 169; size: 13, 13; tint: ink; opacity: 82%; show: not is_greeter and media_known }
+   text media_title { at: uc_x + 40, uc_y + 176; anchor: left center; width: uc_w - 180; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink; opacity: 90%; show: not is_greeter and media_known }
+   text "Nothing playing" { at: uc_x + 20, uc_y + 176; anchor: left center; size: 13; family: "SF Pro Text"; color: ink; opacity: 50%; show: not is_greeter and not media_known }
+   text "SESSION" { at: uc_x + 20, uc_y + 154; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink; opacity: 48%; show: is_greeter }
+   text session_name { at: uc_x + 20, uc_y + 176; anchor: left center; width: uc_w - 160; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink; opacity: 90%; show: is_greeter }
    shader lock_ribbon { at: uc_x + uc_w - 124, uc_y + 155; size: 112, 42; values: 44, 0, 2, 44, 0, 0, 44, 1; colors: mix(st2, st3, 0.48), #ffffff }
    box { from: uc_x + 18, uc_y + 232; size: uc_bw, 36; corner: 9; color: ink; opacity: 7% }
    image lock_i_moon { at: uc_x + 32, uc_y + 243; size: 14, 14; tint: ink; opacity: 78% }

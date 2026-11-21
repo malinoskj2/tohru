@@ -3,7 +3,7 @@ part LockBar {
  let lb_slot = clamp(ws_active, 1, max(1, ws_count))
  let lb_f = clamp((lb_slot - 1) * 16 / 64, 0, 1)
  group {
-  show: style >= 1
+  show: style >= 1 and not is_greeter
   opacity: pick(style, 0, 0.92, 1, 1, 1, 1, 1, 1, 1, 1, 0.95)
   body {
    gradient: 0, 0 to 0, 31, #140a1e, #140a1e

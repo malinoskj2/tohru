@@ -56,6 +56,13 @@ return function(styled)
     fact.style = styled and chosen_style(tohru_settings, env("TOHRU_LOCK_STYLE")) or 0
     text.user = env("USER") or ""
     text.host = env("HOSTNAME") or ""
+    if styled and tohru_info and type(tohru_info.avatar) == "function" then
+        local ok, avatar = pcall(tohru_info.avatar, text.user, env("HOME") or "")
+        if ok and type(avatar) == "string" and avatar ~= "" then
+            text.avatar_path = avatar
+            fact.has_avatar = true
+        end
+    end
     if styled and text.host == "" then
         pcall(run, "uname", {"-n"}, function(out, code)
             if code == 0 then text.host = string.gsub(out or "", "%s+$", "") end

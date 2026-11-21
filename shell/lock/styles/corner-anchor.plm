@@ -3,10 +3,11 @@ part LockCornerAnchor {
  group {
   show: style == 9
   opacity: clamp(1 - unlock * 0.92, 0, 1)
+  UserAvatar(124, 650, 40)
   text date_comma_caps { at: 104, 696; anchor: left center; size: 14; weight: 500; family: "SF Pro Text"; color: ink; opacity: 64% }
   text clock_hm { at: 100, 774; anchor: left center; size: 136; weight: 200; family: "SF Pro Display:tnum"; color: ink; opacity: 95%; letter_move: -3.5 * letter, 0 }
   box { from: 104, 842; size: 280, 1; color: ink; opacity: 16% }
-  text "{user}  ·  Locked" { at: 104, 868; anchor: left center; size: 13; family: "SF Pro Text"; color: ink; opacity: 56%; show: typed == 0 and not wrong and not checking and not unlocking }
+  text "{user}  ·  {cta_locked}" { at: 104, 868; anchor: left center; size: 13; family: "SF Pro Text"; color: ink; opacity: 56%; show: typed == 0 and not wrong and not checking and not unlocking }
   group {
    show: typed > 0 or wrong or checking or unlocking
    move: shake * 0.3, 0
