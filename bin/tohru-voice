@@ -115,7 +115,7 @@ def speakable(text):
     return cut + " The rest is in the chat."
 
 
-TRANSDUCER_FILES = "tokens.txt, encoder*.onnx, decoder*.onnx and joiner*.onnx"
+TRANSDUCER_FILES = "tokens.txt, encoder*.onnx, decoder*.onnx, joiner*.onnx"
 
 
 def transducer_missing(folder):
@@ -134,26 +134,26 @@ def onnx_problem(setting, configured, what):
         return f"{setting} is not set ({what})"
     path = Path(configured).expanduser()
     if not path.is_file() or path.suffix != ".onnx":
-        return f"{setting}: {path} is not an .onnx file ({what})"
+        return f"{setting}: no .onnx file at {path} ({what})"
     return None
 
 
 def folder_problem(setting, configured, what):
     if not configured:
-        return f"{setting} is not set ({what} holding {TRANSDUCER_FILES})"
+        return f"{setting} is not set ({what}: {TRANSDUCER_FILES})"
     folder = Path(configured).expanduser()
     missing = transducer_missing(folder)
     if missing is None:
-        return f"{setting}: {folder} is not a folder ({what} holding {TRANSDUCER_FILES})"
+        return f"{setting}: {folder} is not a folder ({what}: {TRANSDUCER_FILES})"
     if missing:
-        return f"{setting}: {folder} has no {', '.join(missing)} ({what} holding {TRANSDUCER_FILES})"
+        return f"{setting}: {folder} has no {', '.join(missing)} ({what})"
     return None
 
 
 def check_models(vad, asr, turn, wake, kws):
     """Validates the configured model paths without loading anything: (errors that stop voice, warnings)."""
     errors = [problem for problem in (
-        onnx_problem("assistant.vad_model", vad, "the Silero VAD v6.2.3 .onnx file"),
+        onnx_problem("assistant.vad_model", vad, "the Silero VAD .onnx file"),
         folder_problem("assistant.asr_model", asr, "the sherpa-onnx streaming Zipformer folder"),
         folder_problem("assistant.kws_model", kws, "the sherpa-onnx keyword-spotter folder") if wake == "kws" else None,
     ) if problem]
@@ -1038,7 +1038,7 @@ def main():
     args = parser.parse_args()
     errors, warnings = check_models(args.vad_model, args.asr_model, args.turn_model, args.wake, args.kws_model)
     if errors:
-        emit("error", message=f"Voice is off until its models are set: {'; '.join(errors)}")
+        emit("error", message=f"Voice is off until its models are set. {'; '.join(errors)}")
         return 3
     for tool in ("parec", "pacat", "pactl", "espeak-ng"):
         if not shutil.which(tool):

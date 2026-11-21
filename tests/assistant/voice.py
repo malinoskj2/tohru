@@ -290,7 +290,7 @@ class ModelPathTests(unittest.TestCase):
         self.assertIn("assistant.vad_model is not set", errors[0])
         self.assertIn(".onnx", errors[0])
         self.assertIn("assistant.asr_model is not set", errors[1])
-        self.assertIn("tokens.txt, encoder*.onnx, decoder*.onnx and joiner*.onnx", errors[1])
+        self.assertIn("tokens.txt, encoder*.onnx, decoder*.onnx, joiner*.onnx", errors[1])
         self.assertIn("assistant.kws_model is not set", errors[2])
         self.assertEqual(warnings, [])
 
@@ -301,7 +301,7 @@ class ModelPathTests(unittest.TestCase):
         (self.root / "asr/joiner-epoch-99-avg-1.int8.onnx").unlink()
         (self.root / "asr/tokens.txt").unlink()
         errors, _ = voice_module.check_models(self.asr, self.asr, "", "asr", "")
-        self.assertIn(f"assistant.vad_model: {self.asr} is not an .onnx file", errors[0])
+        self.assertIn(f"assistant.vad_model: no .onnx file at {self.asr}", errors[0])
         self.assertIn(f"assistant.asr_model: {self.asr} has no tokens.txt, joiner*.onnx", errors[1])
         errors, _ = voice_module.check_models(self.vad, str(self.root / "missing"), "", "asr", "")
         self.assertIn("missing is not a folder", errors[0])
