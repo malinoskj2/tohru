@@ -60,7 +60,7 @@ in stdenvNoCC.mkDerivation {
     cp -r shell $out/share/tohru/
     cp LICENSE $out/share/tohru/LICENSE
     cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-session-run \
-      bin/tohru-launcher-run bin/tohru-notifications-run $out/bin/
+      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-polkit-run $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar
     wrapProgram $out/bin/tohru-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
@@ -77,6 +77,9 @@ in stdenvNoCC.mkDerivation {
     wrapProgram $out/bin/tohru-notifications-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_NOTIFICATIONS_SCENE $out/share/tohru/shell/notifications/notifications.plm
+    wrapProgram $out/bin/tohru-polkit-run \
+      --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
+      --set TOHRU_POLKIT_SCENE $out/share/tohru/shell/polkit/polkit.plm
     runHook postInstall
   '';
   passthru = { inherit runtime; };
