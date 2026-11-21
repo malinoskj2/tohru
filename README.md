@@ -158,6 +158,7 @@ Run `tohru help` for the full list, including per-app volume, output/input selec
 - [docs/manual-install.md](docs/manual-install.md): building and running without Nix.
 - [docs/configuration.md](docs/configuration.md): the config file, its keys, and how Nix-managed values and runtime edits combine.
 - [docs/architecture.md](docs/architecture.md): processes, how they talk, and what the Pleamar patches add.
+- [docs/development.md](docs/development.md): for contributors, live scene reloading with `tohru dev`, local runtime and plugin builds.
 
 ## Repository layout
 
