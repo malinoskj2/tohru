@@ -43,42 +43,42 @@ fn native_input_apps_and_output_selection_use_typed_current_ids_only() {
         text['sound_apps.0.name']=string.rep('界',200);handlers.audio_report()
         assert(last_status.outputs[1].id==0 and last_status.inputs[1].id==0 and last_status.apps[1].id==7)
         assert(#last_status.apps[1].name<=256 and utf8.len(last_status.apps[1].name))
-        assert(last_status.input_selection=='unavailable_native_id_collision')
+        assert(last_status.input_selection=='available')
         assert(last_status.input_available and last_status.input_muted==false and last_status.input_volume==0.5)
         handlers.audio_input_up();assert(calls[1].name=='audio.input' and calls[1].value==0.55)
         handlers.audio_input_mute();assert(calls[2].name=='audio.input_mute' and calls[2].value==nil)
-        assert(handlers.audio_input_select==nil, 'colliding input IDs never route audio.default')
-        handlers.audio_output_select(0);assert(calls[3].name=='audio.default' and calls[3].value==0)
+        handlers.audio_input_select(0);assert(calls[3].name=='audio.default_input' and calls[3].value==0)
+        handlers.audio_output_select(0);assert(calls[4].name=='audio.default' and calls[4].value==0)
         handlers.audio_app_up(7)
-        assert(calls[4].name=='audio.app_volume' and calls[4].value==7 and calls[4].extra==1)
-        handlers.audio_app_mute(7);assert(calls[5].name=='audio.app_mute' and calls[5].value==7)
+        assert(calls[5].name=='audio.app_volume' and calls[5].value==7 and calls[5].extra==1)
+        handlers.audio_app_mute(7);assert(calls[6].name=='audio.app_mute' and calls[6].value==7)
         assert(fact['sound_apps.0.volume']==0.98 and fact['audio.input']==0.5, 'ack does not overwrite observations')
         fact['sound_apps.0.id']=8
-        handlers.audio_app_down(7);assert(#calls==5 and last_status.error~='')
-        for _,id in {-1,0.5,4294967296,0/0,math.huge} do handlers.audio_output_select(id);handlers.audio_app_mute(id) end
-        assert(#calls==5)
+        handlers.audio_app_down(7);assert(#calls==6 and last_status.error~='')
+        for _,id in {-1,0.5,4294967296,0/0,math.huge} do handlers.audio_output_select(id);handlers.audio_input_select(id);handlers.audio_app_mute(id) end
+        assert(#calls==6)
         fact['sound_inputs.0.default']=false;handlers.audio_report()
         handlers.audio_input_down();handlers.audio_input_mute()
-        assert(#calls==5 and not last_status.input_available and last_status.input_volume==nil)
+        assert(#calls==6 and not last_status.input_available and last_status.input_volume==nil)
         handlers.sound_fold_toggle();assert(fact.sound_unfolded and fact.sound_focus_kind==0)
         handlers.sound_focus_move(1);assert(fact.sound_focus_kind==1 and fact.sound_focus_index==0)
         handlers.sound_focus_move(1);assert(fact.sound_focus_kind==3 and fact.sound_focus_index==0, 'no microphone row without a default input')
-        fact['sound_apps.0.id']=9;handlers.audio_report();assert(#calls==5 and fact.sound_focus_kind==3, 'a replaced stream keeps the row without issuing a request')
+        fact['sound_apps.0.id']=9;handlers.audio_report();assert(#calls==6 and fact.sound_focus_kind==3, 'a replaced stream keeps the row without issuing a request')
         fact['sound_apps.0.id']=8;handlers.audio_report()
         fact['sound_inputs.0.default']=true;handlers.audio_report()
         handlers.audio_set(0.2);handlers.audio_input_set(0.7);handlers.audio_input_set(0.8)
-        assert(#calls==6 and calls[6].name=='audio.volume' and calls[6].value==0.2)
+        assert(#calls==7 and calls[7].name=='audio.volume' and calls[7].value==0.2)
         fact.sound_input_dragging=true;handlers.panel_close()
-        assert(#calls==7 and calls[7].name=='audio.input' and calls[7].value==0.8 and not fact.sound_input_dragging and timers[1]==nil)
+        assert(#calls==8 and calls[8].name=='audio.input' and calls[8].value==0.8 and not fact.sound_input_dragging and timers[1]==nil)
         assert(not fact.sound_unfolded, 'closing folds the popup')
         handlers.sound_open_request();handlers.sound_fold_toggle()
         for _=1,3 do handlers.sound_focus_move(1) end;assert(fact.sound_focus_kind==3)
-        handlers.sound_focus_step(1);assert(calls[8].name=='audio.app_volume' and calls[8].value==8 and calls[8].extra==1)
-        handlers.sound_focus_activate();assert(calls[9].name=='audio.app_mute' and calls[9].value==8)
+        handlers.sound_focus_step(1);assert(calls[9].name=='audio.app_volume' and calls[9].value==8 and calls[9].extra==1)
+        handlers.sound_focus_activate();assert(calls[10].name=='audio.app_mute' and calls[10].value==8)
         handlers.sound_focus_move(-1);handlers.sound_focus_move(-1);handlers.sound_focus_activate()
-        assert(calls[10].name=='audio.default' and calls[10].value==0)
-        handlers.sound_focus_move(1);handlers.sound_focus_step(-1);assert(calls[11].name=='audio.input' and calls[11].value==0.45)
-        handlers.sound_focus_activate();assert(calls[12].name=='audio.input_mute')
+        assert(calls[11].name=='audio.default' and calls[11].value==0)
+        handlers.sound_focus_move(1);handlers.sound_focus_step(-1);assert(calls[12].name=='audio.input' and calls[12].value==0.45)
+        handlers.sound_focus_activate();assert(calls[13].name=='audio.input_mute')
         fact['sound_apps.count']=0;fact.sound_app_page=8;handlers.audio_report()
         assert(fact.sound_app_page==0 and fact.sound_focus_kind==2)
     "#).exec().unwrap();
@@ -305,6 +305,10 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
             "wallpaper/controller",
             include_str!("../../shell/wallpaper/controller.luau"),
         ),
+        (
+            "tray/controller",
+            include_str!("../../shell/tray/controller.luau"),
+        ),
         ("bar/rail", include_str!("../../shell/bar/rail.luau")),
         (
             "bar/workspace",
@@ -375,8 +379,14 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         dispatch('media_toggle'); assert(not fact.media_open)
         dispatch('network_open'); dispatch('panel_close')
         assert(not fact.net_open and not fact.info_visible and not fact.bt_open and info_reads==3)
-        tohru_settings.set=function(key,value) last_setting_key=key;last_setting_value=value;return tohru_settings.snapshot() end
-        dispatch('setting_palette',3); assert(last_setting_key=='appearance.palette' and last_setting_value=='nord')
+        dispatch('tray_open_request'); assert(fact.tray_open)
+        dispatch('sound_open_request'); assert(fact.sound_open and not fact.tray_open)
+        dispatch('panel_close'); assert(not fact.sound_open)
+        tohru_settings.set=function(key,value)
+            last_setting_key=key;last_setting_value=value
+            local s=tohru_settings.snapshot(); s[key]={value=value}; return s
+        end
+        dispatch('setting_palette',3); assert(last_setting_key=='appearance.palette' and last_setting_value=='nord' and fact.palette_id==3 and fact.rail_palette==3)
 
     "#,
     )

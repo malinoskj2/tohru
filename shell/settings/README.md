@@ -51,6 +51,5 @@ Run them from the repository root; the Lua tests need Lua 5.4. `tests/native-set
 
 ## Known limitations
 
-- `appearance.palette` is saved and reported, but no scene draws with it yet, so changing it has no visible effect.
 - `bar.preferred_output` can only be changed with `tohru config set` or the config file.
 - `tests/settings-ui/contrast.py` still expects the old fixed row width and fails.

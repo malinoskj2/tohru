@@ -78,6 +78,7 @@ Requests report that Pleamar accepted them, not that the action finished. If no 
 | `0028-lock-views-together` | An element on more than one view (a lock face per monitor) is clipped to all of them together. Clipped to the first alone, a face drew the backdrop only as large as a smaller monitor plugged in while locked |
 
 | `0030-polkit-agent` | Completes the `polkit` service into an agent: it refuses `BeginAuthentication` and `CancelAuthentication` from anyone but the owner of `org.freedesktop.PolicyKit1`, lists unix-user and unix-group identities, queues requests, relays the helper's PAM prompts, info and errors, switches identity, and reports the requesting app, command line, tries and outcome. Only the helper's `SUCCESS` line grants; a panic, a lost helper or a closed connection fails the request. The answer is zeroed after it is written. `polkit.answer`, `polkit.identity` and `polkit.cancel` are the scene's commands. Also sends the agent's path as an object path when registering. See `shell/polkit/README.md` |
+| `0031-audio-default-input` | Adds explicit `audio.default_output(id)` and `audio.default_input(id)` commands to the PulseAudio and wpctl backends so selecting a default microphone never collides with an output sink ID, while ignoring monitor sources |
 
 Numbers 0002 to 0004 and 0007 to 0009 belonged to features that were removed or moved into the scenes.
 

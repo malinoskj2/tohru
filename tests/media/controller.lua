@@ -131,4 +131,36 @@ media.observe(report()); assert(fact.media_has and fact['media_players.count']==
 -- A close from the native popup (an outside click) closes the controller too.
 fact.media_open=true; fact.media_unfolded=true; handlers['fact:media_open'](false)
 assert(not fact.media_unfolded and not fact.media_keyed)
-print('Media controller: players, switching, seek, play/pause, volume, keyboard and vanishing players passed')
+
+-- Remote artwork: fetched once via tohru-media-art, cached, and applied to both the active lens and player rows.
+local fetches={}
+_G.run=function(cmd,args,cb)
+    assert(cmd=='tohru-media-art' and type(args)=='table' and #args==1)
+    fetches[#fetches+1]={url=args[1],cb=cb}
+end
+local remote_url='https://cdn.example.org/cover.jpg'
+local remote_players={
+    player('spotify','Spotify','Midnight City','M83',true,{art=remote_url}),
+    player('mpv','mpv','Space Song','Beach House',false,{art='https://example.org/c.jpg'}),
+}
+media.observe(report({art=remote_url,players=remote_players}))
+assert(text.media_art=='' and not fact.media_has_art,'pending remote art stays empty until downloaded')
+assert(#fetches==2 and fetches[1].url==remote_url and fetches[2].url=='https://example.org/c.jpg')
+-- Observing again while pending does not start duplicate downloads.
+media.observe(report({art=remote_url,players=remote_players}))
+assert(#fetches==2,'pending remote art is deduplicated')
+-- Completing the download updates both the active lens and the player row without restarting the download.
+fetches[1].cb('/cache/cover.jpg\n',0)
+assert(text.media_art=='/cache/cover.jpg' and fact.media_has_art)
+assert(text['media_players.0.art']=='/cache/cover.jpg' and fact['media_players.0.has_art'])
+media.observe(report({art=remote_url,players=remote_players}))
+assert(#fetches==2 and text.media_art=='/cache/cover.jpg','cached remote art is reused')
+-- A failed download backs off until the retry window elapses.
+fetches[2].cb('',1)
+media.observe(report({art=remote_url,players=remote_players}))
+assert(#fetches==2,'failed download does not immediately retry')
+now=now+61
+media.observe(report({art=remote_url,players=remote_players}))
+assert(#fetches==3 and fetches[3].url=='https://example.org/c.jpg','failed download retries after backoff')
+_G.run=nil
+print('Media controller: players, switching, seek, play/pause, volume, remote art, keyboard and vanishing players passed')

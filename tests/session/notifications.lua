@@ -2,7 +2,7 @@
 local function boot(facts, texts, start, files)
     texts = texts or {}
     files = files or {}
-    local callback, timers, tones, handlers, said, calls = nil, {}, {}, {}, {}, {}
+    local callback, hist_callback, timers, tones, handlers, said, calls = nil, nil, {}, {}, {}, {}, {}
     local clock=start or 0
     local env=setmetatable({
         fact=facts,text=texts,model={},
@@ -11,7 +11,11 @@ local function boot(facts, texts, start, files)
     }, {__index=_G})
     env.on=function(name,fn)handlers[name]=fn end
     env.sys={
-        watch=function(name,fn) assert(name=='notifications');callback=fn end,
+        watch=function(name,fn)
+            if name=='notifications' then callback=fn
+            elseif name=='notification_history' then hist_callback=fn
+            else error('unexpected watch: '..tostring(name)) end
+        end,
         ask=function(name,file,kind) assert(name=='files.read' and kind=='json');return files[file] end,
         call=function(name,a,b)
             if name=='files.write' then files[a]=b
@@ -25,7 +29,9 @@ local function boot(facts, texts, start, files)
     local n
     n={
         event=function(name,...)handlers[name](...)end,
-        env=env,tones=tones,said=said,files=files,calls=calls,report=function(value)callback(value)end,
+        env=env,tones=tones,said=said,files=files,calls=calls,
+        report=function(value)callback(value)end,
+        history=function(value)hist_callback(value)end,
         advance=function(ms)
             local goal=clock+ms
             while true do
@@ -56,7 +62,7 @@ local function notice(id,title,body,time,urgency,extra)
     for key,field in pairs(extra or {}) do value[key]=field end
     return value
 end
-local function fresh() return {last_id=0,power_level=0,unread=false,dnd=false,dnd_pill=false,toasts_open=false,corner='top_right',covered=false} end
+local function fresh() return {last_id=0,power_level=0,unread=false,dnd=false,dnd_pill=false,toasts_open=false,corner='top_right',covered=false,center_open=false,center_count=0,center_page=0,center_pages=1,center_selected=0,center_keyed=false,palette_id=0} end
 local function near(a,b) return math.abs(a-b)<0.002 end
 
 local facts=fresh();local n=boot(facts)
@@ -208,7 +214,7 @@ bell.report({});assert(not bell.env.fact.unread)
 bell.report({notice(3)});assert(bell.env.fact.unread)
 local restarted=boot(fresh(),nil,nil,bell.files)
 assert(restarted.env.fact.unread and restarted.said[1]=='emit notices_state 1')
-restarted.event('notices_report',0);assert(restarted.said[#restarted.said]=='emit notices_state 1')
+restarted.event('notices_report',0);assert(restarted.said[#restarted.said-1]=='emit notices_state 1' and restarted.said[#restarted.said]=='emit notices_center_state 0')
 
 -- Do Not Disturb: no toast or tone, still unread; on hides what shows and shows the corner pill for a moment;
 -- power warnings bypass it.
@@ -231,4 +237,49 @@ quiet.event('notices_dnd',2);assert(not quiet.env.fact.dnd and not quiet.env.fac
 quiet.report({notice(3),notice(2),notice(1)});assert(#quiet.live()==2 and #quiet.tones==3)
 quiet.event('notices_dnd',1);assert(quiet.env.fact.dnd_pill);quiet.event('notices_dnd',0)
 assert(not quiet.env.fact.dnd and not quiet.env.fact.dnd_pill,'turning it off takes the pill away')
+
+-- Notification Center: merges live + expired history, persists across restarts, marks seen on open,
+-- holds live timers while open, supports actions, forgetting, paging, keyboard and Clear All.
+local center=boot(fresh())
+center.report({notice(10,'LiveMsg','Body live',100,1,{actions={{key='default',label='Open'},{key='reply',label='Reply'}}})})
+center.history({
+    notice(9,'Past9','Body 9',90,1),
+    notice(8,'Past8','Body 8',80,1),
+    notice(7,'Past7','Body 7',70,1),
+    notice(6,'Past6','Body 6',60,1),
+    notice(5,'Past5','Body 5',50,1),
+})
+assert(center.env.fact.unread and center.env.fact.center_count==6 and center.env.fact.center_pages==2)
+assert(center.env.text.center_count_text=='06' and center.env.text.center_status=='1 live · 5 recent')
+-- Opening marks seen, holds live toast, opens popup and notifies the bar.
+center.event('notices_center_toggle',0)
+assert(center.env.fact.center_open and center.env.fact.toasts_open and not center.env.fact.unread)
+assert(center.calls[#center.calls][1]=='notifications.hold' and center.calls[#center.calls][2]==10 and center.calls[#center.calls][3]==true)
+assert(center.said[#center.said]=='emit notices_center_state 1')
+assert(center.env.model.center_items[1].active and center.env.model.center_items[1].title=='LiveMsg' and center.env.model.center_items[1].acts==1)
+assert(not center.env.model.center_items[2].active and center.env.model.center_items[2].title=='Past9')
+-- Paging and keyboard navigation.
+center.event('center_page_step',1)
+assert(center.env.fact.center_page==1 and center.env.model.center_items[1].title=='Past5' and not center.env.model.center_items[2].live)
+center.event('center_focus_move',-1)
+assert(center.env.fact.center_page==0 and center.env.fact.center_selected==4 and center.env.fact.center_keyed)
+-- Deleting a historical item forgets it from server and removes it from persisted history.
+center.event('center_delete')
+assert(center.calls[#center.calls][1]=='notifications.forget' and center.calls[#center.calls][2]==6)
+assert(center.env.fact.center_count==5 and center.env.fact.center_pages==1)
+-- Invoking a live action from the center invokes and removes the live item.
+center.event('center_action',0*4+1)
+assert(center.calls[#center.calls][1]=='notifications.invoke' and center.calls[#center.calls][2]==10 and center.calls[#center.calls][3]=='reply')
+assert(center.env.fact.center_count==4)
+-- Persisted history survives a daemon restart.
+local center_restarted=boot(fresh(),nil,nil,center.files)
+assert(center_restarted.env.fact.center_count==4 and center_restarted.env.model.center_items[1].title=='Past9')
+-- Clear all clears both server active + history and persisted storage.
+center_restarted.event('notices_center_open',0)
+center_restarted.event('notices_clear_all',0)
+assert(center_restarted.env.fact.center_count==0 and center_restarted.env.text.center_count_text=='00')
+assert(#center_restarted.files['notices.json'].history==0)
+-- Palette updates clamp to 0..7.
+center_restarted.event('notices_palette',3); assert(center_restarted.env.fact.palette_id==3)
+center_restarted.event('notices_palette',99); assert(center_restarted.env.fact.palette_id==3)
 print('native notification entry logic: passed')

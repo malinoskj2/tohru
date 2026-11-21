@@ -1,0 +1,35 @@
+part TrayView {
+    // Subtle hairline separating application tray icons from Tohru's built-in service controls.
+    box { from: root_tray_x - 4, 9; size: 1, 12; color: bar_ink; opacity: 18%; show: tray_slots > 0 }
+
+    // Overflow button when more tray apps exist than fit inline.
+    group {
+        show: tray_has_overflow and tray_slots > 0
+        zone box tray_more_hit { from: tray_x, 4; size: 22, 22; corner: 7; cursor: pointer; active: tray_has_overflow and tray_slots > 0; label: "More tray icons" }
+        box { from: tray_x, 4; size: 22, 22; corner: 7; color: bar_ink; opacity: max(if(tray_open and tray_mode == 1, 16%, 0%), max(tray_more_hit.hover * 10%, tray_more_hit.pressed * 16%)) }
+        text "⋯" { at: tray_x + 11, 15; anchor: center; size: 13; weight: 600; family: "SF Pro Text"; color: bar_ink; opacity: 88% }
+        on press tray_more_hit { emit tray_anchor(tray_x + 11); emit tray_overflow_toggle }
+    }
+
+    // Inline tray icons, up to tray_inline_count.
+    for item in tray_items {
+        let t_shown = item.index < tray_inline_count
+        let t_x = tray_x + if(tray_has_overflow, 24, 0) + item.index * 24
+        group {
+            show: t_shown
+            zone box tray_hit.$item.index { from: t_x, 4; size: 22, 22; corner: 7; cursor: pointer; active: t_shown; label: item.title }
+            box { from: t_x, 4; size: 22, 22; corner: 7; color: bar_ink; opacity: max(tray_hit.$item.index.hover * 10%, tray_hit.$item.index.pressed * 16%) }
+            image item.icon { at: round(t_x + 4), 8; size: 14, 14; show: item.has_icon }
+            image tray_fallback_icon { at: round(t_x + 4), 8; size: 14, 14; tint: bar_ink; opacity: 72%; show: not item.has_icon }
+            group {
+                glow: 6, 40%, ink_lavender
+                show: item.attention
+                box { from: t_x + 15, 7; size: 4, 4; color: ink_lavender }
+            }
+            on press tray_hit.$item.index { emit tray_anchor(t_x + 11); emit tray_activate(item.index) }
+            on press right tray_hit.$item.index { emit tray_anchor(t_x + 11); emit tray_menu_open(item.index) }
+            on press middle tray_hit.$item.index { emit tray_secondary(item.index) }
+            on scroll tray_hit.$item.index { emit tray_scroll(item.index * 256 + clamp(round(wheel), -100, 100) + 128) }
+        }
+    }
+}

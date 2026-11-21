@@ -1,0 +1,127 @@
+part TrayPopup {
+    shader tray_fill = file "../sound/fill.wgsl"
+    let tray_pw = 264
+    let tray_anchor = if(tray_anchor_x < 0, tray_x + tray_total_w / 2, tray_anchor_x)
+    popup tray_panel {
+        at: clamp(tray_anchor - tray_pw / 2, 8, max(8, screen.width - 8 - tray_pw)) - 12, 37
+        size: tray_pw + 24, 460
+        open: tray_open
+        bright: panel_bright
+        let tx = 12
+        let th = clamp(tray_panel_h, 88, 438)
+        let header_h = if(tray_mode == 0 and tray_has_subtitle, 52, 40)
+
+        body {
+            color: ink_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+            shadow: 0, 4, 10, 0.22 - 0.1 * pk
+            box { from: tx, 0; size: tray_pw, th; corner: 15 }
+        }
+        shader tray_fill { at: tx, 0; size: tray_pw, th; corner: 15; values: 0.62, 0.46, 0.45, pk, 0.25; colors: ink_glass; show: tray_open }
+        box { from: tx + 0.5, 0.5; size: tray_pw - 1, th - 1; corner: 14.5; stroke: 1; color: ink_white; opacity: 0.6 * (26% - 10% * pk) }
+
+        // Header.
+        image tray_active_icon { at: tx + 14, 12; size: 16, 16; show: tray_mode == 0 and tray_has_icon }
+        image tray_fallback_icon { at: tx + 14, 13; size: 14, 14; tint: ink_white; opacity: 64%; show: tray_mode == 0 and not tray_has_icon }
+        text tray_title { at: tx + if(tray_mode == 0, 36, 14), 20; anchor: left center; width: tray_pw - 52; lines: 1; size: 13; weight: 600; family: "SF Pro Text"; color: ink_white; opacity: 94% }
+        text tray_subtitle { at: tx + 36, 37; anchor: left center; width: tray_pw - 50; lines: 1; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 56%; show: tray_mode == 0 and tray_has_subtitle }
+        text "{tray_items.count}" { at: tx + tray_pw - 14, 20; anchor: right center; size: 12; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 54%; show: tray_mode == 1 }
+        box { from: tx + 12, header_h; size: tray_pw - 24, 1; color: ink_white; opacity: 12% - 2% * pk }
+
+        // DBusMenu mode (tray_mode == 0).
+        group {
+            show: tray_mode == 0
+
+            // Submenu back row.
+            group {
+                show: tray_has_back
+                zone box tray_back_hit { from: tx + 8, header_h + 6; size: tray_pw - 16, 24; corner: 7; cursor: pointer; active: tray_open and tray_mode == 0 and tray_has_back; label: "Back" }
+                box { from: tx + 8, header_h + 6; size: tray_pw - 16, 24; corner: 7; color: ink_white; opacity: max(tray_back_hit.hover * 10%, tray_back_hit.pressed * 16%) }
+                text "‹  Back" { at: tx + 16, header_h + 18; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_lavender; opacity: 92% }
+                on press tray_back_hit { emit tray_menu_back }
+            }
+
+            text "No menu items" { at: tx + tray_pw / 2, header_h + 28; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 44%; show: tray_menu_rows.count == 0 }
+
+            for row in tray_menu_rows {
+                let ry = header_h + 6 + if(tray_has_back, 28, 0) + row.y
+                let focused = tray_keyed and tray_focus == row.row_index and not row.separator
+                group {
+                    show: row.separator
+                    box { from: tx + 14, ry + 4; size: tray_pw - 28, 1; color: ink_white; opacity: 11% - 2% * pk }
+                }
+                group {
+                    show: not row.separator
+                    zone box tm_hit.$row.index { from: tx + 8, ry; size: tray_pw - 16, 26; corner: 7; cursor: if(row.enabled, pointer, default); active: tray_open and tray_mode == 0 and row.enabled; label: row.label }
+                    box { from: tx + 8, ry; size: tray_pw - 16, 26; corner: 7; color: ink_white; opacity: if(focused, 12%, 0%) + if(row.enabled, max(tm_hit.$row.index.hover * 10%, tm_hit.$row.index.pressed * 16%), 0%) }
+                    group {
+                        glow: 5, 50%, ink_lavender
+                        show: row.has_check and row.checked
+                        box { from: tx + 16, ry + 11; size: 4, 4; color: ink_lavender }
+                    }
+                    box { from: tx + 15.5, ry + 10.5; size: 5, 5; corner: 2.5; stroke: 1; color: ink_white; opacity: 38%; show: row.has_check and not row.checked }
+                    text row.label { at: tx + if(row.has_check, 28, 16), ry + 13; anchor: left center; width: tray_pw - if(row.has_check, 56, 44); lines: 1; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(row.enabled, 92%, 34%) }
+                    text "›" { at: tx + tray_pw - 18, ry + 12.5; anchor: center; size: 15; family: "SF Pro Text"; color: ink_white; opacity: if(row.enabled, 56%, 24%); show: row.has_sub }
+                    on press tm_hit.$row.index { tray_keyed = false; emit tray_menu_pick(row.index) }
+                }
+            }
+        }
+
+        // Overflow app list mode (tray_mode == 1).
+        group {
+            show: tray_mode == 1
+            text "No tray applications" { at: tx + tray_pw / 2, header_h + 28; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 44%; show: tray_items.count == 0 }
+
+            for item in tray_items {
+                let p_slot = item.index - tray_page * 8
+                let p_show = p_slot >= 0 and p_slot < 8
+                let iy = header_h + 8 + p_slot * 34
+                let focused = tray_keyed and tray_focus == p_slot
+                group {
+                    show: p_show
+                    zone box to_hit.$item.index { from: tx + 8, iy; size: tray_pw - if(item.has_menu, 44, 16), 30; corner: 8; cursor: pointer; active: tray_open and tray_mode == 1 and p_show; label: item.title }
+                    box { from: tx + 8, iy; size: tray_pw - 16, 30; corner: 8; color: ink_white; opacity: if(focused, 12%, 0%) + max(to_hit.$item.index.hover * 9%, to_hit.$item.index.pressed * 15%) }
+                    image item.icon { at: tx + 15, iy + 8; size: 14, 14; show: item.has_icon }
+                    image tray_fallback_icon { at: tx + 15, iy + 8; size: 14, 14; tint: ink_white; opacity: 64%; show: not item.has_icon }
+                    text item.title { at: tx + 36, iy + 15; anchor: left center; width: tray_pw - 76; lines: 1; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+                    group {
+                        show: item.has_menu
+                        zone box to_menu.$item.index { from: tx + tray_pw - 34, iy + 4; size: 24, 22; corner: 7; cursor: pointer; active: tray_open and tray_mode == 1 and p_show and item.has_menu; label: "{item.title} menu" }
+                        box { from: tx + tray_pw - 34, iy + 4; size: 24, 22; corner: 7; color: ink_white; opacity: max(to_menu.$item.index.hover * 12%, to_menu.$item.index.pressed * 18%) }
+                        text "›" { at: tx + tray_pw - 22, iy + 14.5; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: 72% }
+                        on press to_menu.$item.index { tray_keyed = false; emit tray_overflow_menu(item.index) }
+                    }
+                    on press to_hit.$item.index { tray_keyed = false; emit tray_overflow_activate(item.index) }
+                    on press right to_hit.$item.index { tray_keyed = false; emit tray_overflow_menu(item.index) }
+                }
+            }
+
+            group {
+                show: tray_pages > 1
+                let py = th - 30
+                text "{tray_page + 1} of {tray_pages}" { at: tx + 14, py + 11; anchor: left center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 56% }
+                zone box tray_prev { from: tx + tray_pw - 64, py; size: 24, 22; corner: 7; cursor: pointer; active: tray_open and tray_mode == 1 and tray_page > 0; label: "Previous tray items" }
+                zone box tray_next { from: tx + tray_pw - 38, py; size: 24, 22; corner: 7; cursor: pointer; active: tray_open and tray_mode == 1 and tray_page + 1 < tray_pages; label: "More tray items" }
+                box { from: tx + tray_pw - 64, py; size: 24, 22; corner: 7; color: ink_white; opacity: max(tray_prev.hover * 10%, tray_prev.pressed * 16%) }
+                box { from: tx + tray_pw - 38, py; size: 24, 22; corner: 7; color: ink_white; opacity: max(tray_next.hover * 10%, tray_next.pressed * 16%) }
+                text "‹" { at: tx + tray_pw - 52, py + 10; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if(tray_page > 0, 92%, 34%) }
+                text "›" { at: tx + tray_pw - 26, py + 10; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if(tray_page + 1 < tray_pages, 92%, 34%) }
+                on press tray_prev { emit tray_page_step(-1) }
+                on press tray_next { emit tray_page_step(1) }
+            }
+        }
+
+        // Error line if an action or menu query failed.
+        text tray_error { at: tx + 14, th - 14; anchor: left center; width: tray_pw - 28; lines: 1; size: 11; family: "SF Pro Text"; color: ink_red; show: tray_failed }
+    }
+
+    on key Escape while tray_open { emit tray_close }
+    on key Left while tray_open and tray_mode == 0 and tray_has_back { emit tray_menu_back }
+    on key BackSpace while tray_open and tray_mode == 0 and tray_has_back { emit tray_menu_back }
+    on key Up while tray_open { emit tray_focus_move(-1) }
+    on key Down while tray_open { emit tray_focus_move(1) }
+    on key Return while tray_open { emit tray_focus_activate }
+    on key space while tray_open { emit tray_focus_activate }
+    on key Prior while tray_open and tray_mode == 1 { emit tray_page_step(-1) }
+    on key Next while tray_open and tray_mode == 1 { emit tray_page_step(1) }
+    on blur { emit tray_close }
+}

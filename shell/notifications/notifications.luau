@@ -1,6 +1,10 @@
 local previous = {}
 local shown = {}
 local slots = {}
+local live_notices = {}
+local server_history = {}
+local persisted_history = {}
+local center_all = {}
 local sequence = 0
 local serial = 0
 local ticking = nil
@@ -10,6 +14,8 @@ local LINGER_MS = 450
 local POWER_ID = -1
 local SLOTS = 4
 local VISIBLE = 3
+local CENTER_PAGE_SIZE = 5
+local MAX_HISTORY = 50
 local DEFAULT_MS = 6000
 local TICK_MS = 100
 local PILL_MS = 2600
@@ -26,13 +32,20 @@ local function tell()
     local state = (fact.unread and 1 or 0) + (fact.dnd and 2 or 0)
     pcall(sys.call, "say", "tohru", "emit notices_state " .. state)
 end
+local function tell_center()
+    pcall(sys.call, "say", "tohru", "emit notices_center_state " .. (fact.center_open and 1 or 0))
+end
+local function save_state()
+    pcall(sys.call, "files.write", SEEN, { unread = fact.unread == true, history = persisted_history })
+end
 local function set_unread(unread)
     if fact.unread == unread then return end
     fact.unread = unread
-    pcall(sys.call, "files.write", SEEN, { unread = unread })
+    save_state()
     tell()
 end
 local function bounded(value, count)
+    if type(value) ~= "string" then return "" end
     local boundary = utf8.offset(value, count + 1)
     return boundary and string.sub(value, 1, boundary - 1) or value
 end
@@ -104,14 +117,175 @@ local function covered()
     return fact.covered == true and fact.corner == "top_right"
 end
 local function showing()
-    return (#shown > 0 or fact.dnd_pill) and not covered()
+    return fact.center_open == true or ((#shown > 0 or fact.dnd_pill) and not covered())
+end
+
+local function history_key(item)
+    return tostring(item.id or 0) .. "\0" .. tostring(item.time or 0) .. "\0" .. tostring(item.title or "")
+end
+
+local function normalize_history(notice)
+    local title = bounded(notice.title or "", 256)
+    local body = bounded(notice.body or "", 768)
+    local time = tonumber(notice.time) or 0
+    return {
+        id = tonumber(notice.id) or 0,
+        app = bounded(notice.app or "", 64),
+        title = title,
+        body = body,
+        icon = type(notice.icon) == "string" and notice.icon or "",
+        pic = type(notice.image) == "string" and notice.image or (type(notice.pic) == "string" and notice.pic or ""),
+        urgency = tonumber(notice.urgency) or 1,
+        time = time,
+        clock = type(notice.clock) == "string" and notice.clock ~= "" and notice.clock or os.date("%H:%M", time),
+    }
+end
+
+local function merge_persisted(items)
+    local seen = {}
+    local merged = {}
+    local changed = false
+    for _, item in ipairs(items) do
+        local norm = normalize_history(item)
+        local key = history_key(norm)
+        if not seen[key] then
+            seen[key] = true
+            merged[#merged + 1] = norm
+        end
+    end
+    for _, item in ipairs(persisted_history) do
+        local key = history_key(item)
+        if not seen[key] and #merged < MAX_HISTORY then
+            seen[key] = true
+            merged[#merged + 1] = item
+        end
+    end
+    if #merged ~= #persisted_history then
+        changed = true
+    else
+        for i = 1, #merged do
+            if history_key(merged[i]) ~= history_key(persisted_history[i]) then changed = true; break end
+        end
+    end
+    if changed then
+        persisted_history = merged
+        save_state()
+    end
+end
+
+local function find_power()
+    for _, entry in ipairs(shown) do if entry.id == POWER_ID then return entry end end
+end
+
+local function publish_center()
+    local items = {}
+    local live_ids = {}
+    local live_count = 0
+
+    local power = find_power()
+    if power then
+        live_count = live_count + 1
+        items[#items + 1] = {
+            id = POWER_ID, active = true, critical = power.critical, opens = false,
+            app = power.app, title = power.title, body = power.body, clock = power.clock,
+            icon = power.icon, pic = power.pic, buttons = {}, default = nil,
+        }
+    end
+
+    for _, notice in ipairs(live_notices) do
+        live_ids[notice.id] = true
+        live_count = live_count + 1
+        local buttons, def = {}, nil
+        for _, action in ipairs(notice.actions or {}) do
+            if action.key == "default" then def = action.key
+            elseif #buttons < 3 and action.label ~= "" then
+                buttons[#buttons + 1] = { key = action.key, label = bounded(action.label, 32) }
+            end
+        end
+        items[#items + 1] = {
+            id = notice.id, active = true, critical = (notice.urgency or 1) >= 2, opens = def ~= nil,
+            app = bounded(notice.app or "", 64),
+            title = bounded(notice.title or "", 256),
+            body = bounded(notice.body or "", 768),
+            clock = notice.clock or os.date("%H:%M", notice.time),
+            icon = notice.icon or "", pic = notice.image or "",
+            buttons = buttons, default = def,
+        }
+    end
+
+    local hist_seen = {}
+    local recent_count = 0
+    local function push_hist(raw)
+        local norm = normalize_history(raw)
+        local key = history_key(norm)
+        if live_ids[norm.id] or hist_seen[key] then return end
+        hist_seen[key] = true
+        recent_count = recent_count + 1
+        items[#items + 1] = {
+            id = norm.id, key = key, active = false, critical = norm.urgency >= 2, opens = false,
+            app = norm.app, title = norm.title, body = norm.body, clock = norm.clock,
+            icon = norm.icon, pic = norm.pic, buttons = {}, default = nil,
+        }
+    end
+    for _, h in ipairs(server_history) do push_hist(h) end
+    for _, h in ipairs(persisted_history) do push_hist(h) end
+
+    center_all = items
+    local total = #items
+    local pages = math.max(1, math.ceil(total / CENTER_PAGE_SIZE))
+    local page = math.max(0, math.min(math.floor(fact.center_page or 0), pages - 1))
+    fact.center_count = total
+    fact.center_pages = pages
+    fact.center_page = page
+    text.center_count_text = string.format("%02d", math.min(total, 99))
+    if fact.dnd then
+        text.center_status = total > 0 and ("Do Not Disturb · " .. total .. " stored") or "Do Not Disturb · On"
+    elseif total == 0 then
+        text.center_status = "All clear"
+    elseif live_count > 0 and recent_count > 0 then
+        text.center_status = live_count .. " live · " .. recent_count .. " recent"
+    elseif live_count > 0 then
+        text.center_status = live_count .. " live"
+    else
+        text.center_status = recent_count .. " recent"
+    end
+
+    local start_idx = page * CENTER_PAGE_SIZE
+    local visible_count = math.max(0, math.min(CENTER_PAGE_SIZE, total - start_idx))
+    fact.center_selected = math.max(0, math.min(math.floor(fact.center_selected or 0), math.max(0, visible_count - 1)))
+
+    local rows = {}
+    for i = 1, CENTER_PAGE_SIZE do
+        local entry = items[start_idx + i]
+        if entry then
+            local btns = entry.buttons or {}
+            rows[i] = {
+                live = true, active = entry.active, critical = entry.critical, opens = entry.opens,
+                app = entry.app, title = entry.title, body = entry.body, clock = entry.clock,
+                icon = entry.icon, has_icon = entry.icon ~= "",
+                pic = entry.pic, has_pic = entry.pic ~= "",
+                acts = #btns,
+                a1 = btns[1] and btns[1].label or "",
+                a2 = btns[2] and btns[2].label or "",
+                a3 = btns[3] and btns[3].label or "",
+            }
+        else
+            rows[i] = {
+                live = false, active = false, critical = false, opens = false,
+                app = "", title = "", body = "", clock = "",
+                icon = "", has_icon = false, pic = "", has_pic = false,
+                acts = 0, a1 = "", a2 = "", a3 = "",
+            }
+        end
+    end
+    model.center_items = rows
 end
 
 local schedule
 -- The newest toast is nearest the corner: under the bar at the top right, at the bottom edge at the bottom right.
 local function publish()
     local now = clock()
-    local pill = fact.dnd_pill and PILL_H + GAP or 0
+    local pill = (fact.dnd_pill and not fact.center_open) and PILL_H + GAP or 0
     local top, bottom = TOP + pill, BOTTOM - pill
     for depth, entry in ipairs(shown) do
         local slot = slots[entry.slot]
@@ -127,7 +301,8 @@ local function publish()
     local rows = {}
     for index = 1, SLOTS do rows[index] = row(slots[index], now) end
     model.toasts = rows
-    -- The popup stays open while the last toast or the pill fades out, or tucks away under a bar popup.
+    publish_center()
+    -- The popup stays open while the last toast or the pill fades out, or while the notification center is open.
     if showing() then
         if linger then cancel(linger); linger = nil end
         fact.toasts_open = true
@@ -184,9 +359,9 @@ local function find(id)
     for _, entry in ipairs(shown) do if entry.id == id then return entry end end
 end
 
--- A toast's line stops while it is hovered or while a bar popup covers its corner.
+-- A toast's line stops while it is hovered, covered by a bar popup, or while the notification center is open.
 local function sync_hold(entry)
-    local yes = entry.hovered == true or covered()
+    local yes = entry.hovered == true or covered() or fact.center_open == true
     if (entry.held == true) == yes or not counting(entry) then return end
     local now = clock()
     entry.left = left_ms(entry, now)
@@ -266,17 +441,30 @@ end
 
 for index = 1, SLOTS do slots[index] = { live = false, serial = 0, freed = 0, y = BOTTOM, depth = 0 } end
 fact.dnd_pill = false
-publish()
+fact.center_open = fact.center_open == true
 local saved = sys.ask("files.read", SEEN, "json")
 fact.unread = type(saved) == "table" and saved.unread == true
+if type(saved) == "table" and type(saved.history) == "table" then
+    for i = 1, math.min(#saved.history, MAX_HISTORY) do
+        if type(saved.history[i]) == "table" then
+            persisted_history[#persisted_history + 1] = normalize_history(saved.history[i])
+        end
+    end
+end
+publish()
 tell()
+tell_center()
+
 sys.watch("notifications", function(notices)
     local current = {}
     local watermark = fact.last_id
     local known_after = false
     local now = clock()
+    live_notices = {}
     -- Bound UI work/state; native protocol ownership/history stays in Pleamar.
-    for index = math.min(#notices, 64), 1, -1 do
+    local limit = math.min(#notices, 64)
+    for index = 1, limit do live_notices[index] = notices[index] end
+    for index = limit, 1, -1 do
         local notice = notices[index]
         local title = bounded(notice.title, 256)
         local body = bounded(notice.body, 768)
@@ -286,7 +474,7 @@ sys.watch("notifications", function(notices)
         -- cannot move an unknown old ID ahead of an entry from the old window.
         local moved_replacement = previous[notice.id] == nil and known_after
         -- Only a new ID is unread: a replacement keeps whether it was seen, and low urgency is never kept.
-        if notice.id > watermark and (notice.urgency or 1) > 0 then set_unread(true) end
+        if notice.id > watermark and (notice.urgency or 1) > 0 and not fact.center_open then set_unread(true) end
         if notice.id > watermark or moved_replacement or (previous[notice.id] and previous[notice.id] ~= fingerprint) then
             incoming(notice, title, body)
         else
@@ -298,6 +486,17 @@ sys.watch("notifications", function(notices)
     end
     previous = current
     for index = #shown, 1, -1 do if shown[index].id ~= POWER_ID and current[shown[index].id] == nil then remove(shown[index].id) end end
+    publish()
+end)
+
+pcall(sys.watch, "notification_history", function(items)
+    server_history = {}
+    if type(items) == "table" then
+        for i = 1, math.min(#items, MAX_HISTORY) do
+            server_history[i] = items[i]
+        end
+        if #server_history > 0 then merge_persisted(server_history) end
+    end
     publish()
 end)
 
@@ -338,8 +537,61 @@ local function close(entry)
     else
         pcall(sys.call, "notifications.dismiss", entry.id)
         remove(entry.id)
+        for i = #live_notices, 1, -1 do
+            if live_notices[i].id == entry.id then table.remove(live_notices, i) end
+        end
     end
     publish()
+end
+
+local function center_item(slot)
+    slot = math.floor(tonumber(slot) or -1)
+    if slot < 0 or slot >= CENTER_PAGE_SIZE then return nil end
+    return center_all[(fact.center_page or 0) * CENTER_PAGE_SIZE + slot + 1]
+end
+
+local function dismiss_center_item(entry)
+    if not entry then return end
+    if entry.active then
+        close(entry)
+        return
+    end
+    if entry.id and entry.id > 0 then pcall(sys.call, "notifications.forget", entry.id) end
+    for i = #server_history, 1, -1 do
+        if history_key(normalize_history(server_history[i])) == entry.key then table.remove(server_history, i) end
+    end
+    local removed = false
+    for i = #persisted_history, 1, -1 do
+        if history_key(persisted_history[i]) == entry.key then
+            table.remove(persisted_history, i)
+            removed = true
+        end
+    end
+    if removed then save_state() end
+    publish()
+end
+
+local function open_center()
+    if fact.center_open then return end
+    fact.center_open = true
+    fact.center_page = 0
+    fact.center_selected = 0
+    fact.center_keyed = false
+    if pill_timer then cancel(pill_timer); pill_timer = nil end
+    fact.dnd_pill = false
+    set_unread(false)
+    for _, entry in ipairs(shown) do sync_hold(entry) end
+    publish()
+    tell_center()
+end
+
+local function close_center()
+    if not fact.center_open then return end
+    fact.center_open = false
+    fact.center_keyed = false
+    for _, entry in ipairs(shown) do sync_hold(entry) end
+    publish()
+    tell_center()
 end
 
 on("toast_enter", function(index) hold(index, true) end)
@@ -367,6 +619,106 @@ on("toast_action", function(code)
     publish()
 end)
 
+on("notices_center_open", open_center)
+on("notices_center_close", close_center)
+on("notices_center_toggle", function()
+    if fact.center_open then close_center() else open_center() end
+end)
+on("notices_clear_all", function()
+    pcall(sys.call, "notifications.clear")
+    pcall(sys.call, "notifications.clear_history")
+    remove(POWER_ID)
+    fact.power_level = 0
+    live_notices = {}
+    server_history = {}
+    persisted_history = {}
+    for index = #shown, 1, -1 do release(shown[index]); table.remove(shown, index) end
+    fact.unread = false
+    save_state()
+    tell()
+    publish()
+end)
+on("center_dismiss", function(slot)
+    dismiss_center_item(center_item(slot))
+end)
+on("center_open_item", function(slot)
+    local entry = center_item(slot)
+    if not entry or not entry.active or not entry.default then return end
+    pcall(sys.call, "notifications.invoke", entry.id, entry.default)
+    remove(entry.id)
+    for i = #live_notices, 1, -1 do
+        if live_notices[i].id == entry.id then table.remove(live_notices, i) end
+    end
+    publish()
+end)
+on("center_action", function(code)
+    code = math.floor(tonumber(code) or -1)
+    local entry = center_item(code // 4)
+    local button = entry and entry.active and entry.buttons[code % 4]
+    if not button then return end
+    pcall(sys.call, "notifications.invoke", entry.id, button.key)
+    remove(entry.id)
+    for i = #live_notices, 1, -1 do
+        if live_notices[i].id == entry.id then table.remove(live_notices, i) end
+    end
+    publish()
+end)
+on("center_page_step", function(delta)
+    if delta ~= -1 and delta ~= 1 then return end
+    local pages = math.max(1, fact.center_pages or 1)
+    local next_page = math.max(0, math.min((fact.center_page or 0) + delta, pages - 1))
+    if next_page ~= fact.center_page then
+        fact.center_page = next_page
+        fact.center_selected = 0
+        publish_center()
+    end
+end)
+on("center_focus_move", function(delta)
+    if delta ~= -1 and delta ~= 1 then return end
+    if #center_all == 0 then return end
+    fact.center_keyed = true
+    local page = fact.center_page or 0
+    local start_idx = page * CENTER_PAGE_SIZE
+    local visible = math.max(0, math.min(CENTER_PAGE_SIZE, #center_all - start_idx))
+    local next_sel = (fact.center_selected or 0) + delta
+    if next_sel < 0 and page > 0 then
+        fact.center_page = page - 1
+        fact.center_selected = CENTER_PAGE_SIZE - 1
+        publish_center()
+    elseif next_sel >= visible and page + 1 < (fact.center_pages or 1) then
+        fact.center_page = page + 1
+        fact.center_selected = 0
+        publish_center()
+    else
+        fact.center_selected = math.max(0, math.min(next_sel, math.max(0, visible - 1)))
+    end
+end)
+on("center_activate", function()
+    local entry = center_item(fact.center_selected or 0)
+    if not entry or not entry.active then return end
+    if entry.default then
+        pcall(sys.call, "notifications.invoke", entry.id, entry.default)
+        remove(entry.id)
+        for i = #live_notices, 1, -1 do
+            if live_notices[i].id == entry.id then table.remove(live_notices, i) end
+        end
+        publish()
+    elseif entry.buttons[1] then
+        pcall(sys.call, "notifications.invoke", entry.id, entry.buttons[1].key)
+        remove(entry.id)
+        for i = #live_notices, 1, -1 do
+            if live_notices[i].id == entry.id then table.remove(live_notices, i) end
+        end
+        publish()
+    end
+end)
+on("center_delete", function()
+    dismiss_center_item(center_item(fact.center_selected or 0))
+end)
+on("fact:toasts_open", function(open)
+    if not open and fact.center_open then close_center() end
+end)
+
 on("power_warning_clear", function(charge) power_warning(0, "", charge) end)
 on("power_warning_low", function(charge) power_warning(1, "Battery low", charge) end)
 on("power_warning_critical", function(charge) power_warning(2, "Battery critical", charge) end)
@@ -375,8 +727,8 @@ on("notices_seen", function() set_unread(false) end)
 
 local function pill(show)
     if pill_timer then cancel(pill_timer); pill_timer = nil end
-    fact.dnd_pill = show
-    if show then
+    fact.dnd_pill = show and not fact.center_open
+    if fact.dnd_pill then
         pill_timer = after(PILL_MS, function()
             pill_timer = nil
             fact.dnd_pill = false
@@ -397,7 +749,10 @@ on("notices_dnd", function(mode)
     publish()
     tell()
 end)
-on("notices_report", tell)
+on("notices_report", function()
+    tell()
+    tell_center()
+end)
 
 local function placement()
     for _, entry in ipairs(shown) do sync_hold(entry) end
@@ -413,6 +768,12 @@ end)
 on("notices_cover", function(open)
     if open ~= 0 and open ~= 1 then return end
     fact.covered = open == 1
+    if fact.covered and fact.center_open then close_center(); return end
     placement()
+end)
+-- From the bar: appearance.palette index (0..7).
+on("notices_palette", function(id)
+    id = math.floor(tonumber(id) or -1)
+    if id >= 0 and id <= 7 then fact.palette_id = id end
 end)
 pcall(sys.call, "say", "tohru", "emit notices_ask")

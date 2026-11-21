@@ -64,7 +64,7 @@ A focus ring is drawn on the focused row once the keyboard has been used; a clic
 | `tohru panel toggle sound` / `open sound` | `sound_toggle` / `sound_open_request` |
 | `tohru audio volume up` / `down` | `audio_step 1` / `audio_step -1` (5%) |
 | `tohru audio mute toggle` | `audio_mute` |
-| `tohru audio input volume up` / `down`, `tohru audio input mute toggle` | `audio_input_up`, `audio_input_down`, `audio_input_mute` |
+| `tohru audio input volume up` / `down`, `tohru audio input mute toggle`, `tohru audio input select <id>` | `audio_input_up`, `audio_input_down`, `audio_input_mute`, `audio_input_select <id>` |
 | `tohru audio output select <id>` | `audio_output_select <id>` |
 | `tohru audio app <id> volume up` / `down`, `tohru audio app <id> mute toggle` | `audio_app_up <id>`, `audio_app_down <id>`, `audio_app_mute <id>` |
 | `tohru audio status --json` | `get audio_status` |
@@ -83,7 +83,6 @@ Run them from the repository root; the Lua tests need Lua 5.4. `tests/native-set
 
 ## Known limitations
 
-- Input devices cannot be chosen: Pleamar's input and output device IDs can collide.
 - There is no balance control or peak meter.
 - An app without an icon leaves its icon slot empty.
 - On light glass the ribbon draws the master rail's track in dark ink and its bead is darkened, so that it shows.

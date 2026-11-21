@@ -1,6 +1,7 @@
 scene Tohru {
- surface { size: full, 42; anchor: top; margin: 0; reserve: 31; level: top, overlay while bar_launcher >= 2; screens: bar_outputs; keyboard: exclusive while sound_open or media_open or cal_open or net_open or bt_open or info_visible or about_visible or wall_open }
- permissions { services: "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.app_volume", "audio.app_mute", "window", "apps", "media", "media.*", "clock", "workspaces", "network.*", "bluetooth.*", "battery", "say:tohru-notifications", "say:tohru-session", "say:tohru-launcher"; run: "tohru-wallpaper" }
+ surface { size: full, 42; anchor: top; margin: 0; reserve: 31; level: top, overlay while bar_launcher >= 2; screens: bar_outputs; keyboard: exclusive while sound_open or media_open or cal_open or net_open or bt_open or info_visible or about_visible or wall_open or tray_open }
+ permissions { services: "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.default_output", "audio.default_input", "audio.app_volume", "audio.app_mute", "window", "apps", "media", "media.*", "clock", "workspaces", "network.*", "bluetooth.*", "battery", "tray", "tray.*", "say:tohru-notifications", "say:tohru-session", "say:tohru-launcher"; run: "tohru-wallpaper", "tohru-media-art" }
+ include "panel-ink.plm"
  include "bar/state.plm"
  include "bar/rail-state.plm"
  include "calendar/state.plm"
@@ -12,9 +13,9 @@ scene Tohru {
  include "about/state.plm"
  include "sound/declarations.plm"
  include "wallpaper/state.plm"
+ include "tray/state.plm"
  include "osd/state.plm"
  include "corners/state.plm"
- include "panel-ink.plm"
  fact mooncoil = false
  // j2bar raises the bar over the launcher's scrim while it is mapped and tints it sky while it is open.
  fact bar_launcher = 0
@@ -41,7 +42,7 @@ scene Tohru {
  event setting_lock_style ->
  event setting_notifications_position ->
  body {
-  gradient: 0, 0 to 0, 31, #140a1e, #140a1e
+  gradient: 0, 0 to 0, 31, ink_bar, ink_bar
   opacity: 14%
   glass: 100%
   lens: false
@@ -50,8 +51,8 @@ scene Tohru {
   box { from: 100, 0; size: screen.width - 200, 21 }
  }
  // The box starts above the screen so only its bottom corners show.
- shader bar_fill { at: 100, -10; size: screen.width - 200, 41; corner: 10; values: 0.18, 0.06, 9, 0.14 * 0.36; colors: #140a1e, #140a1e }
- shader bar_fill { at: 100, -10; size: screen.width - 200, 41; corner: 10; values: 0.05 * bar_sky, 0.20 * bar_sky, 9, 0; colors: #89dceb, #89dceb; show: bar_sky > 0.002 }
+ shader bar_fill { at: 100, -10; size: screen.width - 200, 41; corner: 10; values: 0.18, 0.06, 9, 0.14 * 0.36; colors: ink_bar, ink_bar }
+ shader bar_fill { at: 100, -10; size: screen.width - 200, 41; corner: 10; values: 0.05 * bar_sky, 0.20 * bar_sky, 9, 0; colors: ink_sky, ink_sky; show: bar_sky > 0.002 }
  path {
   // Pleamar firms up light edges; 0.55 at 27.65% lands on j2bar's linear 1px hairline at 24%.
   stroke: 0.55; color: #ffffff; opacity: 27.65%
@@ -71,6 +72,7 @@ scene Tohru {
  include "bar/contents.plm"
  include "bar/workspace.plm"
  include "services.plm"
+ include "tray/view.plm"
  include "bar/bell.plm"
  include "sound/view.plm"
  include "wallpaper/view.plm"
@@ -89,6 +91,7 @@ scene Tohru {
  include "about/popup.plm"
  include "wallpaper/popup.plm"
  include "wallpaper/desktop.plm"
+ include "tray/popup.plm"
  include "corners/view.plm"
  include "osd/view.plm"
 }

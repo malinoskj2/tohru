@@ -70,7 +70,7 @@ value.volume=.75;report();assert(not fact.sound_dragging and fact['rail.serial.2
 handlers.sound_rail_press(.2);handlers.sound_rail_release();run(500);assert(not fact.sound_dragging,'a report that never agrees times out')
 value.volume=.2;report()
 
--- Keyboard rows: master, outputs default-first, microphone, apps.
+-- Keyboard rows: master, outputs default-first, microphone, input devices (when > 1), apps.
 handlers.sound_focus_move(1);assert(fact.sound_focus_kind==1 and fact.sound_focus_index==0)
 handlers.sound_focus_activate();assert(calls[#calls][1]=='audio.default' and calls[#calls][2]==11)
 handlers.sound_focus_move(1);handlers.sound_focus_activate();assert(calls[#calls][2]==10)
@@ -78,6 +78,11 @@ for _=1,3 do handlers.sound_focus_move(1)end
 assert(fact.sound_focus_kind==1 and fact.sound_focus_index==4 and fact.sound_out_page==1,'three other outputs to a page')
 handlers.sound_focus_move(1);assert(fact.sound_focus_kind==2)
 handlers.sound_focus_step(1);assert(calls[#calls][1]=='audio.input' and math.abs(calls[#calls][2]-.35)<1e-9)
+handlers.sound_focus_move(1);assert(fact.sound_focus_kind==4 and fact.sound_focus_index==0)
+handlers.sound_focus_activate();assert(calls[#calls][1]=='audio.default_input' and calls[#calls][2]==0)
+handlers.sound_focus_move(1);assert(fact.sound_focus_kind==4 and fact.sound_focus_index==1)
+handlers.sound_focus_activate();assert(calls[#calls][1]=='audio.default_input' and calls[#calls][2]==1)
+handlers.audio_input_select(99);assert(calls[#calls][2]==1,'stale input ID rejected')
 handlers.sound_focus_move(1);assert(fact.sound_focus_kind==3 and fact.sound_focus_index==0)
 handlers.sound_page(1);assert(fact.sound_focus_index==4 and fact.sound_app_page==1)
 handlers.sound_focus_step(-1);assert(calls[#calls][1]=='audio.app_volume' and calls[#calls][2]==5 and math.abs(calls[#calls][3]-.45)<1e-9)

@@ -2,17 +2,17 @@
 set -euo pipefail
 usage() {
     cat <<'HELP'
-Usage: tohru panel toggle|open sound|calendar|network|media|bluetooth|wallpaper|about|info
+Usage: tohru panel toggle|open sound|calendar|network|media|bluetooth|wallpaper|about|info|notifications|tray
        tohru panel close
        tohru settings open|close
        tohru session open|close|toggle
        tohru launcher toggle|open|close
        tohru lock
-       tohru notifications seen | dnd on|off|toggle
+       tohru notifications open|close|toggle|clear|seen | dnd on|off|toggle
        tohru routing-error
        tohru audio volume up|down
        tohru audio mute toggle
-       tohru audio input volume up|down | input mute toggle
+       tohru audio input volume up|down | input mute toggle | input select ID
        tohru audio output select ID
        tohru audio app ID volume up|down | app ID mute toggle
        tohru audio status --json
@@ -29,7 +29,6 @@ Usage: tohru panel toggle|open sound|calendar|network|media|bluetooth|wallpaper|
 
 Commands report native request acceptance, not completion.
 Audio status reports the last native observation and command errors.
-Input device selection is unavailable: native input/output IDs collide; input devices are read-only.
 Inspect status and settings-error for settings results or failure.
 HELP
 }
@@ -55,11 +54,15 @@ case ${1:-help} in
         ;;
     notifications)
         case "${2:-}:${3:-}:$#" in
+            open::2) exec "$pleamar" --say tohru-notifications 'emit notices_center_open 0' ;;
+            close::2) exec "$pleamar" --say tohru-notifications 'emit notices_center_close 0' ;;
+            toggle::2) exec "$pleamar" --say tohru-notifications 'emit notices_center_toggle 0' ;;
+            clear::2) exec "$pleamar" --say tohru-notifications 'emit notices_clear_all 0' ;;
             seen::2) exec "$pleamar" --say tohru-notifications 'emit notices_seen 0' ;;
             dnd:off:3) exec "$pleamar" --say tohru-notifications 'emit notices_dnd 0' ;;
             dnd:on:3) exec "$pleamar" --say tohru-notifications 'emit notices_dnd 1' ;;
             dnd:toggle:3) exec "$pleamar" --say tohru-notifications 'emit notices_dnd 2' ;;
-            *) fail 'Usage: tohru notifications seen | dnd on|off|toggle' ;;
+            *) fail 'Usage: tohru notifications open|close|toggle|clear|seen | dnd on|off|toggle' ;;
         esac
         ;;
     lock)
@@ -90,7 +93,13 @@ case ${1:-help} in
     panel)
         case ${2:-} in
             open|toggle)
-                [[ $# == 3 && ( $3 == sound || $3 == calendar || $3 == network || $3 == media || $3 == bluetooth || $3 == wallpaper || $3 == about || $3 == info ) ]] || fail 'Usage: tohru panel open|toggle sound|calendar|network|media|bluetooth|wallpaper|about|info'
+                [[ $# == 3 && ( $3 == sound || $3 == calendar || $3 == network || $3 == media || $3 == bluetooth || $3 == wallpaper || $3 == about || $3 == info || $3 == notifications || $3 == tray ) ]] || fail 'Usage: tohru panel open|toggle sound|calendar|network|media|bluetooth|wallpaper|about|info|notifications|tray'
+                if [[ $3 == notifications ]]; then
+                    case $2 in
+                        open) exec "$pleamar" --say tohru-notifications 'emit notices_center_open 0' ;;
+                        toggle) exec "$pleamar" --say tohru-notifications 'emit notices_center_toggle 0' ;;
+                    esac
+                fi
                 case "$3:$2" in
                     sound:open) event=sound_open_request ;; sound:toggle) event=sound_toggle ;;
                     calendar:open) event=calendar_open ;; calendar:toggle) event=calendar_toggle ;;
@@ -100,6 +109,7 @@ case ${1:-help} in
                     wallpaper:open) event=wall_open_request ;; wallpaper:toggle) event=wall_toggle ;;
                     about:open) event=about_open ;; about:toggle) event=about_toggle ;;
                     info:open) event=info_open ;; info:toggle) event=info_toggle ;;
+                    tray:open) event=tray_open_request ;; tray:toggle) event=tray_overflow_toggle ;;
                 esac
                 exec "$pleamar" --say tohru "emit $event"
                 ;;
@@ -107,18 +117,21 @@ case ${1:-help} in
                 [[ $# == 2 ]] || fail 'Usage: tohru panel close'
                 exec "$pleamar" --say tohru 'emit panel_close'
                 ;;
-            *) fail 'Usage: tohru panel open|toggle sound|calendar|network|media|bluetooth|wallpaper|about|info | close' ;;
+            *) fail 'Usage: tohru panel open|toggle sound|calendar|network|media|bluetooth|wallpaper|about|info|notifications|tray | close' ;;
         esac
         ;;
     audio)
         case ${2:-} in
             input)
-                [[ $# == 4 ]] || fail 'Usage: tohru audio input volume up|down | input mute toggle'
+                [[ $# == 4 ]] || fail 'Usage: tohru audio input volume up|down | input mute toggle | input select ID'
                 case "$3:$4" in
                     volume:up) event=audio_input_up ;; volume:down) event=audio_input_down ;;
                     mute:toggle) event=audio_input_mute ;;
-                    select:*) fail 'Input device selection is unavailable: native input/output IDs collide' ;;
-                    *) fail 'Usage: tohru audio input volume up|down | input mute toggle' ;;
+                    select:*)
+                        audio_id "$4"
+                        exec "$pleamar" --say tohru "emit audio_input_select $4"
+                        ;;
+                    *) fail 'Usage: tohru audio input volume up|down | input mute toggle | input select ID' ;;
                 esac
                 exec "$pleamar" --say tohru "emit $event"
                 ;;

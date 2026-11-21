@@ -6,6 +6,8 @@ return function()
     local heard_at, heard_pos = clock(), 0
     local active = -1
     local pending, timer = nil, nil
+    local art_cache = {}
+    local ART_RETRY_SEC = 60
     local function rail_x(seconds)
         local length = fact.media_length or 0
         if length <= 0 then return 8 end
@@ -59,8 +61,52 @@ return function()
         if (p.artist or "") == "" then return name end
         return name .. " · " .. p.artist
     end
-    local function local_art(path)
-        return type(path) == "string" and path:sub(1, 1) == "/" and path or ""
+    local refresh_art
+    local function resolve_art(path)
+        if type(path) ~= "string" or path == "" then return "" end
+        if path:sub(1, 1) == "/" then return path end
+        if not path:match("^https?://[^%s]+$") or #path > 2048 then return "" end
+        local cached = art_cache[path]
+        if type(cached) == "string" then return cached end
+        if type(cached) == "table" then
+            if cached.pending then return "" end
+            if cached.failed_at and (clock() - cached.failed_at) < ART_RETRY_SEC then return "" end
+        end
+        if type(run) ~= "function" then return "" end
+        art_cache[path] = {pending = true}
+        pcall(run, "tohru-media-art", {path}, function(out, code)
+            local local_path = type(out) == "string" and out:match("^%s*(/[^\r\n]-)%s*$") or nil
+            if code == 0 and local_path and local_path ~= "" then
+                art_cache[path] = local_path
+                refresh_art()
+            else
+                art_cache[path] = {failed_at = clock()}
+            end
+        end)
+        return ""
+    end
+
+    local function build_players(players, found)
+        local order = {}
+        if found >= 0 then order[1] = players[found + 1] end
+        for i, p in ipairs(players) do if i - 1 ~= found then order[#order + 1] = p end end
+        local list = {}
+        for i, p in ipairs(order) do
+            if i > 8 then break end
+            local art = resolve_art(p.art)
+            list[i] = {id = p.id or "", name = (p.name or "") ~= "" and p.name or (p.id or ""), title = (p.title or "") ~= "" and p.title or (p.name or ""), sub = sub(p), art = art, has_art = art ~= "", playing = p.playing == true, active = i - 1 == active}
+        end
+        return list
+    end
+
+    function refresh_art()
+        local players = type(report.players) == "table" and report.players or {}
+        local found = find_active(players)
+        active = found >= 0 and 0 or -1
+        model.media_players = build_players(players, found)
+        local art = resolve_art(report.art)
+        text.media_art = art
+        fact.media_has_art = art ~= ""
     end
 
     local function observe(value)
@@ -75,19 +121,11 @@ return function()
         heard_at, heard_pos = clock(), position
         -- The reported player heads the rows; the others keep the bus's order.
         local found = find_active(players)
-        local order = {}
-        if found >= 0 then order[1] = players[found + 1] end
-        for i, p in ipairs(players) do if i - 1 ~= found then order[#order + 1] = p end end
         active = found >= 0 and 0 or -1
-        local list = {}
-        for i, p in ipairs(order) do
-            if i > 8 then break end
-            local art = local_art(p.art)
-            list[i] = {id = p.id or "", name = (p.name or "") ~= "" and p.name or (p.id or ""), title = (p.title or "") ~= "" and p.title or (p.name or ""), sub = sub(p), art = art, has_art = art ~= "", playing = p.playing == true, active = i - 1 == active}
-        end
+        local list = build_players(players, found)
         model.media_players = list
         local entry = list[active + 1]
-        local art = local_art(value.art)
+        local art = resolve_art(value.art)
         fact.media_has = has
         fact.media_playing = has and value.playing == true
         fact.media_can_seek = has and value.can_seek == true

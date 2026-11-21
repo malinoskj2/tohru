@@ -1,0 +1,45 @@
+part TrayState {
+    permissions { services: "tray", "tray.*" }
+    model tray_items max 24 {
+        key: text; id: text; title: text; tip: text
+        icon: image 14, 14; has_icon: bool; has_menu: bool; attention: bool
+    }
+    model tray_menu_rows max 16 {
+        id: number; y: number; label: text; enabled: bool; separator: bool
+        checked: bool; has_check: bool; has_sub: bool; row_index: number
+    }
+    fact tray_open = false
+    // 0 = DBusMenu for an item, 1 = overflow list of all tray items.
+    fact tray_mode = 0
+    fact tray_has_back = false
+    fact tray_focus = 0
+    fact tray_keyed = false
+    fact tray_failed = false
+    fact tray_panel_h = 140
+    fact tray_has_icon = false
+    fact tray_has_subtitle = false
+    fact tray_page = 0
+    fact tray_pages = 1
+    fact tray_anchor_x = -1
+    text tray_title = "System Tray"
+    text tray_subtitle = ""
+    text tray_icon = ""
+    text tray_error = ""
+    image tray_fallback_icon = file "../service-assets/app-window.svg", 14, 14
+    image tray_active_icon = from tray_icon, 16, 16
+    event tray_activate ->
+    event tray_secondary ->
+    event tray_menu_open ->
+    event tray_scroll ->
+    event tray_overflow_toggle ->
+    event tray_open_request ->
+    event tray_close ->
+    event tray_menu_pick ->
+    event tray_menu_back ->
+    event tray_overflow_activate ->
+    event tray_overflow_menu ->
+    event tray_focus_move ->
+    event tray_focus_activate ->
+    event tray_page_step ->
+    event tray_anchor ->
+}

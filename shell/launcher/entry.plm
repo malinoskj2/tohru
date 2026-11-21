@@ -78,6 +78,7 @@ scene TohruLauncher {
     event launcher_escape ->
     event launcher_report ->
     event launcher_mapped ->
+    event launcher_palette ->
     prop launcher_seen = 0 ~spring(170, 13.04)
     follow launcher_seen = if(launcher_visible, 1, 0)
     // What the Hyprland plugin recedes the windows for: an empty layer, gone the moment the launcher

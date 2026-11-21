@@ -65,6 +65,8 @@ class Cli(unittest.TestCase):
             (('audio','input','volume','up'),'audio_input_up'),
             (('audio','input','volume','down'),'audio_input_down'),
             (('audio','input','mute','toggle'),'audio_input_mute'),
+            (('audio','input','select','0'),'audio_input_select 0'),
+            (('audio','input','select','4294967295'),'audio_input_select 4294967295'),
             (('audio','output','select','0'),'audio_output_select 0'),
             (('audio','output','select','4294967295'),'audio_output_select 4294967295'),
             (('audio','app','7','volume','up'),'audio_app_up 7'),
@@ -74,12 +76,8 @@ class Cli(unittest.TestCase):
             result=self.invoke(*arguments)
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertEqual(json.loads(result.stdout),['--say','tohru','emit '+event])
-        result=self.invoke('audio','input','select','0')
-        self.assertEqual(result.returncode,2)
-        self.assertIn('unavailable',result.stderr)
-        self.assertEqual(result.stdout,'')
         for value in ['-1','01','1.5','4294967296','1e2','99999999999999999999','0\nemit quit']:
-            for arguments in [('audio','output','select',value),('audio','app',value,'mute','toggle')]:
+            for arguments in [('audio','output','select',value),('audio','input','select',value),('audio','app',value,'mute','toggle')]:
                 result=self.invoke(*arguments)
                 self.assertEqual(result.returncode,2)
                 self.assertEqual(result.stdout,'')
@@ -111,7 +109,15 @@ class Cli(unittest.TestCase):
             (("audio", "status", "--json"), ["--say", "tohru", "get audio_status"]),
             (("status", "--json"), ["--say", "tohru", "get settings_status"]),
             (("config", "reload"), ["--say", "tohru", "emit config_reload"]),
+            (("notifications", "open"), ["--say", "tohru-notifications", "emit notices_center_open 0"]),
+            (("notifications", "close"), ["--say", "tohru-notifications", "emit notices_center_close 0"]),
+            (("notifications", "toggle"), ["--say", "tohru-notifications", "emit notices_center_toggle 0"]),
+            (("notifications", "clear"), ["--say", "tohru-notifications", "emit notices_clear_all 0"]),
             (("notifications", "seen"), ["--say", "tohru-notifications", "emit notices_seen 0"]),
+            (("panel", "open", "notifications"), ["--say", "tohru-notifications", "emit notices_center_open 0"]),
+            (("panel", "toggle", "notifications"), ["--say", "tohru-notifications", "emit notices_center_toggle 0"]),
+            (("panel", "open", "tray"), ["--say", "tohru", "emit tray_open_request"]),
+            (("panel", "toggle", "tray"), ["--say", "tohru", "emit tray_overflow_toggle"]),
             (("notifications", "dnd", "off"), ["--say", "tohru-notifications", "emit notices_dnd 0"]),
             (("notifications", "dnd", "on"), ["--say", "tohru-notifications", "emit notices_dnd 1"]),
             (("notifications", "dnd", "toggle"), ["--say", "tohru-notifications", "emit notices_dnd 2"]),

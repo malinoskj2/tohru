@@ -1,7 +1,7 @@
 language 0.4
 scene TohruNotifications {
-    surface { size: 404, 620; anchor: corner; margin: 0; level: overlay; keyboard: none; screens: all }
-    permissions { services: "notifications", "notifications.*", "sound", "files", "files.write", "say:tohru" }
+    surface { size: 404, 620; anchor: corner; margin: 0; level: overlay; keyboard: exclusive while center_open; screens: all }
+    permissions { services: "notifications", "notifications.*", "notification_history", "sound", "files", "files.write", "say:tohru" }
     fact last_id = 0
     fact power_level = 0
     fact unread = false
@@ -10,9 +10,29 @@ scene TohruNotifications {
     fact toasts_open = false
     fact corner: top_right | bottom_right = top_right
     fact covered = false
+    fact center_open = false
+    fact center_count = 0
+    fact center_page = 0
+    fact center_pages = 1
+    fact center_selected = 0
+    fact center_keyed = false
+    text center_count_text = "00"
+    text center_status = "All clear"
     event notices_seen ->
     event notices_dnd ->
     event notices_report ->
+    event notices_center_open ->
+    event notices_center_close ->
+    event notices_center_toggle ->
+    event notices_clear_all ->
+    event notices_palette ->
+    event center_dismiss ->
+    event center_open_item ->
+    event center_action ->
+    event center_page_step ->
+    event center_focus_move ->
+    event center_activate ->
+    event center_delete ->
     event power_warning_clear ->
     event power_warning_low ->
     event power_warning_critical ->
@@ -31,6 +51,12 @@ scene TohruNotifications {
         critical: bool; counting: bool; held: bool; left: number
         acts: number; a1: text; a2: text; a3: text; opens: bool
     }
+    model center_items max 5 {
+        live: bool; active: bool; critical: bool; opens: bool
+        app: text; title: text; body: text; clock: text
+        icon: image 16, 16; has_icon: bool; pic: image 40, 40; has_pic: bool
+        acts: number; a1: text; a2: text; a3: text
+    }
     include "../panel-ink.plm"
     shader glass_fill = file "../sound/fill.wgsl"
     shader capillary = file "bevel.wgsl"
@@ -38,9 +64,9 @@ scene TohruNotifications {
     image toast_bell = file "../service-assets/bell-filled.svg", 16, 16
     image toast_bell_off = file "../service-assets/bell-off-filled.svg", 14, 14
     prop pill_seen = 0 ~spring(196, 24)
-    follow pill_seen = if(dnd_pill, 1, 0)
+    follow pill_seen = if(dnd_pill and not center_open, 1, 0)
     prop tuck = 0 ~spring(196, 24)
-    follow tuck = if(covered and corner == top_right, 1, 0)
+    follow tuck = if((covered and corner == top_right) or center_open, 1, 0)
     let toast_x = 16
     let from_top = if(corner == top_right, 1, 0)
     popup toasts_glass {
@@ -50,7 +76,19 @@ scene TohruNotifications {
         bright: panel_bright
         for t in toasts { Toast(t) }
         include "pill.plm"
+        include "center.plm"
     }
+    on key Escape while center_open { emit notices_center_close }
+    on key Up while center_open { emit center_focus_move(-1) }
+    on key Down while center_open { emit center_focus_move(1) }
+    on key Prior while center_open { emit center_page_step(-1) }
+    on key Next while center_open { emit center_page_step(1) }
+    on key Return while center_open { emit center_activate }
+    on key space while center_open { emit center_activate }
+    on key BackSpace while center_open { emit center_delete }
+    on key Delete while center_open { emit center_delete }
+    on key d while center_open { emit notices_dnd(2) }
+    on key c while center_open { emit notices_clear_all }
     component Toast(t: record) {
         prop seen = 0 ~spring(196, 24)
         follow seen = if(t.live, 1, 0)

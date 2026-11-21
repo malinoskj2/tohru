@@ -1,5 +1,5 @@
 part SoundState {
- permissions { services: "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.app_volume", "audio.app_mute" }
+ permissions { services: "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.default_output", "audio.default_input", "audio.app_volume", "audio.app_mute" }
  model sound_outputs max 32 { id: number; name: text; default: bool }
  model sound_inputs max 32 { id: number; name: text; default: bool }
  model sound_apps max 64 { id: number; name: text; title: text; icon: image 14, 14; volume: number; muted: bool; playing: bool }
@@ -10,7 +10,9 @@ part SoundState {
  fact audio.input_muted = false
  fact sound_unfolded = false
  fact sound_default_row = -1
+ fact sound_default_in_row = -1
  fact sound_out_page = 0
+ fact sound_in_page = 0
  fact sound_app_page = 0
  fact sound_focus_kind = 0
  fact sound_focus_index = 0
@@ -49,6 +51,7 @@ part SoundState {
  event sound_focus_activate ->
  event sound_page ->
  event audio_output_select ->
+ event audio_input_select ->
  event audio_input_set ->
  event audio_input_up ->
  event audio_input_down ->
@@ -114,15 +117,20 @@ part SoundState {
   sound_water: sound_shown ~0ms
  }
 
- // The unfolded rows: the default output on top, then three more outputs and four apps to a page.
+ // The unfolded rows: the default output on top, then three more outputs, the microphone (+ inputs when multiple), and four apps to a page.
  let sound_out_others = sound_outputs.count - if(sound_default_row >= 0, 1, 0)
  let sound_out_rows = 1 + max(0, min(3, sound_out_others - sound_out_page * 3))
  let sound_out_pager = if(sound_out_others > 3, 1, 0)
  let sound_mic_y = 44 + 26 * (sound_out_rows + sound_out_pager)
- let sound_app_y = sound_mic_y + if(sound_input_ready, 36, 0)
+ let sound_in_list = sound_inputs.count > 1
+ let sound_in_others = sound_inputs.count - if(sound_default_in_row >= 0, 1, 0)
+ let sound_in_rows = if(sound_in_list, if(sound_default_in_row >= 0, 1, 0) + max(0, min(3, sound_in_others - sound_in_page * 3)), 0)
+ let sound_in_pager = if(sound_in_list and sound_in_others > 3, 1, 0)
+ let sound_in_y = sound_mic_y + 26
+ let sound_app_y = sound_mic_y + if(sound_input_ready or sound_in_list, 36 + 26 * (sound_in_rows + sound_in_pager), 0)
  let sound_app_rows = max(0, min(4, sound_apps.count - sound_app_page * 4))
  let sound_app_pager = if(sound_apps.count > 4, 1, 0)
- let sound_rows_end = if(sound_app_rows + sound_app_pager > 0, sound_app_y + 26 * (sound_app_rows + sound_app_pager) - 4, if(sound_input_ready, sound_mic_y + 22, sound_mic_y - 14))
+ let sound_rows_end = if(sound_app_rows + sound_app_pager > 0, sound_app_y + 26 * (sound_app_rows + sound_app_pager) - 4, if(sound_in_list, sound_in_y + 26 * (sound_in_rows + sound_in_pager) - 4, if(sound_input_ready, sound_mic_y + 22, sound_mic_y - 14)))
  let sound_open_h = sound_rows_end + 8
  let sound_w = 260 + 20 * sound_fold
  let sound_h = 190 + (sound_open_h - 190) * sound_fold
