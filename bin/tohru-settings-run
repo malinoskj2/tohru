@@ -2,4 +2,6 @@
 set -euo pipefail
 root=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd)
 export TOHRU_SHELL=1
-exec "${TOHRU_RUNTIME:-pleamar}" --scene "${TOHRU_SETTINGS_SCENE:-$root/shell/settings/settings.plm}" --no-hud --stall 0 --answer-as tohru-settings "$@"
+scene=${TOHRU_SETTINGS_SCENE:-$root/shell/settings/settings.plm}
+[[ -z ${TOHRU_SHELL_DIR:-} ]] || scene=$TOHRU_SHELL_DIR/settings/settings.plm
+exec "${TOHRU_RUNTIME_OVERRIDE:-${TOHRU_RUNTIME:-pleamar}}" --scene "$scene" --no-hud --stall 0 --answer-as tohru-settings "$@"
