@@ -1,0 +1,79 @@
+part WallpaperDesktop {
+    shader wall_meniscus = file "meniscus.wgsl"
+    fact wall_meniscus_clock = 0
+
+    // One full-screen layer per monitor taking a new wallpaper, between mpvpaper and the windows, mapped
+    // only for the sweep. Four slots, written out: a `repeat` does not make surfaces, and a named surface
+    // measures itself as `name.width`, not `screen.width`.
+
+    image wall_old_0 = from wall_sweep_image.0, 0, 0
+    surface wall_sweep_surface_0 {
+        size: full, full; level: bottom; reserve: -1; keyboard: none
+        screens: wall_sweep_screen.0; open: wall_sweep_live.0
+        layer_namespace: "tohru-wallpaper-sweep"
+        group {
+            shader: wall_meniscus, wall_sweep.0, if(wall_sweep_old.0, 1, 0), wall_meniscus_clock, 0
+            box { from: 0, 0; size: wall_sweep_surface_0.width, wall_sweep_surface_0.height; color: #000000; opacity: 1% }
+            image wall_old_0 { at: 0, 0; size: wall_sweep_surface_0.width, wall_sweep_surface_0.height; fit: cover; show: wall_sweep_old.0 }
+        }
+    }
+
+    image wall_old_1 = from wall_sweep_image.1, 0, 0
+    surface wall_sweep_surface_1 {
+        size: full, full; level: bottom; reserve: -1; keyboard: none
+        screens: wall_sweep_screen.1; open: wall_sweep_live.1
+        layer_namespace: "tohru-wallpaper-sweep"
+        group {
+            shader: wall_meniscus, wall_sweep.1, if(wall_sweep_old.1, 1, 0), wall_meniscus_clock, 0
+            box { from: 0, 0; size: wall_sweep_surface_1.width, wall_sweep_surface_1.height; color: #000000; opacity: 1% }
+            image wall_old_1 { at: 0, 0; size: wall_sweep_surface_1.width, wall_sweep_surface_1.height; fit: cover; show: wall_sweep_old.1 }
+        }
+    }
+
+    image wall_old_2 = from wall_sweep_image.2, 0, 0
+    surface wall_sweep_surface_2 {
+        size: full, full; level: bottom; reserve: -1; keyboard: none
+        screens: wall_sweep_screen.2; open: wall_sweep_live.2
+        layer_namespace: "tohru-wallpaper-sweep"
+        group {
+            shader: wall_meniscus, wall_sweep.2, if(wall_sweep_old.2, 1, 0), wall_meniscus_clock, 0
+            box { from: 0, 0; size: wall_sweep_surface_2.width, wall_sweep_surface_2.height; color: #000000; opacity: 1% }
+            image wall_old_2 { at: 0, 0; size: wall_sweep_surface_2.width, wall_sweep_surface_2.height; fit: cover; show: wall_sweep_old.2 }
+        }
+    }
+
+    image wall_old_3 = from wall_sweep_image.3, 0, 0
+    surface wall_sweep_surface_3 {
+        size: full, full; level: bottom; reserve: -1; keyboard: none
+        screens: wall_sweep_screen.3; open: wall_sweep_live.3
+        layer_namespace: "tohru-wallpaper-sweep"
+        group {
+            shader: wall_meniscus, wall_sweep.3, if(wall_sweep_old.3, 1, 0), wall_meniscus_clock, 0
+            box { from: 0, 0; size: wall_sweep_surface_3.width, wall_sweep_surface_3.height; color: #000000; opacity: 1% }
+            image wall_old_3 { at: 0, 0; size: wall_sweep_surface_3.width, wall_sweep_surface_3.height; fit: cover; show: wall_sweep_old.3 }
+        }
+    }
+
+    // While a tile is previewed, a pill at the foot of each monitor showing it says so.
+    surface wall_pill_surface {
+        size: 560, 64; anchor: bottom; margin: 0, 0, 18, 0; level: overlay; reserve: -1; keyboard: none
+        screens: wall_pill_screen; open: wall_pill_open
+        layer_namespace: "tohru-wallpaper-preview"
+        let wp_w = 32 + wall_pill_lead.width + wall_pill_title.width + wall_pill_tail.width + 14 + wall_pill_hint.width + 18
+        let wp_x = (560 - wp_w) / 2
+        body {
+            color: #140a1e; glass: 100%; frost: 100%; tint: 58%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+            shadow: 0, 4, 12, 0.24
+            box { from: wp_x, 14; size: wp_w, 36; corner: 18 }
+        }
+        box { from: wp_x + 0.5, 14.5; size: wp_w - 1, 35; corner: 17.5; stroke: 1; color: #ffffff; opacity: 16% }
+        group {
+            glow: 8, 90%, #b4befe
+            ellipse { at: wp_x + 20, 32; radius: 3; color: #b4befe }
+        }
+        text "Live Preview on {wall_pill_mon} · " { at: wp_x + 32, 32; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: wall_pill_lead }
+        text "{wall_pill_name}" { at: wp_x + 32 + wall_pill_lead.width, 32; anchor: left center; size: 12; weight: 700; family: "SF Pro Text"; color: #ffffff; opacity: 96%; measure: wall_pill_title }
+        text " ({wall_pill_file})" { at: wp_x + 32 + wall_pill_lead.width + wall_pill_title.width, 32; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 92%; measure: wall_pill_tail }
+        text "Enter to apply" { at: wp_x + wp_w - 18, 32; anchor: right center; size: 12; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 52%; measure: wall_pill_hint }
+    }
+}

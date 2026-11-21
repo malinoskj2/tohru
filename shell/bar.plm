@@ -1,6 +1,6 @@
 scene Tohru {
- surface { size: full, 42; anchor: top; margin: 0; reserve: 31; level: top, overlay while bar_launcher >= 2; screens: bar_outputs; keyboard: exclusive while sound_open or cal_open or net_open or bt_open or info_visible or about_visible }
- permissions { services: "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.app_volume", "audio.app_mute", "window", "apps", "media", "clock", "workspaces", "network.*", "bluetooth.*", "battery", "say:tohru-notifications", "say:tohru-session", "say:tohru-launcher" }
+ surface { size: full, 42; anchor: top; margin: 0; reserve: 31; level: top, overlay while bar_launcher >= 2; screens: bar_outputs; keyboard: exclusive while sound_open or cal_open or net_open or bt_open or info_visible or about_visible or wall_open }
+ permissions { services: "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.app_volume", "audio.app_mute", "window", "apps", "media", "clock", "workspaces", "network.*", "bluetooth.*", "battery", "say:tohru-notifications", "say:tohru-session", "say:tohru-launcher"; run: "tohru-wallpaper" }
  include "bar/state.plm"
  include "bar/rail-state.plm"
  include "calendar/state.plm"
@@ -10,6 +10,7 @@ scene Tohru {
  include "info/state.plm"
  include "about/state.plm"
  include "sound/declarations.plm"
+ include "wallpaper/state.plm"
  include "osd/state.plm"
  include "corners/state.plm"
  include "panel-ink.plm"
@@ -68,6 +69,7 @@ scene Tohru {
  include "services.plm"
  include "bar/bell.plm"
  include "sound/view.plm"
+ include "wallpaper/view.plm"
  popup sound_panel {
   at: clamp(sound_button_x - 140, 8, screen.width - 288) - 12, 37
   size: 304, max(190, sound_open_h) + audio_failed * 54 + 18
@@ -80,6 +82,8 @@ scene Tohru {
  include "bluetooth/popup.plm"
  include "info/popup.plm"
  include "about/popup.plm"
+ include "wallpaper/popup.plm"
+ include "wallpaper/desktop.plm"
  include "corners/view.plm"
  include "osd/view.plm"
 }
