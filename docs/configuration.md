@@ -20,6 +20,7 @@ Only the bar and Settings processes read settings. Nothing is imported from j2ba
 | `appearance.palette` | string | `"mocha"` | One of `mocha`, `macchiato`, `rose_pine`, `nord`, `gruvbox`, `tokyo_night`, `dracula`, `everforest` |
 | `appearance.corners` | boolean | `true` | Draw rounded screen corners. Corners show on every output |
 | `appearance.corner_size` | integer, 1 to 100 | `32` | Size of the screen corners |
+| `lock.style` | string | `"flooded-monolith"` | The lock screen's look: `still-glass`, `ribbon-key`, `flooded-monolith`, `drifting-frost-veil`, `unfolding-glass-capsule`, `edge-glass-drawer`, `horizon-meniscus`, `refractive-typographic-lens`, `corner-anchor` or `bar-drop-curtain`. An unknown value logs a warning and locks with `flooded-monolith`. `tohru-lock` reads it each time it locks; `TOHRU_LOCK_STYLE` in the locker's environment overrides it |
 
 Example `config.toml`:
 
@@ -32,6 +33,9 @@ mooncoil = false
 palette = "nord"
 corners = true
 corner_size = 32
+
+[lock]
+style = "horizon-meniscus"
 ```
 
 The same values in Home Manager:
@@ -41,6 +45,7 @@ programs.tohru.settings = {
   bar = { preferred_output = "DP-1"; mooncoil = false; };
   appearance = { palette = "nord"; corners = true; corner_size = 32; };
 };
+programs.tohru.lock.style = "horizon-meniscus";   # the same as settings.lock.style
 ```
 
 ## Precedence
@@ -58,6 +63,7 @@ tohru config set appearance.palette nord
 tohru config set appearance.corners false
 tohru config set appearance.corner_size 24
 tohru config set bar.mooncoil true
+tohru config set lock.style corner-anchor
 tohru config set bar.info_button true
 tohru config set bar.preferred_output DP-1
 tohru config set bar.preferred_output ''    # every output
@@ -68,4 +74,6 @@ tohru settings-error                        # the last settings error, if any
 
 These commands talk to the running bar. They report that the bar accepted the request, not that it succeeded; check `tohru status --json` or `tohru settings-error` afterwards. Changes made with the CLI reach an open Settings window the next time it is opened.
 
-The Settings window has Bar, Appearance and System pages. It shows `bar.preferred_output` but does not offer a control for it.
+The Settings window has Bar, Appearance and System pages. It shows `bar.preferred_output` but does not offer a control for it. The lock style is on the Appearance page; clicking it steps to the next style.
+
+The locker is a separate process that reads the files when it locks, so a runtime override (a change to a Nix-managed `lock.style` made in Settings or with `tohru config set`) does not reach it; change `programs.tohru.lock.style` instead.

@@ -61,6 +61,7 @@ With a standalone Home Manager flake, pass `inputs` through `extraSpecialArgs`, 
 | `programs.tohru.settings` | `{ }` | Settings written to a read-only TOML file in the store. See [configuration.md](configuration.md) |
 | `programs.tohru.systemd.enable` | `false` | Adds the user services below |
 | `programs.tohru.systemd.target` | `"graphical-session.target"` | The user target that starts and stops those services |
+| `programs.tohru.lock.style` | `null` | Sets the managed `lock.style` |
 | `programs.tohru.lock.command` | read-only | `tohru-lock` with `TOHRU_MANAGED_CONFIG` set, for hypridle's `lock_cmd` |
 | `programs.tohru.hyprlandPlugin.package` | Plugin built against your session's Hyprland | The plugin package. Nothing loads it automatically |
 

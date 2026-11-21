@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use tohru_shell::settings::{Key, Origin, Owner, Palette, Value};
+use tohru_shell::settings::{Key, LockStyle, Origin, Owner, Palette, Value};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -332,4 +332,71 @@ fn writable_batch_commits_together_and_rejects_partial_growth() {
     for (key, value) in proposal {
         assert_eq!(owner.get(key).value, value);
     }
+}
+
+#[test]
+fn lock_style_defaults_to_flooded_monolith_and_round_trips() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    let mut owner = files.owner();
+    let setting = owner.get(Key::LockStyle);
+    assert_eq!(setting.value, Value::LockStyle(LockStyle::FloodedMonolith));
+    assert_eq!(setting.origin, Origin::Default);
+    assert!(owner.warnings().is_empty());
+    let names: Vec<_> = LockStyle::ALL.iter().map(|style| style.name()).collect();
+    assert_eq!(
+        names,
+        [
+            "still-glass",
+            "ribbon-key",
+            "flooded-monolith",
+            "drifting-frost-veil",
+            "unfolding-glass-capsule",
+            "edge-glass-drawer",
+            "horizon-meniscus",
+            "refractive-typographic-lens",
+            "corner-anchor",
+            "bar-drop-curtain",
+        ]
+    );
+    for style in LockStyle::ALL {
+        let parsed = Key::LockStyle.parse_text(style.name()).unwrap();
+        owner.set(Key::LockStyle, parsed.clone()).unwrap();
+        assert_eq!(files.owner().get(Key::LockStyle).value, parsed);
+    }
+    assert!(fs::read_to_string(files.user()).unwrap().contains("[lock]\nstyle = \"bar-drop-curtain\""));
+    for bad in ["Flooded-Monolith", "flooded_monolith", "plain", ""] {
+        assert!(Key::LockStyle.parse_text(bad).is_err());
+    }
+}
+
+#[test]
+fn unknown_lock_style_warns_and_uses_the_default_without_failing_the_load() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "[lock]\nstyle = 7\n").unwrap();
+    fs::write(
+        files.user(),
+        "[lock]\nstyle = \"aurora\"\n[appearance]\npalette = \"nord\"\n",
+    )
+    .unwrap();
+    let owner = files.owner();
+    assert_eq!(
+        owner.get(Key::LockStyle).value,
+        Value::LockStyle(LockStyle::FloodedMonolith)
+    );
+    assert_eq!(owner.get(Key::LockStyle).origin, Origin::Default);
+    assert_eq!(owner.get(Key::Palette).value, Value::Palette(Palette::Nord));
+    let warnings = owner.warnings();
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+    assert!(warnings.iter().any(|w| w.contains("\"aurora\"") && w.contains("flooded-monolith")));
+    assert!(warnings.iter().any(|w| w.contains("managed.toml") && w.contains('7')));
+
+    fs::write(files.managed(), "[lock]\nstyle = \"corner-anchor\"\n").unwrap();
+    let owner = files.owner();
+    assert_eq!(
+        owner.get(Key::LockStyle).value,
+        Value::LockStyle(LockStyle::CornerAnchor)
+    );
+    assert_eq!(owner.get(Key::LockStyle).origin, Origin::Nix);
+    assert_eq!(owner.warnings().len(), 1);
 }

@@ -47,6 +47,18 @@ in {
       default = { };
       description = "Managed TOML settings; runtime edits remain in memory until process exit.";
     };
+    lock.style = lib.mkOption {
+      type = lib.types.nullOr (lib.types.enum [
+        "still-glass" "ribbon-key" "flooded-monolith" "drifting-frost-veil" "unfolding-glass-capsule"
+        "edge-glass-drawer" "horizon-meniscus" "refractive-typographic-lens" "corner-anchor" "bar-drop-curtain"
+      ]);
+      default = null;
+      example = "horizon-meniscus";
+      description = ''
+        The lock screen's style, written to the managed `lock.style`; `null` leaves
+        it to the user's config file (default `flooded-monolith`).
+      '';
+    };
     lock.command = lib.mkOption {
       type = lib.types.str;
       readOnly = true;
@@ -83,6 +95,9 @@ in {
       home.packages = [ cfg.package ];
       home.sessionVariables.TOHRU_MANAGED_CONFIG = toString managed;
     }
+    (lib.mkIf (cfg.lock.style != null) {
+      programs.tohru.settings.lock.style = cfg.lock.style;
+    })
     (lib.mkIf cfg.systemd.enable {
       systemd.user.services = {
         tohru-bar = service "Tohru bar" "tohru-run" { };

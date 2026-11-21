@@ -210,6 +210,18 @@ class Cli(unittest.TestCase):
                 self.assertEqual(result.stdout, "")
 
 
+    def test_lock_style_route_is_closed_before_ipc(self):
+        styles = ["still-glass", "ribbon-key", "flooded-monolith", "drifting-frost-veil", "unfolding-glass-capsule", "edge-glass-drawer", "horizon-meniscus", "refractive-typographic-lens", "corner-anchor", "bar-drop-curtain"]
+        for index, style in enumerate(styles):
+            result = self.invoke("config", "set", "lock.style", style)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), ["--say", "tohru", f"emit setting_lock_style {index}"])
+        for invalid in ("Flooded-Monolith", "flooded_monolith", "plain", "0", "", "still-glass;quit", "still-glass\nemit quit"):
+            with self.subTest(value=invalid):
+                result = self.invoke("config", "set", "lock.style", invalid)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(result.stdout, "")
+
     def test_lock_runs_the_locker_and_takes_no_arguments(self):
         seen = self.path / "locked"
         locker = self.path / "locker"

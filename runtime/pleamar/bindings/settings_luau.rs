@@ -35,6 +35,7 @@ fn snapshot(lua: &Lua, owner: &Owner) -> mlua::Result<Table> {
             Value::Bool(value) => row.set("value", value)?,
             Value::Text(value) => row.set("value", value)?,
             Value::Palette(value) => row.set("value", value.name())?,
+            Value::LockStyle(value) => row.set("value", value.name())?,
             Value::Integer(value) => row.set("value", value)?,
         }
         row.set(
@@ -133,6 +134,15 @@ pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
                 .map_err(|_| mlua::Error::runtime("settings owner mutex poisoned"))?;
             let outcome = owner.set(key, value).map_err(report)?;
             applied(lua, &owner, outcome)
+        })?,
+    )?;
+    api.set(
+        "warnings",
+        lua.create_function(move |_, ()| {
+            let owner = owner
+                .lock()
+                .map_err(|_| mlua::Error::runtime("settings owner mutex poisoned"))?;
+            Ok(owner.warnings())
         })?,
     )?;
     api.set(

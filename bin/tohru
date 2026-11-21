@@ -21,6 +21,7 @@ Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru config set appearance.palette mocha|macchiato|rose_pine|nord|gruvbox|tokyo_night|dracula|everforest
        tohru config set bar.mooncoil|bar.info_button|bar.about_button|appearance.corners true|false
        tohru config set appearance.corner_size 1..100
+       tohru config set lock.style STYLE   (still-glass, ribbon-key, flooded-monolith, drifting-frost-veil, unfolding-glass-capsule, edge-glass-drawer, horizon-meniscus, refractive-typographic-lens, corner-anchor, bar-drop-curtain)
        tohru config set bar.preferred_output OUTPUT   ('' for every output)
        tohru settings-error
        tohru help
@@ -179,6 +180,14 @@ case ${1:-help} in
                     appearance.corner_size)
                         [[ $4 =~ ^([1-9]|[1-9][0-9]|100)$ ]] || fail 'Corner size must be an integer from 1 to 100'
                         exec "$pleamar" --say tohru "emit setting_corner_size $4"
+                        ;;
+                    lock.style)
+                        number=0
+                        for style in still-glass ribbon-key flooded-monolith drifting-frost-veil unfolding-glass-capsule edge-glass-drawer horizon-meniscus refractive-typographic-lens corner-anchor bar-drop-curtain; do
+                            [[ $4 == "$style" ]] && exec "$pleamar" --say tohru "emit setting_lock_style $number"
+                            number=$((number + 1))
+                        done
+                        fail 'Choose a lock style: still-glass, ribbon-key, flooded-monolith, drifting-frost-veil, unfolding-glass-capsule, edge-glass-drawer, horizon-meniscus, refractive-typographic-lens, corner-anchor, bar-drop-curtain'
                         ;;
                     *) fail 'Unknown setting key' ;;
                 esac

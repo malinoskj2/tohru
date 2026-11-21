@@ -12,7 +12,8 @@ fn actual_settings_search_history_and_managed_edits_share_the_owner() {
                 ['bar.about_button']={value=false,managed=false,runtime_override=false},
                 ['bar.preferred_output']={value='',managed=false,runtime_override=false},
                 ['appearance.corners']={value=true,managed=false,runtime_override=false},
-                ['appearance.corner_size']={value=32,managed=false,runtime_override=false}, ['appearance.palette']={value='mocha',managed=false,runtime_override=false}}
+                ['appearance.corner_size']={value=32,managed=false,runtime_override=false}, ['appearance.palette']={value='mocha',managed=false,runtime_override=false},
+                ['lock.style']={value='flooded-monolith',managed=false,runtime_override=false}}
         tohru_settings={snapshot=function() return config end,
           set=function(key,value)
             if denied then error('write refused') end
@@ -46,18 +47,23 @@ fn actual_settings_search_history_and_managed_edits_share_the_owner() {
         assert(string.find(model.settings_rows[2].detail,'32 logical pixels'))
         assert(model.settings_rows[3].key=='appearance.palette')
         handlers.settings_row(2); assert(config['appearance.palette'].value=='macchiato' and saves==2)
+        assert(model.settings_rows[4].key=='lock.style' and model.settings_rows[4].title=='Lock screen style')
+        assert(string.find(model.settings_rows[4].detail,'flooded%-monolith'))
+        handlers.settings_row(3); assert(config['lock.style'].value=='drifting-frost-veil' and saves==3)
+        config['lock.style'].value='bar-drop-curtain'; handlers.settings_row(3)
+        assert(config['lock.style'].value=='still-glass' and saves==4)
         handlers.settings_category(1); assert(not fact.settings_can_forward)
         text.settings_search='mooncoil'; handlers['text:settings_search']()
         assert(#model.settings_rows==1 and model.settings_rows[1].editable)
         handlers['submit:settings_search']()
-        assert(applied_count==4 and saves==2 and not config['bar.mooncoil'].value)
+        assert(applied_count==6 and saves==4 and not config['bar.mooncoil'].value)
         text.settings_search='does-not-exist'; handlers['text:settings_search']()
         assert(#model.settings_rows==0)
         text.settings_search=''; handlers['text:settings_search']()
         denied=true; handlers.settings_row(0)
         assert(string.find(text.settings_ui_error,'write refused'))
         denied=false; config['bar.mooncoil'].managed=false
-        handlers.settings_row(0); assert(saves==3)
+        handlers.settings_row(0); assert(saves==5)
         handlers.settings_close(); assert(not fact.settings_open)
     "#,
     )

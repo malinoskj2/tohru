@@ -18,10 +18,11 @@ pub enum Key {
     Corners,
     CornerSize,
     Palette,
+    LockStyle,
 }
 
 impl Key {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::InfoButton,
@@ -29,6 +30,7 @@ impl Key {
         Self::Corners,
         Self::CornerSize,
         Self::Palette,
+        Self::LockStyle,
     ];
 
     #[must_use]
@@ -41,6 +43,7 @@ impl Key {
             Self::Corners => "appearance.corners",
             Self::CornerSize => "appearance.corner_size",
             Self::Palette => "appearance.palette",
+            Self::LockStyle => "lock.style",
         }
     }
 
@@ -64,6 +67,9 @@ impl Key {
             Self::Palette => Palette::parse(text)
                 .map(Value::Palette)
                 .ok_or(Error::InvalidValue(self.name())),
+            Self::LockStyle => LockStyle::parse(text)
+                .map(Value::LockStyle)
+                .ok_or(Error::InvalidValue(self.name())),
             _ => Ok(Value::Text(text.to_owned())),
         }
     }
@@ -77,6 +83,7 @@ impl Key {
             Self::Corners => ("appearance", "corners"),
             Self::CornerSize => ("appearance", "corner_size"),
             Self::Palette => ("appearance", "palette"),
+            Self::LockStyle => ("lock", "style"),
         }
     }
 
@@ -95,6 +102,7 @@ impl Key {
             Self::Corners => Value::Bool(true),
             Self::CornerSize => Value::Integer(32),
             Self::Palette => Value::Palette(Palette::Mocha),
+            Self::LockStyle => Value::LockStyle(LockStyle::DEFAULT),
         }
     }
 
@@ -109,7 +117,8 @@ impl Key {
                 Self::Mooncoil | Self::InfoButton | Self::AboutButton | Self::Corners,
                 Value::Bool(_),
             )
-            | (Self::Palette, Value::Palette(_)) => Ok(()),
+            | (Self::Palette, Value::Palette(_))
+            | (Self::LockStyle, Value::LockStyle(_)) => Ok(()),
             (_, Value::Integer(value))
                 if self
                     .integer_bounds()
@@ -166,11 +175,65 @@ impl Palette {
     }
 }
 
+/// The lock screen's look. Every style is the same locker; only its scene differs.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LockStyle {
+    StillGlass,
+    RibbonKey,
+    FloodedMonolith,
+    DriftingFrostVeil,
+    UnfoldingGlassCapsule,
+    EdgeGlassDrawer,
+    HorizonMeniscus,
+    RefractiveTypographicLens,
+    CornerAnchor,
+    BarDropCurtain,
+}
+
+impl LockStyle {
+    pub const DEFAULT: Self = Self::FloodedMonolith;
+
+    pub const ALL: [Self; 10] = [
+        Self::StillGlass,
+        Self::RibbonKey,
+        Self::FloodedMonolith,
+        Self::DriftingFrostVeil,
+        Self::UnfoldingGlassCapsule,
+        Self::EdgeGlassDrawer,
+        Self::HorizonMeniscus,
+        Self::RefractiveTypographicLens,
+        Self::CornerAnchor,
+        Self::BarDropCurtain,
+    ];
+
+    #[must_use]
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|style| style.name() == name)
+    }
+
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::StillGlass => "still-glass",
+            Self::RibbonKey => "ribbon-key",
+            Self::FloodedMonolith => "flooded-monolith",
+            Self::DriftingFrostVeil => "drifting-frost-veil",
+            Self::UnfoldingGlassCapsule => "unfolding-glass-capsule",
+            Self::EdgeGlassDrawer => "edge-glass-drawer",
+            Self::HorizonMeniscus => "horizon-meniscus",
+            Self::RefractiveTypographicLens => "refractive-typographic-lens",
+            Self::CornerAnchor => "corner-anchor",
+            Self::BarDropCurtain => "bar-drop-curtain",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Value {
     Bool(bool),
     Text(String),
     Palette(Palette),
+    LockStyle(LockStyle),
     Integer(i64),
 }
 
@@ -246,6 +309,7 @@ pub struct DurabilityWarning {
 struct Layer {
     document: DocumentMut,
     values: BTreeMap<Key, Value>,
+    warnings: Vec<String>,
 }
 
 impl Layer {
@@ -278,6 +342,7 @@ impl Layer {
                 source,
             })?;
         let mut values = BTreeMap::new();
+        let mut warnings = Vec::new();
         for key in Key::ALL {
             let (section, field) = key.location();
             let Some(table) = document.get(section) else {
@@ -289,6 +354,16 @@ impl Layer {
             let Some(item) = table.get(field) else {
                 continue;
             };
+            // A lock style this version does not know must never stop the locker: it locks in the default.
+            if key == Key::LockStyle && item.as_str().is_none_or(|text| LockStyle::parse(text).is_none()) {
+                warnings.push(format!(
+                    "{}: unknown lock.style {}; using \"{}\"",
+                    path.display(),
+                    item.to_string().trim(),
+                    LockStyle::DEFAULT.name()
+                ));
+                continue;
+            }
             let candidate = if let Some(text) = item.as_str() {
                 key.parse_text(text)?
             } else if let Some(boolean) = item.as_bool() {
@@ -301,7 +376,11 @@ impl Layer {
             key.validate(&candidate)?;
             values.insert(key, candidate);
         }
-        Ok(Self { document, values })
+        Ok(Self {
+            document,
+            values,
+            warnings,
+        })
     }
 }
 
@@ -311,6 +390,7 @@ pub struct Owner {
     managed_path: Option<PathBuf>,
     user: Layer,
     managed: BTreeMap<Key, Value>,
+    managed_warnings: Vec<String>,
     overrides: BTreeMap<Key, Value>,
 }
 
@@ -328,18 +408,29 @@ impl Owner {
             }
         }
         let user = Layer::read(&user_path, true)?;
-        let managed = managed_path
+        let (managed, managed_warnings) = managed_path
             .as_ref()
             .map(|path| Layer::read(path, false))
             .transpose()?
-            .map_or_else(BTreeMap::new, |layer| layer.values);
+            .map_or_else(Default::default, |layer| (layer.values, layer.warnings));
         Ok(Self {
             user_path,
             managed_path,
             user,
             managed,
+            managed_warnings,
             overrides: BTreeMap::new(),
         })
+    }
+
+    /// Values that were ignored on load, each with why; their defaults apply.
+    #[must_use]
+    pub fn warnings(&self) -> Vec<String> {
+        self.managed_warnings
+            .iter()
+            .chain(&self.user.warnings)
+            .cloned()
+            .collect()
     }
 
     #[must_use]
@@ -376,6 +467,7 @@ impl Owner {
         let next = Self::load(self.user_path.clone(), self.managed_path.clone())?;
         self.user = next.user;
         self.managed = next.managed;
+        self.managed_warnings = next.managed_warnings;
         Ok(())
     }
 
@@ -444,6 +536,7 @@ impl Owner {
                 Value::Bool(boolean) => value(*boolean),
                 Value::Text(text) => value(text),
                 Value::Palette(palette) => value(palette.name()),
+                Value::LockStyle(style) => value(style.name()),
                 Value::Integer(integer) => value(*integer),
             };
             table.insert(field, item);

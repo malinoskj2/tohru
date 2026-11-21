@@ -5,6 +5,8 @@ return function(applied)
     local snapshot = tohru_settings.snapshot()
     local choices = {
         ["appearance.palette"]={"mocha","macchiato","rose_pine","nord","gruvbox","tokyo_night","dracula","everforest"},
+        ["lock.style"]={"still-glass","ribbon-key","flooded-monolith","drifting-frost-veil","unfolding-glass-capsule",
+            "edge-glass-drawer","horizon-meniscus","refractive-typographic-lens","corner-anchor","bar-drop-curtain"},
     }
     local function choice_detail(setting)
         local provenance
@@ -45,6 +47,9 @@ return function(applied)
             {page=2, key="appearance.palette", title="Palette", choice=true,
              detail=choice_detail(snapshot["appearance.palette"]), editable=true,
              managed=snapshot["appearance.palette"].managed, temporary=snapshot["appearance.palette"].runtime_override},
+            {page=2, key="lock.style", title="Lock screen style", choice=true,
+             detail=choice_detail(snapshot["lock.style"]), editable=true,
+             managed=snapshot["lock.style"].managed, temporary=snapshot["lock.style"].runtime_override},
             {page=3, title="Shell", detail="Tohru · pinned native Pleamar 0.7.27", editable=false},
         }
         rows = {}
