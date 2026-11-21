@@ -200,27 +200,21 @@ let
   '';
 
   # Minimal isolated Hyprland config: no user plugins, no app keybinds, no logo.
-  hyprlandConf = pkgs.writeText "tohru-greeter-hyprland.conf" ''
-    misc {
-      disable_hyprland_logo = true
-      disable_splash_rendering = true
-      force_default_wallpaper = 0
-    }
-    animations {
-      enabled = false
-    }
-    ${lib.concatMapStringsSep "\n" (m:
-      "monitor = ${m.output}, ${m.mode}, ${m.position}, ${toString m.scale}, transform, ${toString m.transform}"
-    ) cfg.monitors}
-    input {
-      kb_layout = ${cfg.keyboard.layout}
-      kb_variant = ${cfg.keyboard.variant}
-      kb_options = ${cfg.keyboard.options}
-      repeat_delay = ${toString cfg.keyboard.repeatDelay}
-      repeat_rate = ${toString cfg.keyboard.repeatRate}
-    }
+  # Minimal isolated Hyprland config: no user plugins, no app keybinds, no logo.
+  # Hyprland 0.57 only reads Lua configs.
+  hyprlandConf = pkgs.writeText "tohru-greeter-hyprland.lua" ''
+    hl.config(${lib.generators.toLua { } {
+      misc = { disable_hyprland_logo = true; disable_splash_rendering = true; force_default_wallpaper = 0; };
+      animations.enabled = false;
+      input = { kb_layout = cfg.keyboard.layout; /* variant, options, repeat */ };
+    }})
+    ${lib.concatMapStringsSep "\n" (m: "hl.monitor(${lib.generators.toLua { } {
+      inherit (m) output mode position scale transform;
+    }})") cfg.monitors}
     ${cfg.extraCompositorConfig}
-    exec-once = ${greeterRun}; ${lib.getExe' cfg.hyprlandPackage "hyprctl"} dispatch exit
+    hl.on("hyprland.start", function()
+      hl.exec_cmd(${lib.generators.toLua { } "${greeterRun}; ${lib.getExe' cfg.hyprlandPackage "hyprctl"} dispatch 'hl.dsp.exit()'"})
+    end)
   '';
 
   swayConf = pkgs.writeText "tohru-greeter-sway.conf" ''
@@ -435,6 +429,7 @@ in {
      - Right password sends the real password over `GREETD_SOCK` (never logged or exposed to Luau), sends `start_session` with the chosen session's `cmd` and `env`, and exits `0` within the transition grace.
      - `--say` commands are refused; right-click does not exit; broken styled scene falls back to `plain.plm`.
 3. **Layer 3 — Full NixOS VM end-to-end test (`nixos-rebuild build-vm` / `pkgs.testers.runNixOSTest`):**
+   - Implemented as `nix/tests/greeter.nix` (`checks.x86_64-linux.greeter-hyprland` and `greeter-sway`): it logs a test user in through the real greeter UI and checks the session's argv, that it stays running, and that the greeter compositor exits. The rest of this item is still planned.
    - Define a `nix/tests/greeter-vm.nix` test (run via `resource-run --cpu 4 --ram 8GiB --project tohru --name "greeter VM test" --category test -- nix build ...`) booting a QEMU NixOS guest with real `systemd`, real `greetd`, real `greeter` user, real PAM, real Polkit, and `sway` (or `Hyprland`) on `virtio-gpu`.
    - Verify: VT1 displays `tohru-greeter` → `Ctrl+Alt+F2` reaches `getty@tty2` → wrong password fails cleanly → valid login launches the target Wayland session with `WAYLAND_DISPLAY` and `TOHRU_MANAGED_CONFIG` → logout returns to `tohru-greeter` → Polkit permits `systemctl poweroff` as `greeter`.
    - For interactive visual testing without touching the host display, `nix build .#checks.x86_64-linux.greeter-vm` / `nixos-rebuild build-vm` can run headless in QEMU with VNC/SPICE or inside the sandbox Wayland display (`sandbox-wayland-display`).
