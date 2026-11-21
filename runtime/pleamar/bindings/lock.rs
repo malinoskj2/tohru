@@ -266,4 +266,42 @@ mod tests {
         zero(&mut s);
         assert!(s.is_empty());
     }
+
+    /// The real PAM conversation against a private service: pam_exec checks the
+    /// password the conversation hands it.
+    #[test]
+    fn tohru_lock_pam_success_and_failure() {
+        let Some(modules) = crate::platform::auth::module_dir() else {
+            eprintln!("skipped: libpam's module directory was not found");
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("tohru-pam-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("check");
+        std::fs::write(&script, "#!/bin/sh\nIFS= read -r pw\n[ \"$pw\" = 'correct horse' ]\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::write(
+            dir.join("tohru-test"),
+            format!(
+                "auth required {m}/pam_exec.so expose_authtok quiet {s}\naccount required {m}/pam_permit.so\n",
+                m = modules.display(),
+                s = script.display()
+            ),
+        )
+        .unwrap();
+        let verify = |p: &str| crate::platform::auth::verify_with("tohru-test", Some(&dir), p);
+        assert_eq!(verify("correct horse"), Ok(true));
+        assert_eq!(verify("wrong"), Ok(false));
+        assert_eq!(verify(""), Ok(false));
+        let _g = fresh();
+        let cycle = engaged();
+        held();
+        assert_eq!(check("wrong", cycle, verify), REJECTED);
+        assert!(!may_release());
+        assert_eq!(check("correct horse", cycle, verify), ACCEPTED);
+        assert!(may_release());
+        clear();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

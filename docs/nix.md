@@ -103,7 +103,7 @@ and on NixOS:
 security.pam.services.tohru-lock = { };
 ```
 
-On Hyprland keep `misc:allow_session_lock_restore = true`, so that after a crash the plain style can take over the lock. The session menu's Lock and Sleep go through `loginctl lock-session`, which hypridle answers with `lock_cmd`; `tohru lock` starts the locker directly.
+Without that service the locker uses `pleamar`'s or `hyprlock`'s PAM service if one exists, else `login`'s. On Hyprland keep `misc:allow_session_lock_restore = true`, so that after a crash the plain style can take over the lock. The session menu's Lock and Sleep go through `loginctl lock-session`, which hypridle answers with `lock_cmd`; `tohru lock` starts the locker directly.
 
 ## Hyprland plugin
 

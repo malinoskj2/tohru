@@ -25,7 +25,7 @@ Tohru has no idle handling, polkit agent, wallpaper or screenshot tool. The sess
 
 ## Lock screen
 
-`tohru-lock` locks with ext-session-lock-v1 and checks the password with PAM. Failures keep the session locked:
+`tohru-lock` locks with ext-session-lock-v1 and checks the password with PAM. The service is the first of `tohru-lock`, `pleamar` and `hyprlock` in `/etc/pam.d`, else `login`. Failures keep the session locked:
 
 - One locker per session (`flock` on `$XDG_RUNTIME_DIR/tohru-lock.lock`); without `flock` it locks anyway, and the compositor refuses a second lock (exit 3, not retried).
 - Before locking, the wrapper runs `pleamar --check` on the styled scene, which compiles its shaders. A scene that fails locks with `plain.plm`, which has no shaders and no screen capture.
@@ -68,6 +68,7 @@ Requests report that Pleamar accepted them, not that the action finished. If no 
 | `0020-backdrop-bright-share` | Adds an optional `bright: fact` popup property. After each capture its lens takes in, the card counts the cells of a 16 × 16 grid over the popup's glass whose Rec. 709 luma is over 55 %, and only that count is read back into the fact (0 to 1). It returns to 0 when the popup opens. The panels and the session menu use it for j2bar's light and dark glass |
 | `0021-card-capture-without-shm` | When the compositor offers its captures in a shared-memory format Pleamar cannot read (a headless Sway offers 24-bit BGR888) but also offers a dmabuf, the next capture goes onto the card instead of none ever arriving. Without it no lens glass works on such a Sway |
 | `0022-lock-authority` | Tohru's lock authority (`tohru_lock`, from `bindings/lock.rs`): the native password check, the per-cycle unlock permit that the render and Wayland code check before releasing the lock, and the locker mode (`TOHRU_LOCKER=1`) that refuses `--say`, hot reload and relaunch |
+| `0023-lock-pam` | PAM picks the `tohru-lock` service first, the password copy is zeroed with volatile writes on every path, and the `tohru-test-pam` feature (never in a shipped build) lets `TOHRU_TEST_PAM_CONFDIR` point the check at a private service for nested-compositor tests |
 
 Numbers 0002 to 0004 and 0007 to 0009 belonged to features that were removed or moved into the scenes.
 
