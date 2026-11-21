@@ -1,0 +1,255 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index d7dc4e6..3a1660a 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -12,6 +12,7 @@
+ mod tohru_info;
+ #[cfg(feature = "luau")]
+ mod tohru_settings;
++mod tohru_lock;
+ pub mod scene;
+ mod scenes;
+ mod skill;
+@@ -381,7 +382,8 @@ pub fn run_with(options: Vec<String>) {
+     if std::env::var_os("PLEAMAR_NO_PORTAL").is_none() {
+         crate::platform::watch_appearance(to_render.clone());
+     }
+-    if std::path::Path::new(&a.scene).is_file() {
++    // The locker's scene is what it was started with: an edit on disk cannot change a held lock.
++    if std::path::Path::new(&a.scene).is_file() && !tohru_lock::locker() {
+         scenes::from_file::watch(a.scene.clone(), to_render.clone(), to_logic.clone());
+     }
+     let to_logic_for_commands = to_logic.clone();
+@@ -435,6 +437,11 @@ pub fn run_with(options: Vec<String>) {
+             if what == "hello" {
+                 return Some(format!("pleamar {} · scene {me} · pid {} · language {}.{}", env!("CARGO_PKG_VERSION"), std::process::id(), language::VERSION.0, language::VERSION.1));
+             }
++            // A locker answers who it is and nothing else: no fact, text, submit,
++            // key, describe, wait or quit from another process reaches it.
++            if tohru_lock::locker() {
++                return Some("? the locker takes no orders".into());
++            }
+             // `wait saving == false 3s`: answered as soon as it holds, or when it is late.
+             if what == "wait" {
+                 let (question, answer) = std::sync::mpsc::channel();
+@@ -656,7 +663,7 @@ fn quit() -> ! {
+     }
+     #[cfg(feature = "luau")]
+     logic_luau::stop_children();
+-    std::process::exit(0)
++    std::process::exit(tohru_lock::exit_code(0))
+ }
+ 
+ /// `kill` (SIGTERM), Ctrl+C at its terminal (SIGINT) or that terminal going
+diff --git a/src/logic_luau.rs b/src/logic_luau.rs
+index debae71..1c87a6a 100644
+--- a/src/logic_luau.rs
++++ b/src/logic_luau.rs
+@@ -1400,7 +1400,11 @@ impl LuauScript {
+         g.set("json", json)?;
+ 
+         if self.prefix.is_none() && std::env::var("TOHRU_SHELL").as_deref() == Ok("1") {
+-            crate::tohru_settings::install(&lua)?;
++            // A locker whose settings cannot be read still locks, in its default style.
++            match crate::tohru_settings::install(&lua) {
++                Err(e) if crate::tohru_lock::locker() => eprintln!("lock   · settings unavailable, using defaults: {e}"),
++                r => r?,
++            }
+             crate::tohru_info::install(&lua)?;
+         }
+ 
+diff --git a/src/platform/mod.rs b/src/platform/mod.rs
+index bbf0db6..6978854 100644
+--- a/src/platform/mod.rs
++++ b/src/platform/mod.rs
+@@ -1351,7 +1351,7 @@ pub fn gamepad(_: usize) -> Option<SysValue> {
+     None
+ }
+ #[cfg(target_os = "linux")]
+-mod auth;
++pub(crate) mod auth;
+ #[cfg(target_os = "linux")]
+ mod notifications;
+ #[cfg(target_os = "linux")]
+diff --git a/src/platform/wayland.rs b/src/platform/wayland.rs
+index ac43fda..28950a7 100644
+--- a/src/platform/wayland.rs
++++ b/src/platform/wayland.rs
+@@ -1548,7 +1548,16 @@ pub fn lock_screen(which: usize, what: Option<((u32, u32), (f32, f32), Screens)>
+     let Some(c) = LOCKS.get() else { return };
+     let mut engaged = c.engaged.lock().unwrap();
+     let Some((bounds, origin, screens)) = what else {
++        // A cycle the compositor has not ended goes only with a permit (`crate::tohru_lock`).
++        let permitted = crate::tohru_lock::may_release();
++        if engaged.is_some() && crate::tohru_lock::active() && !permitted {
++            eprintln!("lock   · release without an accepted password refused: the session stays locked");
++            return;
++        }
+         if let Some(e) = engaged.take() {
++            if permitted {
++                crate::tohru_lock::released();
++            }
+             e.lock.unlock();
+             drop(e);
+             let _ = c.connection.flush();
+@@ -1560,7 +1569,10 @@ pub fn lock_screen(which: usize, what: Option<((u32, u32), (f32, f32), Screens)>
+         return;
+     }
+     let lock = match c.manager.lock(&c.qh) {
+-        Ok(l) => l,
++        Ok(l) => {
++            crate::tohru_lock::engaged();
++            l
++        }
+         Err(_) => {
+             eprintln!("lock   · this compositor has no ext-session-lock: the session cannot be locked from here");
+             return;
+@@ -2286,11 +2298,13 @@ impl smithay_client_toolkit::session_lock::SessionLockHandler for State {
+     /// The compositor confirms it: now, and not before, the session is locked.
+     fn locked(&mut self, _: &Connection, _: &QueueHandle<Self>, _: smithay_client_toolkit::session_lock::SessionLock) {
+         println!("lock   · the session is locked");
++        crate::tohru_lock::held();
+         let _ = self.to_render.send(ToRender::LockScreen(true));
+     }
+     /// It didn't grant it —there's already another locker—, or it has ended it.
+     fn finished(&mut self, _: &Connection, _: &QueueHandle<Self>, _: smithay_client_toolkit::session_lock::SessionLock) {
+         eprintln!("lock   · the compositor did not grant the lock, or ended it: is another locker running?");
++        crate::tohru_lock::finished();
+         let _ = self.to_render.send(ToRender::LockScreen(false));
+     }
+     fn configure(
+diff --git a/src/render.rs b/src/render.rs
+index a1cb1ab..b1d4c98 100644
+--- a/src/render.rs
++++ b/src/render.rs
+@@ -543,6 +543,7 @@ pub fn run(
+     let mut popups: Vec<Option<[i32; 4]>> = Vec::new();
+     // The lock surfaces that are engaged (or requested).
+     let mut locks: Vec<usize> = Vec::new();
++    let mut lock_refusal_said = false;
+     let mut uniforms = [0f32; N_UNIFORMS];
+     let mut size = (720.0f32, 224.0f32);
+     // If `--record` was asked for, the header is written once.
+@@ -1235,7 +1236,17 @@ pub fn run(
+                     }
+                 }
+                 ToRender::Text(name, value) => match scene.texts.iter().position(|t| t.0 == name) {
+-                    Some(i) => texts[i] = value,
++                    Some(i) => {
++                        // While locked, what a field held is overwritten before it goes: it may be a password.
++                        if crate::tohru_lock::active() {
++                            crate::tohru_lock::zero(&mut texts[i]);
++                        }
++                        if let Some(e) = editing.as_mut().filter(|e| e.field == i) {
++                            e.cursor = e.cursor.min(value.len());
++                            e.anchor = e.anchor.min(value.len());
++                        }
++                        texts[i] = value;
++                    }
+                     None => eprintln!("render · I don't know the text '{name}'"),
+                 },
+                 ToRender::Fact(name, v) => match scene.facts.iter().position(|h| h.0 == name) {
+@@ -1259,6 +1270,10 @@ pub fn run(
+                     if let Some(k) = scene.facts.iter().position(|(n, _)| *n == "lock.held") {
+                         facts[k] = if held { 1.0 } else { 0.0 };
+                     }
++                    // A locker the compositor turned away, or whose lock it ended, has nothing left to do.
++                    if !held && crate::tohru_lock::locker() {
++                        crate::quit_from_scene();
++                    }
+                 }
+                 ToRender::PopupClosed(k) => {
+                     // They have clicked outside: first what was painting in it is released, then it.
+@@ -2106,16 +2121,38 @@ pub fn run(
+             if let Some(ed) = editing.as_mut().filter(|e| !ruled && draw.fields.iter().any(|f| f.text == e.field && !f.passive)) {
+                 let k = ed.field;
+                 let secret = draw.fields.iter().any(|f| f.text == k && f.secret);
++                // A password typed while locked: one buffer, big enough not to be copied as it grows,
++                // and the logic is told only how long it is.
++                let guarded = secret && crate::tohru_lock::active();
++                if guarded && texts[k].capacity() < 512 {
++                    let mut roomy = String::with_capacity(1024);
++                    roomy.push_str(&texts[k]);
++                    crate::tohru_lock::zero(&mut texts[k]);
++                    texts[k] = roomy;
++                }
+                 match ed.handle_key(&mut texts[k], &name, typed.as_deref(), mods, secret) {
+                     KeyOutcome::Changed => {
+                         last_key = Instant::now();
+-                        let _ = to_logic.send(Event::Text(scene.texts[k].0, texts[k].clone()));
++                        let told = if guarded { crate::tohru_lock::masked(&texts[k]) } else { texts[k].clone() };
++                        let _ = to_logic.send(Event::Text(scene.texts[k].0, told));
+                         continue;
+                     }
+                     KeyOutcome::Moved => {
+                         last_key = Instant::now();
+                         continue;
+                     }
++                    KeyOutcome::Submitted if guarded => {
++                        // Checked natively against the held lock; the logic hears an empty submit
++                        // and, through `lock_auth`, the outcome.
++                        submitted.push(k);
++                        let password = std::mem::replace(&mut texts[k], String::with_capacity(1024));
++                        ed.cursor = 0;
++                        ed.anchor = 0;
++                        let _ = to_logic.send(Event::Text(scene.texts[k].0, String::new()));
++                        let _ = to_logic.send(Event::Submit(scene.texts[k].0, String::new()));
++                        crate::tohru_lock::submit(password, op.to_self.clone());
++                        continue;
++                    }
+                     KeyOutcome::Submitted => {
+                         submitted.push(k);
+                         let _ = to_logic.send(Event::Submit(scene.texts[k].0, texts[k].clone()));
+@@ -3909,11 +3946,23 @@ pub fn run(
+         // The lock ones are not put up: they are engaged when their `open:` becomes
+         // true and removed when it stops being so. When removing them, first what was
+         // being painted on them is released and then them, like a popup.
+-        let want: Vec<(usize, bool)> = scene.surfaces.iter().enumerate().filter(|(_, s)| s.lock_screen).map(|(k, _)| (k, open(k))).collect();
++        // Only a password PAM accepted for the held lock lets it go (`crate::tohru_lock`): an
++        // `open:` that turns false without one leaves the lock where it is. A permit the scene
++        // does not act on within its grace releases the lock all the same.
++        let overdue = crate::tohru_lock::release_overdue();
++        let want: Vec<(usize, bool)> = scene.surfaces.iter().enumerate().filter(|(_, s)| s.lock_screen).map(|(k, _)| (k, open(k) && !overdue)).collect();
+         for (k, wants) in want {
+             let was = locks.contains(&k);
++            if !wants && was && crate::tohru_lock::active() && !crate::tohru_lock::may_release() {
++                if !lock_refusal_said {
++                    eprintln!("lock   · the scene let go of the lock without an accepted password: it stays locked");
++                    lock_refusal_said = true;
++                }
++                continue;
++            }
+             if wants && !was {
+                 locks.push(k);
++                lock_refusal_said = false;
+                 let s = &scene.surfaces[k];
+                 crate::platform::lock_screen(k, Some(((s.width, s.height), s.origin, s.screens.clone())));
+             } else if !wants && was {
+@@ -3926,6 +3975,10 @@ pub fn run(
+                 if let Some(h) = scene.facts.iter().position(|(n, _)| *n == "lock.held") {
+                     facts[h] = 0.0;
+                 }
++                // The locker's work is done once it has unlocked.
++                if crate::tohru_lock::locker() && crate::tohru_lock::unlocked() {
++                    crate::quit_from_scene();
++                }
+             }
+         }
+         let open = |k: usize| scene.surfaces.get(k).and_then(|s| s.open.as_ref()).is_none_or(|e| e.is_true(Ctx { props: &props, facts: &facts, seen: None }));
+diff --git a/src/scenes/from_file.rs b/src/scenes/from_file.rs
+index c9198f3..06b5155 100644
+--- a/src/scenes/from_file.rs
++++ b/src/scenes/from_file.rs
+@@ -164,7 +164,11 @@ fn logic_path_for(path: &str) -> String {
+ /// `PLEAMAR_NO_RELAUNCH=1` turns it off, for whoever does not want updating the
+ /// package to restart their bar.
+ fn watch_binary() {
+-    if std::env::var_os("PLEAMAR_NO_RELAUNCH").is_some() || super::STAY_ON_UPDATE.load(std::sync::atomic::Ordering::Relaxed) {
++    // A locker never replaces itself: the session must not depend on a new binary starting.
++    if std::env::var_os("PLEAMAR_NO_RELAUNCH").is_some()
++        || super::STAY_ON_UPDATE.load(std::sync::atomic::Ordering::Relaxed)
++        || crate::tohru_lock::locker()
++    {
+         return;
+     }
+     let Ok(me) = std::env::current_exe() else { return };

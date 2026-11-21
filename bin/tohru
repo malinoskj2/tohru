@@ -7,6 +7,7 @@ Usage: tohru panel toggle|open sound|calendar|network|bluetooth|about|info
        tohru settings open|close
        tohru session open|close|toggle
        tohru launcher toggle|open|close
+       tohru lock
        tohru notifications seen | dnd on|off|toggle
        tohru routing-error
        tohru audio volume up|down
@@ -58,6 +59,10 @@ case ${1:-help} in
             dnd:toggle:3) exec "$pleamar" --say tohru-notifications 'emit notices_dnd 2' ;;
             *) fail 'Usage: tohru notifications seen | dnd on|off|toggle' ;;
         esac
+        ;;
+    lock)
+        [[ $# == 1 ]] || fail 'lock takes no arguments'
+        exec "${TOHRU_LOCK_RUN:-$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/tohru-lock}"
         ;;
     routing-error)
         [[ $# == 1 ]] || fail 'routing-error takes no arguments'

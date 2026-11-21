@@ -1,0 +1,86 @@
+part LockState {
+ // The lock is wanted from the start. Without a logic it still engages after 1.5 s; only a
+ // password PAM accepted lets it go (runtime/pleamar/bindings/lock.rs), whatever these facts say.
+ fact engaged = false
+ fact released = false
+ every 1500ms while not engaged and not released { engaged = true }
+ // 0 is the plain style; 1 to 10 follow lock.style's names in order.
+ fact style = 0
+ // Set by the native authority: 0 idle, 1 checking, 2 accepted, 3 rejected, 4 unavailable.
+ fact lock_auth = 0
+ fact lock_overdue = 0
+ fact held = false
+ on change lock.held { held = lock.held }
+ fact typed = 0
+ fact awake = false
+ fact wrong = false
+ fact unlocking = false
+ fact pk = 0
+ fact has_shot = false
+ fact media_known = false
+ fact media_playing = false
+ fact checking = false
+ fact restart_armed = false
+ event lock_sleep ->
+ event lock_restart ->
+ text password = ""
+ text shot = ""
+ text clock_h = "00"
+ text clock_m = "00"
+ text clock_hm = "00:00"
+ text date_long = ""
+ text date_short = ""
+ text date_caps = ""
+ text date_comma_caps = ""
+ text date_bar = ""
+ fact ws_active = 1
+ fact ws_count = 5
+ text user = ""
+ text host = ""
+ text output_name = ""
+ text media_title = ""
+ text status = ""
+ image lock_shot = from shot, 0, 0
+
+ // Whoever reads these: 0 at rest, 1 fully there.
+ prop unlock = 0 ~420ms
+ follow unlock = if(unlocking, 1, 0)
+ prop wake = 0 ~spring(196, 21.8)
+ follow wake = if(awake or typed > 0 or checking or wrong or unlocking, 1, 0)
+ prop err = 0 ~220ms
+ follow err = if(wrong, 1, 0)
+ // A shove on every wrong password and keystroke: shake is a stiff spring around 0.
+ prop shake = 0 ~spring(900, 16)
+ follow shake = 0
+ on change wrong while wrong { impulse shake -1500 }
+ prop kick = 0 ~spring(160, 9)
+ follow kick = 0
+ on change typed while typed > 0 { impulse kick 9 }
+ prop dots = 0 ~spring(420, 30)
+ follow dots = typed
+
+ let ink = mix(#ffffff, #1c1826, pk)
+ let glass_c = mix(#140a1e, #fafafc, pk)
+ let err_c = mix(#f38ba8, #d20f39, pk)
+ let ok_c = mix(#a6e3a1, #40a02b, pk)
+ let lav_c = mix(#b4befe, #7287fd, pk)
+ let pal0 = mix(mix(#fab387, #ffffff, 0.55), mix(#fab387, #0a0a0a, 0.35), pk)
+ let pal1 = mix(mix(#f9e2af, #ffffff, 0.55), mix(#f9e2af, #0a0a0a, 0.35), pk)
+ let pal2 = mix(mix(#a6e3a1, #ffffff, 0.55), mix(#a6e3a1, #0a0a0a, 0.35), pk)
+ let pal3 = mix(mix(#b4befe, #ffffff, 0.55), mix(#b4befe, #0a0a0a, 0.35), pk)
+ let pal4 = mix(mix(#cba6f7, #ffffff, 0.55), mix(#cba6f7, #0a0a0a, 0.35), pk)
+ let dots_n = min(typed, 24)
+
+ // Password dots centred on cx: palette-tinted (tint 1) or ink (0), red after a wrong password.
+ component LockDots(cx: number, cy: number, r: number = 4.2, gap: number = 18, tint: number = 1, alpha: number = 0.92, left: number = 0) {
+  repeat n in 0..24 {
+   ellipse {
+    at: if(left > 0.5, cx + n * gap, cx - (dots_n - 1) * gap / 2 + n * gap), cy
+    radius: r * clamp(dots - n, 0, 1)
+    color: if(err > 0.5, err_c, if(tint > 0.5, if(n / max(1, dots_n - 1) < 0.25, mix(pal0, pal1, n / max(1, dots_n - 1) * 4), if(n / max(1, dots_n - 1) < 0.5, mix(pal1, pal2, n / max(1, dots_n - 1) * 4 - 1), if(n / max(1, dots_n - 1) < 0.75, mix(pal2, pal3, n / max(1, dots_n - 1) * 4 - 2), mix(pal3, pal4, n / max(1, dots_n - 1) * 4 - 3)))), ink))
+    opacity: alpha
+    show: n < dots_n
+   }
+  }
+ }
+}

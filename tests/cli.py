@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Check the actual Bash frontend's argument boundary without a desktop session."""
+import fcntl
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -206,6 +209,104 @@ class Cli(unittest.TestCase):
                 self.assertEqual(result.returncode, 2)
                 self.assertEqual(result.stdout, "")
 
+
+    def test_lock_runs_the_locker_and_takes_no_arguments(self):
+        seen = self.path / "locked"
+        locker = self.path / "locker"
+        locker.write_text(f"#!/usr/bin/env bash\nprintf '%s' \"$#\" > '{seen}'\n")
+        locker.chmod(0o755)
+        self.assertEqual(self.invoke("lock", TOHRU_LOCK_RUN=str(locker)).returncode, 0)
+        self.assertEqual(seen.read_text(), "0")
+        seen.unlink()
+        self.assertEqual(self.invoke("lock", "now", TOHRU_LOCK_RUN=str(locker)).returncode, 2)
+        self.assertFalse(seen.exists())
+
+
+class LockWrapper(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix="tohru-lock-")
+        self.addCleanup(self.directory.cleanup)
+        self.path = Path(self.directory.name)
+        tools = self.path / "bin"
+        tools.mkdir()
+        # No busctl: the test never touches logind's LockedHint.
+        for tool in ("bash", "flock", "sleep", "dirname", "readlink", "python3", "env", "cat", "pgrep", "id"):
+            found = shutil.which(tool)
+            if found:
+                (tools / tool).symlink_to(found)
+        self.runs = self.path / "runs"
+        self.runtime = self.path / "runtime"
+        # Each launch logs its scene and takes the next exit status from EXITS; `--check` fails for CHECK_FAILS.
+        self.runtime.write_text(
+            "#!/usr/bin/env python3\nimport os,sys,signal\n"
+            "a=sys.argv[1:]\n"
+            "if a[0]=='--check': sys.exit(1 if a[1]==os.environ.get('CHECK_FAILS') else 0)\n"
+            f"runs=open('{self.runs}','a+'); runs.seek(0); n=len(runs.readlines())\n"
+            "runs.write(a[a.index('--scene')+1]+' '+os.environ.get('TOHRU_LOCKER','')+'\\n'); runs.close()\n"
+            "code=os.environ['EXITS'].split(',')[n]\n"
+            "if code=='segv': os.kill(os.getpid(), signal.SIGKILL)\n"
+            "sys.exit(int(code))\n"
+        )
+        self.runtime.chmod(0o755)
+        (self.path / "xdg").mkdir()
+        self.env = {"PATH": str(tools), "HOME": str(self.path), "XDG_RUNTIME_DIR": str(self.path / "xdg"), "TOHRU_RUNTIME": str(self.runtime), "TOHRU_LOCK_SCENE": "styled.plm", "TOHRU_LOCK_PLAIN_SCENE": "plain.plm"}
+
+    def lock(self, **env):
+        result = subprocess.run([str(ROOT / "bin/tohru-lock")], env={**self.env, **env}, text=True, capture_output=True, timeout=30)
+        return result, self.runs.read_text().split("\n")[:-1] if self.runs.exists() else []
+
+    def test_unlocking_ends_the_locker(self):
+        result, runs = self.lock(EXITS="0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(runs, ["styled.plm 1"])
+
+    def test_a_style_that_does_not_load_locks_with_the_plain_one(self):
+        result, runs = self.lock(EXITS="0", CHECK_FAILS="styled.plm")
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(runs, ["plain.plm 1"])
+        self.assertIn("using the plain style", result.stderr)
+
+    def test_a_crash_or_a_quit_while_locked_relaunches_the_plain_style(self):
+        for exits in ("segv,0", "75,0", "1,segv,0"):
+            with self.subTest(exits=exits):
+                self.runs.unlink(missing_ok=True)
+                result, runs = self.lock(EXITS=exits)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(runs, ["styled.plm 1"] + ["plain.plm 1"] * (len(exits.split(",")) - 1))
+                self.assertIn("starting the plain style", result.stderr)
+
+    def test_a_refusal_from_the_compositor_is_not_retried(self):
+        result, runs = self.lock(EXITS="3")
+        self.assertEqual(result.returncode, 3)
+        self.assertEqual(runs, ["styled.plm 1"])
+
+    def test_one_locker_at_a_time(self):
+        if not (self.path / "bin" / "flock").exists():
+            self.skipTest("flock (util-linux) is not on PATH")
+        with open(self.path / "xdg" / "tohru-lock.lock", "w") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            result, runs = self.lock(EXITS="0")
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(runs, [])
+
+    def test_running_tells_whether_a_locker_runs_without_starting_one(self):
+        if not (self.path / "bin" / "pgrep").exists():
+            self.skipTest("pgrep (procps) is not on PATH")
+        running = lambda: subprocess.run([str(ROOT / "bin/tohru-lock"), "--running"], env=self.env, timeout=10).returncode
+        self.assertEqual(running(), 1)
+        locker = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)", "--scene", "x", "--answer-as", "tohru-lock"])
+        self.addCleanup(locker.kill)
+        self.assertEqual(running(), 0)
+        locker.kill()
+        locker.wait()
+        self.assertEqual(running(), 1)
+        self.assertFalse(self.runs.exists())
+
+    def test_without_flock_it_locks_anyway(self):
+        (self.path / "bin" / "flock").unlink(missing_ok=True)
+        result, runs = self.lock(EXITS="0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(runs, ["styled.plm 1"])
 
 if __name__ == "__main__":
     unittest.main()

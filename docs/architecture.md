@@ -17,10 +17,22 @@ Each role is its own `pleamar` process, started by a wrapper in `bin/`. Each can
 | `tohru-launcher` | `shell/launcher/entry.plm` | `tohru-launcher-run` | Launcher: a full-screen scrim layer named `tohru-launcher-backdrop` under a full-screen layer with the card |
 | `tohru-notifications` | `shell/notifications/notifications.plm` | `tohru-notifications-run` | Owns `org.freedesktop.Notifications`; must be the only notification daemon. Keeps whether something arrived unseen (saved across restarts) and Do Not Disturb (not saved) |
 | `tohru-settings` | `shell/settings/settings.plm` | `tohru-settings-run` | Settings window, started on demand. Sets `TOHRU_SHELL=1` |
+| `tohru-lock` | `shell/lock/lock.plm`, else `shell/lock/plain.plm` | `tohru-lock` | The lock screen, started by hypridle's `lock_cmd` or `tohru lock`. Sets `TOHRU_SHELL=1` and `TOHRU_LOCKER=1`. Exits when unlocked |
 
 The wrappers run `pleamar --scene <scene> --no-hud --stall 0 --answer-as <role>`. The role name is what other processes and the CLI address.
 
-Tohru has no lock screen, idle handling, polkit agent, wallpaper or screenshot tool. The session menu's Lock runs `loginctl lock-session`, which hypridle's `lock_cmd` answers by starting hyprlock. Sleep runs `loginctl lock-session` and, only if that succeeds, `systemctl suspend`. Restart, Shut Down and Log Out use Pleamar's session services.
+Tohru has no idle handling, polkit agent, wallpaper or screenshot tool. The session menu's Lock runs `loginctl lock-session`, which hypridle's `lock_cmd` answers by starting `tohru-lock`. Sleep runs `loginctl lock-session` and, only if that succeeds, `systemctl suspend`. Restart, Shut Down and Log Out use Pleamar's session services.
+
+## Lock screen
+
+`tohru-lock` locks with ext-session-lock-v1 and checks the password with PAM. Failures keep the session locked:
+
+- One locker per session (`flock` on `$XDG_RUNTIME_DIR/tohru-lock.lock`); without `flock` it locks anyway, and the compositor refuses a second lock (exit 3, not retried).
+- Before locking, the wrapper runs `pleamar --check` on the styled scene, which compiles its shaders. A scene that fails locks with `plain.plm`, which has no shaders and no screen capture.
+- Any other exit than 0 (a crash, a kill, exit 75 for a quit while still locked) starts the plain scene again. The compositor keeps the session locked meanwhile; Hyprland needs `misc:allow_session_lock_restore = true` to let the new locker take over.
+- Only the native side reads the password field. Luau sees bullets and a verdict (`lock_auth`: 0 idle, 1 checking, 2 accepted, 3 rejected, 4 PAM unavailable). The password is zeroed once PAM has answered.
+- Unlocking needs a PAM success for the lock cycle that is still held; a permit does not carry over to the next lock. `--say` requests to a locker are refused, it does not hot-reload, and it does not relaunch itself when its binary changes.
+- A monitor plugged in while locked gets its own face. A stalled locker leaves the compositor's lock in place.
 
 ## How the parts talk
 
@@ -55,6 +67,7 @@ Requests report that Pleamar accepted them, not that the action finished. If no 
 | `0019-apps-j2bar-catalog` | The `apps` catalog leaves out entries whose `TryExec` program is not installed, and entries whose `OnlyShowIn`/`NotShowIn` exclude the desktops in `XDG_CURRENT_DESKTOP`, as j2bar's catalog did. Each record also says, in `icon_found`, whether its icon would load, so the launcher can draw j2bar's placeholder for one that would not, and carries every `Name[…]` (`names`) and `Exec=` as written (`exec_line`), which j2bar's search matched |
 | `0020-backdrop-bright-share` | Adds an optional `bright: fact` popup property. After each capture its lens takes in, the card counts the cells of a 16 × 16 grid over the popup's glass whose Rec. 709 luma is over 55 %, and only that count is read back into the fact (0 to 1). It returns to 0 when the popup opens. The panels and the session menu use it for j2bar's light and dark glass |
 | `0021-card-capture-without-shm` | When the compositor offers its captures in a shared-memory format Pleamar cannot read (a headless Sway offers 24-bit BGR888) but also offers a dmabuf, the next capture goes onto the card instead of none ever arriving. Without it no lens glass works on such a Sway |
+| `0022-lock-authority` | Tohru's lock authority (`tohru_lock`, from `bindings/lock.rs`): the native password check, the per-cycle unlock permit that the render and Wayland code check before releasing the lock, and the locker mode (`TOHRU_LOCKER=1`) that refuses `--say`, hot reload and relaunch |
 
 Numbers 0002 to 0004 and 0007 to 0009 belonged to features that were removed or moved into the scenes.
 
