@@ -49,6 +49,10 @@
         in import ./nix/tests/compositors.nix {
           inherit pkgs;
           tohru = self.packages.${system}.tohru;
+        } // import ./nix/tests/greeter.nix {
+          inherit pkgs;
+          tohru = self.packages.${system}.tohru;
+          hyprlandPackage = (import hyprland-nixpkgs { inherit system; }).hyprland;
         });
       nixosModules = {
         tohru-greeter = import ./nix/nixos.nix;

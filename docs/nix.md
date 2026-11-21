@@ -140,6 +140,17 @@ Import `inputs.tohru.nixosModules.tohru-greeter` (or `default`) in your NixOS co
 
 The module configures `services.greetd` on VT1 (leaving `tty2–tty6` live for `Ctrl+Alt+F2` recovery), hosts `tohru-greeter` in a minimal isolated Hyprland (or Sway) session with a `tuigreet` fallback on compositor error, adds `video`/`render` groups to `greeter`, enables `services.accounts-daemon` so `tohru avatar set FILE` works across `0700` home directories, and installs a scoped Polkit rule for Sleep/Restart/Shut Down. Fonts required by scenes (`SF Pro Display`, `SF Pro Text`) must be in NixOS `fonts.packages` so the `greeter` user can read them. `nix/tests/nixos.nix` checks the NixOS module evaluation.
 
+The Hyprland greeter config is Lua, so `compositor = "hyprland"` needs Hyprland 0.57 or later; the module asserts this. `extraCompositorConfig` is appended verbatim to that config, so for Hyprland it must be Lua (`hl.config({ ... })`, `hl.monitor({ ... })`, `hl.env(...)`), and for Sway it is Sway config syntax. The greeter starts on `hyprland.start` and leaves Hyprland with `hyprctl dispatch 'hl.dsp.exit()'` once it exits.
+
+greetd joins a session's `cmd` with spaces and runs it through `/bin/sh -c`, so `tohru-greeter` sends every `Exec=` token single-quoted.
+
+`checks.x86_64-linux.greeter-hyprland` and `checks.x86_64-linux.greeter-sway` (`nix/tests/greeter.nix`) boot a VM with real greetd and PAM, type a test user's password into the greeter and check that the chosen session starts with the right argv, stays running without a respawn loop, and that the greeter compositor exits. They render in software and set `PLEAMAR_SWAPCHAIN=1`, because Hyprland's llvmpipe renderer can't import Pleamar's own dmabuf frames and disconnects the greeter:
+
+```sh
+resource-run --cpu 4 --ram 6GiB --project tohru --name "tohru greeter VM test" --category other \
+  --memory-policy strict -- nix build -L --no-link .#checks.x86_64-linux.greeter-hyprland
+```
+
 ## Hyprland plugin
 
 `tohru-hyprland` is optional. The shell works without it. It must be built against the exact Hyprland your session runs: the package asserts Hyprland 0.57.2, and the plugin refuses to load if its build headers do not match the running compositor.

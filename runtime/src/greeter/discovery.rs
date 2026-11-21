@@ -438,6 +438,9 @@ pub fn default_session_dirs() -> Vec<PathBuf> {
 
 /// Build the `greetd` `start_session` command line and environment variables for `session`.
 ///
+/// greetd joins `cmd` with spaces and runs the result through `/bin/sh -c`, so every
+/// token is single-quoted here to survive that join.
+///
 /// Sessions launched through `uwsm` already load login-shell environment variables and
 /// import them into `systemd --user`, so they run directly. Raw compositor commands
 /// (such as `start-hyprland` or `sway`) are wrapped in a login shell that sources NixOS
@@ -463,7 +466,7 @@ pub fn build_session_launch(session: &SessionEntry) -> Option<SessionLaunch> {
         .and_then(|name| name.to_str())
         .is_some_and(|base| base == "uwsm");
 
-    let cmd = if is_uwsm {
+    let argv = if is_uwsm {
         parsed
     } else {
         let mut wrapped = vec![
@@ -475,8 +478,15 @@ pub fn build_session_launch(session: &SessionEntry) -> Option<SessionLaunch> {
         wrapped.extend(parsed);
         wrapped
     };
+    let cmd = argv.iter().map(|arg| shell_quote(arg)).collect();
 
     Some(SessionLaunch { cmd, env })
+}
+
+/// Quote `arg` as a single POSIX shell word.
+#[must_use]
+pub fn shell_quote(arg: &str) -> String {
+    format!("'{}'", arg.replace('\'', "'\\''"))
 }
 
 /// Split a Freedesktop `Exec=` line into argv tokens, dropping `%`-field codes.

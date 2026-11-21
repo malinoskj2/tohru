@@ -31,27 +31,29 @@ let
     exec ${cfg.package}/bin/tohru-greeter
   '';
 
-  hyprlandConf = pkgs.writeText "tohru-greeter-hyprland.conf" ''
-    misc {
-      disable_hyprland_logo = true
-      disable_splash_rendering = true
-      force_default_wallpaper = 0
-    }
-    animations {
-      enabled = false
-    }
-    ${lib.concatMapStringsSep "\n" (m:
-      "monitor = ${m.output}, ${m.mode}, ${m.position}, ${toString m.scale}, transform, ${toString m.transform}"
-    ) cfg.monitors}
-    input {
-      kb_layout = ${cfg.keyboard.layout}
-      kb_variant = ${cfg.keyboard.variant}
-      kb_options = ${cfg.keyboard.options}
-      repeat_delay = ${toString cfg.keyboard.repeatDelay}
-      repeat_rate = ${toString cfg.keyboard.repeatRate}
-    }
+  hyprlandConf = pkgs.writeText "tohru-greeter-hyprland.lua" ''
+    hl.config(${lib.generators.toLua { } {
+      misc = {
+        disable_hyprland_logo = true;
+        disable_splash_rendering = true;
+        force_default_wallpaper = 0;
+      };
+      animations.enabled = false;
+      input = {
+        kb_layout = cfg.keyboard.layout;
+        kb_variant = cfg.keyboard.variant;
+        kb_options = cfg.keyboard.options;
+        repeat_delay = cfg.keyboard.repeatDelay;
+        repeat_rate = cfg.keyboard.repeatRate;
+      };
+    }})
+    ${lib.concatMapStringsSep "\n" (m: "hl.monitor(${lib.generators.toLua { } {
+      inherit (m) output mode position scale transform;
+    }})") cfg.monitors}
     ${cfg.extraCompositorConfig}
-    exec-once = ${greeterRun}; ${lib.getExe' cfg.hyprlandPackage "hyprctl"} dispatch exit
+    hl.on("hyprland.start", function()
+      hl.exec_cmd(${lib.generators.toLua { } "${greeterRun}; ${lib.getExe' cfg.hyprlandPackage "hyprctl"} dispatch 'hl.dsp.exit()'"})
+    end)
   '';
 
   swayConf = pkgs.writeText "tohru-greeter-sway.conf" ''
@@ -236,7 +238,10 @@ in {
     extraCompositorConfig = lib.mkOption {
       type = lib.types.lines;
       default = "";
-      description = "Additional raw lines appended to the greeter compositor config.";
+      description = ''
+        Additional raw lines appended to the greeter compositor config: Lua (Hyprland 0.57+
+        `hl.*` calls) for `compositor = "hyprland"`, Sway config syntax for `compositor = "sway"`.
+      '';
     };
 
     settings = lib.mkOption {
@@ -247,6 +252,11 @@ in {
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = [{
+      assertion = cfg.compositor != "hyprland" || lib.versionAtLeast (lib.getVersion cfg.hyprlandPackage) "0.57";
+      message = "services.tohru-greeter writes a Lua Hyprland config, which needs Hyprland 0.57 or later.";
+    }];
+
     services.greetd = {
       enable = true;
       restart = lib.mkDefault true;
