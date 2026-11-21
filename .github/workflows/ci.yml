@@ -69,6 +69,7 @@ jobs:
             python3 -B "${test[@]}" || status=1
           done <<'EOF'
           tests/cli.py
+          tests/dev.py
           tests/isolation.py
           tests/packaging-locks.py
           tests/role-launch.py

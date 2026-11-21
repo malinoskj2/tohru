@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+set -euo pipefail
+usage() {
+    cat <<'HELP'
+Usage: tohru dev [COMPONENT...] [--watch] [--nested] [--runtime PATH] [--shell DIR]
+
+Contributor tool: run Tohru roles against a checkout's shell/ until interrupted.
+
+Components: bar session launcher notifications polkit, and settings with --nested.
+
+  (default)       Point the systemd user units at DIR and restart them; on exit
+                  restore the packaged scenes and restart them again. Without
+                  components, every running tohru-*.service unit.
+  --nested        Leave systemd alone; run the components in the foreground on
+                  the nested Hyprland (WAYLAND_DISPLAY=hyprland-1). Without
+                  components: bar session launcher notifications.
+  --watch         Restart the affected components when files under DIR change.
+  --runtime PATH  Use this pleamar binary instead of the packaged runtime.
+  --shell DIR     Scene directory (default: the checkout's shell/).
+HELP
+}
+fail() { printf 'tohru dev: %s\n' "$1" >&2; exit 2; }
+here=$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")
+
+unit_of() { case $1 in bar) printf tohru-bar ;; *) printf 'tohru-%s' "$1" ;; esac; }
+script_of() { case $1 in bar) printf tohru-run ;; *) printf 'tohru-%s-run' "$1" ;; esac; }
+component_of_unit() {
+    case $1 in
+        tohru-bar.service) printf bar ;;
+        tohru-session.service|tohru-launcher.service|tohru-notifications.service|tohru-polkit.service)
+            local name=${1#tohru-}; printf '%s' "${name%.service}" ;;
+    esac
+}
+
+components=() watch=0 nested=0 runtime= shell=
+while (( $# )); do
+    case $1 in
+        -h|--help) usage; exit 0 ;;
+        --watch) watch=1 ;;
+        --nested) nested=1 ;;
+        --runtime|--shell)
+            (( $# >= 2 )) && [[ -n $2 ]] || fail "$1 needs a value"
+            if [[ $1 == --runtime ]]; then runtime=$2; else shell=$2; fi
+            shift ;;
+        --runtime=*) runtime=${1#*=}; [[ -n $runtime ]] || fail '--runtime needs a value' ;;
+        --shell=*) shell=${1#*=}; [[ -n $shell ]] || fail '--shell needs a value' ;;
+        -*) fail "unknown option $1; run tohru dev --help" ;;
+        bar|session|launcher|notifications|polkit|settings)
+            [[ " ${components[*]} " == *" $1 "* ]] || components+=("$1") ;;
+        *) fail "unknown component $1; run tohru dev --help" ;;
+    esac
+    shift
+done
+
+if [[ -n $shell ]]; then
+    [[ -d $shell ]] || fail "--shell $shell is not a directory"
+    shell=$(cd -- "$shell" && pwd)
+else
+    for start in "$here" "$PWD"; do
+        top=$(git -C "$start" rev-parse --show-toplevel 2>/dev/null) || continue
+        if [[ -f $top/shell/bar.plm ]]; then shell=$top/shell; break; fi
+    done
+    [[ -n $shell ]] || fail 'not in a Tohru checkout; pass --shell DIR'
+fi
+[[ -f $shell/bar.plm ]] || fail "$shell has no bar.plm; pass the checkout's shell/ directory"
+if [[ -n $runtime ]]; then
+    [[ -f $runtime && -x $runtime ]] || fail "--runtime $runtime is not an executable file"
+    runtime=$(readlink -f -- "$runtime")
+fi
+
+if (( ! nested )); then
+    [[ " ${components[*]} " != *' settings '* ]] || fail 'settings has no systemd unit; use --nested'
+    command -v systemctl >/dev/null || fail 'systemctl not found; use --nested'
+    if (( ! ${#components[@]} )); then
+        while read -r unit _; do
+            name=$(component_of_unit "$unit")
+            [[ -z $name ]] || components+=("$name")
+        done < <(systemctl --user list-units --state=active --plain --no-legend 'tohru-*.service')
+        (( ${#components[@]} )) || fail 'no Tohru units are running; name components or use --nested'
+    fi
+elif (( ! ${#components[@]} )); then
+    components=(bar session launcher notifications)
+fi
+
+restart() {
+    local component
+    if (( nested )); then
+        for component in "$@"; do stop_nested "$component"; done
+        for component in "$@"; do start_nested "$component"; done
+    else
+        local units=()
+        for component in "$@"; do units+=("$(unit_of "$component").service"); done
+        systemctl --user restart "${units[@]}" || printf 'tohru dev: restarting %s failed\n' "${units[*]}" >&2
+    fi
+}
+
+declare -A pids=()
+start_nested() {
+    (
+        export TOHRU_SHELL_DIR=$shell
+        [[ -z $runtime ]] || export TOHRU_RUNTIME_OVERRIDE=$runtime
+        exec "$here/$(script_of "$1")"
+    ) &
+    pids[$1]=$!
+}
+stop_nested() {
+    local pid=${pids[$1]:-}
+    [[ -n $pid ]] || return 0
+    kill -TERM "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    unset 'pids[$1]'
+}
+
+watcher= sleeper= cleaned=0
+cleanup() {
+    (( cleaned )) && return
+    cleaned=1
+    trap '' INT TERM HUP
+    for pid in $watcher $sleeper; do kill "$pid" 2>/dev/null || true; done
+    if (( nested )); then
+        for component in "${!pids[@]}"; do stop_nested "$component"; done
+    else
+        printf 'tohru dev: restoring the packaged scenes\n' >&2
+        systemctl --user unset-environment TOHRU_SHELL_DIR TOHRU_RUNTIME_OVERRIDE || true
+        restart "${components[@]}"
+    fi
+}
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM HUP
+trap cleanup EXIT
+
+if (( nested )); then
+    export WAYLAND_DISPLAY=hyprland-1
+    if [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && command -v hyprctl >/dev/null; then
+        signature=$(hyprctl instances -j 2>/dev/null | sed -n 's/.*"instance": *"\([^"]*\)".*/\1/p' | head -n 1) || signature=
+        [[ -z $signature ]] || export HYPRLAND_INSTANCE_SIGNATURE=$signature
+    fi
+    for component in "${components[@]}"; do start_nested "$component"; done
+else
+    systemctl --user set-environment "TOHRU_SHELL_DIR=$shell" ${runtime:+"TOHRU_RUNTIME_OVERRIDE=$runtime"}
+    [[ -n $runtime ]] || systemctl --user unset-environment TOHRU_RUNTIME_OVERRIDE
+    restart "${components[@]}"
+fi
+printf 'tohru dev: %s from %s; Ctrl-C to stop\n' "${components[*]}" "$shell" >&2
+
+affected() {
+    local path component top
+    declare -A hit=()
+    for path in "$@"; do
+        case ${path##*/} in *.swp|*.swx|*~|.#*|4913) continue ;; esac
+        top=${path#"$shell"/}
+        top=${top%%/*}
+        case $top in
+            session|launcher|notifications|polkit|settings)
+                [[ " ${components[*]} " == *" $top "* ]] && hit[$top]=1 ;;
+            *) for component in "${components[@]}"; do hit[$component]=1; done ;;
+        esac
+    done
+    for component in "${components[@]}"; do [[ -z ${hit[$component]:-} ]] || printf '%s\n' "$component"; done
+}
+
+if (( watch )); then
+    watch_command=(inotifywait -m -r -q -e close_write,create,delete,move --format '%w%f' "$shell")
+    command -v inotifywait >/dev/null || watch_command=(nix shell nixpkgs#inotify-tools -c "${watch_command[@]}")
+    exec 3< <(exec "${watch_command[@]}")
+    watcher=$!
+    while read -r -u 3 path; do
+        changed=("$path")
+        while read -r -t 0.3 -u 3 path; do changed+=("$path"); done
+        mapfile -t targets < <(affected "${changed[@]}")
+        (( ${#targets[@]} )) || continue
+        printf 'tohru dev: restarting %s\n' "${targets[*]}" >&2
+        restart "${targets[@]}"
+    done
+    fail 'the file watcher exited'
+fi
+while :; do
+    sleep infinity &
+    sleeper=$!
+    wait "$sleeper" || true
+done

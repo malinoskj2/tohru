@@ -43,6 +43,10 @@ case ${1:-help} in
         [[ $# -le 1 ]] || fail 'help takes no arguments'
         usage
         ;;
+    dev)
+        shift
+        exec "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/tohru-dev" "$@"
+        ;;
     session)
         [[ $# == 2 ]] || fail 'Usage: tohru session open|close|toggle'
         case $2 in open|close|toggle) ;; *) fail 'Usage: tohru session open|close|toggle' ;; esac
