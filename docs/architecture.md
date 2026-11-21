@@ -78,7 +78,7 @@ The bindings in `runtime/pleamar/bindings/` are copied into the Pleamar source a
 |---|---|
 | `shell/bar.plm`, `shell/bar.luau`, `shell/services.plm` | Root scene: bar layout and service buttons |
 | `shell/bar/` | Bar contents and the workspace switcher |
-| `shell/sound/`, `shell/calendar/`, `shell/network/`, `shell/bluetooth/`, `shell/info/`, `shell/about/` | Popups shown by the bar |
+| `shell/sound/`, `shell/calendar/`, `shell/network/`, `shell/media/`, `shell/bluetooth/`, `shell/info/`, `shell/about/` | Popups shown by the bar |
 | `shell/osd/`, `shell/corners/` | Volume OSD and screen corners, also in the bar process |
 | `shell/session/`, `shell/launcher/`, `shell/notifications/`, `shell/settings/` | Scenes that run as their own processes |
 | `shell/service-assets/` | Shared icons |

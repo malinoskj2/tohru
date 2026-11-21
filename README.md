@@ -116,7 +116,7 @@ The `tohru` command sends requests to the running processes. It reports that a r
 | `tohru audio mute toggle` | Mute or unmute the output |
 | `tohru session toggle` | Open or close the session menu |
 | `tohru launcher toggle` | Open or close the launcher |
-| `tohru panel toggle sound` | Toggle a popup: `sound`, `calendar`, `network`, `bluetooth`, `info`, `about` |
+| `tohru panel toggle sound` | Toggle a popup: `sound`, `calendar`, `network`, `media`, `bluetooth`, `info`, `about` |
 | `tohru panel close` | Close the open popup |
 | `tohru notifications dnd toggle` | Turn Do Not Disturb on or off (also `on`, `off`; right-click the bell) |
 | `tohru settings open` | Open Settings, starting it if needed |
@@ -161,5 +161,5 @@ Tohru is MIT licensed ([LICENSE](LICENSE)).
 
 - [Pleamar](https://github.com/k4ditano/pleamar) is BSD-3-Clause. Its source is fetched at build time and its license and third-party notices are installed with the runtime. `tools/reference/fixtures/workspace/PLEAMAR-LICENSE` carries its notice for the reference workspace rail code, which was first written inside a vendored Pleamar tree.
 - The `J2BAR-LICENSE` files (`shell/bar/`, `shell/corners/`, `shell/sound/`, `tools/reference/fixtures/workspace/`) are j2bar's MIT notice for layouts, assets, shaders and motion code ported from j2bar.
-- `shell/sound/LICENSE.LUCIDE` and `shell/service-assets/LICENSE` are the ISC license for icons from, or based on, [Lucide](https://lucide.dev).
+- `shell/sound/LICENSE.LUCIDE`, `shell/media/LICENSE.LUCIDE` and `shell/service-assets/LICENSE` are the ISC license for icons from, or based on, [Lucide](https://lucide.dev).
 - The Hyprland plugin is MIT (`hyprland/LICENSE`). Its `focus/` and `bars/` components derive from [hyprwm/hyprland-plugins](https://github.com/hyprwm/hyprland-plugins) v0.56.0, under BSD-3-Clause (`hyprland/UPSTREAM-LICENSE`). See `hyprland/UPSTREAM.md` for provenance.
