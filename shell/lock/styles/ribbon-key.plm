@@ -24,6 +24,7 @@ part LockRibbonKey {
    blur: 90
    ellipse { at: 960, 450; radius: 250; color: #140a1e; opacity: 34% }
   }
+  UserAvatar(960, 290, 48)
   text clock_hm { at: 960, 386; anchor: center; size: 132; weight: 200; family: "SF Pro Display:tnum"; color: ink; opacity: 94%; letter_move: -3.5 * letter, 0 }
   text date_long { at: 960, 466; anchor: center; size: 16; weight: 500; family: "SF Pro Text"; color: ink; opacity: 66% }
   repeat i in 0..10 {
@@ -36,10 +37,10 @@ part LockRibbonKey {
    }
   }
   shader lock_ribbon { at: 768, 532 + 5; size: 384, 42; values: rk_x, vel(rk_x), min(7.99, rk_hh) + 8 * round(rk_rd * 255), rk_c, rk_amp, rk_wash, rk_c - 4, if(vel(rk_x) >= 0, 1, -1) * (1 + min(3, rk_t)); colors: rk_col, if(typed > 0 or wrong or unlocking or awake, #ffffff, #858585) }
-  text "{user}  ·  Type to unlock" { at: 960, 588; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 48%; show: typed == 0 and not wrong and not unlocking and not checking }
+  text "{user}  ·  {cta_ribbon}" { at: 960, 588; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 48%; show: typed == 0 and not wrong and not unlocking and not checking }
   text user { at: 960, 590; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 62%; show: typed > 0 and not wrong and not unlocking and not checking }
   text status { at: 960, 588; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: err_c; opacity: 94%; show: wrong }
   text "Checking…" { at: 960, 588; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 62%; show: checking and not unlocking }
-  text "Unlocked" { at: 960, 588; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 82%; show: unlocking }
+  text cta_ready { at: 960, 588; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 82%; show: unlocking }
  }
 }

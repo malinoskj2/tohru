@@ -13,8 +13,9 @@ The flake only exports `x86_64-linux`.
 | `apps.x86_64-linux.tohru` | Runs the `tohru` CLI |
 | `overlays.default` | Adds `tohru-hyprland`, built against the Hyprland in the package set it is applied to |
 | `homeManagerModules.tohru` (also `default`) | The Home Manager module below |
+| `nixosModules.tohru-greeter` (also `default`) | NixOS module configuring `greetd` with `tohru-greeter` |
 
-There is no NixOS module.
+The NixOS module `nixosModules.tohru-greeter` configures the pre-session login screen via `greetd` (see [Login screen (NixOS)](#login-screen-nixos) below).
 
 ```sh
 nix run github:malinoskj2/tohru                              # the bar
@@ -32,6 +33,7 @@ The package contains these programs:
 | `tohru-notifications-run` | The notification daemon |
 | `tohru-settings-run` | The Settings window (normally started by `tohru settings open`) |
 | `tohru-lock` | The lock screen; exits when unlocked. `tohru-lock --running` exits 0 while one runs |
+| `tohru-greeter` | The `greetd` login screen; speaks `GREETD_SOCK`, never PAM directly |
 | `tohru-polkit-run` | The polkit authentication agent and its dialog (idle unless `polkit.agent` is true) |
 | `tohru` | The CLI |
 
@@ -109,6 +111,34 @@ security.pam.services.tohru-lock = { };
 ```
 
 Without that service the locker uses `pleamar`'s or `hyprlock`'s PAM service if one exists, else `login`'s. On Hyprland keep `misc:allow_session_lock_restore = true`, so that after a crash the plain style can take over the lock. The session menu's Lock and Sleep go through `loginctl lock-session`, which hypridle answers with `lock_cmd`; `tohru lock` starts the locker directly.
+
+## Login screen (NixOS)
+
+Import `inputs.tohru.nixosModules.tohru-greeter` (or `default`) in your NixOS configuration:
+
+```nix
+{ inputs, ... }:
+{
+  imports = [ inputs.tohru.nixosModules.tohru-greeter ];
+
+  services.tohru-greeter = {
+    enable = true;
+    style = "flooded-monolith"; # any of the 10 lock styles, or "plain"
+    preferredOutput = "DP-2";
+    defaultUser = "jesse";
+    defaultSession = "hyprland-uwsm";
+    monitors = [
+      { output = "DP-1"; mode = "1920x1080@144"; position = "0x0"; transform = 1; }
+      { output = "DP-2"; mode = "1920x1080@360"; position = "1080x0"; }
+    ];
+    # Optional static wallpaper (null uses the dusk gradient) and optional per-user avatars:
+    # wallpaper = ./greeter-wallpaper.png;
+    # avatars.jesse = ./avatar.png;
+  };
+}
+```
+
+The module configures `services.greetd` on VT1 (leaving `tty2–tty6` live for `Ctrl+Alt+F2` recovery), hosts `tohru-greeter` in a minimal isolated Hyprland (or Sway) session with a `tuigreet` fallback on compositor error, adds `video`/`render` groups to `greeter`, enables `services.accounts-daemon` so `tohru avatar set FILE` works across `0700` home directories, and installs a scoped Polkit rule for Sleep/Restart/Shut Down. Fonts required by scenes (`SF Pro Display`, `SF Pro Text`) must be in NixOS `fonts.packages` so the `greeter` user can read them. `nix/tests/nixos.nix` checks the NixOS module evaluation.
 
 ## Hyprland plugin
 

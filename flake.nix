@@ -50,5 +50,9 @@
           inherit pkgs;
           tohru = self.packages.${system}.tohru;
         });
+      nixosModules = {
+        tohru-greeter = import ./nix/nixos.nix;
+        default = self.nixosModules.tohru-greeter;
+      };
     };
 }

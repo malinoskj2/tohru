@@ -253,6 +253,70 @@ class Cli(unittest.TestCase):
         self.assertEqual(self.invoke("lock", "now", TOHRU_LOCK_RUN=str(locker)).returncode, 2)
         self.assertFalse(seen.exists())
 
+    def test_avatar_set_and_clear_updates_face_and_rejects_bad_inputs(self):
+        home = self.path / "home"
+        home.mkdir()
+        img = self.path / "avatar.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\nfake")
+        result = self.invoke("avatar", "set", str(img), HOME=str(home))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((home / ".face").read_bytes(), img.read_bytes())
+        # Re-setting from ~/.face itself should succeed rather than failing with same-file copy.
+        same = self.invoke("avatar", "set", str(home / ".face"), HOME=str(home))
+        self.assertEqual(same.returncode, 0, same.stderr)
+        cleared = self.invoke("avatar", "clear", HOME=str(home))
+        self.assertEqual(cleared.returncode, 0, cleared.stderr)
+        self.assertFalse((home / ".face").exists())
+        for bad in (("avatar",), ("avatar", "set"), ("avatar", "set", str(self.path / "missing.png")), ("avatar", "clear", "extra")):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.invoke(*bad, HOME=str(home)).returncode, 2)
+
+
+class GreeterWrapper(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix="tohru-greeter-")
+        self.addCleanup(self.directory.cleanup)
+        self.path = Path(self.directory.name)
+        self.runs = self.path / "runs"
+        self.runtime = self.path / "runtime"
+        self.runtime.write_text(
+            "#!/usr/bin/env python3\nimport os,sys\n"
+            "a=sys.argv[1:]\n"
+            "if a[0]=='--check': sys.exit(1 if a[1]==os.environ.get('CHECK_FAILS') else 0)\n"
+            f"runs=open('{self.runs}','a+'); runs.seek(0); n=len(runs.readlines())\n"
+            "runs.write(a[a.index('--scene')+1]+' '+os.environ.get('TOHRU_GREETER','')+'\\n'); runs.close()\n"
+            "sys.exit(int(os.environ['EXITS'].split(',')[n]))\n"
+        )
+        self.runtime.chmod(0o755)
+        self.env = {
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": str(self.path),
+            "TOHRU_RUNTIME": str(self.runtime),
+            "TOHRU_GREETER_SCENE": "greeter.plm",
+            "TOHRU_GREETER_PLAIN_SCENE": "plain.plm",
+        }
+
+    def run_greeter(self, **env):
+        result = subprocess.run([str(ROOT / "bin/tohru-greeter")], env={**self.env, **env}, text=True, capture_output=True, timeout=30)
+        return result, self.runs.read_text().split("\n")[:-1] if self.runs.exists() else []
+
+    def test_styled_greeter_runs_with_authority_env(self):
+        result, runs = self.run_greeter(EXITS="0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(runs, ["greeter.plm 1"])
+
+    def test_failed_check_falls_back_to_plain(self):
+        result, runs = self.run_greeter(EXITS="0", CHECK_FAILS="greeter.plm")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(runs, ["plain.plm 1"])
+        self.assertIn("using the plain style", result.stderr)
+
+    def test_styled_crash_falls_back_to_plain(self):
+        result, runs = self.run_greeter(EXITS="1,0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(runs, ["greeter.plm 1", "plain.plm 1"])
+        self.assertIn("retrying with plain style", result.stderr)
+
 
 class LockWrapper(unittest.TestCase):
     def setUp(self):

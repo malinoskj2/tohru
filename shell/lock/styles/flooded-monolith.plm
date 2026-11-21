@@ -21,14 +21,16 @@ part LockFloodedMonolith {
    text clock_h { at: fm_x + 160, fm_y + 166; anchor: center; size: 120; weight: 200; family: "SF Pro Display:tnum"; color: #ffffff; letter_move: -4 * letter, 0 }
    text clock_m { at: fm_x + 160, fm_y + 278; anchor: center; size: 120; weight: 200; family: "SF Pro Display:tnum"; color: #ffffff; letter_move: -4 * letter, 0 }
   }
+  UserAvatar(fm_x + 160, fm_y - 44, 54)
   text date_short { at: fm_x + 18, fm_y + 24; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink; opacity: 86% }
   text user { at: fm_x + 302, fm_y + 24; anchor: right center; size: 13; weight: 500; family: "SF Pro Text"; color: ink; opacity: 56% }
-  text "Type password to unlock" { at: fm_x + 160, fm_y + 404; anchor: center; size: 12; family: "SF Pro Text"; color: ink; opacity: 50%; show: typed == 0 and not checking and not wrong and not unlocking }
+  text cta_idle { at: fm_x + 160, fm_y + 404; anchor: center; size: 12; family: "SF Pro Text"; color: ink; opacity: 50%; show: typed == 0 and not checking and not wrong and not unlocking }
   LockDots(fm_x + 160, fm_y + 388, 4.2, 18, if(wrong, 0, 1), 0.92)
   text status { at: fm_x + 160, fm_y + 414; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: err_c; opacity: 95%; show: wrong }
-  text "Draining…" { at: fm_x + 160, fm_y + 414; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 78%; show: unlocking }
+  text "Draining…" { at: fm_x + 160, fm_y + 414; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 78%; show: unlocking and not is_greeter }
+  text cta_ok { at: fm_x + 160, fm_y + 414; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 78%; show: unlocking and is_greeter }
   text "Checking…" { at: fm_x + 160, fm_y + 414; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 60%; show: checking and not unlocking }
-  text "Press Return to unlock" { at: fm_x + 160, fm_y + 414; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 52%; show: typed > 0 and not wrong and not checking and not unlocking }
+  text cta_submit { at: fm_x + 160, fm_y + 414; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 52%; show: typed > 0 and not wrong and not checking and not unlocking }
   box { from: fm_x + 0.5, fm_y + 0.5; size: 319, 435; corner: 14.5; stroke: 0.95; color: if(wrong, err_c, ink); opacity: if(wrong, 65%, if(pk > 0.5, 12%, 18%)) }
  }
 }

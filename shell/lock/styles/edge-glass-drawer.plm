@@ -40,21 +40,25 @@ part LockEdgeGlassDrawer {
    box { from: ed_x + 0.5, -2; size: 1, 1084; color: if(wrong, err_c, ink); opacity: if(wrong, 82%, if(pk > 0.5, 14%, 20%)) }
    group {
     opacity: min(1, ed_open * 1.25)
-    text user { at: ed_x + 34, 434; anchor: left center; size: 18; weight: 600; family: "SF Pro Display"; color: ink; opacity: 94% }
-    text "{host} · {output_name} · Session locked" { at: ed_x + 34, 458; anchor: left center; size: 12.5; family: "SF Pro Text"; color: ink; opacity: 56% }
+    UserAvatar(ed_x + 54, 444, 40)
+    text user { at: if(has_avatar, ed_x + 86, ed_x + 34), 434; anchor: left center; size: 18; weight: 600; family: "SF Pro Display"; color: ink; opacity: 94% }
+    text "{host} · {output_name} · {cta_session}" { at: if(has_avatar, ed_x + 86, ed_x + 34), 458; anchor: left center; size: 12.5; family: "SF Pro Text"; color: ink; opacity: 56%; show: not is_greeter }
+    text "{host} · {session_name}" { at: if(has_avatar, ed_x + 86, ed_x + 34), 458; anchor: left center; size: 12.5; family: "SF Pro Text"; color: ink; opacity: 56%; show: is_greeter }
     box { from: ed_x + 34, 492; size: 316, 44; corner: 12; color: ink; opacity: 8% }
     box { from: ed_x + 34.5, 492.5; size: 315, 43; corner: 11.5; stroke: 1; color: if(wrong, err_c, ink); opacity: if(wrong, 85%, 18%) }
     LockDots(ed_x + 58, 514, 4, 14, 1, 0.92, 1)
     text "Password" { at: ed_x + 52, 514; anchor: left center; size: 13; family: "SF Pro Text"; color: ink; opacity: 40%; show: typed == 0 and not checking }
     shader lock_ribbon { at: ed_x + 22, 530; size: 340, 42; values: ed_bead, vel(ed_bead), min(7.99, 2 + min(3, abs(vel(ed_bead)) * 0.02)) + 8 * round(min(1, abs(vel(ed_bead)) / 50) * 255), ed_bead + if(vel(ed_bead) >= 0, 12, -12), ed_amp, ed_amp * 0.35, ed_bead - 8, if(vel(ed_bead) >= 0, 1, -1) * (1 + min(3, ed_t)); colors: if(wrong, err_c, if(ed_f < 0.25, mix(st0, st1, ed_f * 4), if(ed_f < 0.5, mix(st1, st2, ed_f * 4 - 1), if(ed_f < 0.75, mix(st2, st3, ed_f * 4 - 2), mix(st3, st4, ed_f * 4 - 3))))), #ffffff }
     text status { at: ed_x + 34, 578; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: err_c; opacity: 95%; show: wrong }
-    text "Unlocking session…" { at: ed_x + 34, 578; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 82%; show: unlocking }
+    text cta_ok { at: ed_x + 34, 578; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 82%; show: unlocking }
     text "Checking…" { at: ed_x + 34, 578; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 60%; show: checking and not unlocking }
-    text "Press Return to unlock  ·  Esc to hide" { at: ed_x + 34, 578; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 50%; show: not wrong and not unlocking and not checking }
+    text "{cta_submit}  ·  Esc to hide" { at: ed_x + 34, 578; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 50%; show: not wrong and not unlocking and not checking }
     box { from: ed_x + 34, 646; size: 316, 1; color: ink; opacity: 9% }
-    image lock_i_play { at: ed_x + 34, 666; size: 13, 13; tint: ink; opacity: 72%; show: media_known }
-    text media_title { at: ed_x + 54, 673; anchor: left center; width: 296; lines: 1; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 78%; show: media_known }
-    text "Nothing playing" { at: ed_x + 34, 673; anchor: left center; size: 12.5; family: "SF Pro Text"; color: ink; opacity: 50%; show: not media_known }
+    image lock_i_play { at: ed_x + 34, 666; size: 13, 13; tint: ink; opacity: 72%; show: not is_greeter and media_known }
+    text media_title { at: ed_x + 54, 673; anchor: left center; width: 296; lines: 1; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 78%; show: not is_greeter and media_known }
+    text "Nothing playing" { at: ed_x + 34, 673; anchor: left center; size: 12.5; family: "SF Pro Text"; color: ink; opacity: 50%; show: not is_greeter and not media_known }
+    text "DESKTOP SESSION" { at: ed_x + 34, 664; anchor: left center; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 48%; show: is_greeter }
+    text session_name { at: ed_x + 34, 684; anchor: left center; width: 316; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink; opacity: 84%; show: is_greeter }
    }
   }
  }

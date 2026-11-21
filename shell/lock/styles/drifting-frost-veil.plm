@@ -14,7 +14,8 @@ part LockDriftingFrostVeil {
    opacity: 1 - unlock * 0.88
    text clock_hm { at: 110, 210; anchor: left center; size: 144; weight: 200; family: "SF Pro Display:tnum"; color: ink; opacity: 94%; letter_move: -4 * letter, 0 }
    text date_caps { at: 116, 294; anchor: left center; size: 16; weight: 500; family: "SF Pro Text"; color: ink; opacity: 72% }
-   text "{user}  —  Begin typing to wake" { at: 116, 338; anchor: left center; size: 13; family: "SF Pro Text"; color: ink; opacity: 50%; show: typed == 0 and not wrong and not unlocking and not checking }
+   UserAvatar(130, 338, 28)
+   text "{user}  —  Begin typing to wake" { at: if(has_avatar, 154, 116), 338; anchor: left center; size: 13; family: "SF Pro Text"; color: ink; opacity: 50%; show: typed == 0 and not wrong and not unlocking and not checking }
    group {
     show: typed > 0 or wrong or unlocking or checking
     move: shake * 0.3, 0

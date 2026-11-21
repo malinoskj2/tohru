@@ -29,6 +29,7 @@ let
         cp ${foundationSource}/runtime/pleamar/bindings/''${binding}_luau.rs src/tohru_$binding.rs
       done
       cp ${foundationSource}/runtime/pleamar/bindings/lock.rs src/tohru_lock.rs
+      cp ${foundationSource}/runtime/pleamar/bindings/greeter.rs src/tohru_greeter.rs
       mkdir -p tests/runtime
       cp ${foundationSource}/runtime/pleamar/tests/role-install.rs tests/runtime/
       cp ${../runtime/pleamar/Cargo.lock} Cargo.lock
@@ -62,7 +63,7 @@ in stdenvNoCC.mkDerivation {
     cp -r shell $out/share/tohru/
     cp LICENSE $out/share/tohru/LICENSE
     cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-session-run \
-      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-wallpaper bin/tohru-media-art bin/tohru-polkit-run $out/bin/
+      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-wallpaper bin/tohru-media-art bin/tohru-polkit-run $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar
     wrapProgram $out/bin/tohru-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
@@ -84,6 +85,11 @@ in stdenvNoCC.mkDerivation {
       --set TOHRU_LOCK_SCENE $out/share/tohru/shell/lock/lock.plm \
       --set TOHRU_LOCK_PLAIN_SCENE $out/share/tohru/shell/lock/plain.plm \
       --prefix PATH : ${lib.makeBinPath [ util-linux systemd procps coreutils ]}
+    wrapProgram $out/bin/tohru-greeter \
+      --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
+      --set TOHRU_GREETER_SCENE $out/share/tohru/shell/greeter/greeter.plm \
+      --set TOHRU_GREETER_PLAIN_SCENE $out/share/tohru/shell/greeter/plain.plm \
+      --prefix PATH : ${lib.makeBinPath [ systemd coreutils ]}
     # hyprctl is left to the session's PATH so it always matches the running compositor.
     wrapProgram $out/bin/tohru-wallpaper \
       --prefix PATH : ${lib.makeBinPath [ jq socat ffmpeg-headless util-linux coreutils findutils gnugrep ]}

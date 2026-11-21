@@ -6,6 +6,7 @@ part LockRefractiveTypographicLens {
  group {
   show: style == 8
   opacity: clamp(1 - unlock * 1.15, 0, 1)
+  UserAvatar(960, 290 - unlock * 16, 48)
   text clock_hm { at: 960, rl_cy; anchor: center; size: 220; weight: 100; family: "SF Pro Display:tnum"; color: ink; opacity: 92%; letter_move: -7 * letter, 0 }
   text "{date_long}  ·  {user}" { at: 960, 344 - unlock * 16; anchor: center; size: 14; weight: 500; family: "SF Pro Text"; color: ink; opacity: 62% * wake }
   body {

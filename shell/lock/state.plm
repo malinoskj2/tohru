@@ -21,10 +21,29 @@ part LockState {
  fact media_playing = false
  fact checking = false
  fact restart_armed = false
+ fact poweroff_armed = false
+ fact is_greeter = false
+ fact has_avatar = false
+ fact caps_lock = false
+ fact num_lock = false
  event lock_sleep ->
  event lock_restart ->
+ event greeter_poweroff ->
+ event greeter_next_session ->
+ event greeter_next_user ->
  text password = ""
  text shot = ""
+ text avatar_path = ""
+ text kb_layout = ""
+ text session_name = ""
+ text cta_idle = "Type password to unlock"
+ text cta_submit = "Press Return to unlock"
+ text cta_ok = "Unlocking…"
+ text cta_ready = "Unlocked"
+ text cta_locked = "Locked"
+ text cta_session = "Session locked"
+ text cta_ribbon = "Type to unlock"
+ text cta_tide = "Type password to part the tide"
  text clock_h = "00"
  text clock_m = "00"
  text clock_hm = "00:00"
@@ -41,6 +60,7 @@ part LockState {
  text media_title = ""
  text status = ""
  image lock_shot = from shot, 0, 0
+ image user_avatar = from avatar_path, 0, 0
 
  // Whoever reads these: 0 at rest, 1 fully there.
  prop unlock = 0 ~420ms
@@ -82,5 +102,15 @@ part LockState {
     show: n < dots_n
    }
   }
+ }
+
+ // Optional circular user avatar: draws nothing when no avatar is configured for the user.
+ component UserAvatar(cx: number, cy: number, d: number = 48) {
+  group {
+   show: has_avatar
+   clip box { from: cx - d / 2, cy - d / 2; size: d, d; corner: d / 2 }
+   image user_avatar { at: cx - d / 2, cy - d / 2; size: d, d; fit: cover }
+  }
+  box { from: cx - d / 2 + 0.5, cy - d / 2 + 0.5; size: d - 1, d - 1; corner: (d - 1) / 2; stroke: 1; color: ink; opacity: if(pk > 0.5, 22%, 28%); show: has_avatar }
  }
 }

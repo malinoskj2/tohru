@@ -1,0 +1,81 @@
+scene TohruGreeter {
+ // Invisible per-output bootstrap surface reports connected monitor names without compositor IPC.
+ surface { size: 1, 1; anchor: top_left; screens: each max 8; reserve: 0; keyboard: none; open: false }
+ permissions { run: "systemctl suspend", "systemctl reboot", "systemctl poweroff"; services: "clock", "env" }
+ include "state.plm"
+ include "../lock/styles/common.plm"
+
+ // Secondary monitors (e.g. portrait side monitor) show a calm matching backdrop and clock.
+ surface secondary {
+  size: full, full
+  anchor: top
+  level: overlay
+  reserve: -1
+  screens: greeter_secondary_outputs
+  keyboard: none
+  body {
+   gradient: secondary.width / 2, 0 to secondary.width / 2, secondary.height, #1d1230, #0b0812
+   box { from: 0, 0; size: secondary.width, secondary.height }
+  }
+  group {
+   blur: 140
+   show: not has_shot
+   ellipse { at: secondary.width * 0.35, secondary.height * 0.65; radius: 520; color: #6b3a78; opacity: 20% }
+  }
+  group {
+   blur: 22
+   saturation: 1.35
+   show: has_shot
+   image lock_shot { at: -40, -24; size: secondary.width + 80, secondary.height + 48; fit: cover }
+  }
+  text date_long { at: secondary.width / 2, secondary.height / 2 - 58; anchor: center; size: 16; weight: 500; family: "SF Pro Text"; color: ink; opacity: 64% }
+  text clock_hm { at: secondary.width / 2, secondary.height / 2 + 12; anchor: center; size: 108; weight: 200; family: "SF Pro Display:tnum"; color: ink; opacity: 88%; letter_move: -3 * letter, 0 }
+ }
+
+ // Primary interactive greeter surface: full-screen overlay with exclusive keyboard.
+ surface primary {
+  size: full, full
+  anchor: top
+  level: overlay
+  reserve: -1
+  screens: greeter_primary_outputs
+  keyboard: exclusive
+  // Full-surface backdrop covers any aspect ratio or resolution.
+  body {
+   gradient: primary.width / 2, 0 to primary.width / 2, primary.height, #1d1230, #0b0812
+   box { from: 0, 0; size: primary.width, primary.height }
+  }
+  group {
+   blur: 140
+   show: not has_shot
+   ellipse { at: primary.width * 0.32, primary.height * 0.67; radius: 620; color: #6b3a78; opacity: 20% }
+  }
+  group {
+   blur: pick(style, 26, 24, 22, 22, 16, 22, 14, 16, 22, 22, 18)
+   saturation: 1.35
+   show: has_shot
+   image lock_shot { at: -60, -34; size: primary.width + 120, primary.height + 68; fit: cover }
+  }
+  box { from: 0, 0; size: primary.width, primary.height; color: mix(#0d0914, #fafafc, pk); opacity: pick(style, 0.30, 0.24, 0.16, 0.14, 0, 0.16, 0, 0.12, 0.16, 0.16, 0.10) * mix(1, 0.3, pk) }
+
+  // All ten lock styles + plain share a 1920x1080 coordinate frame, centered on the primary output.
+  group {
+   move: round((primary.width - 1920) / 2), round((primary.height - 1080) / 2)
+   include "../lock/styles/plain.plm"
+   include "../lock/styles/still-glass.plm"
+   include "../lock/styles/ribbon-key.plm"
+   include "../lock/styles/flooded-monolith.plm"
+   include "../lock/styles/drifting-frost-veil.plm"
+   include "../lock/styles/unfolding-glass-capsule.plm"
+   include "../lock/styles/edge-glass-drawer.plm"
+   include "../lock/styles/horizon-meniscus.plm"
+   include "../lock/styles/refractive-typographic-lens.plm"
+   include "../lock/styles/corner-anchor.plm"
+   include "../lock/styles/bar-drop-curtain.plm"
+   include "../lock/styles/bar.plm"
+  }
+
+  include "chrome.plm"
+  include "../lock/field.plm"
+ }
+}

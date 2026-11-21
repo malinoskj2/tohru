@@ -52,9 +52,10 @@ part LockBarDropCurtain {
      text "Type your password" { at: 960, 266; anchor: center; size: 13; family: "SF Pro Text"; color: ink; opacity: 40%; show: typed == 0 and not checking and not wrong }
      shader lock_ribbon { at: 780, 275; size: 360, 42; values: bc_bead, vel(bc_bead), min(7.99, 2 + min(3, abs(vel(bc_bead)) * 0.02)) + 8 * round(min(1, abs(vel(bc_bead)) / 50) * 255), bc_bead + if(vel(bc_bead) >= 0, 16, -16), bc_amp, bc_amp * 0.4, bc_bead - 10, if(vel(bc_bead) >= 0, 1, -1) * (1 + min(3, bc_t)); colors: if(wrong, err_c, if(bc_f < 0.25, mix(st0, st1, bc_f * 4), if(bc_f < 0.5, mix(st1, st2, bc_f * 4 - 1), if(bc_f < 0.75, mix(st2, st3, bc_f * 4 - 2), mix(st3, st4, bc_f * 4 - 3))))), #ffffff }
      text status { at: 960, 328; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: err_c; opacity: 95%; show: wrong }
-     text "Retracting into bar…" { at: 960, 328; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 80%; show: unlocking }
+     text "Retracting into bar…" { at: 960, 328; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 80%; show: unlocking and not is_greeter }
+     text cta_ok { at: 960, 328; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 80%; show: unlocking and is_greeter }
      text "Checking…" { at: 960, 328; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 60%; show: checking and not unlocking }
-     text "Press Return to unlock" { at: 960, 328; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 50%; show: typed > 0 and not wrong and not checking and not unlocking }
+     text cta_submit { at: 960, 328; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 50%; show: typed > 0 and not wrong and not checking and not unlocking }
     }
    }
   }

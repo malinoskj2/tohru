@@ -50,6 +50,10 @@ name = "lock-logic"
 path = "../lock/logic.rs"
 
 [[test]]
+name = "greeter-logic"
+path = "../greeter/logic.rs"
+
+[[test]]
 name = "wallpaper-shaders"
 path = "../wallpaper/shaders.rs"
 

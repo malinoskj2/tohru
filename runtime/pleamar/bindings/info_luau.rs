@@ -93,6 +93,17 @@ pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
             encode(lua, tohru_shell::info::snapshot())
         })?,
     )?;
+    api.set(
+        "avatar",
+        lua.create_function(|_, (username, home): (String, String)| {
+            let path = tohru_shell::greeter::discovery::resolve_user_avatar(
+                username.trim(),
+                std::path::Path::new(home.trim()),
+                &std::collections::BTreeMap::new(),
+            );
+            Ok(path.map(|p| p.to_string_lossy().into_owned()))
+        })?,
+    )?;
     lua.globals().set("tohru_info", api)
 }
 
