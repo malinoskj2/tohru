@@ -1,6 +1,6 @@
 scene Tohru {
- surface { size: full, 42; anchor: top; margin: 0; reserve: 31; level: top, overlay while bar_launcher >= 2; screens: bar_outputs; keyboard: exclusive while sound_open or media_open or cal_open or net_open or bt_open or info_visible or about_visible or wall_open or tray_open }
- permissions { services: "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.default_output", "audio.default_input", "audio.app_volume", "audio.app_mute", "window", "apps", "media", "media.*", "clock", "workspaces", "network.*", "bluetooth.*", "battery", "tray", "tray.*", "say:tohru-notifications", "say:tohru-session", "say:tohru-launcher"; run: "tohru-wallpaper", "tohru-media-art" }
+ surface { size: full, 42; anchor: top; margin: 0; reserve: 31; level: top, overlay while bar_launcher >= 2; screens: bar_outputs; keyboard: exclusive while sound_open or media_open or cal_open or net_open or bt_open or info_visible or about_visible or wall_open or tray_open or ai_open }
+ permissions { services: "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.default_output", "audio.default_input", "audio.app_volume", "audio.app_mute", "window", "apps", "media", "media.*", "clock", "workspaces", "network.*", "bluetooth.*", "battery", "tray", "tray.*", "say:tohru-notifications", "say:tohru-session", "say:tohru-launcher"; run: "tohru-wallpaper", "tohru-media-art", "tohru-assistant", "wl-copy" }
  include "panel-ink.plm"
  include "bar/state.plm"
  include "bar/rail-state.plm"
@@ -9,6 +9,7 @@ scene Tohru {
  include "network/state.plm"
  include "media/state.plm"
  include "bluetooth/state.plm"
+ include "assistant/state.plm"
  include "info/state.plm"
  include "about/state.plm"
  include "sound/declarations.plm"
@@ -87,6 +88,7 @@ scene Tohru {
  include "network/popup.plm"
  include "media/popup.plm"
  include "bluetooth/popup.plm"
+ include "assistant/popup.plm"
  include "info/popup.plm"
  include "about/popup.plm"
  include "wallpaper/popup.plm"

@@ -92,6 +92,10 @@ local bluetooth = require("bluetooth/controller")(make_rail(4))
 local wallpaper = require("wallpaper/controller")()
 local tray = require("tray/controller")(function() if close_panels then close_panels("tray") end end)
 local info = require("info/controller")(tohru_info.snapshot, nil, make_rail(3))
+local assistant = require("assistant/controller")({
+    provider = function() return tohru_settings.snapshot()["assistant.provider"].value end,
+    choose = function(id) change(function() return tohru_settings.set("assistant.provider", id) end) end,
+})
 local about
 function close_panels(keep)
     if keep ~= "sound" then sound.close() end
@@ -102,6 +106,7 @@ function close_panels(keep)
     if keep ~= "wallpaper" then wallpaper.close() end
     if keep ~= "tray" then tray.close() end
     if keep ~= "info" then info.close() end
+    if keep ~= "assistant" then assistant.close() end
     if about and keep ~= "about" then about.close() end
     if keep ~= "notifications" then bell.close_center() end
 end
@@ -129,6 +134,8 @@ on("about_open", function() close_panels("about") end)
 on("wall_open_request", function() close_panels("wallpaper") end)
 on("wall_toggle", function() if fact.wall_open then close_panels("wallpaper") end end)
 on("about_toggle", function() if fact.about_visible then close_panels("about") end end)
+on("assistant_open", function() close_panels("assistant") end)
+on("assistant_toggle", function() if fact.ai_open then close_panels("assistant") end end)
 on("panel_close", function() close_panels() end)
 if fact.bt_open then close_panels("bluetooth") end
 

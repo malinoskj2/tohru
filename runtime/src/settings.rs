@@ -21,13 +21,26 @@ pub enum Key {
     LockStyle,
     PolkitAgent,
     NotificationsPosition,
+    AssistantVoice,
+    AssistantProvider,
+    AssistantModels,
+    AssistantTtsEngine,
+    AssistantTtsVoice,
+    AssistantTtsSpeed,
+    AssistantTtsPitch,
 }
 
 /// Where notification toasts stack: `top-right` under the bar, or `bottom-right`.
 pub const NOTIFICATION_POSITIONS: [&str; 2] = ["top-right", "bottom-right"];
 
+/// The provider CLIs the assistant knows, in palette order; empty means the first one signed in.
+pub const ASSISTANT_PROVIDERS: [&str; 6] = ["", "claude", "codex", "gemini", "agy", "opencode"];
+
+/// Speech engines the voice service can run.
+pub const TTS_ENGINES: [&str; 1] = ["espeak-ng"];
+
 impl Key {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 17] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::InfoButton,
@@ -38,6 +51,13 @@ impl Key {
         Self::LockStyle,
         Self::PolkitAgent,
         Self::NotificationsPosition,
+        Self::AssistantVoice,
+        Self::AssistantProvider,
+        Self::AssistantModels,
+        Self::AssistantTtsEngine,
+        Self::AssistantTtsVoice,
+        Self::AssistantTtsSpeed,
+        Self::AssistantTtsPitch,
     ];
 
     #[must_use]
@@ -53,6 +73,13 @@ impl Key {
             Self::LockStyle => "lock.style",
             Self::PolkitAgent => "polkit.agent",
             Self::NotificationsPosition => "notifications.position",
+            Self::AssistantVoice => "assistant.voice",
+            Self::AssistantProvider => "assistant.provider",
+            Self::AssistantModels => "assistant.models",
+            Self::AssistantTtsEngine => "assistant.tts_engine",
+            Self::AssistantTtsVoice => "assistant.tts_voice",
+            Self::AssistantTtsSpeed => "assistant.tts_speed",
+            Self::AssistantTtsPitch => "assistant.tts_pitch",
         }
     }
 
@@ -95,6 +122,13 @@ impl Key {
             Self::LockStyle => ("lock", "style"),
             Self::PolkitAgent => ("polkit", "agent"),
             Self::NotificationsPosition => ("notifications", "position"),
+            Self::AssistantVoice => ("assistant", "voice"),
+            Self::AssistantProvider => ("assistant", "provider"),
+            Self::AssistantModels => ("assistant", "models"),
+            Self::AssistantTtsEngine => ("assistant", "tts_engine"),
+            Self::AssistantTtsVoice => ("assistant", "tts_voice"),
+            Self::AssistantTtsSpeed => ("assistant", "tts_speed"),
+            Self::AssistantTtsPitch => ("assistant", "tts_pitch"),
         }
     }
 
@@ -102,6 +136,8 @@ impl Key {
     pub const fn integer_bounds(self) -> Option<(i64, i64)> {
         match self {
             Self::CornerSize => Some((1, 100)),
+            Self::AssistantTtsSpeed => Some((50, 200)),
+            Self::AssistantTtsPitch => Some((-12, 12)),
             _ => None,
         }
     }
@@ -109,8 +145,15 @@ impl Key {
     fn default_value(self) -> Value {
         match self {
             Self::PreferredOutput => Value::Text(String::new()),
-            Self::Mooncoil | Self::InfoButton | Self::AboutButton | Self::PolkitAgent => Value::Bool(false),
-            Self::Corners => Value::Bool(true),
+            Self::Mooncoil | Self::InfoButton | Self::AboutButton | Self::PolkitAgent => {
+                Value::Bool(false)
+            }
+            Self::Corners | Self::AssistantVoice => Value::Bool(true),
+            Self::AssistantProvider | Self::AssistantModels => Value::Text(String::new()),
+            Self::AssistantTtsEngine => Value::Text(TTS_ENGINES[0].to_owned()),
+            Self::AssistantTtsVoice => Value::Text("en-us+f3".to_owned()),
+            Self::AssistantTtsSpeed => Value::Integer(100),
+            Self::AssistantTtsPitch => Value::Integer(3),
             Self::CornerSize => Value::Integer(32),
             Self::Palette => Value::Palette(Palette::Mocha),
             Self::LockStyle => Value::LockStyle(LockStyle::DEFAULT),
@@ -125,9 +168,43 @@ impl Key {
             {
                 Ok(())
             }
-            (Self::NotificationsPosition, Value::Text(text)) if NOTIFICATION_POSITIONS.contains(&text.as_str()) => Ok(()),
+            (Self::NotificationsPosition, Value::Text(text))
+                if NOTIFICATION_POSITIONS.contains(&text.as_str()) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantProvider, Value::Text(text))
+                if ASSISTANT_PROVIDERS.contains(&text.as_str()) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantTtsEngine, Value::Text(text))
+                if TTS_ENGINES.contains(&text.as_str()) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantModels, Value::Text(text))
+                if text.len() <= 4096
+                    && !text.chars().any(char::is_control)
+                    && (text.is_empty() || text.starts_with('/')) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantTtsVoice, Value::Text(text))
+                if (1..=64).contains(&text.len())
+                    && text
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || "+-_.".contains(c)) =>
+            {
+                Ok(())
+            }
             (
-                Self::Mooncoil | Self::InfoButton | Self::AboutButton | Self::Corners | Self::PolkitAgent,
+                Self::Mooncoil
+                | Self::InfoButton
+                | Self::AboutButton
+                | Self::Corners
+                | Self::PolkitAgent
+                | Self::AssistantVoice,
                 Value::Bool(_),
             )
             | (Self::Palette, Value::Palette(_))
@@ -368,7 +445,11 @@ impl Layer {
                 continue;
             };
             // A lock style this version does not know must never stop the locker: it locks in the default.
-            if key == Key::LockStyle && item.as_str().is_none_or(|text| LockStyle::parse(text).is_none()) {
+            if key == Key::LockStyle
+                && item
+                    .as_str()
+                    .is_none_or(|text| LockStyle::parse(text).is_none())
+            {
                 warnings.push(format!(
                     "{}: unknown lock.style {}; using \"{}\"",
                     path.display(),

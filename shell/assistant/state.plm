@@ -1,0 +1,77 @@
+part AssistantState {
+    // Root measured button center; negative uses the native screen-relative default.
+    prop ai_button_x = -1 ~0ms
+    fact ai_open = false
+    // 0 the chat, 1 history.
+    fact ai_view = 0
+    fact ai_picker = false
+    // The provider in use: its row in ai_providers and its palette slot (0 peach … 4 mauve).
+    fact ai_current = -1
+    fact ai_slot = 0
+    fact ai_signed_in = false
+    fact ai_loaded = false
+    // An answer is streaming (and in which provider's colour), or one arrived that has not been seen.
+    fact ai_streaming = false
+    fact ai_stream_slot = 0
+    fact ai_ready = false
+    fact ai_ready_slot = 0
+    // The conversation shown is the one streaming.
+    fact ai_live_here = false
+    fact ai_actions = false
+    fact ai_copied = false
+    fact ai_history_sel = -1
+    text ai_provider_name = "Assistant"
+    text ai_provider_model = ""
+    text ai_provider_cli = ""
+    text ai_prompt = ""
+    text ai_search = ""
+    text ai_live = ""
+    text ai_error = ""
+    fact ai_failed = false
+    fact ai_searching = false
+    fact ai_typed = false
+    text ai_placeholder = "Ask"
+    model ai_providers max 5 { id: text; name: text; slot: number; signed_in: bool; model: text; meta: text }
+    model ai_turns max 64 { text: text; mine: bool; failed: bool; stopped: bool; voice: bool }
+    model ai_history max 40 { id: text; title: text; when: text; slot: number; voice: bool; header: bool; group: text; match: text; matched: bool }
+    event assistant_open ->
+    event assistant_close ->
+    event assistant_toggle ->
+    event assistant_picker ->
+    event assistant_choose ->
+    event assistant_signin ->
+    event assistant_history ->
+    event assistant_new ->
+    event assistant_send ->
+    event assistant_stop ->
+    event assistant_copy ->
+    event assistant_retry ->
+    event assistant_pick ->
+    event assistant_search ->
+    event assistant_move ->
+    event assistant_activate ->
+
+    image ai_history_icon = file "history.svg", 14, 14
+    image ai_plus_icon = file "plus.svg", 14, 14
+    image ai_copy_icon = file "copy.svg", 14, 14
+    image ai_retry_icon = file "retry.svg", 14, 14
+    image ai_send_icon = file "send.svg", 12, 12
+    image ai_search_icon = file "search.svg", 13, 13
+    image ai_terminal_icon = file "terminal.svg", 12, 12
+    image ai_signin_icon = file "signin.svg", 12, 12
+    image ai_mascot = file "../brand/mascot.png", 68, 68
+    image ai_dragon = file "../brand/dragon.png", 16, 16
+
+    let ai_colour = pick(ai_slot, ink_peach, ink_yellow, ink_green, ink_lavender, ink_mauve)
+    let ai_stream_colour = pick(ai_stream_slot, ink_peach, ink_yellow, ink_green, ink_lavender, ink_mauve)
+    let ai_ready_colour = pick(ai_ready_slot, ink_peach, ink_yellow, ink_green, ink_lavender, ink_mauve)
+    let ai_has_chat = ai_turns.count > 0 or ai_live_here
+    let ai_needs_signin = ai_current >= 0 and not ai_signed_in
+    // The popup's heights: the picker's rows, history, the sign-in note, the empty chat, or as tall as the chat.
+    let ai_picker_h = 44 + 30 * max(1, ai_providers.count) + 36
+    let ai_chat_h = clamp(44 + ai_chat.content + 52, 230, 440)
+    let ai_open_h = if(ai_picker, ai_picker_h, if(ai_view == 1, 380, if(ai_needs_signin, 262, if(ai_has_chat, ai_chat_h, 230))))
+    prop ai_h = 230 ~spring(196, 21.84)
+    follow ai_h = ai_open_h
+    on change ai_open { ai_h: ai_open_h ~0ms }
+}

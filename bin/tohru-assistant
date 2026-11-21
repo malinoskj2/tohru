@@ -257,7 +257,21 @@ def title_of(text):
     return cut + "…"
 
 
-def summary(conversation, match=""):
+def day_group(stamp, now):
+    then, today = time.localtime(stamp), time.localtime(now)
+    days = (time.mktime(today[:3] + (0, 0, 0) + today[6:]) - time.mktime(then[:3] + (0, 0, 0) + then[6:])) / 86400
+    days = round(days)
+    if days <= 0:
+        return "Today", time.strftime("%-I:%M %p", then)
+    if days == 1:
+        return "Yesterday", time.strftime("%-I:%M %p", then)
+    if days < 7:
+        return "This week", time.strftime("%a", then)
+    return "Earlier", time.strftime("%-d %b", then)
+
+
+def summary(conversation, match="", now=None):
+    group, when = day_group(conversation.get("updated", 0), now or time.time())
     return {
         "id": conversation["id"],
         "title": conversation.get("title", ""),
@@ -268,6 +282,8 @@ def summary(conversation, match=""):
         "voice": bool(conversation.get("voice")),
         "turns": len(conversation.get("turns", [])),
         "match": match,
+        "group": group,
+        "when": when,
     }
 
 
