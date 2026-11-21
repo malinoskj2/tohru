@@ -1,4 +1,6 @@
 part PanelInk {
+    // Active appearance.palette index: 0 mocha, 1 macchiato, 2 rose_pine, 3 nord, 4 gruvbox, 5 tokyo_night, 6 dracula, 7 everforest.
+    fact palette_id = 0
     // How much of what is behind the open panel's glass is bright, from its lens capture.
     fact panel_bright = 0
     // j2bar's capsule: light above 55% bright, dark again below 45%.
@@ -10,22 +12,26 @@ part PanelInk {
     // The level through a smoothstep between 35% and 65%, as j2bar eases it.
     let panel_k = clamp((panel_level - 0.35) / 0.3, 0, 1)
     let pk = panel_k * panel_k * (3 - 2 * panel_k)
-    // Catppuccin Mocha for dark glass; for light, j2bar's light ink and Latte, as j2bar turns Mocha accents.
-    let ink_text = mix(#cdd6f4, #1c1826, pk)
-    let ink_sub1 = mix(#bac2de, #5c5f77, pk)
-    let ink_sub0 = mix(#a6adc8, #6c6f85, pk)
-    let ink_overlay = mix(#6c7086, #9ca0b0, pk)
-    let ink_surface = mix(#45475a, #bcc0cc, pk)
-    let ink_body = mix(#181825, #fafafc, pk)
+    // Palette-aware dark glass; on light desktops, eases to j2bar's light ink and Latte accents.
+    let ink_bar = pick(palette_id, #140a1e, #181926, #191724, #242933, #1d2021, #16161e, #1e1f29, #1e2326)
+    let ink_sidebar = pick(palette_id, #11111b, #181926, #14121d, #242933, #1d2021, #16161e, #1e1f29, #1e2326)
+    let ink_card = pick(palette_id, #313244, #363a4f, #26233a, #3b4252, #3c3836, #24283b, #383a59, #343f44)
+    let ink_card_selected = pick(palette_id, #3b3d53, #424760, #312d4a, #434c5e, #504945, #2f354d, #44475a, #3d484d)
+    let ink_text = mix(pick(palette_id, #cdd6f4, #cad3f5, #e0def4, #eceff4, #ebdbb2, #c0caf5, #f8f8f2, #d3c6aa), #1c1826, pk)
+    let ink_sub1 = mix(pick(palette_id, #bac2de, #b8c0e0, #c4a7e7, #e5e9f0, #d5c4a1, #a9b1d6, #e2e2dc, #c5b89c), #5c5f77, pk)
+    let ink_sub0 = mix(pick(palette_id, #a6adc8, #a5adcb, #908caa, #d8dee9, #bdae93, #9aa5ce, #bfbfb9, #9da9a0), #6c6f85, pk)
+    let ink_overlay = mix(pick(palette_id, #6c7086, #6e738d, #6e6a86, #616e88, #7c6f64, #565f89, #6272a4, #7a8478), #9ca0b0, pk)
+    let ink_surface = mix(pick(palette_id, #45475a, #494d64, #403d52, #434c5e, #504945, #414868, #44475a, #414b50), #bcc0cc, pk)
+    let ink_body = mix(pick(palette_id, #181825, #1e2030, #1f1d2e, #2e3440, #282828, #1a1b26, #282a36, #272e33), #fafafc, pk)
     let ink_white = mix(#ffffff, #1c1826, pk)
-    let ink_glass = mix(#140a1e, #fafafc, pk)
-    let ink_sky = mix(#89dceb, #04a5e5, pk)
-    let ink_green = mix(#a6e3a1, #40a02b, pk)
-    let ink_red = mix(#f38ba8, #d20f39, pk)
-    let ink_blue = mix(#89b4fa, #1e66f5, pk)
-    let ink_peach = mix(#fab387, #fe640b, pk)
-    let ink_yellow = mix(#f9e2af, #df8e1d, pk)
-    let ink_mauve = mix(#cba6f7, #8839ef, pk)
-    let ink_lavender = mix(#b4befe, #7287fd, pk)
-    let ink_teal = mix(#94e2d5, #179299, pk)
+    let ink_glass = mix(ink_bar, #fafafc, pk)
+    let ink_sky = mix(pick(palette_id, #89dceb, #91d7e3, #9ccfd8, #88c0d0, #83a598, #7dcfff, #8be9fd, #7fbbb3), #04a5e5, pk)
+    let ink_green = mix(pick(palette_id, #a6e3a1, #a6da95, #9ccfd8, #a3be8c, #b8bb26, #9ece6a, #50fa7b, #a7c080), #40a02b, pk)
+    let ink_red = mix(pick(palette_id, #f38ba8, #ed8796, #eb6f92, #bf616a, #fb4934, #f7768e, #ff5555, #e67e80), #d20f39, pk)
+    let ink_blue = mix(pick(palette_id, #89b4fa, #8aadf4, #31748f, #81a1c1, #83a598, #7aa2f7, #8be9fd, #7fbbb3), #1e66f5, pk)
+    let ink_peach = mix(pick(palette_id, #fab387, #f5a97f, #ebbcba, #d08770, #fe8019, #ff9e64, #ffb86c, #e69875), #fe640b, pk)
+    let ink_yellow = mix(pick(palette_id, #f9e2af, #eed49f, #f6c177, #ebcb8b, #fabd2f, #e0af68, #f1fa8c, #dbbc7f), #df8e1d, pk)
+    let ink_mauve = mix(pick(palette_id, #cba6f7, #c6a0f6, #c4a7e7, #b48ead, #d3869b, #bb9af7, #bd93f9, #d699b6), #8839ef, pk)
+    let ink_lavender = mix(pick(palette_id, #b4befe, #b7bdf8, #c4a7e7, #88c0d0, #d3869b, #7aa2f7, #bd93f9, #83c092), #7287fd, pk)
+    let ink_teal = mix(pick(palette_id, #94e2d5, #8bd5ca, #9ccfd8, #8fbcbb, #8ec07c, #73daca, #8be9fd, #83c092), #179299, pk)
 }

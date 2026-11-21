@@ -49,6 +49,6 @@ Run them from the repository root; the Lua test needs Lua 5.4. `tests/media/mpri
 
 ## Known limitations
 
-- Only local artwork (`file://` art URLs) is painted. Players that give an `http` URL, as Spotify does, get the empty lens and a palette-coloured row tab.
+- Remote `http://` / `https://` artwork is fetched and cached locally under `$XDG_CACHE_HOME/tohru/media-art/` by `bin/tohru-media-art` (capped at 10 MiB and 128 cached files). While a download is pending or offline, the lens shows its empty state.
 - At most five players are listed; the rest are chosen with `playerctl` or from the player.
 - The position is the player's report carried on by the scene's clock, so a player that changes speed without reporting it drifts until its next report.

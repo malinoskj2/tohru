@@ -1,6 +1,7 @@
 scene TohruSettings {
  surface { kind: window; title: "Tohru Settings"; app_id: "dev.tohru.Settings"; size: 760, 640; keyboard: exclusive }
  permissions { services: "say:tohru" }
+ include "../panel-ink.plm"
  include "state.plm"
  text settings_error = ""
  include "window.plm"

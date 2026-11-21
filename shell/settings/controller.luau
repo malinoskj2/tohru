@@ -18,6 +18,11 @@ return function(applied)
     end
     local function refresh(settings)
         snapshot = settings or snapshot
+        local pval = snapshot["appearance.palette"] and snapshot["appearance.palette"].value
+        fact.palette_id = 0
+        for idx, name in ipairs(choices["appearance.palette"]) do
+            if name == pval then fact.palette_id = idx - 1; break end
+        end
         local page = history[position]
         fact.settings_page = page
         fact.settings_can_back = position > 1

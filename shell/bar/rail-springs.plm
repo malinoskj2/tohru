@@ -1,7 +1,24 @@
 part RailSprings {
     // The ribbon's springs for `rail_count` rails, each with a `rail_span` (0 for slots of 16 px) and a
     // `rail_base`, declared before this is included. rail.luau sets the goal and the per-switch draws.
+    fact rail_palette = 0
     shader rail_shader = file "ribbon.wgsl"
+    // Five palette stops for the ribbon (peach, yellow, green, lavender, mauve) per appearance.palette.
+    let r0 = pick(rail_palette, 250, 245, 235, 208, 254, 255, 255, 230)
+    let r1 = pick(rail_palette, 249, 238, 246, 235, 250, 224, 241, 219)
+    let r2 = pick(rail_palette, 166, 166, 156, 163, 184, 158,  80, 167)
+    let r3 = pick(rail_palette, 180, 183, 196, 136, 131, 122, 139, 127)
+    let r4 = pick(rail_palette, 203, 198, 235, 180, 211, 187, 189, 214)
+    let g0 = pick(rail_palette, 179, 169, 188, 135, 128, 158, 184, 152)
+    let g1 = pick(rail_palette, 226, 212, 193, 203, 189, 175, 250, 188)
+    let g2 = pick(rail_palette, 227, 218, 207, 190, 187, 206, 250, 192)
+    let g3 = pick(rail_palette, 190, 189, 167, 192, 165, 162, 233, 187)
+    let g4 = pick(rail_palette, 166, 160, 111, 142, 134, 154, 147, 153)
+    let b0 = pick(rail_palette, 135, 127, 186, 112,  25, 100, 108, 117)
+    let b1 = pick(rail_palette, 175, 159, 119, 139,  47, 104, 140, 127)
+    let b2 = pick(rail_palette, 161, 149, 216, 140,  38, 106, 123, 128)
+    let b3 = pick(rail_palette, 254, 248, 231, 208, 152, 247, 253, 179)
+    let b4 = pick(rail_palette, 247, 246, 146, 173, 155, 247, 249, 182)
     let rail.skew[rail_count]
     let rail.bead[rail_count]
     let rail.wave[rail_count]
@@ -51,8 +68,8 @@ part RailSprings {
         // A rail with no span takes the palette slot by slot; one with a span spreads it from its base across that span.
         rail.pos[r] = if(rail_span[r] == 0, clamp((rail.x.$r - 8) / 16, 0, rail.slots.$r - 1), clamp((rail.x.$r - rail_base[r]) / rail_span[r] * 4, 0, 4))
         rail.lo[r] = min(floor(rail.pos[r]), if(rail_span[r] == 0, rail.slots.$r - 2, 3))
-        rail.red[r] = mix(pick(mod(rail.lo[r], 5), 250, 249, 166, 180, 203), pick(mod(rail.lo[r] + 1, 5), 250, 249, 166, 180, 203), rail.pos[r] - rail.lo[r]) / 255
-        rail.green[r] = mix(pick(mod(rail.lo[r], 5), 179, 226, 227, 190, 166), pick(mod(rail.lo[r] + 1, 5), 179, 226, 227, 190, 166), rail.pos[r] - rail.lo[r]) / 255
-        rail.blue[r] = mix(pick(mod(rail.lo[r], 5), 135, 175, 161, 254, 247), pick(mod(rail.lo[r] + 1, 5), 135, 175, 161, 254, 247), rail.pos[r] - rail.lo[r]) / 255
+        rail.red[r] = mix(pick(mod(rail.lo[r], 5), r0, r1, r2, r3, r4), pick(mod(rail.lo[r] + 1, 5), r0, r1, r2, r3, r4), rail.pos[r] - rail.lo[r]) / 255
+        rail.green[r] = mix(pick(mod(rail.lo[r], 5), g0, g1, g2, g3, g4), pick(mod(rail.lo[r] + 1, 5), g0, g1, g2, g3, g4), rail.pos[r] - rail.lo[r]) / 255
+        rail.blue[r] = mix(pick(mod(rail.lo[r], 5), b0, b1, b2, b3, b4), pick(mod(rail.lo[r] + 1, 5), b0, b1, b2, b3, b4), rail.pos[r] - rail.lo[r]) / 255
     }
 }

@@ -1,0 +1,130 @@
+part NotificationCenter {
+    prop center_seen = 0 ~spring(196, 24)
+    follow center_seen = if(center_open, 1, 0)
+    let cy = if(corner == top_right, 6, 56)
+    let cx = 16
+    let cw = 374
+    let ch = 552
+
+    group {
+        move: cx + (1 - from_top) * (1 - center_seen) * 28, cy - from_top * (1 - center_seen) * 24
+        opacity: clamp(center_seen, 0, 1)
+        show: center_seen > 0.002
+
+        body {
+            color: ink_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+            shadow: 0, 4, 12, 0.24 - 0.1 * pk
+            box { from: 0, 0; size: cw, ch; corner: 15 }
+        }
+        shader glass_fill { at: 0, 0; size: cw, ch; corner: 15; values: 0.62, 0.46, 0.52, pk, if(center_count == 0, 0.85, 0); colors: ink_glass }
+        zone box center_scroll { from: 0, 0; size: cw, ch; corner: 15; active: center_open; label: "Notification center" }
+        on scroll center_scroll { emit center_page_step(if(wheel > 0, -1, 1)) }
+
+        // Header: big thin count numeral, title/status, DND toggle and Clear button.
+        text center_count_text { at: 18, 40; anchor: left center; size: 36; weight: 200; family: "SF Pro Text:tnum"; color: ink_white; opacity: if(center_count > 0, 92%, 34%); letter_move: -1.2 * letter, 0 }
+        text "Notifications" { at: 72, 29; anchor: left center; size: 13.5; weight: 600; family: "SF Pro Text"; color: ink_white; opacity: 94% }
+        text center_status { at: 72, 48; anchor: left center; width: 146; lines: 1; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 56% }
+
+        // Do Not Disturb toggle pill.
+        zone box center_dnd_hit { from: 224, 24; size: 70, 26; corner: 8; cursor: pointer; active: center_open; label: if(dnd, "Turn off Do Not Disturb", "Turn on Do Not Disturb") }
+        box { from: 224, 24; size: 70, 26; corner: 8; color: if(dnd, ink_lavender, ink_white); opacity: if(dnd, 22% - 4% * pk, 8% - 2% * pk) + max(center_dnd_hit.hover * 7%, center_dnd_hit.pressed * 12%) }
+        box { from: 224.5, 24.5; size: 69, 25; corner: 7.5; stroke: 1; color: if(dnd, ink_lavender, ink_white); opacity: if(dnd, 45%, 14%) }
+        image toast_bell_off { at: 233, 30; size: 13, 13; tint: if(dnd, ink_lavender, ink_white); opacity: if(dnd, 95%, 72%) }
+        text "DND" { at: 252, 37; anchor: left center; size: 11.5; weight: 600; family: "SF Pro Text"; color: if(dnd, ink_lavender, ink_white); opacity: if(dnd, 96%, 78%) }
+        on press center_dnd_hit { emit notices_dnd(2) }
+
+        // Clear all button.
+        zone box center_clear_hit { from: 300, 24; size: 58, 26; corner: 8; cursor: pointer; active: center_open and center_count > 0; label: "Clear all notifications" }
+        box { from: 300, 24; size: 58, 26; corner: 8; color: ink_white; opacity: if(center_count > 0, 8% - 2% * pk + max(center_clear_hit.hover * 8%, center_clear_hit.pressed * 14%), 3%) }
+        text "Clear" { at: 329, 37; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(center_count > 0, 88%, 30%) }
+        on press center_clear_hit { emit notices_clear_all }
+
+        box { from: 14, 76; size: cw - 28, 1; color: ink_white; opacity: 12% - 2% * pk }
+
+        // Empty state.
+        group {
+            show: center_count == 0
+            image toast_bell { at: cw / 2 - 14, 244; size: 28, 28; tint: ink_white; opacity: 26%; show: not dnd }
+            image toast_bell_off { at: cw / 2 - 14, 244; size: 28, 28; tint: ink_lavender; opacity: 50%; show: dnd }
+            text "All caught up" { at: cw / 2, 292; anchor: center; size: 14; weight: 600; family: "SF Pro Text"; color: ink_white; opacity: 72%; show: not dnd }
+            text "Do Not Disturb is on" { at: cw / 2, 292; anchor: center; size: 14; weight: 600; family: "SF Pro Text"; color: ink_white; opacity: 78%; show: dnd }
+            text "Missed notifications and alerts appear here" { at: cw / 2, 312; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 44% }
+        }
+
+        // Up to 5 cards per page.
+        for item in center_items {
+            let iy = 86 + item.index * 84
+            let selected = center_keyed and center_selected == item.index
+            let tw = if(item.has_pic, 272, 326)
+            group {
+                show: item.live
+                zone box c_card { from: 12, iy; size: 350, 78; corner: 11; cursor: if(item.opens, pointer, default); active: center_open and item.live; label: "{item.app}: {item.title}" }
+                box { from: 12, iy; size: 350, 78; corner: 11; color: ink_white; opacity: 5% - 1% * pk + if(selected, 7%, 0%) + max(c_card.hover * 5%, c_card.pressed * 9%) }
+                box { from: 12.5, iy + 0.5; size: 349, 77; corner: 10.5; stroke: 1; color: if(item.critical, ink_red, ink_white); opacity: if(item.critical, 46%, if(selected, 38%, 10% - 2% * pk)) }
+                on press c_card { emit center_open_item(item.index) }
+
+                // Live indicator dot for active (still actionable) notifications.
+                group {
+                    glow: 5, 45%, ink_lavender
+                    show: item.active and not item.critical
+                    box { from: 20, iy + 13; size: 4, 4; color: ink_lavender }
+                }
+                image item.icon { at: if(item.active and not item.critical, 29, 22), iy + 9; size: 14, 14; show: item.has_icon }
+                image toast_bell { at: if(item.active and not item.critical, 29, 22), iy + 9; size: 14, 14; tint: ink_white; opacity: 55%; show: not item.has_icon }
+                text item.app { at: if(item.active and not item.critical, 48, 41), iy + 16; anchor: left center; width: 170; lines: 1; size: 11; weight: 500; family: "SF Pro Text"; color: if(item.critical, ink_red, ink_white); opacity: if(item.critical, 92%, 60%) }
+                text item.clock { at: if(c_card.hover or selected, 330, 350), iy + 16; anchor: right center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 48% }
+
+                text item.title { at: 22, iy + 32; anchor: left center; width: tw; lines: 1; size: 12.5; weight: 600; family: "SF Pro Text"; color: ink_white; opacity: 94% }
+                text item.body { at: 22, iy + 41; width: tw; lines: if(item.active and item.acts > 0, 1, 2); size: 11.5; line_height: 1.3; family: "SF Pro Text"; color: ink_white; opacity: 70% }
+
+                group {
+                    show: item.has_pic
+                    clip box { from: 312, iy + 27; size: 40, 40; corner: 8 }
+                    image item.pic { at: 312, iy + 27; size: 40, 40; fit: cover }
+                }
+
+                // Inline action chips for live notifications.
+                group {
+                    show: item.active and item.acts > 0
+                    let chip_w = min(98, (tw - 8) / max(item.acts, 1))
+                    repeat k in 0..3 {
+                        zone box c_act { from: 22 + k * (chip_w + 6), iy + 57; size: chip_w, 17; corner: 5; cursor: pointer; active: center_open and item.live and item.active and item.acts > k; label: pick(k, item.a1, item.a2, item.a3) }
+                        box { from: 22 + k * (chip_w + 6), iy + 57; size: chip_w, 17; corner: 5; color: ink_white; opacity: 10% + max(c_act.hover * 8%, c_act.pressed * 14%); show: item.acts > k }
+                        on press c_act { emit center_action(item.index * 4 + k + 1) }
+                    }
+                    text item.a1 { at: 22 + chip_w / 2, iy + 65.5; anchor: center; width: chip_w - 8; lines: 1; align: center; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+                    text item.a2 { at: 22 + chip_w + 6 + chip_w / 2, iy + 65.5; anchor: center; width: chip_w - 8; lines: 1; align: center; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 78%; show: item.acts > 1 }
+                    text item.a3 { at: 22 + 2 * (chip_w + 6) + chip_w / 2, iy + 65.5; anchor: center; width: chip_w - 8; lines: 1; align: center; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 78%; show: item.acts > 2 }
+                }
+
+                // Dismiss / forget button.
+                group {
+                    show: c_card.hover or selected
+                    zone box c_close { from: 336, iy + 6; size: 20, 20; corner: 10; cursor: pointer; active: center_open and item.live; label: "Remove notification" }
+                    box { from: 337, iy + 7; size: 18, 18; corner: 9; color: ink_white; opacity: 10% + max(c_close.hover * 10%, c_close.pressed * 16%) }
+                    path { at: 346, iy + 16; stroke: 1.25; color: ink_white; opacity: 76%; move -3, -3; line 3, 3 }
+                    path { at: 346, iy + 16; stroke: 1.25; color: ink_white; opacity: 76%; move 3, -3; line -3, 3 }
+                    on press c_close { emit center_dismiss(item.index) }
+                }
+            }
+        }
+
+        // Footer: page status and prev/next buttons.
+        box { from: 14, 512; size: cw - 28, 1; color: ink_white; opacity: 10% - 2% * pk }
+        text "Page {center_page + 1} of {center_pages}" { at: 18, 532; anchor: left center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 54%; show: center_pages > 1 }
+        text "Right-click bell for DND · Esc to close" { at: 18, 532; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 44%; show: center_pages <= 1 }
+        group {
+            show: center_pages > 1
+            zone box center_prev { from: cw - 66, 521; size: 24, 22; corner: 7; cursor: pointer; active: center_open and center_page > 0; label: "Previous page" }
+            zone box center_next { from: cw - 38, 521; size: 24, 22; corner: 7; cursor: pointer; active: center_open and center_page + 1 < center_pages; label: "Next page" }
+            box { from: cw - 66, 521; size: 24, 22; corner: 7; color: ink_white; opacity: max(center_prev.hover * 10%, center_prev.pressed * 16%) }
+            box { from: cw - 38, 521; size: 24, 22; corner: 7; color: ink_white; opacity: max(center_next.hover * 10%, center_next.pressed * 16%) }
+            text "‹" { at: cw - 54, 531; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if(center_page > 0, 92%, 34%) }
+            text "›" { at: cw - 26, 531; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if(center_page + 1 < center_pages, 92%, 34%) }
+            on press center_prev { emit center_page_step(-1) }
+            on press center_next { emit center_page_step(1) }
+        }
+
+        box { from: 0.5, 0.5; size: cw - 1, ch - 1; corner: 14.5; stroke: 1; color: ink_white; opacity: 0.75 * (26% - 10% * pk) }
+    }
+}

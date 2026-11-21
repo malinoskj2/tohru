@@ -15,6 +15,7 @@ return function(observed)
         end
     end
     local function outputs() return math.min(32, fact["sound_outputs.count"] or 0) end
+    local function inputs() return math.min(32, fact["sound_inputs.count"] or 0) end
     local function apps() return math.min(64, fact["sound_apps.count"] or 0) end
     local function default_row()
         for i=0, outputs()-1 do
@@ -22,7 +23,14 @@ return function(observed)
         end
         return -1
     end
+    local function default_in_row()
+        for i=0, inputs()-1 do
+            if fact["sound_inputs." .. i .. ".default"] then return i end
+        end
+        return -1
+    end
     local function others() return outputs() - (default_row() >= 0 and 1 or 0) end
+    local function in_others() return inputs() - (default_in_row() >= 0 and 1 or 0) end
     -- Rows put the default output first: slot 0 is the default, the rest keep their order.
     local function output_at(slot)
         local d = default_row()
@@ -38,11 +46,28 @@ return function(observed)
         if index < d then return index + 1 end
         return index
     end
-    -- The keyboard walks the rows in order: master, outputs, microphone, apps.
+    local function input_at(slot)
+        local d = default_in_row()
+        if d < 0 then return slot end
+        if slot == 0 then return d end
+        if slot <= d then return slot - 1 end
+        return slot
+    end
+    local function in_slot_of(index)
+        local d = default_in_row()
+        if d < 0 then return index end
+        if index == d then return 0 end
+        if index < d then return index + 1 end
+        return index
+    end
+    -- The keyboard walks the rows in order: master, outputs, microphone, input devices (when > 1), apps.
     local function rows()
         local list = {{kind=0, index=0}}
         for slot=0, outputs()-1 do list[#list+1] = {kind=1, index=slot} end
         if fact.sound_input_ready then list[#list+1] = {kind=2, index=0} end
+        if inputs() > 1 then
+            for slot=0, inputs()-1 do list[#list+1] = {kind=4, index=slot} end
+        end
         for i=0, apps()-1 do list[#list+1] = {kind=3, index=i} end
         return list
     end
@@ -54,6 +79,10 @@ return function(observed)
             focus_id = fact["sound_outputs." .. output_at(entry.index) .. ".id"] or -1
             local other = entry.index - (default_row() >= 0 and 1 or 0)
             if other >= 0 then fact.sound_out_page = math.floor(other / 3) end
+        elseif entry.kind == 4 then
+            focus_id = fact["sound_inputs." .. input_at(entry.index) .. ".id"] or -1
+            local other = entry.index - (default_in_row() >= 0 and 1 or 0)
+            if other >= 0 then fact.sound_in_page = math.floor(other / 3) end
         elseif entry.kind == 3 then
             focus_id = fact["sound_apps." .. entry.index .. ".id"] or -1
             fact.sound_app_page = math.floor(entry.index / 4)
@@ -61,7 +90,9 @@ return function(observed)
     end
     local function reconcile()
         fact.sound_default_row = default_row()
+        fact.sound_default_in_row = default_in_row()
         fact.sound_out_page = math.clamp(fact.sound_out_page or 0, 0, math.max(0, math.ceil(others() / 3) - 1))
+        fact.sound_in_page = math.clamp(fact.sound_in_page or 0, 0, math.max(0, math.ceil(in_others() / 3) - 1))
         fact.sound_app_page = math.clamp(fact.sound_app_page or 0, 0, math.max(0, math.ceil(apps() / 4) - 1))
         local kind = fact.sound_focus_kind or 0
         if kind == 1 then
@@ -69,6 +100,12 @@ return function(observed)
             if index then focus_set({kind=1, index=slot_of(index)})
             elseif outputs() > 0 then focus_set({kind=1, index=math.clamp(fact.sound_focus_index or 0, 0, outputs()-1)})
             else focus_set({kind=0, index=0}) end
+        elseif kind == 4 then
+            local _, index = row("sound_inputs", focus_id, 32)
+            if inputs() <= 1 then
+                if fact.sound_input_ready then focus_set({kind=2, index=0}) else focus_set({kind=0, index=0}) end
+            elseif index then focus_set({kind=4, index=in_slot_of(index)})
+            else focus_set({kind=4, index=math.clamp(fact.sound_focus_index or 0, 0, inputs()-1)}) end
         elseif kind == 3 then
             local _, index = row("sound_apps", focus_id, 64)
             if index then focus_set({kind=3, index=index})
@@ -137,7 +174,7 @@ return function(observed)
             outputs = reported("sound_outputs", 32, false),
             inputs = reported("sound_inputs", 32, false),
             apps = reported("sound_apps", 64, true),
-            input_selection = "unavailable_native_id_collision",
+            input_selection = "available",
             capacities = {outputs=32, inputs=32, apps=64},
             error = last_error,
         })
@@ -260,6 +297,11 @@ return function(observed)
         flush(); call("audio.default", id)
     end
     on("audio_output_select", select_output)
+    local function select_input(id)
+        if not row("sound_inputs", id, 32) then reject("Selected input is no longer reported"); return end
+        flush(); call("audio.default_input", id)
+    end
+    on("audio_input_select", select_input)
     local function input_step(direction)
         if not fact.sound_input_ready then reject("No native default microphone is reported"); return end
         local volume=fact["audio.input"]
@@ -302,6 +344,7 @@ return function(observed)
         local serial = fold_serial
         fact.sound_unfolded = unfolded
         fact.sound_out_page = 0
+        fact.sound_in_page = 0
         fact.sound_app_page = 0
         rail_live = false
         if unfolded then
@@ -373,6 +416,7 @@ return function(observed)
         reconcile()
         local kind, index = fact.sound_focus_kind or 0, fact.sound_focus_index or 0
         if kind == 1 then return kind, fact["sound_outputs." .. output_at(index) .. ".id"] or -1 end
+        if kind == 4 then return kind, fact["sound_inputs." .. input_at(index) .. ".id"] or -1 end
         if kind == 3 then return kind, fact["sound_apps." .. index .. ".id"] or -1 end
         return kind, -1
     end
@@ -391,7 +435,7 @@ return function(observed)
         if direction ~= -1 and direction ~= 1 then return end
         local kind, id = focused()
         fact.sound_keyed = true
-        if kind == 2 then input_step(direction)
+        if kind == 2 or kind == 4 then input_step(direction)
         elseif kind == 3 then app_step(id, direction)
         else flush(); call("audio.step", direction * 0.05) end
     end)
@@ -399,6 +443,7 @@ return function(observed)
         local kind, id = focused()
         fact.sound_keyed = true
         if kind == 1 then select_output(id)
+        elseif kind == 4 then select_input(id)
         elseif kind == 2 then mute_input()
         elseif kind == 3 then mute_app(id)
         else flush(); call("audio.mute") end
@@ -407,10 +452,13 @@ return function(observed)
         if delta ~= -1 and delta ~= 1 then return end
         reconcile()
         local kind = fact.sound_focus_kind or 0
-        local section = kind == 3 and 3 or kind == 1 and 1 or (others() > 3 and 1 or 3)
+        local section = kind == 3 and 3 or kind == 4 and 4 or kind == 1 and 1 or (others() > 3 and 1 or (in_others() > 3 and 4 or 3))
         if section == 1 and others() > 0 then
             local page = math.clamp((fact.sound_out_page or 0) + delta, 0, math.ceil(others() / 3) - 1)
             focus_set({kind=1, index=page * 3 + (default_row() >= 0 and 1 or 0)})
+        elseif section == 4 and in_others() > 0 then
+            local page = math.clamp((fact.sound_in_page or 0) + delta, 0, math.ceil(in_others() / 3) - 1)
+            focus_set({kind=4, index=page * 3 + (default_in_row() >= 0 and 1 or 0)})
         elseif section == 3 and apps() > 0 then
             local page = math.clamp((fact.sound_app_page or 0) + delta, 0, math.ceil(apps() / 4) - 1)
             focus_set({kind=3, index=page * 4})
@@ -431,6 +479,7 @@ return function(observed)
         rail_live = false
         if fact.sound_unfolded then fact.sound_unfolded = false end
         fact.sound_out_page = 0
+        fact.sound_in_page = 0
         fact.sound_app_page = 0
         fact.sound_keyed = false
         focus_set({kind=0, index=0})

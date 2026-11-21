@@ -233,6 +233,13 @@ return function(make_usage, search, geometry, output, rail)
     end)
     on("launcher_menu_close", close_menu)
     on("launcher_menu_scroll", function(value) menu_scroll = menu_scroll - value * 30; publish_menu() end)
+    on("launcher_palette", function(id)
+        id = math.floor(tonumber(id) or -1)
+        if id >= 0 and id <= 7 then
+            fact.palette_id = id
+            fact.rail_palette = id
+        end
+    end)
     if not sys.watch("apps", function(value)
         -- j2bar's order: by name whatever its case, then as written, then by id.
         catalog = {}

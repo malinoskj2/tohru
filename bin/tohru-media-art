@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Fetches and caches remote MPRIS album art (http/https) for the media popup.
+set -euo pipefail
+
+readonly cache_dir="${TOHRU_MEDIA_ART_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/tohru/media-art}"
+readonly max_bytes=10485760
+readonly max_files=128
+
+die() {
+  printf 'tohru-media-art: %s\n' "$*" >&2
+  exit 1
+}
+
+[[ $# -eq 1 ]] || die "usage: tohru-media-art <http(s)-url>"
+url="$1"
+[[ ${#url} -gt 0 && ${#url} -le 2048 ]] || die "invalid url length"
+[[ "$url" != *[[:cntrl:]]* ]] || die "invalid url characters"
+[[ "$url" =~ ^https?://[^[:space:]]+$ ]] || die "only http and https urls are supported"
+
+hash_line="$(printf '%s' "$url" | sha256sum)"
+key="${hash_line%% *}"
+
+for ext in png jpg webp gif; do
+  cached="$cache_dir/$key.$ext"
+  if [[ -f "$cached" && -s "$cached" ]]; then
+    touch "$cached" 2>/dev/null || true
+    printf '%s\n' "$cached"
+    exit 0
+  fi
+done
+
+mkdir -p -- "$cache_dir"
+tmp="$(mktemp "$cache_dir/.fetch.XXXXXX")"
+trap 'rm -f -- "$tmp"' EXIT
+
+curl --fail --silent --show-error --location \
+  --proto '=http,https' --proto-redir '=http,https' \
+  --max-redirs 5 --connect-timeout 4 --max-time 10 \
+  --max-filesize "$max_bytes" \
+  -o "$tmp" -- "$url" || die "download failed"
+
+[[ -s "$tmp" ]] || die "empty response"
+size="$(wc -c < "$tmp")"
+(( size <= max_bytes )) || die "image exceeds size limit"
+
+header="$(od -An -tx1 -N 12 "$tmp" | tr -d ' \n')"
+ext=""
+case "$header" in
+  89504e470d0a1a0a*) ext="png" ;;
+  ffd8ff*) ext="jpg" ;;
+  474946383761*|474946383961*) ext="gif" ;;
+  52494646????????57454250*) ext="webp" ;;
+  *) die "unsupported image format" ;;
+esac
+
+dest="$cache_dir/$key.$ext"
+mv -f -- "$tmp" "$dest"
+trap - EXIT
+
+# Keep the cache bounded to the most recently used entries.
+mapfile -t all_files < <(ls -1t "$cache_dir"/*.* 2>/dev/null || true)
+if (( ${#all_files[@]} > max_files )); then
+  for old in "${all_files[@]:$max_files}"; do
+    rm -f -- "$old"
+  done
+fi
+
+printf '%s\n' "$dest"

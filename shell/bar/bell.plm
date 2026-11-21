@@ -3,16 +3,19 @@ part BarBell {
     image bar_bell_off = file "../service-assets/bell-off-filled.svg", 14, 14
     fact notices_unread = false
     fact notices_dnd = false
+    fact notices_center_open = false
     event notices_state ->
+    event notices_center_state ->
     event bell_seen ->
+    event bell_toggle ->
     event bell_dnd ->
     event notices_ask ->
     event bar_popups ->
-    let bar_popup_open = sound_open or media_open or cal_open or net_open or bt_open or info_visible or about_visible or wall_open
+    let bar_popup_open = sound_open or media_open or cal_open or net_open or bt_open or info_visible or about_visible or wall_open or tray_open
     on change bar_popup_open { emit bar_popups(if(bar_popup_open, 1, 0)) }
-    let bell_accent = #b4befe
+    let bell_accent = ink_lavender
     zone box bar_bell_hit { from: bell_x, 4; size: 24, 22; corner: 7; cursor: pointer; label: "Notifications" }
-    box { from: bell_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(bar_bell_hit.hover * 10%, bar_bell_hit.pressed * 16%) }
+    box { from: bell_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(notices_center_open * 16%, max(bar_bell_hit.hover * 10%, bar_bell_hit.pressed * 16%)) }
     image bar_bell { at: round(bell_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 92%; show: not notices_dnd }
     image bar_bell_off { at: round(bell_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 40%; show: notices_dnd }
     // The unread mark: a 4px lavender square 3px in from the button's top right, glowing 3.5px at 90% and 9px at 75%.
@@ -26,6 +29,6 @@ part BarBell {
         show: notices_unread and not notices_dnd
         box { from: bell_x + 17, 7; size: 4, 4; color: bell_accent }
     }
-    on press bar_bell_hit { notices_unread = false; emit bell_seen }
+    on press bar_bell_hit { notices_unread = false; emit bell_toggle }
     on press right bar_bell_hit { emit bell_dnd }
 }

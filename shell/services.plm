@@ -20,12 +20,18 @@ part RootServiceControls {
     let root_info_x = bell_x - 78
     let root_about_x = bell_x - root_about_slot * 26
     let root_tray_x = bell_x - root_extra * 26
+    let tray_inline_cap = clamp(floor((root_tray_x - 10 - root_left) / 24), 0, 6)
+    let tray_has_overflow = tray_items.count > tray_inline_cap
+    let tray_inline_count = if(tray_has_overflow, max(0, tray_inline_cap - 1), min(tray_items.count, tray_inline_cap))
+    let tray_slots = tray_inline_count + if(tray_has_overflow and tray_inline_cap > 0, 1, 0)
+    let tray_total_w = if(tray_slots > 0, tray_slots * 24 + 8, 0)
+    let tray_x = root_tray_x - tray_total_w
     let media_text_w = min(160, bar_media_measure.width)
     let media_w = media_text_w + 30
-    let media_x = root_tray_x - 2 - media_w
-    let root_title_limit = min(360, max(0, 2 * min(screen.width / 2 - root_left, root_tray_x - 14 - screen.width / 2)))
+    let media_x = tray_x - 2 - media_w
+    let root_title_limit = min(360, max(0, 2 * min(screen.width / 2 - root_left, tray_x - 14 - screen.width / 2)))
     let root_title_width = min(root_title_limit, bar_title_measure.width + if(bar_has_icon and root_title_limit >= 21, 20, 0))
-    let media_room = root_tray_x - 2 - max(root_left, screen.width / 2 + root_title_width / 2 + 14)
+    let media_room = tray_x - 2 - max(root_left, screen.width / 2 + root_title_width / 2 + 14)
     // While the popup is open the label stays, so the popup does not lose its place when the music stops.
     let media_shown = (bar_playing or media_open) and media_room >= media_w
     follow bar_title_cap = root_title_limit

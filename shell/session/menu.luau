@@ -59,12 +59,15 @@ clear()
 -- Opens under the bar: on its preferred output, or else the focused one. The surface moves only
 -- while the menu is closed, and is placed at start so the first open has one to draw on.
 local focused, preferred = "", ""
+local PALETTE_INDEX = {mocha=0, macchiato=1, rose_pine=2, nord=3, gruvbox=4, tokyo_night=5, dracula=6, everforest=7}
 local function refresh()
     if not tohru_settings then return end
     local ok, settings = pcall(tohru_settings.reload)
     if not ok then return end
     local value = settings["bar.preferred_output"].value or ""
     preferred = value:find(",", 1, true) and "" or value
+    local palette = settings["appearance.palette"]
+    if palette and PALETTE_INDEX[palette.value] ~= nil then fact.palette_id = PALETTE_INDEX[palette.value] end
 end
 local function settle()
     local output = preferred ~= "" and preferred or focused
@@ -83,6 +86,10 @@ on("menu_close", close)
 on("choose", choose)
 on("cancel_choice", clear)
 on("accept_choice", function() if pending then execute(pending) end end)
+on("session_palette", function(id)
+    id = math.floor(tonumber(id) or -1)
+    if id >= 0 and id <= 7 then fact.palette_id = id end
+end)
 on("fact:open", function(open) if not open then clear() end end)
 on("key", function(key)
     if not fact.open then return end

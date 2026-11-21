@@ -55,7 +55,7 @@ part MediaPopup {
             group {
                 glow: 4, 50%, mix(rgb(rail.red.5, rail.green.5, rail.blue.5), #1c1826, 0.35 * pk)
                 show: media_vol_known
-                box { from: mx + media_pw - 9.5, 16 + (media_h - 32) * (1 - media_vol_shown); size: 2.5, (media_h - 32) * media_vol_shown; corner: 1.25; color: mix(mix(#fab387, #cba6f7, media_vol_shown), #1c1826, 0.35 * pk); opacity: 90% }
+                box { from: mx + media_pw - 9.5, 16 + (media_h - 32) * (1 - media_vol_shown); size: 2.5, (media_h - 32) * media_vol_shown; corner: 1.25; color: mix(mix(ink_peach, ink_mauve, media_vol_shown), ink_white, 0.35 * pk); opacity: 90% }
             }
         }
 

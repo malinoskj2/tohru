@@ -1,0 +1,130 @@
+diff --git a/src/platform/pulse.rs b/src/platform/pulse.rs
+index 9c81c41..348dcdd 100644
+--- a/src/platform/pulse.rs
++++ b/src/platform/pulse.rs
+@@ -377,6 +377,30 @@ fn set_mute(p: &mut Pulse, sink: bool, index: u32, mute: bool) -> R<()> {
+     p.ack(if sink { Command::SetSinkMute(params) } else { Command::SetSourceMute(params) })
+ }
+ 
++fn device_id(raw: f64) -> R<u32> {
++    if !raw.is_finite() || raw < 0.0 || raw > u32::MAX as f64 || raw.fract() != 0.0 {
++        return Err(format!("there is no device {raw}"));
++    }
++    Ok(raw as u32)
++}
++
++fn find_output<'a>(sinks: &'a [SinkInfo], id: u32) -> R<&'a CString> {
++    sinks
++        .iter()
++        .find(|s| s.index == id)
++        .map(|s| &s.name)
++        .ok_or_else(|| format!("there is no output {id}"))
++}
++
++fn find_input<'a>(sources: &'a [SourceInfo], id: u32) -> R<&'a CString> {
++    sources
++        .iter()
++        .filter(|s| s.monitor_of_sink_index.is_none())
++        .find(|s| s.index == id)
++        .map(|s| &s.name)
++        .ok_or_else(|| format!("there is no input {id}"))
++}
++
+ pub fn command(what: &str, args: &[SysValue]) -> R<()> {
+     let mut p = Pulse::connect("pleamar")?;
+     let (server, sinks, sources) = p.state()?;
+@@ -427,18 +451,27 @@ pub fn command(what: &str, args: &[SysValue]) -> R<()> {
+             };
+             p.ack(Command::SetSinkInputMute(SetStreamMuteParams { index: a.index, mute }))
+         }
+-        // Where it plays or listens: the number the lists give.
++        // Where it plays or listens: explicit output/input selectors avoid sink/source index collisions.
++        ("audio.default_output", [SysValue::Num(id)]) => {
++            let name = find_output(&sinks, device_id(*id)?)?.clone();
++            p.ack(Command::SetDefaultSink(name))
++        }
++        ("audio.default_input", [SysValue::Num(id)]) => {
++            let name = find_input(&sources, device_id(*id)?)?.clone();
++            p.ack(Command::SetDefaultSource(name))
++        }
++        // Kept for scenes that pass a bare id.
+         ("audio.default", [SysValue::Num(id)]) => {
+-            let id = *id as u32;
+-            if let Some(s) = sinks.iter().find(|s| s.index == id) {
+-                return p.ack(Command::SetDefaultSink(s.name.clone()));
++            let id = device_id(*id)?;
++            if let Ok(name) = find_output(&sinks, id) {
++                return p.ack(Command::SetDefaultSink(name.clone()));
+             }
+-            if let Some(s) = sources.iter().find(|s| s.index == id) {
+-                return p.ack(Command::SetDefaultSource(s.name.clone()));
++            if let Ok(name) = find_input(&sources, id) {
++                return p.ack(Command::SetDefaultSource(name.clone()));
+             }
+             Err(format!("there is no device {id}"))
+         }
+-        _ => Err(format!("'{what}' is not asked like that: audio.volume(0..1), audio.step(±0.05), audio.mute([true|false]), audio.input(0..1), audio.input_mute([true|false]), audio.default(id), audio.app_volume(id, 0..1), audio.app_mute(id[, true|false])")),
++        _ => Err(format!("'{what}' is not asked like that: audio.volume(0..1), audio.step(±0.05), audio.mute([true|false]), audio.input(0..1), audio.input_mute([true|false]), audio.default(id), audio.default_output(id), audio.default_input(id), audio.app_volume(id, 0..1), audio.app_mute(id[, true|false])")),
+     }
+ }
+ 
+@@ -493,4 +526,44 @@ mod tests {
+         assert_eq!(m.feed(0.3, t + Duration::from_millis(7)), Some(0.3));
+         assert_eq!(m.feed(0.0, t + Duration::from_millis(40)), Some(0.0));
+     }
++
++    #[test]
++    fn tohru_audio_device_id_rejects_invalid_numbers() {
++        assert_eq!(device_id(0.0), Ok(0));
++        assert_eq!(device_id(42.0), Ok(42));
++        assert_eq!(device_id(u32::MAX as f64), Ok(u32::MAX));
++        assert!(device_id(-1.0).is_err());
++        assert!(device_id(1.5).is_err());
++        assert!(device_id(f64::NAN).is_err());
++        assert!(device_id(f64::INFINITY).is_err());
++        assert!(device_id((u32::MAX as f64) + 1.0).is_err());
++    }
++
++    #[test]
++    fn tohru_audio_default_input_ignores_monitors_and_sink_id_collisions() {
++        let mut sink = SinkInfo::default();
++        sink.index = 0;
++        sink.name = CString::new("alsa_output.main").unwrap();
++
++        let mut monitor = SourceInfo::default();
++        monitor.index = 0;
++        monitor.name = CString::new("alsa_output.main.monitor").unwrap();
++        monitor.monitor_of_sink_index = Some(0);
++
++        let mut mic = SourceInfo::default();
++        mic.index = 1;
++        mic.name = CString::new("alsa_input.mic").unwrap();
++        mic.monitor_of_sink_index = None;
++
++        let mut colliding_mic = SourceInfo::default();
++        colliding_mic.index = 0;
++        colliding_mic.name = CString::new("alsa_input.headset").unwrap();
++        colliding_mic.monitor_of_sink_index = None;
++
++        assert_eq!(find_output(&[sink.clone()], 0).unwrap().as_c_str(), CString::new("alsa_output.main").unwrap().as_c_str());
++        assert!(find_output(&[sink], 1).is_err());
++        assert!(find_input(&[monitor.clone(), mic.clone()], 0).is_err());
++        assert_eq!(find_input(&[monitor, mic], 1).unwrap().as_c_str(), CString::new("alsa_input.mic").unwrap().as_c_str());
++        assert_eq!(find_input(&[colliding_mic], 0).unwrap().as_c_str(), CString::new("alsa_input.headset").unwrap().as_c_str());
++    }
+ }
+diff --git a/src/platform/system.rs b/src/platform/system.rs
+index d3b3394..36c4139 100644
+--- a/src/platform/system.rs
++++ b/src/platform/system.rs
+@@ -139,8 +139,8 @@ pub fn audio_command(what: &str, args: &[SysValue]) -> Result<(), String> {
+         ("audio.input_mute", []) => request(&["set-mute", SOURCE, "toggle"]),
+         ("audio.input_mute", [SysValue::Bool(yes)]) => request(&["set-mute", SOURCE, if *yes { "1" } else { "0" }]),
+         // Where it plays and where it listens: the number that comes in the list.
+-        ("audio.default", [SysValue::Num(id)]) => request(&["set-default", &format!("{}", *id as u32)]),
+-        _ => Err(format!("'{what}' is not asked like that: audio.volume(0..1), audio.step(±0.05), audio.mute([true|false]), audio.input(0..1), audio.input_mute([true|false]), audio.default(id)")),
++        ("audio.default" | "audio.default_output" | "audio.default_input", [SysValue::Num(id)]) => request(&["set-default", &format!("{}", *id as u32)]),
++        _ => Err(format!("'{what}' is not asked like that: audio.volume(0..1), audio.step(±0.05), audio.mute([true|false]), audio.input(0..1), audio.input_mute([true|false]), audio.default(id), audio.default_output(id), audio.default_input(id)")),
+     }
+ }
+ 

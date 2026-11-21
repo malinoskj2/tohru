@@ -1,7 +1,10 @@
 -- Settings ownership is in Rust, outside this reloadable VM.
 local make_rail = require("bar/rail")
 local workspace = require("bar/workspace")(make_rail(0))
-local bell = require("bar/bell")()
+local close_panels
+local bell = require("bar/bell")(function() if close_panels then close_panels("notifications") end end)
+local PALETTE_INDEX = {mocha=0, macchiato=1, rose_pine=2, nord=3, gruvbox=4, tokyo_night=5, dracula=6, everforest=7}
+local last_palette = nil
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
@@ -9,6 +12,16 @@ local function publish(settings)
     fact.bar_about_button = settings["bar.about_button"].value
     fact.corners = settings["appearance.corners"].value
     fact.corner_size = settings["appearance.corner_size"].value
+    local palette = settings["appearance.palette"]
+    local pid = palette and PALETTE_INDEX[palette.value] or 0
+    fact.palette_id = pid
+    fact.rail_palette = pid
+    bell.palette(pid)
+    if pid ~= last_palette then
+        last_palette = pid
+        pcall(sys.call, "say", "tohru-session", "emit session_palette " .. pid)
+        pcall(sys.call, "say", "tohru-launcher", "emit launcher_palette " .. pid)
+    end
     workspace.prefer(settings["bar.preferred_output"].value)
     local position = settings["notifications.position"]
     bell.place(position and position.value == "bottom-right" and 1 or 0)
@@ -77,17 +90,20 @@ local calendar = require("calendar/controller")(make_rail(1, 21))
 local network = require("network/controller")(make_rail(8))
 local bluetooth = require("bluetooth/controller")(make_rail(4))
 local wallpaper = require("wallpaper/controller")()
+local tray = require("tray/controller")(function() if close_panels then close_panels("tray") end end)
 local info = require("info/controller")(tohru_info.snapshot, nil, make_rail(3))
 local about
-local function close_panels(keep)
+function close_panels(keep)
     if keep ~= "sound" then sound.close() end
     if keep ~= "calendar" then calendar.close() end
     if keep ~= "network" then network.close() end
     if keep ~= "media" then media.close() end
     if keep ~= "bluetooth" then bluetooth.close() end
     if keep ~= "wallpaper" then wallpaper.close() end
+    if keep ~= "tray" then tray.close() end
     if keep ~= "info" then info.close() end
     if about and keep ~= "about" then about.close() end
+    if keep ~= "notifications" then bell.close_center() end
 end
 about = require("about/controller")(tohru_info.snapshot, function(page)
     close_panels("info")
