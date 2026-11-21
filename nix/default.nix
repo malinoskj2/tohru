@@ -1,5 +1,5 @@
 { lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage
-, fontconfig, wayland, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3 }:
+, fontconfig, wayland, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3, dbus }:
 let
   pin = builtins.fromJSON (builtins.readFile ../runtime/pleamar/pin.json);
   # Keep documentation/flake/test changes from rebuilding the full runtime.
@@ -32,7 +32,7 @@ let
       cp ${../runtime/pleamar/Cargo.lock} Cargo.lock
     '';
     nativeBuildInputs = [ pkg-config makeWrapper ];
-    nativeCheckInputs = [ python3 ];
+    nativeCheckInputs = [ python3 dbus ];
     buildInputs = [ fontconfig wayland libxkbcommon linux-pam libffi ];
     # Owned native boundaries only; includes the isolated role-install regression.
     # Upstream's broader tests can require desktop services and remain separate.
