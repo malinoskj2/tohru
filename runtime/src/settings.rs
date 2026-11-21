@@ -148,7 +148,7 @@ pub enum Palette {
 }
 
 impl Palette {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 8] = [
         Self::Mocha,
         Self::Macchiato,
         Self::RosePine,
