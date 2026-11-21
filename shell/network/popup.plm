@@ -201,7 +201,7 @@ part NetworkPopup {
                 box { from: net_ox + 10.5, 54.5; size: net_w - 21, 121; corner: 9.5; stroke: 1; color: ink_white; opacity: 16% - 4% * pk }
                 image net_lock_icon { at: net_ox + 20, 68.5; size: 11, 11; tint: ink_white; opacity: 65% }
                 text "Join {net_target}" { at: net_ox + 36, 74; width: net_w - 56; lines: 1; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
-                input net_password { at: net_ox + 20, 94; width: net_w - 40; size: 13; color: ink_white; placeholder: "Password"; secret: true; agent: no; show: net_joining; label: "Wi-Fi password" }
+                input net_password { at: net_ox + 20, 94; width: net_w - 40; size: 13; family: "SF Pro Text"; color: ink_white; placeholder: "Password"; secret: true; agent: no; show: net_joining; label: "Wi-Fi password" }
                 box net_join { from: net_ox + 20, 134; size: 118, 28; corner: 7; color: ink_green; opacity: 18%; cursor: pointer }
                 text "Join" { at: net_ox + 79, 148; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white }
                 box net_cancel { from: net_ox + net_w - 138, 134; size: 118, 28; corner: 7; color: ink_white; opacity: 10%; cursor: pointer }
@@ -216,8 +216,8 @@ part NetworkPopup {
                 zone box net_next { from: net_ox + net_w - 38, net_list_end + 1; size: 24, 22; corner: 7; active: net_unfolded and (net_page + 1) * 7 < net_rows.count; cursor: pointer; label: "More networks" }
                 box { from: net_ox + net_w - 64, net_list_end + 1; size: 24, 22; corner: 7; color: ink_white; opacity: max(net_prev.hover * 10%, net_prev.pressed * 16%) }
                 box { from: net_ox + net_w - 38, net_list_end + 1; size: 24, 22; corner: 7; color: ink_white; opacity: max(net_next.hover * 10%, net_next.pressed * 16%) }
-                text "‹" { at: net_ox + net_w - 52, net_list_end + 11; anchor: center; size: 16; color: ink_white; opacity: if(net_page > 0, 92%, 38%) }
-                text "›" { at: net_ox + net_w - 26, net_list_end + 11; anchor: center; size: 16; color: ink_white; opacity: if((net_page + 1) * 7 < net_rows.count, 92%, 38%) }
+                text "‹" { at: net_ox + net_w - 52, net_list_end + 11; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if(net_page > 0, 92%, 38%) }
+                text "›" { at: net_ox + net_w - 26, net_list_end + 11; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if((net_page + 1) * 7 < net_rows.count, 92%, 38%) }
             }
 
             // Footer status / error / active-target Forget fallback.

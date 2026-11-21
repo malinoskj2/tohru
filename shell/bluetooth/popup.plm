@@ -171,8 +171,8 @@ part BluetoothPopup {
                 zone box bt_next { from: bt_ox + bt_w - 36, bt_list_end + 2; size: 24, 22; corner: 7; active: bt_unfolded and bt_page + 1 < bt_pages and not bt_pairing_shown; cursor: pointer; label: "More devices" }
                 box { from: bt_ox + bt_w - 62, bt_list_end + 2; size: 24, 22; corner: 7; color: ink_white; opacity: max(bt_prev.hover * 10%, bt_prev.pressed * 16%) }
                 box { from: bt_ox + bt_w - 36, bt_list_end + 2; size: 24, 22; corner: 7; color: ink_white; opacity: max(bt_next.hover * 10%, bt_next.pressed * 16%) }
-                text "‹" { at: bt_ox + bt_w - 50, bt_list_end + 12; anchor: center; size: 16; color: ink_white; opacity: if(bt_page > 0, 92%, 38%) }
-                text "›" { at: bt_ox + bt_w - 24, bt_list_end + 12; anchor: center; size: 16; color: ink_white; opacity: if(bt_page + 1 < bt_pages, 92%, 38%) }
+                text "‹" { at: bt_ox + bt_w - 50, bt_list_end + 12; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if(bt_page > 0, 92%, 38%) }
+                text "›" { at: bt_ox + bt_w - 24, bt_list_end + 12; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if(bt_page + 1 < bt_pages, 92%, 38%) }
             }
             text bt_request { at: bt_ox + 16, bt_rows_h - 18; width: bt_w - 32; lines: 1; anchor: left center; size: 11; family: "SF Pro Text"; color: ink_red; show: bt_failed }
         }
@@ -197,7 +197,7 @@ part BluetoothPopup {
                 box { from: bt_ox + 16, 86; size: bt_w - 32, 36; corner: 9; color: ink_white; opacity: 7% }
                 box { from: bt_ox + 16.5, 86.5; size: bt_w - 33, 35; corner: 8.5; stroke: 1; color: ink_white; opacity: 16% - 4% * pk }
             }
-            input bt_answer { at: bt_ox + 28, 94; width: bt_w - 56; size: 16; color: ink_white; placeholder: "Code"; secret: true; agent: no; show: bt.pairing == pin or bt.pairing == passkey; label: "Bluetooth code" }
+            input bt_answer { at: bt_ox + 28, 94; width: bt_w - 56; size: 16; family: "SF Pro Text"; color: ink_white; placeholder: "Code"; secret: true; agent: no; show: bt.pairing == pin or bt.pairing == passkey; label: "Bluetooth code" }
             zone box bt_confirm { from: bt_ox + 16, 149; size: 120, 28; corner: 8; cursor: pointer; active: bt_pairing_shown and bt.pairing != display; label: "Accept pairing" }
             box { from: bt_ox + 16, 149; size: 120, 28; corner: 8; color: ink_green; opacity: 18% + max(bt_confirm.hover * 6%, bt_confirm.pressed * 12%); show: bt.pairing != display }
             box { from: bt_ox + 16.5, 149.5; size: 119, 27; corner: 7.5; stroke: 1; color: ink_green; opacity: 30%; show: bt_pairing_shown and bt.pairing != display }

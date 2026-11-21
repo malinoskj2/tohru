@@ -3,7 +3,7 @@ scene TohruNetwork {
     permissions { services: "network.*" }
     include "state.plm"
     zone box network_button { from: screen.width - 150, 0; size: 120, 31; cursor: pointer }
-    text "Network" { at: screen.width - 90, 16; anchor: center; size: 13; color: #cdd6f4 }
+    text "Network" { at: screen.width - 90, 16; anchor: center; size: 13; family: "SF Pro Text"; color: #cdd6f4 }
     on press network_button { emit network_toggle }
     include "../panel-ink.plm"
     include "popup.plm"

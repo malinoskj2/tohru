@@ -163,7 +163,7 @@ scene TohruPolkit {
                     opacity: puk
                     show: puk > 0.001
                     text polkit_message { at: 17, 46; width: pw - 34; anchor: left top; lines: 2; size: 13.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
-                    text polkit_command { at: 17, 90; anchor: left center; width: pw - 34; lines: 1; size: 11; family: "monospace"; color: ink_white; opacity: 58% }
+                    text polkit_command { at: 17, 90; anchor: left center; width: pw - 34; lines: 1; size: 11; family: "SF Mono"; color: ink_white; opacity: 58% }
                     box { from: 17, 102; size: pw - 34, 1; color: ink_white; opacity: 12% }
                     text "AUTHENTICATE AS" { at: 17, 116; anchor: left center; size: 10.5; weight: 600; family: "SF Pro Text"; color: ink_white; opacity: 60%; letter_move: 0.6 * letter, 0 }
                     repeat i in 0..6 {

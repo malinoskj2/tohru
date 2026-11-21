@@ -94,8 +94,8 @@ part SoundPanel {
    show: audio_failed
    box { from: sound_ox, sound_h + 6; size: sound_w, 48; corner: 15 }
   }
-  text "Audio request failed" { at: sound_ox + 16, sound_h + 19; anchor: left center; size: 12; weight: 600; color: ink_red; show: audio_failed }
-  text audio_error { at: sound_ox + 16, sound_h + 28; anchor: left top; size: 11; width: sound_w - 32; lines: 1; color: sound_ink; opacity: 80%; show: audio_failed }
+  text "Audio request failed" { at: sound_ox + 16, sound_h + 19; anchor: left center; size: 12; weight: 600; family: "SF Pro Text"; color: ink_red; show: audio_failed }
+  text audio_error { at: sound_ox + 16, sound_h + 28; anchor: left top; size: 11; family: "SF Pro Text"; width: sound_w - 32; lines: 1; color: sound_ink; opacity: 80%; show: audio_failed }
 
   on scroll sound_scroll { emit audio_step(wheel) }
   on press sound_water_hit { emit sound_water_press(clamp(1 - local.y / 190, 0, 1)) }

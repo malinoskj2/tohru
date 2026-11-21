@@ -124,7 +124,7 @@ part WallpaperPopup {
             show: wall_failed
             box { from: wall_ox, wall_h + 6; size: wall_w, 40; corner: 15 }
         }
-        text wall_error { at: wall_ox + 16, wall_h + 26; anchor: left center; size: 11; weight: 500; width: wall_w - 32; lines: 1; color: ink_red; show: wall_failed }
+        text wall_error { at: wall_ox + 16, wall_h + 26; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; width: wall_w - 32; lines: 1; color: ink_red; show: wall_failed }
 
         on press wall_name_hit { wall_keyed = false; emit wall_fold_toggle }
         on press wall_pause_hit { emit wall_pause }

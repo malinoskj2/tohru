@@ -95,8 +95,8 @@ part InformationPage {
         zone box info_scroll_down { from: info_ox + info_w - 42, 401; size: 24, 22; corner: 7; cursor: pointer; active: info_unfolded and info_offset + 8 < info_total; label: "Next rows" }
         box { from: info_ox + info_w - 66, 401; size: 24, 22; corner: 7; color: ink_white; opacity: max(info_scroll_up.hover * 10%, info_scroll_up.pressed * 16%) }
         box { from: info_ox + info_w - 42, 401; size: 24, 22; corner: 7; color: ink_white; opacity: max(info_scroll_down.hover * 10%, info_scroll_down.pressed * 16%) }
-        text "‹" { at: info_ox + info_w - 54, 411; anchor: center; size: 16; color: ink_white; opacity: if(info_offset > 0, 92%, 38%) }
-        text "›" { at: info_ox + info_w - 30, 411; anchor: center; size: 16; color: ink_white; opacity: if(info_offset + 8 < info_total and info_page != 6, 92%, 38%) }
+        text "‹" { at: info_ox + info_w - 54, 411; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if(info_offset > 0, 92%, 38%) }
+        text "›" { at: info_ox + info_w - 30, 411; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if(info_offset + 8 < info_total and info_page != 6, 92%, 38%) }
     }
     on press info_back { emit info_fold }
     on press info_refresh_hit { emit info_refresh }
