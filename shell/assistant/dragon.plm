@@ -1,0 +1,25 @@
+part AssistantDragon {
+    // Sheet cells 0 to 4 are jaw levels; mascot.png is a one-cell placeholder, so a drawn mouth opens instead.
+    let ai_dragon_size = 150
+    let ai_jaw = round(clamp(ai_mouth_s, 0, 1) * 4)
+    let ai_float = 4 * sin(time * 90)
+    surface ai_dragon_surface {
+        size: 210, 230; anchor: bottom_right; margin: 0, 18, 18, 0; level: overlay; reserve: -1; keyboard: none
+        open: ai_dragon_k > 0.01
+        layer_namespace: "tohru-dragon"
+        group {
+            opacity: ai_dragon_k
+            move: 0, (1 - ai_dragon_k) * 24
+            ellipse { at: 105, 214; radius: 46; scale: 1, 0.16; color: #000000; opacity: 18% - 6% * ai_float / 4 }
+            group {
+                move: 0, ai_float
+                pivot: 105, 190
+                scale: 1 + 0.015 * ai_mouth_s, 1 - 0.01 * ai_mouth_s
+                image ai_sprite { at: 30, 40; size: ai_dragon_size, ai_dragon_size; cell: if(ai_sprite_frames > 1, ai_jaw, 0), ai_sprite_columns, ai_sprite_rows }
+                ellipse { at: 30 + 0.468 * ai_dragon_size, 40 + 0.31 * ai_dragon_size; radius: 3.4; scale: 1.15, 0.15 + 0.95 * ai_mouth_s; color: #4a2238; opacity: if(ai_sprite_frames > 1, 0%, min(90%, ai_mouth_s * 400%)) }
+            }
+            zone box ai_dragon_hit { from: 30, 30; size: 150, 170; corner: 40; cursor: pointer; active: ai_dragon_open; label: "Open this conversation" }
+        }
+        on press ai_dragon_hit { emit assistant_dragon }
+    }
+}

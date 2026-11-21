@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use tohru_shell::settings::{Key, LockStyle, Origin, Owner, Palette, Value};
+use tohru_shell::settings::{Cli, Key, LockStyle, Origin, Owner, Palette, Value};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -364,7 +364,11 @@ fn lock_style_defaults_to_flooded_monolith_and_round_trips() {
         owner.set(Key::LockStyle, parsed.clone()).unwrap();
         assert_eq!(files.owner().get(Key::LockStyle).value, parsed);
     }
-    assert!(fs::read_to_string(files.user()).unwrap().contains("[lock]\nstyle = \"bar-drop-curtain\""));
+    assert!(
+        fs::read_to_string(files.user())
+            .unwrap()
+            .contains("[lock]\nstyle = \"bar-drop-curtain\"")
+    );
     for bad in ["Flooded-Monolith", "flooded_monolith", "plain", ""] {
         assert!(Key::LockStyle.parse_text(bad).is_err());
     }
@@ -388,8 +392,16 @@ fn unknown_lock_style_warns_and_uses_the_default_without_failing_the_load() {
     assert_eq!(owner.get(Key::Palette).value, Value::Palette(Palette::Nord));
     let warnings = owner.warnings();
     assert_eq!(warnings.len(), 2, "{warnings:?}");
-    assert!(warnings.iter().any(|w| w.contains("\"aurora\"") && w.contains("flooded-monolith")));
-    assert!(warnings.iter().any(|w| w.contains("managed.toml") && w.contains('7')));
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("\"aurora\"") && w.contains("flooded-monolith"))
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("managed.toml") && w.contains('7'))
+    );
 
     fs::write(files.managed(), "[lock]\nstyle = \"corner-anchor\"\n").unwrap();
     let owner = files.owner();
@@ -411,20 +423,225 @@ fn notifications_position_defaults_to_top_right_and_round_trips() {
     assert_eq!(setting.origin, Origin::Default);
     for position in ["bottom-right", "top-right"] {
         let parsed = Key::NotificationsPosition.parse_text(position).unwrap();
-        owner.set(Key::NotificationsPosition, parsed.clone()).unwrap();
+        owner
+            .set(Key::NotificationsPosition, parsed.clone())
+            .unwrap();
         assert_eq!(files.owner().get(Key::NotificationsPosition).value, parsed);
     }
-    assert!(fs::read_to_string(files.user()).unwrap().contains("[notifications]\nposition = \"top-right\""));
+    assert!(
+        fs::read_to_string(files.user())
+            .unwrap()
+            .contains("[notifications]\nposition = \"top-right\"")
+    );
     for bad in ["top-left", "Top-Right", "bottom_right", ""] {
         let before = fs::read(files.user()).unwrap();
-        assert!(owner.set(Key::NotificationsPosition, Value::Text(bad.into())).is_err());
+        assert!(
+            owner
+                .set(Key::NotificationsPosition, Value::Text(bad.into()))
+                .is_err()
+        );
         assert_eq!(fs::read(files.user()).unwrap(), before);
     }
     fs::write(files.user(), "[notifications]\nposition = \"left\"\n").unwrap();
     assert!(Owner::load(files.user(), Some(files.managed())).is_err());
-    fs::write(files.managed(), "[notifications]\nposition = \"bottom-right\"\n").unwrap();
+    fs::write(
+        files.managed(),
+        "[notifications]\nposition = \"bottom-right\"\n",
+    )
+    .unwrap();
     fs::write(files.user(), "").unwrap();
     let owner = files.owner();
-    assert_eq!(owner.get(Key::NotificationsPosition).value, Value::Text("bottom-right".into()));
+    assert_eq!(
+        owner.get(Key::NotificationsPosition).value,
+        Value::Text("bottom-right".into())
+    );
     assert_eq!(owner.get(Key::NotificationsPosition).origin, Origin::Nix);
+}
+
+#[test]
+fn assistant_settings_default_to_voice_on_and_validate() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    let mut owner = files.owner();
+    assert_eq!(owner.get(Key::AssistantVoice).value, Value::Bool(true));
+    assert_eq!(
+        owner.get(Key::AssistantProvider).value,
+        Value::Text(String::new())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantVoiceModels).value,
+        Value::Text(String::new())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantTtsEngine).value,
+        Value::Text("kokoro".into())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantTtsVoice).value,
+        Value::Text("en-us+f3".into())
+    );
+    assert_eq!(owner.get(Key::AssistantTtsSpeed).value, Value::Integer(100));
+    assert_eq!(owner.get(Key::AssistantTtsPitch).value, Value::Integer(3));
+    owner.set(Key::AssistantVoice, Value::Bool(false)).unwrap();
+    owner
+        .set(Key::AssistantProvider, Value::Text("codex".into()))
+        .unwrap();
+    owner
+        .set(Key::AssistantTtsPitch, Value::Integer(-12))
+        .unwrap();
+    owner
+        .set(
+            Key::AssistantVoiceModels,
+            Value::Text("/mnt/models/by-name".into()),
+        )
+        .unwrap();
+    let restarted = files.owner();
+    assert_eq!(restarted.get(Key::AssistantVoice).value, Value::Bool(false));
+    assert_eq!(
+        restarted.get(Key::AssistantProvider).value,
+        Value::Text("codex".into())
+    );
+    assert_eq!(
+        restarted.get(Key::AssistantTtsPitch).value,
+        Value::Integer(-12)
+    );
+    assert!(
+        fs::read_to_string(files.user())
+            .unwrap()
+            .contains("[assistant]\nvoice = false")
+    );
+    let rejected = [
+        (Key::AssistantProvider, Value::Text("aider".into())),
+        (Key::AssistantProvider, Value::Text("Claude".into())),
+        (Key::AssistantTtsEngine, Value::Text("say".into())),
+        (Key::AssistantTtsVoice, Value::Text("en us; rm".into())),
+        (Key::AssistantTtsVoice, Value::Text(String::new())),
+        (
+            Key::AssistantVoiceModels,
+            Value::Text("relative/path".into()),
+        ),
+        (Key::AssistantTtsSpeed, Value::Integer(10)),
+        (
+            Key::AssistantEffort(Cli::Codex),
+            Value::Text("extreme".into()),
+        ),
+        (
+            Key::AssistantModel(Cli::Claude),
+            Value::Text("opus; rm -rf".into()),
+        ),
+        (Key::AssistantPersonaFile, Value::Text("persona.md".into())),
+        (Key::AssistantMemory, Value::Text("off".into())),
+        (
+            Key::AssistantTtsVoicepack,
+            Value::Text("../../etc/passwd".into()),
+        ),
+        (
+            Key::AssistantTtsVoicepack,
+            Value::Text("relative/pack.bin".into()),
+        ),
+        (Key::AssistantVoiceWake, Value::Text("always".into())),
+        (Key::AssistantTtsModel, Value::Text("kokoro".into())),
+        (Key::AssistantTtsPitch, Value::Integer(13)),
+        (Key::AssistantVoice, Value::Text("true".into())),
+    ];
+    for (key, bad) in rejected {
+        let before = fs::read(files.user()).unwrap();
+        assert!(owner.set(key, bad).is_err(), "{key:?}");
+        assert_eq!(fs::read(files.user()).unwrap(), before);
+    }
+    fs::write(files.managed(), "[assistant]\nvoice = true\n").unwrap();
+    let owner = files.owner();
+    assert_eq!(owner.get(Key::AssistantVoice).value, Value::Bool(true));
+    assert_eq!(owner.get(Key::AssistantVoice).origin, Origin::Nix);
+}
+
+#[test]
+fn assistant_speech_defaults_to_kokoro_with_the_tide_pack() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    let mut owner = files.owner();
+    assert_eq!(
+        owner.get(Key::AssistantTtsVoicepack).value,
+        Value::Text("tide".into())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantTtsLoadOnConversation).value,
+        Value::Bool(false)
+    );
+    assert_eq!(
+        owner.get(Key::AssistantVoiceWake).value,
+        Value::Text("asr".into())
+    );
+    owner
+        .set(Key::AssistantTtsVoicepack, Value::Text("af_heart".into()))
+        .unwrap();
+    owner
+        .set(Key::AssistantVoiceWake, Value::Text("kws".into()))
+        .unwrap();
+    let restarted = files.owner();
+    assert_eq!(
+        restarted.get(Key::AssistantTtsVoicepack).value,
+        Value::Text("af_heart".into())
+    );
+    assert_eq!(
+        restarted.get(Key::AssistantVoiceWake).value,
+        Value::Text("kws".into())
+    );
+}
+
+#[test]
+fn assistant_models_nest_under_each_provider() {
+    let files = Fixture::new();
+    fs::write(
+        files.managed(),
+        "[assistant.models.gemini]\nmodel = \"gemini-4-neon\"\neffort = \"high\"\n",
+    )
+    .unwrap();
+    let mut owner = files.owner();
+    assert_eq!(owner.get(Key::AssistantPersona).value, Value::Bool(true));
+    assert_eq!(owner.get(Key::AssistantMemory).value, Value::Bool(true));
+    assert_eq!(
+        owner.get(Key::AssistantModel(Cli::Claude)).value,
+        Value::Text(String::new())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantModel(Cli::Gemini)).value,
+        Value::Text("gemini-4-neon".into())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantEffort(Cli::Gemini)).origin,
+        Origin::Nix
+    );
+    owner
+        .set(
+            Key::AssistantModel(Cli::Codex),
+            Value::Text("gpt-6.2-sol".into()),
+        )
+        .unwrap();
+    owner
+        .set(
+            Key::AssistantEffort(Cli::Codex),
+            Value::Text("xhigh".into()),
+        )
+        .unwrap();
+    owner.set(Key::AssistantMemory, Value::Bool(false)).unwrap();
+    let written = fs::read_to_string(files.user()).unwrap();
+    assert!(written.contains("[assistant.models.codex]"), "{written}");
+    let restarted = files.owner();
+    assert_eq!(
+        restarted.get(Key::AssistantModel(Cli::Codex)).value,
+        Value::Text("gpt-6.2-sol".into())
+    );
+    assert_eq!(
+        restarted.get(Key::AssistantEffort(Cli::Codex)).value,
+        Value::Text("xhigh".into())
+    );
+    assert_eq!(
+        restarted.get(Key::AssistantMemory).value,
+        Value::Bool(false)
+    );
+    assert_eq!(
+        Key::parse("assistant.models.opencode.effort").unwrap(),
+        Key::AssistantEffort(Cli::Opencode)
+    );
 }

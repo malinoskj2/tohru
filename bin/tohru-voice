@@ -1,0 +1,1017 @@
+#!/usr/bin/env python3
+import argparse
+import fcntl
+import json
+import math
+import os
+import queue
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import threading
+import time
+import wave
+from io import BytesIO
+from pathlib import Path
+
+SAMPLE_RATE = 16_000
+WINDOW = 512
+WINDOW_MS = WINDOW * 1000 / SAMPLE_RATE
+# Thresholds and timings from n33tc0de-voices (521f324, docs/voice-turn-detection-2026-11-10.md), in 32 ms windows.
+SPEECH_START = 0.5
+SPEECH_START_WINDOWS = 2
+SPEECH_CONTINUE = 0.35
+PREROLL_MS = 128
+TAIL_MS = 160
+PAUSE_MS = 200
+INCOMPLETE_HOLD_MS = 1000
+SILENCE_FALLBACK_MS = 800
+MAX_UTTERANCE_MS = 30_000
+BARGE_MS = 200
+BARGE_FLOOR = 0.025
+# Without echo cancellation the microphone hears the dragon too: barge-in must beat its playback by
+# this factor, and speech is ignored for a moment after it stops.
+ECHO_MARGIN = 1.6
+ECHO_TAIL_S = 0.4
+TURN_COMPLETE = 0.5
+TURN_WINDOW = SAMPLE_RATE * 8
+CONVERSATION_SECONDS = 60
+WAKE_DECIDE_MS = 1600
+MOUTH_FPS = 30
+SPOKEN_CHARS = 600
+
+KWS_SCORE = 2.0
+KWS_THRESHOLD = 0.05
+WAKE_FORMS = {"tohru", "toru", "taro", "tarou", "taru", "tauru", "teru", "tooru", "tohro", "toro", "toroo", "torou", "torru", "torue", "toeru"}
+WAKE_SPLIT_FIRST = {"to", "too", "two", "toe", "tow", "toh"}
+WAKE_SPLIT_SECOND = {"ru", "rue", "roo", "rew", "ro", "row", "who"}
+
+
+def emit(event, **fields):
+    fields["event"] = event
+    try:
+        sys.stdout.write(json.dumps(fields, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+    except (BrokenPipeError, ValueError):
+        os._exit(0)
+
+
+def log(message):
+    print(f"tohru-voice: {message}", file=sys.stderr, flush=True)
+
+
+def words(text):
+    return re.findall(r"[a-z0-9']+", text.lower())
+
+
+def wake_split(transcript):
+    """Returns the request after a leading wake word, "" for the wake word alone, or None without one."""
+    tokens = words(transcript)
+    if not tokens:
+        return None
+    used = 0
+    if tokens[0] in WAKE_FORMS:
+        used = 1
+    elif len(tokens) >= 2 and tokens[0] in WAKE_SPLIT_FIRST and tokens[1] in WAKE_SPLIT_SECOND:
+        used = 2
+    else:
+        return None
+    rest = tokens[used:]
+    return sentence(" ".join(rest))
+
+
+def wake_possible(transcript):
+    """Whether a partial transcript can still turn out to start with the wake word."""
+    tokens = words(transcript)
+    if not tokens:
+        return True
+    first = tokens[0]
+    if len(tokens) == 1:
+        return any(form.startswith(first) for form in WAKE_FORMS) or first in WAKE_SPLIT_FIRST
+    return wake_split(transcript) is not None
+
+
+def sentence(text):
+    text = " ".join(text.split()).lower()
+    text = re.sub(r"\bi\b", "I", text)
+    text = re.sub(r"\bi'(m|ll|d|ve)\b", lambda m: "I'" + m.group(1), text)
+    return text[:1].upper() + text[1:]
+
+
+def speakable(text):
+    text = re.sub(r"```.*?```", " (code in the popup) ", text, flags=re.S)
+    text = re.sub(r"`([^`]*)`", r"\1", text)
+    text = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"[*_#>]+", "", text)
+    text = re.sub(r"^\s*[-•]\s+", "", text, flags=re.M)
+    text = " ".join(text.split())
+    if len(text) <= SPOKEN_CHARS:
+        return text
+    cut = text[:SPOKEN_CHARS]
+    end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
+    cut = cut[: end + 1] if end > SPOKEN_CHARS // 3 else cut.rsplit(" ", 1)[0] + "…"
+    return cut + " The rest is in the chat."
+
+
+def model_root(configured):
+    if configured:
+        return Path(configured)
+    root = os.environ.get("MODEL_ROOT")
+    return Path(root) / "by-name" if root else Path("/nonexistent")
+
+
+class Silero:
+    def __init__(self, path, np, ort):
+        self.np = np
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = 1
+        options.inter_op_num_threads = 1
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        self.session = ort.InferenceSession(str(path), sess_options=options, providers=["CPUExecutionProvider"])
+        self.rate = np.array(SAMPLE_RATE, dtype=np.int64)
+        self.reset()
+
+    def reset(self):
+        self.state = self.np.zeros((2, 1, 128), dtype=self.np.float32)
+        self.context = self.np.zeros(64, dtype=self.np.float32)
+
+    def __call__(self, window):
+        x = self.np.concatenate([self.context, window])[None, :]
+        output, self.state = self.session.run(None, {"input": x, "state": self.state, "sr": self.rate})
+        self.context = window[-64:]
+        return float(output.reshape(-1)[0])
+
+
+class SmartTurn:
+    """Pipecat Smart Turn v3.2 with WhisperFeatureExtractor(chunk_length=8)'s NumPy transform."""
+
+    def __init__(self, path, np, ort, threads=2):
+        self.np = np
+        options = ort.SessionOptions()
+        options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        options.intra_op_num_threads = threads
+        options.inter_op_num_threads = 1
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        self.session = ort.InferenceSession(str(path), sess_options=options, providers=["CPUExecutionProvider"])
+        self.window = 0.5 - 0.5 * np.cos(2 * np.pi * np.arange(400) / 400)
+        self.filters = mel_filters(np)
+
+    def features(self, audio):
+        np = self.np
+        audio = audio.astype(np.float64)
+        audio = (audio - audio.mean()) / np.sqrt(audio.var() + 1e-7)
+        padded = np.pad(audio, 200, mode="reflect")
+        frames = np.lib.stride_tricks.sliding_window_view(padded, 400)[::160]
+        spectrum = np.abs(np.fft.rfft(frames * self.window, axis=1)) ** 2
+        mel = self.filters.T @ spectrum.T
+        log_spec = np.log10(np.maximum(mel, 1e-10))[:, :-1]
+        log_spec = np.maximum(log_spec, log_spec.max() - 8.0)
+        return ((log_spec + 4.0) / 4.0)[None].astype(np.float32)
+
+    def probability(self, audio):
+        if len(audio) < TURN_WINDOW:
+            audio = self.np.concatenate([self.np.zeros(TURN_WINDOW - len(audio), dtype=self.np.float32), audio])
+        audio = audio[-TURN_WINDOW:]
+        output = self.session.run(None, {"input_features": self.features(audio)})[0]
+        return float(min(1.0, max(0.0, output.reshape(-1)[0])))
+
+
+def mel_filters(np, bins=201, mels=80, rate=SAMPLE_RATE):
+    def to_mel(f):
+        f = np.asarray(f, dtype=np.float64)
+        return np.where(f >= 1000, 15.0 + np.log(np.maximum(f, 1e-10) / 1000) * 27.0 / np.log(6.4), 3.0 * f / 200.0)
+
+    def to_hz(m):
+        m = np.asarray(m, dtype=np.float64)
+        return np.where(m >= 15, 1000 * np.exp(np.log(6.4) / 27.0 * (m - 15)), 200.0 * m / 3.0)
+
+    fft = np.linspace(0, rate // 2, bins)
+    points = to_hz(np.linspace(to_mel(0.0), to_mel(rate / 2), mels + 2))
+    diff = np.diff(points)
+    slopes = points[None, :] - fft[:, None]
+    down = -slopes[:, :-2] / diff[:-1]
+    up = slopes[:, 2:] / diff[1:]
+    filters = np.maximum(0, np.minimum(down, up))
+    return filters * (2.0 / (points[2:] - points[:-2]))[None, :]
+
+
+def transducer(folder):
+    files = {p.name: p for p in folder.iterdir()}
+
+    def find(prefix):
+        names = sorted(n for n in files if n.startswith(prefix) and n.endswith(".onnx"))
+        int8 = [n for n in names if ".int8." in n]
+        choice = (int8 or names or [None])[0]
+        if choice is None:
+            raise FileNotFoundError(f"no {prefix}*.onnx in {folder}")
+        return str(files[choice])
+
+    return {"tokens": str(folder / "tokens.txt"), "encoder": find("encoder"), "decoder": find("decoder"), "joiner": find("joiner")}
+
+
+class Recognizer:
+    def __init__(self, folder, sherpa):
+        self.recognizer = sherpa.OnlineRecognizer.from_transducer(
+            **transducer(folder), num_threads=2, sample_rate=SAMPLE_RATE, feature_dim=80, decoding_method="greedy_search")
+        self.stream = None
+
+    def start(self):
+        self.stream = self.recognizer.create_stream()
+        self.stream.accept_waveform(SAMPLE_RATE, [0.0] * int(SAMPLE_RATE * 0.3))
+
+    def feed(self, samples):
+        if self.stream is None:
+            self.start()
+        self.stream.accept_waveform(SAMPLE_RATE, samples)
+        while self.recognizer.is_ready(self.stream):
+            self.recognizer.decode_stream(self.stream)
+
+    def partial(self):
+        return self.text() if self.stream is not None else ""
+
+    def text(self):
+        result = self.recognizer.get_result(self.stream)
+        return result if isinstance(result, str) else getattr(result, "text", "")
+
+    def finish(self):
+        if self.stream is None:
+            return ""
+        self.stream.accept_waveform(SAMPLE_RATE, [0.0] * int(SAMPLE_RATE * 0.3))
+        self.stream.input_finished()
+        while self.recognizer.is_ready(self.stream):
+            self.recognizer.decode_stream(self.stream)
+        text = self.text()
+        self.stream = None
+        return text
+
+    def drop(self):
+        self.stream = None
+
+
+class Spotter:
+    """A small keyword spotter that hears the wake word for a fraction of the ASR's cost; the ASR then confirms it."""
+
+    def __init__(self, folder, sherpa):
+        self.spotter = sherpa.KeywordSpotter(
+            **transducer(folder), keywords_file=str(SHIPPED_VOICES / "wake-keywords.txt"), num_threads=1, sample_rate=SAMPLE_RATE,
+            feature_dim=80, max_active_paths=4, keywords_score=KWS_SCORE, keywords_threshold=KWS_THRESHOLD,
+            num_trailing_blanks=1)
+        self.stream = None
+
+    def start(self):
+        self.stream = self.spotter.create_stream()
+
+    def feed(self, samples):
+        self.stream.accept_waveform(SAMPLE_RATE, samples)
+        while self.spotter.is_ready(self.stream):
+            self.spotter.decode_stream(self.stream)
+            if self.spotter.get_result(self.stream):
+                return True
+        return False
+
+    def flush(self):
+        return self.feed([0.0] * int(SAMPLE_RATE * 0.3))
+
+    def drop(self):
+        self.stream = None
+
+
+def sentences(text, limit=220):
+    """Splits an answer at sentence ends so the first one can play while the rest are made."""
+    parts, current = [], ""
+    for piece in re.split(r"(?<=[.!?…])\s+", text.strip()):
+        while len(piece) > limit:
+            cut = piece.rfind(" ", 0, limit)
+            cut = cut if cut > 0 else limit
+            parts.append(piece[:cut])
+            piece = piece[cut:].lstrip()
+        if current and (not parts or len(current) + len(piece) + 1 > limit):
+            parts.append(current)
+            current = piece
+        else:
+            current = f"{current} {piece}".strip()
+    if current:
+        parts.append(current)
+    return [p for p in parts if p.strip()]
+
+
+class Espeak:
+    """The fallback voice: espeak-ng, no model, a few ms of CPU per sentence."""
+
+    name = "espeak-ng"
+
+    def __init__(self, settings):
+        self.voice = settings.get("voice", "en-us+f3")
+        self.speed = int(settings.get("speed", 100))
+        self.pitch = int(settings.get("pitch", 3))
+
+    def load(self):
+        pass
+
+    def unload(self):
+        pass
+
+    def stream(self, text, np):
+        wpm = round(175 * self.speed / 100)
+        pitch = max(0, min(99, 50 + 4 * self.pitch))
+        for part in sentences(text):
+            result = subprocess.run(["espeak-ng", "--stdout", "-v", self.voice, "-s", str(wpm), "-p", str(pitch), part],
+                                    capture_output=True, timeout=30)
+            if result.returncode != 0 or not result.stdout:
+                raise RuntimeError(result.stderr.decode(errors="replace").strip() or "espeak-ng failed")
+            with wave.open(BytesIO(result.stdout)) as w:
+                rate = w.getframerate()
+                frames = w.readframes(w.getnframes())
+            yield np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768, rate
+
+
+KOKORO_RATE = 24_000
+
+
+def kokoro_files(settings):
+    folder = Path(settings.get("model") or model_root("") / "voice-kokoro")
+    model = next((folder / name for name in ("model.onnx", "kokoro-v1.0.onnx", "model_fp32.onnx") if (folder / name).is_file()), None)
+    vocab = folder / "tokenizer.json"
+    if model is None or not vocab.is_file():
+        raise FileNotFoundError(f"no Kokoro model.onnx and tokenizer.json in {folder}")
+    pack = str(settings.get("voicepack") or "tide")
+    if pack.startswith("/"):
+        pack_path = Path(pack)
+    elif pack == "tide":
+        pack_path = SHIPPED_VOICES / "tohru-tide.bin"
+    else:
+        pack_path = folder / "voices" / f"{pack}.bin"
+    if not re.match(r"^(/.*|[A-Za-z0-9_.-]+)$", pack) or ".." in pack or not pack_path.is_file():
+        raise FileNotFoundError(f"no voicepack {pack} ({pack_path})")
+    return model, vocab, pack_path
+
+
+class Kokoro:
+    """Kokoro-82M in a child process, so unloading frees every byte; misaki for phonemes."""
+
+    name = "kokoro"
+
+    def __init__(self, settings):
+        self.files = kokoro_files(settings)
+        self.speed = max(0.5, min(2.0, int(settings.get("speed", 100)) / 100))
+        self.worker = None
+        self.lock = threading.Lock()
+
+    def load(self):
+        with self.lock:
+            if self.worker is None or self.worker.poll() is not None:
+                model, vocab, pack = self.files
+                self.worker = subprocess.Popen(
+                    [sys.executable, os.path.realpath(__file__), "--tts-worker", str(model), str(vocab), str(pack)],
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+                header = self.worker.stdout.readline()
+                if not header.startswith(b'{"ready"'):
+                    self.worker.kill()
+                    self.worker = None
+                    raise RuntimeError("the Kokoro worker failed to start")
+            return self.worker
+
+    def unload(self):
+        with self.lock:
+            worker, self.worker = self.worker, None
+        if worker and worker.poll() is None:
+            worker.terminate()
+            try:
+                worker.wait(3)
+            except subprocess.TimeoutExpired:
+                worker.kill()
+
+    def loaded(self):
+        return self.worker is not None and self.worker.poll() is None
+
+    def stream(self, text, np):
+        worker = self.load()
+        for part in sentences(text):
+            worker.stdin.write((json.dumps({"text": part, "speed": self.speed}) + "\n").encode())
+            worker.stdin.flush()
+            header = json.loads(worker.stdout.readline() or b'{"error": "the Kokoro worker exited"}')
+            if "error" in header:
+                raise RuntimeError(header["error"])
+            size = int(header["samples"]) * 4
+            data = b""
+            while len(data) < size:
+                chunk = worker.stdout.read(size - len(data))
+                if not chunk:
+                    raise RuntimeError("the Kokoro worker exited")
+                data += chunk
+            yield np.frombuffer(data, dtype="<f4"), KOKORO_RATE
+
+
+def tts_worker(model, vocab_path, pack_path):
+    """Kokoro synthesis on stdin/stdout: a JSON line in, a JSON header and raw float32 samples out."""
+    import types
+    # misaki imports torch and transformers only for a neural fallback that is never used here.
+    sys.modules.setdefault("torch", types.ModuleType("torch"))
+    shim = types.ModuleType("transformers")
+    shim.BartForConditionalGeneration = None
+    sys.modules.setdefault("transformers", shim)
+    import numpy as np
+    import onnxruntime as ort
+    from misaki import en, espeak
+    g2p = en.G2P(trf=False, british=False, fallback=espeak.EspeakFallback(british=False))
+    vocab = json.loads(Path(vocab_path).read_text(encoding="utf-8"))["model"]["vocab"]
+    pack = np.fromfile(pack_path, dtype="<f4")
+    if pack.size % 256 or pack.size // 256 < 2:
+        raise SystemExit("voicepack must be rows of 256 float32 values")
+    pack = pack.reshape(-1, 256)
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = 4
+    options.inter_op_num_threads = 1
+    session = ort.InferenceSession(str(model), options, providers=["CPUExecutionProvider"])
+    out = sys.stdout.buffer
+    out.write(b'{"ready": true}\n')
+    out.flush()
+    for line in sys.stdin.buffer:
+        try:
+            request = json.loads(line)
+            phonemes, _ = g2p(str(request["text"]))
+            ids = [vocab[c] for c in phonemes if c in vocab][: min(510, len(pack) - 1)]
+            if ids:
+                audio = session.run(None, {"input_ids": np.array([[0, *ids, 0]], dtype=np.int64),
+                                           "style": pack[len(ids)][None, :].astype(np.float32),
+                                           "speed": np.array([float(request.get("speed", 1.0))], dtype=np.float32)})[0][0]
+            else:
+                audio = np.zeros(0, dtype=np.float32)
+            audio = np.asarray(audio, dtype="<f4")
+            out.write((json.dumps({"samples": int(audio.size)}) + "\n").encode())
+            out.write(audio.tobytes())
+        except Exception as error:
+            out.write((json.dumps({"error": str(error)[:300]}) + "\n").encode())
+        out.flush()
+    return 0
+
+
+ENGINES = {"kokoro": Kokoro, "espeak-ng": Espeak}
+SHIPPED_VOICES = next((p for p in (Path(__file__).resolve().parent.parent / "shell/assistant/voice",
+                                   Path(__file__).resolve().parent.parent / "share/tohru/shell/assistant/voice") if p.is_dir()),
+                      Path(__file__).resolve().parent.parent / "shell/assistant/voice")
+
+
+def make_engine(settings):
+    """The configured engine; Kokoro falls back to espeak-ng (with an error event) when its files are missing."""
+    engine = ENGINES.get(settings.get("engine", "kokoro"), Kokoro)
+    try:
+        return engine(settings)
+    except (OSError, ValueError) as error:
+        if engine is Espeak:
+            raise
+        emit("error", message=f"speech: {error}; using espeak-ng")
+        return Espeak(settings)
+
+
+class Speaker:
+    """Plays one answer at a time and reports the mouth envelope; hush() stops it at once."""
+
+    def __init__(self, np, voice):
+        self.np = np
+        self.voice = voice
+        self.engine = Espeak({})
+        self.jobs = queue.Queue()
+        self.stop = threading.Event()
+        self.speaking = False
+        self.level = 0.0
+        self.recent = []
+        self.quiet_after = 0.0
+        self.player = None
+        threading.Thread(target=self.loop, daemon=True).start()
+
+    def echo_level(self):
+        """The loudest playback in the last moments: what the microphone may still be hearing of it."""
+        now = time.monotonic()
+        return max((v for t, v in self.recent if now - t < ECHO_TAIL_S), default=0.0)
+
+    def deaf(self):
+        return time.monotonic() < self.quiet_after
+
+    def say(self, text, conversation):
+        self.hush()
+        self.stop.clear()
+        self.jobs.put((text, conversation))
+
+    def hush(self):
+        self.stop.set()
+        player = self.player
+        if player and player.poll() is None:
+            player.kill()
+
+    def loop(self):
+        while True:
+            text, conversation = self.jobs.get()
+            if self.stop.is_set():
+                continue
+            try:
+                self.play(text, conversation)
+            except Exception as error:
+                emit("error", message=f"speech failed: {error}")
+            finally:
+                self.speaking = False
+                self.level = 0.0
+                self.quiet_after = time.monotonic() + ECHO_TAIL_S
+                emit("speaking", on=False, conversation=conversation)
+                self.voice.spoke()
+
+    def play(self, text, conversation):
+        np = self.np
+        played = 0.0
+        started = None
+        rate = None
+        for audio, chunk_rate in self.engine.stream(text, np):
+            if self.stop.is_set():
+                break
+            if self.player is None or rate != chunk_rate:
+                self.close_player()
+                rate = chunk_rate
+                self.player = subprocess.Popen(
+                    ["pacat", "--playback", "--raw", "--format=s16le", f"--rate={rate}", "--channels=1",
+                     "--client-name=tohru-voice", "--stream-name=Dragon", "--latency-msec=60"],
+                    stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                started, played = time.monotonic(), 0.0
+            if not self.speaking:
+                self.speaking = True
+                emit("speaking", on=True, conversation=conversation)
+            step = rate // MOUTH_FPS
+            pcm = (np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes()
+            if time.monotonic() > started + played:
+                started, played = time.monotonic(), 0.0
+            for index in range(0, len(audio), step):
+                if self.stop.is_set():
+                    break
+                chunk = audio[index:index + step]
+                rms = float(np.sqrt(np.mean(chunk * chunk))) if len(chunk) else 0.0
+                self.level = rms
+                now = time.monotonic()
+                self.recent = [(t, v) for t, v in self.recent if now - t < ECHO_TAIL_S] + [(now, rms)]
+                try:
+                    self.player.stdin.write(pcm[index * 2:(index + step) * 2])
+                    self.player.stdin.flush()
+                except (BrokenPipeError, ValueError):
+                    self.stop.set()
+                    break
+                mouth = 0.0 if rms < 1e-4 else max(0.0, min(1.0, (20 * math.log10(rms) + 42) / 30))
+                emit("mouth", level=round(mouth, 2))
+                played += len(chunk) / rate
+                delay = started + played - time.monotonic()
+                if delay > 0:
+                    time.sleep(delay)
+        self.close_player()
+        emit("mouth", level=0)
+
+    def close_player(self):
+        player, self.player = self.player, None
+        if player is None:
+            return
+        try:
+            player.stdin.close()
+        except (BrokenPipeError, ValueError):
+            pass
+        if self.stop.is_set():
+            player.kill()
+        player.wait()
+
+
+class Monitor:
+    """Pauses listening while another app records or the session is locked."""
+
+    def __init__(self, voice):
+        self.voice = voice
+        self.recording = False
+        self.locked = False
+        runtime = os.environ.get("XDG_RUNTIME_DIR", "")
+        self.lock_file = os.environ.get("TOHRU_VOICE_LOCK_FILE") or (os.path.join(runtime, "tohru-lock.lock") if runtime else "")
+        threading.Thread(target=self.watch_locks, daemon=True).start()
+        if shutil.which("pactl"):
+            threading.Thread(target=self.watch_recordings, daemon=True).start()
+
+    def is_locked(self):
+        if not self.lock_file or not os.path.exists(self.lock_file):
+            return False
+        try:
+            fd = os.open(self.lock_file, os.O_RDONLY)
+        except OSError:
+            return False
+        try:
+            fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            return False
+        except BlockingIOError:
+            return True
+        finally:
+            os.close(fd)
+
+    def watch_locks(self):
+        while True:
+            locked = self.is_locked()
+            if locked != self.locked:
+                self.locked = locked
+                self.voice.paused_changed()
+            time.sleep(2)
+
+    def others_recording(self):
+        try:
+            out = subprocess.run(["pactl", "-f", "json", "list", "source-outputs"], capture_output=True, text=True, timeout=5).stdout
+            outputs = json.loads(out or "[]")
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            return False
+        own = self.voice.capture_pid()
+        for item in outputs:
+            props = item.get("properties", {})
+            if props.get("application.name") == "tohru-voice":
+                continue
+            if own and str(props.get("application.process.id")) == str(own):
+                continue
+            if str(props.get("media.class", "")).startswith("Stream/Input/Audio") or "source" in item:
+                if props.get("stream.monitor") == "true" or str(item.get("source", "")).endswith(".monitor"):
+                    continue
+                return True
+        return False
+
+    def watch_recordings(self):
+        while True:
+            try:
+                events = subprocess.Popen(["pactl", "subscribe"], stdout=subprocess.PIPE, text=True)
+            except OSError:
+                return
+            self.update_recording()
+            for line in events.stdout:
+                if "source-output" in line:
+                    self.update_recording()
+            events.wait()
+            time.sleep(5)
+
+    def update_recording(self):
+        recording = self.others_recording()
+        if recording != self.recording:
+            self.recording = recording
+            self.voice.paused_changed()
+
+
+class Voice:
+    def __init__(self, models, np, ort, sherpa, smart_turn=True, wake="asr", kws=None):
+        self.np = np
+        self.silero = Silero(models / "silero-vad" / "silero-vad-v6.2.3.onnx" if (models / "silero-vad" / "silero-vad-v6.2.3.onnx").exists()
+                             else next((models / "silero-vad").glob("*.onnx")), np, ort)
+        self.recognizer = Recognizer(models / "voice-asr", sherpa)
+        turn = list((models / "voice-turn").glob("*.onnx")) if smart_turn else []
+        self.turn = SmartTurn(turn[0], np, ort) if turn else None
+        self.spotter = Spotter(kws, sherpa) if wake == "kws" else None
+        self.speaker = Speaker(np, self)
+        self.lock = threading.Lock()
+        self.capture = None
+        self.paused_reason = None
+        self.conversation_until = 0.0
+        self.thinking = False
+        self.load_on_conversation = False
+        self.reset_utterance()
+        self.monitor = Monitor(self)
+
+    def reset_utterance(self):
+        self.in_speech = False
+        self.start_run = 0
+        self.quiet_ms = 0.0
+        self.speech_ms = 0.0
+        self.utterance = []
+        self.rejected = False
+        self.turn_checked = False
+        self.turn_complete = None
+        self.barge_ms = 0.0
+        self.preroll = []
+        self.spotting = False
+        self.recognizer.drop()
+        if self.spotter is not None:
+            self.spotter.drop()
+
+    def conversation(self, on):
+        emit("conversation", on=on)
+        if self.load_on_conversation:
+            engine = self.speaker.engine
+            threading.Thread(target=engine.load if on else engine.unload, daemon=True).start()
+
+    def set_engine(self, settings):
+        old = self.speaker.engine
+        self.load_on_conversation = bool(settings.get("load_on_conversation"))
+        engine = make_engine(settings)
+        self.speaker.hush()
+        self.speaker.engine = engine
+        old.unload()
+        if not self.load_on_conversation or self.in_conversation():
+            threading.Thread(target=self.load_engine, args=(engine,), daemon=True).start()
+
+    def load_engine(self, engine):
+        try:
+            engine.load()
+        except Exception as error:
+            emit("error", message=f"speech: {error}")
+
+    def capture_pid(self):
+        return self.capture.pid if self.capture else None
+
+    def in_conversation(self):
+        return time.monotonic() < self.conversation_until
+
+    def extend_conversation(self):
+        self.conversation_until = time.monotonic() + CONVERSATION_SECONDS
+
+    def spoke(self):
+        if self.conversation_until:
+            self.extend_conversation()
+
+    def paused_changed(self):
+        reason = "locked" if self.monitor.locked else "recording" if self.monitor.recording else None
+        if reason == self.paused_reason:
+            return
+        self.paused_reason = reason
+        if reason:
+            self.speaker.hush()
+            self.stop_capture()
+            emit("paused", reason=reason)
+        else:
+            emit("paused", reason="")
+
+    def source(self):
+        configured = os.environ.get("TOHRU_VOICE_SOURCE")
+        if configured:
+            return configured
+        try:
+            names = subprocess.run(["pactl", "list", "short", "sources"], capture_output=True, text=True, timeout=5).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        for line in names.splitlines():
+            parts = line.split("\t")
+            if len(parts) > 1 and "echo-cancel" in parts[1] and not parts[1].endswith(".monitor"):
+                return parts[1]
+        return None
+
+    def start_capture(self):
+        argv = ["parec", "--raw", "--format=s16le", f"--rate={SAMPLE_RATE}", "--channels=1", "--latency-msec=32",
+                "--client-name=tohru-voice", "--stream-name=Wake word"]
+        source = self.source()
+        if source:
+            argv.append(f"--device={source}")
+        self.capture = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+        emit("listening", on=True, source=source or "default")
+
+    def stop_capture(self):
+        capture = self.capture
+        self.capture = None
+        if capture and capture.poll() is None:
+            capture.terminate()
+            try:
+                capture.wait(2)
+            except subprocess.TimeoutExpired:
+                capture.kill()
+        if capture:
+            emit("listening", on=False)
+        self.silero.reset()
+        self.reset_utterance()
+
+    def run(self):
+        emit("ready", turn=self.turn is not None)
+        need = WINDOW * 2
+        while True:
+            if self.paused_reason:
+                time.sleep(0.25)
+                continue
+            if self.capture is None:
+                self.start_capture()
+            data = b""
+            capture = self.capture
+            while capture and len(data) < need:
+                chunk = capture.stdout.read(need - len(data))
+                if not chunk:
+                    break
+                data += chunk
+            if len(data) < need:
+                if self.capture is capture and not self.paused_reason:
+                    self.stop_capture()
+                    emit("error", message="the microphone stream ended")
+                    time.sleep(2)
+                continue
+            window = self.np.frombuffer(data, dtype=self.np.int16).astype(self.np.float32) / 32768
+            with self.lock:
+                self.step(window)
+
+    def step(self, window):
+        np = self.np
+        probability = self.silero(window)
+        rms = float(np.sqrt(np.mean(window * window)))
+        if self.speaker.speaking:
+            self.listen_for_barge(window, probability, rms)
+            return
+        if self.speaker.deaf() and not self.in_speech:
+            self.start_run = 0
+            return
+        if not self.in_speech:
+            self.preroll.append(window)
+            self.preroll = self.preroll[-max(1, round(PREROLL_MS / WINDOW_MS)):]
+            self.start_run = self.start_run + 1 if probability >= SPEECH_START else 0
+            if self.start_run >= SPEECH_START_WINDOWS:
+                self.begin(self.preroll)
+            if self.conversation_until and not self.in_conversation() and not self.thinking:
+                self.conversation_until = 0.0
+                self.conversation(False)
+            return
+        self.hear(window, probability >= SPEECH_CONTINUE)
+
+    def begin(self, preroll):
+        self.in_speech = True
+        self.quiet_ms = 0.0
+        self.speech_ms = 0.0
+        self.turn_checked = False
+        self.turn_complete = None
+        self.rejected = False
+        self.utterance = list(preroll)
+        self.preroll = []
+        self.spotting = self.spotter is not None and not self.in_conversation()
+        if self.spotting:
+            self.spotter.start()
+            for w in preroll:
+                self.spotter.feed(w)
+            return
+        self.recognizer.start()
+        for w in preroll:
+            self.recognizer.feed(w)
+
+    def hear(self, window, speech):
+        self.utterance.append(window)
+        self.speech_ms += WINDOW_MS
+        if speech:
+            self.quiet_ms = 0.0
+            self.turn_checked = False
+            self.turn_complete = None
+        else:
+            self.quiet_ms += WINDOW_MS
+        if self.spotting:
+            self.spot(window, speech)
+        elif not self.rejected and (speech or self.quiet_ms <= TAIL_MS):
+            self.recognizer.feed(window)
+        if not self.rejected and not self.spotting and not self.in_conversation() and self.speech_ms >= 320:
+            partial = self.recognizer.partial()
+            if not wake_possible(partial) or (self.speech_ms >= WAKE_DECIDE_MS and wake_split(partial) is None):
+                self.rejected = True
+                self.recognizer.drop()
+        if self.quiet_ms >= PAUSE_MS and not self.turn_checked:
+            self.turn_checked = True
+            if self.turn is not None and not self.rejected:
+                audio = np_concat(self.np, self.utterance)
+                self.turn_complete = self.turn.probability(audio) > TURN_COMPLETE
+        hold = SILENCE_FALLBACK_MS if self.turn_complete is None else (PAUSE_MS if self.turn_complete else INCOMPLETE_HOLD_MS)
+        if self.rejected and self.quiet_ms >= PAUSE_MS:
+            self.reset_utterance()
+            return
+        if self.quiet_ms >= hold or self.speech_ms >= MAX_UTTERANCE_MS:
+            self.end_turn()
+
+    def spot(self, window, speech):
+        heard = (speech or self.quiet_ms <= TAIL_MS) and self.spotter.feed(window)
+        if not heard and (self.speech_ms >= WAKE_DECIDE_MS or self.quiet_ms >= PAUSE_MS):
+            heard = self.spotter.flush()
+            if not heard:
+                self.rejected = True
+        if heard or self.rejected:
+            self.spotting = False
+            self.spotter.drop()
+        if heard:
+            self.recognizer.start()
+            for w in self.utterance:
+                self.recognizer.feed(w)
+
+    def end_turn(self):
+        transcript = "" if self.rejected else self.recognizer.finish()
+        self.reset_utterance()
+        self.deliver(transcript)
+
+    def deliver(self, transcript):
+        if not transcript.strip():
+            return
+        if self.in_conversation():
+            request = wake_split(transcript)
+            request = sentence(transcript) if request is None else request
+            self.extend_conversation()
+            if request:
+                self.thinking = True
+                emit("turn", text=request)
+            return
+        request = wake_split(transcript)
+        if request is None:
+            return
+        self.extend_conversation()
+        self.conversation(True)
+        if request:
+            self.thinking = True
+            emit("turn", text=request)
+        else:
+            emit("wake")
+
+    def listen_for_barge(self, window, probability, rms):
+        floor = max(BARGE_FLOOR, ECHO_MARGIN * self.speaker.echo_level())
+        if probability >= SPEECH_START and rms > floor:
+            self.barge_ms += WINDOW_MS
+        elif probability < SPEECH_CONTINUE or rms < floor / 2:
+            self.barge_ms = 0.0
+        self.preroll.append(window)
+        self.preroll = self.preroll[-max(1, round(BARGE_MS / WINDOW_MS) + 2):]
+        if self.barge_ms >= BARGE_MS:
+            self.speaker.hush()
+            self.barge_ms = 0.0
+            emit("barge")
+            self.extend_conversation()
+            self.begin(self.preroll)
+
+    def command(self, message):
+        cmd = message.get("cmd")
+        if cmd == "say":
+            text = speakable(str(message.get("text", "")))
+            self.thinking = False
+            if text and not self.paused_reason:
+                self.speaker.say(text, message.get("conversation"))
+            else:
+                self.spoke()
+        elif cmd == "hush":
+            self.speaker.hush()
+        elif cmd == "thinking":
+            self.thinking = bool(message.get("on"))
+            if not self.thinking:
+                self.spoke()
+        elif cmd == "tts":
+            try:
+                self.set_engine(message)
+            except Exception as error:
+                emit("error", message=f"speech settings: {error}")
+        elif cmd == "end":
+            self.conversation_until = 0.0
+            self.conversation(False)
+
+
+def np_concat(np, windows):
+    return np.concatenate(windows) if windows else np.zeros(0, dtype=np.float32)
+
+
+def read_commands(voice):
+    for line in sys.stdin:
+        try:
+            message = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(message, dict):
+            with voice.lock:
+                voice.command(message)
+    os._exit(0)
+
+
+def main():
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
+    signal.signal(signal.SIGINT, lambda *_: os._exit(0))
+    if len(sys.argv) == 5 and sys.argv[1] == "--tts-worker":
+        return tts_worker(*sys.argv[2:])
+    parser = argparse.ArgumentParser(prog="tohru-voice")
+    parser.add_argument("--models", default=os.environ.get("TOHRU_VOICE_MODELS", ""))
+    parser.add_argument("--tts-engine", default="kokoro")
+    parser.add_argument("--tts-model", default="")
+    parser.add_argument("--tts-voicepack", default="tide")
+    parser.add_argument("--tts-voice", default="en-us+f3")
+    parser.add_argument("--tts-speed", type=int, default=100)
+    parser.add_argument("--tts-pitch", type=int, default=3)
+    parser.add_argument("--tts-load-on-conversation", action="store_true")
+    parser.add_argument("--wake", choices=("kws", "asr"), default="asr")
+    parser.add_argument("--kws-model", default="")
+    args = parser.parse_args()
+    models = model_root(args.models)
+    kws = Path(args.kws_model).expanduser() if args.kws_model else models / "voice-kws"
+    missing = [name for name in ("silero-vad", "voice-asr") if not (models / name).is_dir()]
+    if args.wake == "kws" and not kws.is_dir():
+        missing.append(str(kws))
+    if missing:
+        emit("error", message=f"voice models missing in {models}: {', '.join(missing)}")
+        return 3
+    for tool in ("parec", "pacat", "pactl", "espeak-ng"):
+        if not shutil.which(tool):
+            emit("error", message=f"{tool} is not installed")
+            return 3
+    import numpy as np
+    import onnxruntime as ort
+    import sherpa_onnx as sherpa
+    ort.set_default_logger_severity(3)
+    voice = Voice(models, np, ort, sherpa, wake=args.wake, kws=kws)
+    try:
+        voice.set_engine({"engine": args.tts_engine, "model": args.tts_model, "voicepack": args.tts_voicepack,
+                          "voice": args.tts_voice, "speed": args.tts_speed, "pitch": args.tts_pitch,
+                          "load_on_conversation": args.tts_load_on_conversation})
+    except Exception as error:
+        emit("error", message=f"speech settings: {error}")
+    threading.Thread(target=read_commands, args=(voice,), daemon=True).start()
+    voice.run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

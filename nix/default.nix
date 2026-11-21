@@ -1,6 +1,8 @@
 { lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage
 , fontconfig, wayland, jq, socat, ffmpeg-headless, findutils, gnugrep, curl, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3, dbus
-, util-linux, systemd, procps, coreutils }:
+, util-linux, systemd, procps, coreutils, espeak-ng, pulseaudio
+  # Without the voice service nothing for speech is installed; the setting then has nothing to start.
+, withVoice ? true }:
 let
   pin = builtins.fromJSON (builtins.readFile ../runtime/pleamar/pin.json);
   # Keep documentation/flake/test changes from rebuilding the full runtime.
@@ -51,11 +53,16 @@ let
     meta = { license = [ lib.licenses.bsd3 lib.licenses.mit ]; platforms = lib.platforms.linux; };
   };
   runtime = callPackage ./runtime-wrapper.nix { runtime = runtimeUnwrapped; };
+  # misaki's English G2P with its espeak fallback; its optional neural fallback (torch) is never loaded.
+  voicePython = python3.withPackages (p: [
+    p.numpy p.onnxruntime p.sherpa-onnx p.misaki p.num2words p.phonemizer p.spacy-models.en_core_web_sm
+  ]);
 in stdenvNoCC.mkDerivation {
   pname = "tohru-shell";
   version = "0.1.0";
   src = source;
   nativeBuildInputs = [ makeWrapper ];
+  buildInputs = [ python3 ];
   dontBuild = true;
   installPhase = ''
     runHook preInstall
@@ -63,7 +70,7 @@ in stdenvNoCC.mkDerivation {
     cp -r shell $out/share/tohru/
     cp LICENSE $out/share/tohru/LICENSE
     cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-session-run \
-      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-wallpaper bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev $out/bin/
+      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-wallpaper bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev bin/tohru-assistant $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar
     wrapProgram $out/bin/tohru-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
@@ -95,11 +102,19 @@ in stdenvNoCC.mkDerivation {
       --prefix PATH : ${lib.makeBinPath [ jq socat ffmpeg-headless util-linux coreutils findutils gnugrep ]}
     wrapProgram $out/bin/tohru-media-art \
       --prefix PATH : ${lib.makeBinPath [ curl coreutils ]}
+    ${lib.optionalString withVoice ''
+      install -Dm755 bin/tohru-voice $out/share/tohru/libexec/tohru-voice
+      makeWrapper ${voicePython}/bin/python3 $out/bin/tohru-voice \
+        --add-flags $out/share/tohru/libexec/tohru-voice \
+        --prefix PATH : ${lib.makeBinPath [ pulseaudio espeak-ng ]} \
+        --set OPENBLAS_NUM_THREADS 1 \
+        --set HF_HUB_OFFLINE 1
+    ''}
     wrapProgram $out/bin/tohru-polkit-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_POLKIT_SCENE $out/share/tohru/shell/polkit/polkit.plm
     runHook postInstall
   '';
-  passthru = { inherit runtime; };
+  passthru = { inherit runtime voicePython withVoice; };
   meta = { license = lib.licenses.mit; platforms = lib.platforms.linux; mainProgram = "tohru-run"; };
 }

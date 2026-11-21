@@ -21,13 +21,52 @@ pub enum Key {
     LockStyle,
     PolkitAgent,
     NotificationsPosition,
+    AssistantVoice,
+    AssistantProvider,
+    AssistantVoiceModels,
+    AssistantTtsEngine,
+    AssistantTtsVoice,
+    AssistantTtsSpeed,
+    AssistantTtsPitch,
+    AssistantPersona,
+    AssistantPersonaFile,
+    AssistantMemory,
+    AssistantTtsModel,
+    AssistantTtsVoicepack,
+    AssistantTtsLoadOnConversation,
+    AssistantVoiceWake,
+    AssistantKwsModel,
+    AssistantModel(Cli),
+    AssistantEffort(Cli),
+}
+
+/// A provider CLI with its own model and effort settings.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum Cli {
+    Claude,
+    Codex,
+    Gemini,
+    Agy,
+    Opencode,
 }
 
 /// Where notification toasts stack: `top-right` under the bar, or `bottom-right`.
 pub const NOTIFICATION_POSITIONS: [&str; 2] = ["top-right", "bottom-right"];
 
+/// The provider CLIs the assistant knows, in palette order; empty means the first one signed in.
+pub const ASSISTANT_PROVIDERS: [&str; 6] = ["", "claude", "codex", "gemini", "agy", "opencode"];
+
+/// Effort levels any provider CLI accepts; empty means Tohru's default for that provider.
+pub const ASSISTANT_EFFORTS: [&str; 7] = ["", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+/// Speech engines the voice service can run.
+pub const TTS_ENGINES: [&str; 2] = ["kokoro", "espeak-ng"];
+
+/// How the voice service spots the wake word: a keyword spotter, or the full recogniser.
+pub const VOICE_WAKE: [&str; 2] = ["kws", "asr"];
+
 impl Key {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 35] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::InfoButton,
@@ -38,6 +77,31 @@ impl Key {
         Self::LockStyle,
         Self::PolkitAgent,
         Self::NotificationsPosition,
+        Self::AssistantVoice,
+        Self::AssistantProvider,
+        Self::AssistantVoiceModels,
+        Self::AssistantTtsEngine,
+        Self::AssistantTtsVoice,
+        Self::AssistantTtsSpeed,
+        Self::AssistantTtsPitch,
+        Self::AssistantPersona,
+        Self::AssistantPersonaFile,
+        Self::AssistantMemory,
+        Self::AssistantTtsModel,
+        Self::AssistantTtsVoicepack,
+        Self::AssistantTtsLoadOnConversation,
+        Self::AssistantVoiceWake,
+        Self::AssistantKwsModel,
+        Self::AssistantModel(Cli::Claude),
+        Self::AssistantEffort(Cli::Claude),
+        Self::AssistantModel(Cli::Codex),
+        Self::AssistantEffort(Cli::Codex),
+        Self::AssistantModel(Cli::Gemini),
+        Self::AssistantEffort(Cli::Gemini),
+        Self::AssistantModel(Cli::Agy),
+        Self::AssistantEffort(Cli::Agy),
+        Self::AssistantModel(Cli::Opencode),
+        Self::AssistantEffort(Cli::Opencode),
     ];
 
     #[must_use]
@@ -53,6 +117,31 @@ impl Key {
             Self::LockStyle => "lock.style",
             Self::PolkitAgent => "polkit.agent",
             Self::NotificationsPosition => "notifications.position",
+            Self::AssistantVoice => "assistant.voice",
+            Self::AssistantProvider => "assistant.provider",
+            Self::AssistantVoiceModels => "assistant.voice_models",
+            Self::AssistantTtsEngine => "assistant.tts_engine",
+            Self::AssistantTtsVoice => "assistant.tts_voice",
+            Self::AssistantTtsSpeed => "assistant.tts_speed",
+            Self::AssistantTtsPitch => "assistant.tts_pitch",
+            Self::AssistantPersona => "assistant.persona",
+            Self::AssistantPersonaFile => "assistant.persona_file",
+            Self::AssistantMemory => "assistant.memory",
+            Self::AssistantTtsModel => "assistant.tts_model",
+            Self::AssistantTtsVoicepack => "assistant.tts_voicepack",
+            Self::AssistantTtsLoadOnConversation => "assistant.tts_load_on_conversation",
+            Self::AssistantVoiceWake => "assistant.voice_wake",
+            Self::AssistantKwsModel => "assistant.kws_model",
+            Self::AssistantModel(Cli::Claude) => "assistant.models.claude.model",
+            Self::AssistantEffort(Cli::Claude) => "assistant.models.claude.effort",
+            Self::AssistantModel(Cli::Codex) => "assistant.models.codex.model",
+            Self::AssistantEffort(Cli::Codex) => "assistant.models.codex.effort",
+            Self::AssistantModel(Cli::Gemini) => "assistant.models.gemini.model",
+            Self::AssistantEffort(Cli::Gemini) => "assistant.models.gemini.effort",
+            Self::AssistantModel(Cli::Agy) => "assistant.models.agy.model",
+            Self::AssistantEffort(Cli::Agy) => "assistant.models.agy.effort",
+            Self::AssistantModel(Cli::Opencode) => "assistant.models.opencode.model",
+            Self::AssistantEffort(Cli::Opencode) => "assistant.models.opencode.effort",
         }
     }
 
@@ -83,18 +172,36 @@ impl Key {
         }
     }
 
-    const fn location(self) -> (&'static str, &'static str) {
+    /// The tables leading to the setting and its field.
+    const fn location(self) -> (&'static [&'static str], &'static str) {
         match self {
-            Self::PreferredOutput => ("bar", "preferred_output"),
-            Self::Mooncoil => ("bar", "mooncoil"),
-            Self::InfoButton => ("bar", "info_button"),
-            Self::AboutButton => ("bar", "about_button"),
-            Self::Corners => ("appearance", "corners"),
-            Self::CornerSize => ("appearance", "corner_size"),
-            Self::Palette => ("appearance", "palette"),
-            Self::LockStyle => ("lock", "style"),
-            Self::PolkitAgent => ("polkit", "agent"),
-            Self::NotificationsPosition => ("notifications", "position"),
+            Self::PreferredOutput => (&["bar"], "preferred_output"),
+            Self::Mooncoil => (&["bar"], "mooncoil"),
+            Self::InfoButton => (&["bar"], "info_button"),
+            Self::AboutButton => (&["bar"], "about_button"),
+            Self::Corners => (&["appearance"], "corners"),
+            Self::CornerSize => (&["appearance"], "corner_size"),
+            Self::Palette => (&["appearance"], "palette"),
+            Self::LockStyle => (&["lock"], "style"),
+            Self::PolkitAgent => (&["polkit"], "agent"),
+            Self::NotificationsPosition => (&["notifications"], "position"),
+            Self::AssistantVoice => (&["assistant"], "voice"),
+            Self::AssistantProvider => (&["assistant"], "provider"),
+            Self::AssistantVoiceModels => (&["assistant"], "voice_models"),
+            Self::AssistantTtsEngine => (&["assistant"], "tts_engine"),
+            Self::AssistantTtsVoice => (&["assistant"], "tts_voice"),
+            Self::AssistantTtsSpeed => (&["assistant"], "tts_speed"),
+            Self::AssistantTtsPitch => (&["assistant"], "tts_pitch"),
+            Self::AssistantPersona => (&["assistant"], "persona"),
+            Self::AssistantPersonaFile => (&["assistant"], "persona_file"),
+            Self::AssistantMemory => (&["assistant"], "memory"),
+            Self::AssistantTtsModel => (&["assistant"], "tts_model"),
+            Self::AssistantTtsVoicepack => (&["assistant"], "tts_voicepack"),
+            Self::AssistantTtsLoadOnConversation => (&["assistant"], "tts_load_on_conversation"),
+            Self::AssistantVoiceWake => (&["assistant"], "voice_wake"),
+            Self::AssistantKwsModel => (&["assistant"], "kws_model"),
+            Self::AssistantModel(cli) => (cli.tables(), "model"),
+            Self::AssistantEffort(cli) => (cli.tables(), "effort"),
         }
     }
 
@@ -102,15 +209,37 @@ impl Key {
     pub const fn integer_bounds(self) -> Option<(i64, i64)> {
         match self {
             Self::CornerSize => Some((1, 100)),
+            Self::AssistantTtsSpeed => Some((50, 200)),
+            Self::AssistantTtsPitch => Some((-12, 12)),
             _ => None,
         }
     }
 
     fn default_value(self) -> Value {
         match self {
-            Self::PreferredOutput => Value::Text(String::new()),
-            Self::Mooncoil | Self::InfoButton | Self::AboutButton | Self::PolkitAgent => Value::Bool(false),
-            Self::Corners => Value::Bool(true),
+            Self::Mooncoil
+            | Self::InfoButton
+            | Self::AboutButton
+            | Self::PolkitAgent
+            | Self::AssistantTtsLoadOnConversation => Value::Bool(false),
+            Self::Corners
+            | Self::AssistantVoice
+            | Self::AssistantPersona
+            | Self::AssistantMemory => Value::Bool(true),
+            Self::PreferredOutput
+            | Self::AssistantProvider
+            | Self::AssistantVoiceModels
+            | Self::AssistantPersonaFile
+            | Self::AssistantTtsModel
+            | Self::AssistantKwsModel
+            | Self::AssistantModel(_)
+            | Self::AssistantEffort(_) => Value::Text(String::new()),
+            Self::AssistantTtsEngine => Value::Text(TTS_ENGINES[0].to_owned()),
+            Self::AssistantTtsVoice => Value::Text("en-us+f3".to_owned()),
+            Self::AssistantTtsVoicepack => Value::Text("tide".to_owned()),
+            Self::AssistantVoiceWake => Value::Text(VOICE_WAKE[1].to_owned()),
+            Self::AssistantTtsSpeed => Value::Integer(100),
+            Self::AssistantTtsPitch => Value::Integer(3),
             Self::CornerSize => Value::Integer(32),
             Self::Palette => Value::Palette(Palette::Mocha),
             Self::LockStyle => Value::LockStyle(LockStyle::DEFAULT),
@@ -125,9 +254,81 @@ impl Key {
             {
                 Ok(())
             }
-            (Self::NotificationsPosition, Value::Text(text)) if NOTIFICATION_POSITIONS.contains(&text.as_str()) => Ok(()),
+            (Self::NotificationsPosition, Value::Text(text))
+                if NOTIFICATION_POSITIONS.contains(&text.as_str()) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantProvider, Value::Text(text))
+                if ASSISTANT_PROVIDERS.contains(&text.as_str()) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantTtsEngine, Value::Text(text))
+                if TTS_ENGINES.contains(&text.as_str()) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantEffort(_), Value::Text(text))
+                if ASSISTANT_EFFORTS.contains(&text.as_str()) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantModel(_), Value::Text(text))
+                if text.len() <= 128
+                    && text
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || "._:/@#+-".contains(c)) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantVoiceWake, Value::Text(text))
+                if VOICE_WAKE.contains(&text.as_str()) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantTtsVoicepack, Value::Text(text))
+                if (1..=64).contains(&text.len())
+                    && text
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c))
+                    && !text.starts_with('.')
+                    || text.starts_with('/')
+                        && text.len() <= 4096
+                        && !text.chars().any(char::is_control) =>
+            {
+                Ok(())
+            }
             (
-                Self::Mooncoil | Self::InfoButton | Self::AboutButton | Self::Corners | Self::PolkitAgent,
+                Self::AssistantVoiceModels
+                | Self::AssistantPersonaFile
+                | Self::AssistantTtsModel
+                | Self::AssistantKwsModel,
+                Value::Text(text),
+            ) if text.len() <= 4096
+                && !text.chars().any(char::is_control)
+                && (text.is_empty() || text.starts_with('/')) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantTtsVoice, Value::Text(text))
+                if (1..=64).contains(&text.len())
+                    && text
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || "+-_.".contains(c)) =>
+            {
+                Ok(())
+            }
+            (
+                Self::Mooncoil
+                | Self::InfoButton
+                | Self::AboutButton
+                | Self::Corners
+                | Self::PolkitAgent
+                | Self::AssistantVoice
+                | Self::AssistantPersona
+                | Self::AssistantMemory
+                | Self::AssistantTtsLoadOnConversation,
                 Value::Bool(_),
             )
             | (Self::Palette, Value::Palette(_))
@@ -140,6 +341,18 @@ impl Key {
                 Ok(())
             }
             _ => Err(Error::InvalidValue(self.name())),
+        }
+    }
+}
+
+impl Cli {
+    const fn tables(self) -> &'static [&'static str] {
+        match self {
+            Self::Claude => &["assistant", "models", "claude"],
+            Self::Codex => &["assistant", "models", "codex"],
+            Self::Gemini => &["assistant", "models", "gemini"],
+            Self::Agy => &["assistant", "models", "agy"],
+            Self::Opencode => &["assistant", "models", "opencode"],
         }
     }
 }
@@ -357,18 +570,30 @@ impl Layer {
         let mut values = BTreeMap::new();
         let mut warnings = Vec::new();
         for key in Key::ALL {
-            let (section, field) = key.location();
-            let Some(table) = document.get(section) else {
+            let (tables, field) = key.location();
+            let mut table: &dyn toml_edit::TableLike = document.as_table();
+            let mut missing = false;
+            for name in tables {
+                let Some(item) = table.get(name) else {
+                    missing = true;
+                    break;
+                };
+                table = item
+                    .as_table_like()
+                    .ok_or(Error::InvalidValue(key.name()))?;
+            }
+            if missing {
                 continue;
-            };
-            let Some(table) = table.as_table_like() else {
-                return Err(Error::InvalidValue(key.name()));
-            };
+            }
             let Some(item) = table.get(field) else {
                 continue;
             };
             // A lock style this version does not know must never stop the locker: it locks in the default.
-            if key == Key::LockStyle && item.as_str().is_none_or(|text| LockStyle::parse(text).is_none()) {
+            if key == Key::LockStyle
+                && item
+                    .as_str()
+                    .is_none_or(|text| LockStyle::parse(text).is_none())
+            {
                 warnings.push(format!(
                     "{}: unknown lock.style {}; using \"{}\"",
                     path.display(),
@@ -536,15 +761,19 @@ impl Owner {
         let mut next = Layer::read(&self.user_path, true)?;
         for (key, candidate) in candidates {
             let layer = &mut next;
-            let (section, field) = key.location();
-            if !layer.document.contains_key(section) {
-                layer.document[section] = Item::Table(Table::new());
+            let (tables, field) = key.location();
+            let mut table: &mut dyn toml_edit::TableLike = layer.document.as_table_mut();
+            for (depth, name) in tables.iter().enumerate() {
+                table = table
+                    .entry(name)
+                    .or_insert_with(|| {
+                        let mut new = Table::new();
+                        new.set_implicit(depth + 1 < tables.len());
+                        Item::Table(new)
+                    })
+                    .as_table_like_mut()
+                    .ok_or(Error::InvalidValue(key.name()))?;
             }
-            let table = layer
-                .document
-                .get_mut(section)
-                .and_then(Item::as_table_like_mut)
-                .ok_or(Error::InvalidValue(key.name()))?;
             let item = match &candidate {
                 Value::Bool(boolean) => value(*boolean),
                 Value::Text(text) => value(text),

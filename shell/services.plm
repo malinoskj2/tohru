@@ -13,11 +13,12 @@ part RootServiceControls {
     let sound_x = root_net_x - 26
     let bell_x = sound_x - 26
     let root_left = 112 + if(bar_mooncoil, 29, 0) + if(ws_available, ws_width, 0) + 14
-    let root_about_slot = if(bar_info_button, 4, 3)
-    let root_extra = clamp(floor((bell_x - 2 - root_left) / 26), 0, 2 + if(bar_info_button, 1, 0) + if(bar_about_button, 1, 0))
+    let root_about_slot = if(bar_info_button, 5, 4)
+    let root_extra = clamp(floor((bell_x - 2 - root_left) / 26), 0, 3 + if(bar_info_button, 1, 0) + if(bar_about_button, 1, 0))
     let root_bt_x = bell_x - 26
     let root_wall_x = bell_x - 52
-    let root_info_x = bell_x - 78
+    let root_ai_x = bell_x - 78
+    let root_info_x = bell_x - 104
     let root_about_x = bell_x - root_about_slot * 26
     let root_tray_x = bell_x - root_extra * 26
     let tray_inline_cap = clamp(floor((root_tray_x - 10 - root_left) / 24), 0, 6)
@@ -39,6 +40,7 @@ part RootServiceControls {
     follow media_button_x = if(media_shown, media_x + media_w / 2, -1)
     follow bt_button_x = root_bt_x + 12
     follow wall_button_x = root_wall_x + 12
+    follow ai_button_x = if(root_extra >= 3, root_ai_x + 12, -1)
 
     zone box root_media { from: media_x, 4; size: media_w, 22; corner: 7; active: media_shown; cursor: pointer; label: "Media" }
     box { from: media_x, 4; size: media_w, 22; corner: 7; color: bar_ink; opacity: max(10%, max(media_open * 16%, max(root_media.hover * 16%, root_media.pressed * 20%))); show: media_shown }
@@ -61,10 +63,35 @@ part RootServiceControls {
     image root_bluetooth { at: round(root_bt_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: if(bt.powered, 92%, 38%); show: root_extra >= 1 }
     on press root_bluetooth_hit { emit bluetooth_toggle }
 
-    zone box root_information { from: root_info_x, 4; size: 24, 22; corner: 7; active: bar_info_button and root_extra >= 3; cursor: pointer; label: "System information" }
-    box { from: root_info_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(root_information.hover * 10%, root_information.pressed * 16%); show: bar_info_button and root_extra >= 3 }
-    image root_info { at: round(root_info_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 92%; show: bar_info_button and root_extra >= 3 }
+    zone box root_information { from: root_info_x, 4; size: 24, 22; corner: 7; active: bar_info_button and root_extra >= 4; cursor: pointer; label: "System information" }
+    box { from: root_info_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(root_information.hover * 10%, root_information.pressed * 16%); show: bar_info_button and root_extra >= 4 }
+    image root_info { at: round(root_info_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 92%; show: bar_info_button and root_extra >= 4 }
     on press root_information { emit info_toggle }
+
+    zone box root_assistant { from: root_ai_x, 4; size: 24, 22; corner: 7; active: root_extra >= 3; cursor: pointer; label: "Assistant" }
+    box { from: root_ai_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(max(ai_open, ai_menu_open) * 16%, max(root_assistant.hover * 10%, root_assistant.pressed * 16%)); show: root_extra >= 3 }
+    // While an answer streams with the popup closed, a glow in the provider's colour breathes behind the mark.
+    group {
+        show: root_extra >= 3 and ai_glow > 0.01
+        opacity: ai_glow * (0.45 + 0.55 * (0.5 + 0.5 * sin(time * 225)))
+        glow: 12, 90%, ai_stream_colour
+        ellipse { at: root_ai_x + 12, 15; radius: 9; color: ai_stream_colour; opacity: 70% }
+    }
+    image ai_dragon { at: round(root_ai_x + 4), 7; size: 16, 16; tint: bar_ink; opacity: 92%; show: root_extra >= 3 }
+    // An answer that is ready and unread: a 4 px mark in its provider's colour.
+    group {
+        show: root_extra >= 3 and ai_ready and not ai_streaming
+        glow: 4, 90%, ai_ready_colour
+        box { from: root_ai_x + 18, 6; size: 4, 4; color: ai_ready_colour }
+    }
+    // The microphone is open: a small dot at the mark's foot.
+    group {
+        show: root_extra >= 3 and ai_listening
+        glow: 3, 70%, ink_red
+        ellipse { at: root_ai_x + 4, 22; radius: 2; color: ink_red }
+    }
+    on press root_assistant { emit assistant_toggle }
+    on press right root_assistant { emit assistant_menu }
 
     zone box root_about { from: root_about_x, 4; size: 24, 22; corner: 7; active: bar_about_button and root_extra >= root_about_slot; cursor: pointer; label: "About Tohru" }
     box { from: root_about_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(root_about.hover * 10%, root_about.pressed * 16%); show: bar_about_button and root_extra >= root_about_slot }
