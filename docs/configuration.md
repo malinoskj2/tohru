@@ -30,11 +30,13 @@ Only the bar and Settings processes read settings; the bar forwards `notificatio
 | `assistant.persona_file` | absolute path or `""` | `""` | A Markdown file used in place of the shipped persona |
 | `assistant.memory` | boolean | `true` | Learn facts and preferences after a chat ends and give answers a short memory block. False runs no extraction and sends no memory; history is still kept |
 | `assistant.voice` | boolean | `true` | Run the voice service: wake word, conversation mode and the speaking dragon. False stops it, frees the microphone and every model, and hides the mic dot; the chat popup keeps working. Applies at once |
-| `assistant.voice_models` | absolute path or `""` | `""` | Folder holding `silero-vad/`, `voice-asr/`, `voice-turn/`, `voice-kokoro/` and, for `kws`, `voice-kws/`. Empty means `$MODEL_ROOT/by-name` |
+| `assistant.vad_model` | absolute path or `""` | `""` | The Silero VAD `.onnx` file. Required for voice. See [Voice models](#voice-models) |
+| `assistant.asr_model` | absolute path or `""` | `""` | The sherpa-onnx streaming Zipformer folder: `tokens.txt`, `encoder*.onnx`, `decoder*.onnx`, `joiner*.onnx` (int8 files are preferred when both are present). Required for voice |
+| `assistant.turn_model` | absolute path or `""` | `""` | The Smart Turn v3.2 `.onnx` file. Optional: empty means a turn ends only after 800 ms of silence, with no early end at a 200 ms pause |
 | `assistant.voice_wake` | string | `"asr"` | How "Tohru" is heard: `asr` runs the recogniser on all speech; `kws` runs a small keyword spotter first and the recogniser only after it fires. Both confirm the wake word from the transcript. See [ai-assistant.md](ai-assistant.md#wake-word) for the measurements behind the default |
-| `assistant.kws_model` | absolute path or `""` | `""` | The sherpa-onnx keyword-spotter folder for `kws`. Empty means `voice-kws` in the voice models folder |
+| `assistant.kws_model` | absolute path or `""` | `""` | The sherpa-onnx keyword-spotter folder (same four kinds of file as `asr_model`). Required only with `voice_wake = "kws"` |
 | `assistant.tts_engine` | string | `"kokoro"` | The dragon's speech engine: `kokoro` (Kokoro-82M v1.0 on the CPU) or `espeak-ng`. Kokoro falls back to espeak-ng, with an error, when its files are missing |
-| `assistant.tts_model` | absolute path or `""` | `""` | Kokoro's folder, holding `model.onnx`, `tokenizer.json` and `voices/`. Empty means `voice-kokoro` in the voice models folder. Nothing is downloaded |
+| `assistant.tts_model` | absolute path or `""` | `""` | Kokoro's folder, holding `model.onnx`, `tokenizer.json` and, for stock voicepacks, `voices/`. Empty means the dragon speaks with espeak-ng and the popup says why |
 | `assistant.tts_voicepack` | string or absolute path | `"tide"` | Kokoro's voice: `tide` (Tohru's, shipped in `shell/assistant/voice/`), a stock pack name such as `af_heart` from the model's `voices/`, or a path to a 510×256 float32 `.bin` |
 | `assistant.tts_load_on_conversation` | boolean | `false` | False keeps Kokoro loaded while voice is on (about 670 MB, answers start sooner). True loads it when a conversation starts and frees it when the conversation ends |
 | `assistant.tts_voice` | string, 1 to 64 of `A-Z a-z 0-9 + - _ .` | `"en-us+f3"` | espeak-ng's voice name |
@@ -70,6 +72,38 @@ programs.tohru.settings = {
 programs.tohru.lock.style = "horizon-meniscus";   # the same as settings.lock.style
 programs.tohru.notifications.position = "bottom-right";   # the same as settings.notifications.position
 ```
+
+## Voice models
+
+Tohru ships no model weights, downloads nothing and never looks for them on its own: each path below is empty until you set it. With `assistant.voice` on, the voice service checks the paths before loading anything. If `vad_model` or `asr_model` (or `kws_model` with `voice_wake = "kws"`) is unset or wrong, it loads nothing, opens no microphone, and the assistant popup shows one error naming each setting and the file it expects. The chat keeps working. A missing or wrong `tts_model` falls back to espeak-ng and shows the error; an unset `turn_model` ends turns on silence alone, and a wrong one does the same with an error.
+
+These are the files Tohru was tested with:
+
+| Setting | Model | Source | Files (size, SHA-256) | Licence |
+|---|---|---|---|---|
+| `vad_model` (file) | Silero VAD v6.2.3 | [snakers4/silero-vad](https://github.com/snakers4/silero-vad) at `5cd7945676eb32225748052e2e6a0580e4686a08`, `src/silero_vad/data/silero_vad.onnx` | `silero_vad.onnx`, any name: 2,327,524 bytes, `1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3` | MIT |
+| `asr_model` (folder) | sherpa-onnx streaming Zipformer, English, 2023-06-21 | Hugging Face [`csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-21`](https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-21) at `9a65b6ea94c311ca770c2bf895b30f456a22d703` | `encoder-epoch-99-avg-1.int8.onnx` 187,823,992 bytes, `32c98281c7bd8b63e3e142d007251b37f120572e8fdea9a4f5a79ce22b10ec4f`; `decoder-epoch-99-avg-1.onnx` 2,092,566 bytes, `9da02b77cb08826756ec6a88635f35a40374e4164e7c6359121a9145958a6ceb`; `joiner-epoch-99-avg-1.int8.onnx` 259,335 bytes, `831477d390e59a61f1b6a6f763b9903e6c6366ff6034f1ddba613be82637122f`; `tokens.txt` 5,048 bytes (git blob `b4d1bf82e68de1354f2a3f5fd51094d61d65c77c`) | Apache-2.0 |
+| `turn_model` (file, optional) | Smart Turn v3.2, CPU | Hugging Face [`pipecat-ai/smart-turn-v3`](https://huggingface.co/pipecat-ai/smart-turn-v3) at `f766f81d3cfdf7737ac64aad813d91bbfd56bf93` | `smart-turn-v3.2-cpu.onnx` 8,679,182 bytes, `2bb026316b14a660486a75b1733cd3fbab8c2fd0314dc9af7be49f8cca967e4f` | BSD-2-Clause |
+| `tts_model` (folder) | Kokoro-82M v1.0, fp32 ONNX | Hugging Face [`onnx-community/Kokoro-82M-v1.0-ONNX`](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX) at `1939ad2a8e416c0acfeecc08a694d14ef25f2231` | `onnx/model.onnx` saved as `model.onnx`: 325,532,232 bytes, `8fbea51ea711f2af382e88c833d9e288c6dc82ce5e98421ea61c058ce21a34cb`; `tokenizer.json` 3,497 bytes; `voices/*.bin` (55 packs, 522,240 bytes each, 28.7 MB in all) only for stock voices such as `af_heart`. Tohru's own `tide` ships with Tohru | Apache-2.0 |
+| `kws_model` (folder, only for `voice_wake = "kws"`) | sherpa-onnx KWS Zipformer, GigaSpeech, 3.3M | [k2-fsa/sherpa-onnx release `kws-models`](https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2): 17,626,723 bytes, `f170013b4716e41b62b9bfd809687c207cef798ef9bc6534d524e17af9b6561a` | The unpacked folder; Tohru uses `encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx` (4,807,159 bytes), `decoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx` (277,985), `joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx` (163,380) and `tokens.txt` (5,006) | Apache-2.0 |
+
+Upstream folders that also hold fp32 files work as they are: the service takes the int8 encoder, decoder and joiner when there is one. The required files and Smart Turn come to about 527 MB; the stock voicepacks add 28.7 MB and the spotter's int8 files 5.3 MB.
+
+Example, with the files under `~/models` (paths must be absolute):
+
+```toml
+[assistant]
+voice = true
+vad_model = "/home/me/models/silero-vad/silero_vad.onnx"
+asr_model = "/home/me/models/sherpa-onnx-streaming-zipformer-en-2023-06-21"
+turn_model = "/home/me/models/smart-turn-v3/smart-turn-v3.2-cpu.onnx"
+tts_model = "/home/me/models/kokoro-82m"
+# Only with voice_wake = "kws":
+# voice_wake = "kws"
+# kws_model = "/home/me/models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
+```
+
+`/home/me/models/kokoro-82m` holds `model.onnx`, `tokenizer.json` and, optionally, `voices/`. The same paths with `tohru config set assistant.vad_model /home/me/models/silero-vad/silero_vad.onnx` and so on, or in [Home Manager](nix.md#voice-models).
 
 ## Precedence
 

@@ -49,21 +49,34 @@ Always on, using the default PipeWire source, and following changes of the defau
 
 - **Configurable:** users can disable voice in their config, through a setting such as `assistant.voice = false`, in `tohru config set` and in the Home Manager module. When it is disabled, none of the voice infrastructure runs: no voice service or unit, no microphone stream, and no VAD, recognition, Smart Turn or TTS models loaded. It must cost nothing in CPU, RAM or VRAM, and the bar shows no mic dot. The chat popup and the bar entry keep working. Toggling the setting at runtime starts or stops the voice service completely (stopping releases the mic and frees every model), with no restart of the shell. The Home Manager option leaves the voice unit uninstalled when disabled.
 
-- **Gate:** Silero VAD (`$MODEL_ROOT/by-name/silero-vad`, CPU). Nothing else runs without speech.
-- **Recognition:** sherpa-onnx streaming Zipformer int8 (`voice-asr`, CPU), only on VAD speech.
+- **Models:** none ship and nothing is downloaded; each is an explicit path in the config. See [Voice models](#voice-models).
+- **Gate:** Silero VAD (`assistant.vad_model`, CPU). Nothing else runs without speech.
+- **Recognition:** sherpa-onnx streaming Zipformer int8 (`assistant.asr_model`, CPU), only on VAD speech.
 - **Wake word:** deterministic. The transcript must start with "tohru" (plus close spellings such as "toru"), otherwise it is discarded. Nothing before the wake word is stored or sent anywhere.
-- **End of turn:** Smart Turn v3.2 (`voice-turn`, CPU, `intra_op_num_threads=2`, `OPENBLAS_NUM_THREADS=1`) at a 200 ms pause, plus a silence fallback. No LLM end-of-turn check: too slow and too costly through the CLIs.
+- **End of turn:** Smart Turn v3.2 (`assistant.turn_model`, optional, CPU, `intra_op_num_threads=2`, `OPENBLAS_NUM_THREADS=1`) at a 200 ms pause, plus an 800 ms silence fallback, which is all that ends a turn when `turn_model` is unset. No LLM end-of-turn check: too slow and too costly through the CLIs.
 - **Conversation mode:** after the wake word, follow-ups need no wake word until about a minute without speech. Barge-in interrupts the dragon.
 - **Echo:** the dragon must not hear itself. As built there is no echo-cancelling source: barge-in speech must be 1.6× louder than the dragon's own recent playback, and the microphone is ignored for 0.4 s after she stops. Without it, an end-to-end test over the null sink had her answer her own last words.
 - **Pausing:** pause while another app is recording (calls) and while the session is locked.
 - **Reference:** n33tc0de-voices `master`: commits `24f54a6`, `521f324`, `bb5cfac` and `docs/voice-turn-detection-2026-11-10.md` (thresholds, timings and benchmarks). Its Qwen3-TTS GPU voice is not reused.
 - **Answers:** go to the provider selected in the popup. Voice conversations are saved in the same history, marked as voice, and open in the popup.
 
+### Voice models
+
+| Part | Setting | Required | Model |
+|---|---|---|---|
+| Gate | `assistant.vad_model` | yes | Silero VAD v6.2.3 `.onnx` (2.3 MB, MIT) |
+| Recognition | `assistant.asr_model` | yes | `csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-21`, int8 encoder and joiner (190 MB, Apache-2.0) |
+| End of turn | `assistant.turn_model` | no; silence alone without it | `pipecat-ai/smart-turn-v3`, `smart-turn-v3.2-cpu.onnx` (8.7 MB, BSD-2-Clause) |
+| Speech | `assistant.tts_model` | no; espeak-ng without it | `onnx-community/Kokoro-82M-v1.0-ONNX`, fp32 `onnx/model.onnx` as `model.onnx` plus `tokenizer.json` (326 MB, Apache-2.0) |
+| Wake spotter | `assistant.kws_model` | only for `voice_wake = "kws"` | `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` (5.3 MB of int8 files, Apache-2.0) |
+
+Revisions, file names, sizes, hashes and an example config are in [configuration.md](configuration.md#voice-models). A required path that is unset or wrong keeps the service from loading anything; the popup names each missing setting and the files it expects.
+
 ### Wake word
 
 `assistant.voice_wake` chooses how "Tohru" is heard. `asr` (the default) runs the recogniser on every VAD speech segment and drops it as soon as the partial transcript cannot start with the wake word. `kws` runs a sherpa-onnx keyword spotter on the segment first (`shell/assistant/voice/wake-keywords.txt`: TOHRU, TORU, TARU, TERU, TORO, TO RU, TOO RU; score 2.0, threshold 0.05); only when it fires does the recogniser decode the buffered segment, pre-roll included, and the transcript still has to start with the wake word. Follow-ups in a conversation skip the spotter.
 
-Measured on 2026-11-21 with `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` (int8; [k2-fsa/sherpa-onnx release `kws-models`](https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2), SHA-256 `f170013b…6561a`; files `encoder/decoder/joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx`, `tokens.txt`) against `voice-asr` (`csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-21`). Test set: 70 wake phrases ("Tohru, …" and "Tohru." alone) spoken by Kokoro in 13 stock voices plus tide; 343 s of long speech without the wake word (four passages in four voices plus two LibriSpeech-style clips shipped with the spotter); 48 confusable sentences (Toru, to do, true, taro, Toronto, two rooms, Tora, torus, …).
+Measured on 2026-11-21 with `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` (int8; [k2-fsa/sherpa-onnx release `kws-models`](https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2), SHA-256 `f170013b4716e41b62b9bfd809687c207cef798ef9bc6534d524e17af9b6561a`; files `encoder/decoder/joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx`, `tokens.txt`) against the recogniser (`csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-21`). Test set: 70 wake phrases ("Tohru, …" and "Tohru." alone) spoken by Kokoro in 13 stock voices plus tide; 343 s of long speech without the wake word (four passages in four voices plus two LibriSpeech-style clips shipped with the spotter); 48 confusable sentences (Toru, to do, true, taro, Toronto, two rooms, Tora, torus, …).
 
 | | `asr` | `kws` |
 |---|---|---|
