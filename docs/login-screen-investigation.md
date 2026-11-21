@@ -179,6 +179,7 @@ let
       default_user = cfg.defaultUser;
       default_session = cfg.defaultSession;
       allow_power_actions = cfg.allowPowerActions;
+      avatars = lib.mapAttrs (_: toString) cfg.avatars;
     };
   });
 
@@ -289,6 +290,11 @@ in {
       default = null;
       description = "Static image (PNG/JPEG/WebP/SVG) copied to the Nix store; null uses the dusk gradient.";
     };
+    avatars = lib.mkOption {
+      type = lib.types.attrsOf lib.types.path;
+      default = { };
+      description = "Optional per-user avatar images copied to the Nix store (overrides AccountsService / ~/.face).";
+    };
     preferredOutput = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -333,10 +339,15 @@ in {
     # Belt-and-suspenders DRI/Vulkan access alongside pam_systemd uaccess.
     users.users.greeter.extraGroups = [ "video" "render" ];
 
-    # Persist last-selected (user, session) cleanly outside /var/empty.
+    # Enable AccountsService so users can also set avatars imperatively (`SetIconFile`).
+    services.accounts-daemon.enable = lib.mkDefault true;
+
+    # Persist last-selected (user, session) cleanly outside /var/empty, and mirror declarative avatars.
     systemd.tmpfiles.rules = [
       "d /var/lib/tohru-greeter 0750 greeter greeter -"
-    ];
+    ] ++ lib.mapAttrsToList (user: path:
+      "L+ /var/lib/AccountsService/icons/${user} - - - - ${path}"
+    ) cfg.avatars;
 
     # Allow the local active greeter seat to suspend, reboot, or power off.
     security.polkit.enable = true;
@@ -443,9 +454,54 @@ in {
 
 **Total rough effort:** **~5.5–8 focused days** end-to-end (or **~3.5–4.5 days** for an MVP supporting `flooded-monolith` + `plain` on bare Hyprland before adapting all 10 styles and adding Sway/multi-style polish).
 
-### Open Decisions Before Starting Implementation
+### Open Decisions — Resolved
 
-1. **MVP scope:** Ship `flooded-monolith` + `plain` first (matching `home`'s current `lock.style`) and follow up with the other 9 styles, or adapt all 10 styles in the first pass?
-2. **Session handoff on `home`:** Adopt `programs.hyprland.withUWSM = true` (cleanest systemd user env import for Tohru's user services) or keep direct `start-hyprland` wrapped in a login shell?
-3. **Greeter wallpaper:** Use a static image file, extract a still frame from one of `~/nix/users/jesse/hyprland-desktop/wallpapers/` at Nix build time, or default to Tohru's built-in dusk gradient?
-4. **`cage` support:** Worth the extra ~30-line optional-`LayerShell` patch for single-monitor external users, or standardize strictly on bare `Hyprland` / `sway`?
+1. **Scope:** Adapt **all 10 lock styles + `plain`** (full parity with `tohru-lock`, not an MVP subset).
+2. **Session handoff:** Support both cleanly — recommend enabling **`programs.hyprland.withUWSM = true`** on NixOS hosts (upstream Hyprland's cleanest systemd lifecycle: imports `WAYLAND_DISPLAY`/`PATH`/`XDG_DATA_DIRS` and tears down `graphical-session.target` cleanly on logout so re-login from `tohru-greeter` leaves no stale services), while having `tohru-greeter` automatically wrap non-UWSM `.desktop` `Exec` commands in a login shell so Home Manager session variables (`TOHRU_MANAGED_CONFIG`, `home.sessionPath`) still work on non-UWSM hosts.
+3. **Backdrop:** Default to Tohru's built-in **dusk gradient** (`wallpaper = null`), keeping static image `wallpaper` as an optional NixOS module setting for later.
+4. **Optional user avatars:** Add first-class optional avatar support (detailed in Section 6 below).
+
+---
+
+## 6. Optional User Avatars
+
+### 6.1 How Other Linux GUI Shells & Display Managers Handle Avatars
+
+Across Linux desktop environments and Wayland shells, two mechanisms dominate:
+
+| Mechanism | Used By | How It Is Set | Works Across `0700` `$HOME` for `greeter`? |
+|---|---|---|---|
+| **AccountsService** (`org.freedesktop.Accounts`, `/var/lib/AccountsService/icons/<user>`) | GNOME/GDM, KDE Plasma/SDDM, ReGreet, Noctalia (`noctalia-greeter`), DankMaterialShell (`dms-greeter`) | Desktop Settings UI or `busctl` calls `org.freedesktop.Accounts.User.SetIconFile(path)`. `accounts-daemon` (root, gated by Polkit `org.freedesktop.accounts.change-own-user-data`) copies the image to world-readable `/var/lib/AccountsService/icons/<user>` and records `Icon=` in `/var/lib/AccountsService/users/<user>`. | **Yes** — specifically designed to bridge the unprivileged greeter user and private home directories. |
+| **`~/.face` / `~/.face.icon`** | Quickshell rices (Caelestia, Noctalia in-session), Hyprlock, legacy LightDM/SDDM | User copies a square PNG/JPG to `~/.face` (or manages it via Home Manager `home.file.".face"`). | **No** when `/home/<user>` is `0700` (like `home`'s `/home/jesse`); works inside the user's own session (`tohru-lock`) or on `0711`/`0755` homes. |
+| **Declarative system path** (`/nix/store` or `FacesDir`) | NixOS SDDM/ReGreet configs (`systemd.tmpfiles.rules` symlinking `/var/lib/AccountsService/icons/<user>`) | Set in NixOS configuration (`avatars.<user> = ./avatar.png;`). | **Yes** — `/nix/store` files are world-readable (`0444`). |
+
+**Key takeaway:** Modern Wayland shells with greeters (Noctalia, DankMaterialShell) pair **AccountsService** for system-wide/pre-login persistence with **`~/.face`** as an in-session convenience, while NixOS users also expect a **declarative Nix option**.
+
+### 6.2 Recommended Avatar Design for Tohru
+
+#### Resolution Order (First Readable Valid Image Wins; Absent = No Avatar Drawn)
+Resolve per username in `runtime/src/greeter.rs` (and share with `tohru-lock`):
+
+1. **Declarative NixOS config** (`services.tohru-greeter.avatars.<user>` → path in `/nix/store` written into `tohru-greeter.toml`).
+2. **AccountsService** — parse `Icon=` from `/var/lib/AccountsService/users/<user>`, else check `/var/lib/AccountsService/icons/<user>`. *(Plain file reads — no D-Bus required in the greeter, works even if `accounts-daemon` is stopped!)*
+3. **System faces directory** — `/etc/tohru/avatars/<user>.{png,jpg,jpeg,webp,svg}`.
+4. **Home directory fallback** — `<home>/.face` and `<home>/.face.icon` (succeeds in `tohru-lock`, and in `tohru-greeter` if home is traversable; silently skipped on `EACCES`).
+
+#### How Users Set an Avatar
+Support both NixOS-declarative and imperative workflows cleanly:
+
+- **Declarative (NixOS):**
+  ```nix
+  services.tohru-greeter.avatars.jesse = ./avatar.png;
+  ```
+  The NixOS module records the store path in `tohru-greeter.toml` and (when `services.accounts-daemon.enable` is on) links `/var/lib/AccountsService/icons/jesse` via `systemd.tmpfiles.rules` so other Linux apps and `tohru-lock` automatically see the same avatar.
+- **Imperative (CLI & Settings UI):**
+  Enable `services.accounts-daemon.enable = lib.mkDefault true;` in `nix/nixos.nix` (matching NixOS's `programs.regreet` module). Provide `tohru avatar set <file>` / `tohru avatar clear` (and an optional Appearance/Account row in `tohru-settings`), calling `org.freedesktop.Accounts.User.SetIconFile` over system D-Bus (plus optionally writing `~/.face` for compatibility with non-AccountsService tools). No custom privileged helper is required.
+
+#### Rendering in Pleamar (Zero Runtime Patches Needed)
+- **Completely optional:** When no avatar is found (`fact.has_avatar == false`), **no placeholder silhouette is drawn** — every style preserves its exact clean typography and layout.
+- **When set (`fact.has_avatar == true`):** Pleamar's `image user_avatar = from avatar_path, 0, 0` (`src/text.rs:load_live`) already loads arbitrary PNG/JPEG/WebP/SVG files, and `clip box { from: x, y; size: d, d; corner: d / 2 }` with `fit: cover` clips it into a crisp circle with a subtle `1 px` `ink` border:
+  - **Centered / typographic styles** (`still-glass`, `ribbon-key`, `horizon-meniscus`, `refractive-typographic-lens`, `bar-drop-curtain`, `plain`): compact `24–28 px` circular avatar inline beside the username (or `48 px` above the field in the user-switcher pill).
+  - **Card / drawer / corner styles** (`flooded-monolith`, `unfolding-glass-capsule`, `edge-glass-drawer`, `corner-anchor`, `drifting-frost-veil`): compact circular avatar paired directly with the card's `user` header.
+- **Bonus:** Sharing the same `AvatarBadge` component lets `tohru-lock` display the exact same optional user avatar consistently.
+
