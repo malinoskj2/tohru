@@ -1,4 +1,4 @@
-/runtime/target/
+target/
 /docs/reference/
 __pycache__/
 /.tmp/
