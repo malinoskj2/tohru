@@ -56,6 +56,7 @@ in stdenvNoCC.mkDerivation {
   version = "0.1.0";
   src = source;
   nativeBuildInputs = [ makeWrapper ];
+  buildInputs = [ python3 ];
   dontBuild = true;
   installPhase = ''
     runHook preInstall
@@ -63,7 +64,7 @@ in stdenvNoCC.mkDerivation {
     cp -r shell $out/share/tohru/
     cp LICENSE $out/share/tohru/LICENSE
     cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-session-run \
-      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-wallpaper bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev $out/bin/
+      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-wallpaper bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev bin/tohru-assistant $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar
     wrapProgram $out/bin/tohru-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \

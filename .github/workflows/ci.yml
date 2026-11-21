@@ -68,6 +68,7 @@ jobs:
             echo "python3 ${test[*]}"
             python3 -B "${test[@]}" || status=1
           done <<'EOF'
+          tests/assistant/service.py
           tests/cli.py
           tests/dev.py
           tests/isolation.py

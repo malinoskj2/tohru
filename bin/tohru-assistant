@@ -1,0 +1,630 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import uuid
+from pathlib import Path
+
+HOME = Path.home()
+
+
+def xdg(name, fallback):
+    value = os.environ.get(name)
+    return Path(value) if value and os.path.isabs(value) else HOME / fallback
+
+
+DATA = Path(os.environ.get("TOHRU_ASSISTANT_DATA") or xdg("XDG_DATA_HOME", ".local/share") / "tohru/assistant")
+CHATS = DATA / "chats"
+SCRATCH = Path(os.environ.get("TOHRU_ASSISTANT_SCRATCH") or xdg("XDG_STATE_HOME", ".local/state") / "tohru/assistant/scratch")
+CONVERSATION_ID = re.compile(r"^[0-9a-f]{32}$")
+PROBE_SECONDS = 6
+TITLE_CHARS = 48
+
+
+def read_json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def read_toml_value(path, key):
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    for line in text.splitlines():
+        if line.startswith("["):
+            break
+        match = re.match(rf'^\s*{re.escape(key)}\s*=\s*"([^"]*)"', line)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def quiet(command, timeout=PROBE_SECONDS):
+    try:
+        return subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              timeout=timeout, cwd=str(HOME), start_new_session=True)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def file_has_content(path):
+    try:
+        return Path(path).stat().st_size > 2
+    except OSError:
+        return False
+
+
+def claude_signed_in():
+    result = quiet(["claude", "auth", "status"])
+    if result is not None and result.stdout.strip().startswith("{"):
+        try:
+            return bool(json.loads(result.stdout).get("loggedIn"))
+        except ValueError:
+            pass
+    return file_has_content(HOME / ".claude/.credentials.json") or bool(os.environ.get("ANTHROPIC_API_KEY"))
+
+
+def codex_signed_in():
+    result = quiet(["codex", "login", "status"])
+    if result is not None:
+        return result.returncode == 0
+    return file_has_content(HOME / ".codex/auth.json")
+
+
+def gemini_signed_in():
+    return file_has_content(HOME / ".gemini/oauth_creds.json") or bool(os.environ.get("GEMINI_API_KEY"))
+
+
+def agy_signed_in():
+    return file_has_content(HOME / ".gemini/antigravity-cli/antigravity-oauth-token")
+
+
+def opencode_signed_in():
+    auth = read_json(xdg("XDG_DATA_HOME", ".local/share") / "opencode/auth.json")
+    return isinstance(auth, dict) and len(auth) > 0
+
+
+def claude_model():
+    settings = read_json(HOME / ".claude/settings.json") or {}
+    model = settings.get("model") if isinstance(settings, dict) else None
+    return pretty_model(model) if isinstance(model, str) else ""
+
+
+def pretty_model(model):
+    model = re.sub(r"\[.*\]$", "", model)
+    match = re.match(r"^claude-(opus|sonnet|haiku|fable)-(\d+)-(\d+)", model)
+    if match:
+        return f"{match.group(1).capitalize()} {match.group(2)}.{match.group(3)}"
+    return model
+
+
+def codex_model():
+    return read_toml_value(HOME / ".codex/config.toml", "model")
+
+
+def gemini_model():
+    settings = read_json(HOME / ".gemini/settings.json") or {}
+    model = settings.get("model") if isinstance(settings, dict) else None
+    if isinstance(model, dict):
+        model = model.get("name")
+    return model if isinstance(model, str) else ""
+
+
+def agy_model():
+    return ""
+
+
+def opencode_model():
+    config = read_json(xdg("XDG_CONFIG_HOME", ".config") / "opencode/opencode.json") or {}
+    model = config.get("model") if isinstance(config, dict) else None
+    return model.split("/", 1)[-1] if isinstance(model, str) else ""
+
+
+class Provider:
+    def __init__(self, slot, ident, name, signed_in, model, login):
+        self.slot = slot
+        self.id = ident
+        self.name = name
+        self.signed_in = signed_in
+        self.model = model
+        self.login = login
+
+    def installed(self):
+        return shutil.which(self.id) is not None
+
+
+PROVIDERS = [
+    Provider(0, "claude", "Claude", claude_signed_in, claude_model, ["claude", "auth", "login"]),
+    Provider(1, "codex", "Codex", codex_signed_in, codex_model, ["codex", "login"]),
+    Provider(2, "gemini", "Gemini", gemini_signed_in, gemini_model, ["gemini"]),
+    Provider(3, "agy", "Antigravity", agy_signed_in, agy_model, ["agy"]),
+    Provider(4, "opencode", "OpenCode", opencode_signed_in, opencode_model, ["opencode", "auth", "login"]),
+]
+BY_ID = {p.id: p for p in PROVIDERS}
+
+
+def discover():
+    found = [p for p in PROVIDERS if p.installed()]
+    results = {}
+
+    def probe(provider):
+        try:
+            results[provider.id] = (bool(provider.signed_in()), provider.model() or "")
+        except Exception:
+            results[provider.id] = (False, "")
+
+    threads = [threading.Thread(target=probe, args=(p,), daemon=True) for p in found]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(PROBE_SECONDS + 1)
+    out = []
+    for p in found:
+        signed_in, model = results.get(p.id, (False, ""))
+        out.append({"id": p.id, "name": p.name, "slot": p.slot, "signed_in": signed_in, "model": model})
+    return out
+
+
+def terminal_command(argv):
+    configured = os.environ.get("TOHRU_TERMINAL")
+    if configured:
+        return configured.split() + argv
+    if shutil.which("xdg-terminal-exec"):
+        return ["xdg-terminal-exec"] + argv
+    terminal = os.environ.get("TERMINAL")
+    if terminal and shutil.which(terminal.split()[0]):
+        return terminal.split() + ["-e"] + argv
+    for name in ("foot", "kitty", "alacritty", "wezterm", "ghostty", "konsole", "gnome-terminal", "xterm"):
+        if shutil.which(name):
+            if name == "wezterm":
+                return [name, "start", "--"] + argv
+            if name == "gnome-terminal":
+                return [name, "--wait", "--"] + argv
+            return [name, "-e"] + argv
+    return None
+
+
+def signin(ident):
+    provider = BY_ID.get(ident)
+    if provider is None or not provider.installed():
+        raise SystemExit(f"tohru-assistant: {ident} is not installed")
+    command = terminal_command(provider.login)
+    if command is None:
+        raise SystemExit("tohru-assistant: no terminal found; set TOHRU_TERMINAL")
+    subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                   cwd=str(HOME))
+    emit(next((p for p in discover() if p["id"] == ident), {"id": ident, "signed_in": False}))
+
+
+def emit(value):
+    sys.stdout.write(json.dumps(value, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
+def private_dir(path):
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return path
+
+
+def conversation_path(cid):
+    if not CONVERSATION_ID.match(cid):
+        raise SystemExit("tohru-assistant: invalid conversation id")
+    return CHATS / f"{cid}.json"
+
+
+def load(cid):
+    data = read_json(conversation_path(cid))
+    if not isinstance(data, dict) or data.get("id") != cid:
+        return None
+    return data
+
+
+def save(conversation):
+    private_dir(CHATS)
+    path = conversation_path(conversation["id"])
+    fd, tmp = tempfile.mkstemp(dir=CHATS, prefix=".tmp-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(conversation, f, ensure_ascii=False, indent=1)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def title_of(text):
+    line = " ".join(text.split())
+    if len(line) <= TITLE_CHARS:
+        return line
+    cut = line[:TITLE_CHARS].rsplit(" ", 1)[0] or line[:TITLE_CHARS]
+    return cut + "…"
+
+
+def summary(conversation, match=""):
+    return {
+        "id": conversation["id"],
+        "title": conversation.get("title", ""),
+        "provider": conversation.get("provider", ""),
+        "slot": BY_ID[conversation["provider"]].slot if conversation.get("provider") in BY_ID else 0,
+        "created": conversation.get("created", 0),
+        "updated": conversation.get("updated", 0),
+        "voice": bool(conversation.get("voice")),
+        "turns": len(conversation.get("turns", [])),
+        "match": match,
+    }
+
+
+def all_conversations():
+    if not CHATS.is_dir():
+        return []
+    out = []
+    for path in CHATS.glob("*.json"):
+        if not CONVERSATION_ID.match(path.stem):
+            continue
+        data = read_json(path)
+        if isinstance(data, dict) and data.get("id") == path.stem:
+            out.append(data)
+    out.sort(key=lambda c: c.get("updated", 0), reverse=True)
+    return out
+
+
+def snippet(text, at, length):
+    start = max(0, at - 24)
+    end = min(len(text), at + length + 40)
+    piece = " ".join(text[start:end].split())
+    return ("…" if start > 0 else "") + piece + ("…" if end < len(text) else "")
+
+
+def search(query, limit, provider=None, since=None):
+    needle = query.casefold().strip()
+    results = []
+    for conversation in all_conversations():
+        if provider and conversation.get("provider") != provider:
+            continue
+        if since is not None and conversation.get("updated", 0) < since:
+            continue
+        match = ""
+        if needle:
+            title = conversation.get("title", "")
+            if needle in title.casefold():
+                match = title
+            else:
+                for turn in conversation.get("turns", []):
+                    text = turn.get("text", "")
+                    at = text.casefold().find(needle)
+                    if at >= 0:
+                        match = snippet(text, at, len(needle))
+                        break
+                else:
+                    continue
+        results.append(summary(conversation, match))
+        if len(results) >= limit:
+            break
+    return results
+
+
+def transcript_prompt(turns, prompt):
+    lines = ["Earlier in this conversation (with another assistant):"]
+    for turn in turns:
+        who = "User" if turn.get("role") == "user" else "Assistant"
+        lines.append(f"{who}: {turn.get('text', '')}")
+    lines.append("")
+    lines.append(prompt)
+    return "\n".join(lines)
+
+
+def provider_argv(ident, session, prompt_on_stdin=True):
+    if ident == "claude":
+        argv = ["claude", "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+                "--tools", "", "--strict-mcp-config", "--setting-sources", "project"]
+        settings = read_json(HOME / ".claude/settings.json") or {}
+        if isinstance(settings, dict) and isinstance(settings.get("model"), str):
+            argv += ["--model", settings["model"]]
+        if session["resume"]:
+            argv += ["--resume", session["id"]]
+        else:
+            argv += ["--session-id", session["id"]]
+        return argv
+    if ident == "codex":
+        common = ["--json", "--skip-git-repo-check", "-c", "mcp_servers={}"]
+        if session["resume"]:
+            return ["codex", "exec", "resume", *common, session["id"], "-"]
+        return ["codex", "exec", *common, "--sandbox", "read-only", "--color", "never", "-"]
+    if ident == "gemini":
+        argv = ["gemini", "--output-format", "stream-json", "--approval-mode", "default"]
+        if session["resume"]:
+            argv += ["--resume", session["id"]]
+        return argv + ["-p", ""]
+    if ident == "agy":
+        argv = ["agy", "-p", "--output-format", "stream-json", "--mode", "plan", "--disable-slash-commands"]
+        if session["resume"]:
+            argv += ["--conversation", session["id"]]
+        return argv
+    if ident == "opencode":
+        argv = ["opencode", "run", "--format", "json"]
+        if session["resume"]:
+            argv += ["--session", session["id"]]
+        return argv
+    raise SystemExit(f"tohru-assistant: unknown provider {ident}")
+
+
+class StreamParser:
+    """Turns one CLI's stdout lines into answer text and its resumable session id."""
+
+    def __init__(self, ident):
+        self.ident = ident
+        self.text = ""
+        self.session = None
+        self.error = None
+        self.final = None
+
+    def feed(self, line):
+        try:
+            event = json.loads(line)
+        except ValueError:
+            return ""
+        if not isinstance(event, dict):
+            return ""
+        handler = getattr(self, "_" + self.ident)
+        delta = handler(event) or ""
+        self.text += delta
+        return delta
+
+    def finish(self):
+        if self.final and not self.text.strip():
+            self.text = self.final
+            return self.final
+        if self.final and self.final.startswith(self.text) and len(self.final) > len(self.text):
+            rest = self.final[len(self.text):]
+            self.text = self.final
+            return rest
+        return ""
+
+    def _claude(self, event):
+        if event.get("session_id"):
+            self.session = event["session_id"]
+        kind = event.get("type")
+        if kind == "stream_event":
+            inner = event.get("event") or {}
+            if inner.get("type") == "content_block_delta":
+                delta = inner.get("delta") or {}
+                if delta.get("type") == "text_delta":
+                    return delta.get("text", "")
+        elif kind == "result":
+            if event.get("is_error") or event.get("subtype") not in (None, "success"):
+                self.error = str(event.get("result") or event.get("subtype") or "error")
+            elif isinstance(event.get("result"), str):
+                self.final = event["result"]
+        return ""
+
+    def _codex(self, event):
+        kind = event.get("type")
+        if kind == "thread.started":
+            self.session = event.get("thread_id")
+        elif kind == "item.completed":
+            item = event.get("item") or {}
+            if item.get("type") == "agent_message":
+                text = item.get("text", "")
+                return ("\n\n" if self.text else "") + text
+        elif kind in ("turn.failed", "error"):
+            error = event.get("error") or event.get("message") or "error"
+            self.error = error.get("message", str(error)) if isinstance(error, dict) else str(error)
+        return ""
+
+    def _gemini(self, event):
+        kind = event.get("type")
+        if kind == "init" and event.get("session_id"):
+            self.session = event["session_id"]
+        elif kind == "message" and event.get("role") == "assistant":
+            return event.get("content", "")
+        elif kind == "error":
+            self.error = str(event.get("message") or "error")
+        return ""
+
+    def _agy(self, event):
+        kind = event.get("event")
+        if kind == "init":
+            self.session = event.get("conversation_id") or self.session
+        elif kind == "step_update":
+            step = event.get("step_update") or {}
+            if step.get("step_type") == "agent_response":
+                return step.get("text_delta", "")
+        elif kind == "result":
+            result = event.get("result") or {}
+            if result.get("status") not in (None, "SUCCESS"):
+                self.error = str(result.get("error") or result.get("status"))
+            elif isinstance(result.get("response"), str):
+                self.final = result["response"]
+        return ""
+
+    def _opencode(self, event):
+        if event.get("sessionID"):
+            self.session = event["sessionID"]
+        part = event.get("part") or {}
+        if event.get("type") == "text" and isinstance(part.get("text"), str):
+            return ("\n\n" if self.text else "") + part["text"]
+        if event.get("type") == "error":
+            error = event.get("error") or {}
+            self.error = str(error.get("message") or error.get("name") or "error") if isinstance(error, dict) else str(error)
+        return ""
+
+
+class Run:
+    def __init__(self):
+        self.child = None
+        self.stopped = False
+
+    def stop(self, *_):
+        self.stopped = True
+        child = self.child
+        if child and child.poll() is None:
+            try:
+                os.killpg(child.pid, signal.SIGINT)
+            except OSError:
+                pass
+
+
+def chat(args):
+    prompt = sys.stdin.read().strip()
+    if not prompt:
+        raise SystemExit("tohru-assistant: empty prompt")
+    provider = BY_ID.get(args.provider)
+    if provider is None or not provider.installed():
+        emit({"event": "error", "message": f"{args.provider} is not installed"})
+        return 3
+    now = int(time.time())
+    conversation = load(args.conversation) if args.conversation else None
+    if conversation is None:
+        conversation = {
+            "id": args.conversation or uuid.uuid4().hex,
+            "title": title_of(prompt),
+            "provider": provider.id,
+            "created": now,
+            "updated": now,
+            "voice": bool(args.voice),
+            "sessions": {},
+            "turns": [],
+        }
+    earlier = list(conversation["turns"])
+    sessions = conversation.setdefault("sessions", {})
+    session = {"id": sessions.get(provider.id), "resume": provider.id in sessions}
+    if not session["resume"] and provider.id == "claude":
+        session["id"] = str(uuid.uuid4())
+    sent = prompt if session["resume"] or not earlier else transcript_prompt(earlier, prompt)
+    conversation["provider"] = provider.id
+    conversation["voice"] = bool(conversation.get("voice") or args.voice)
+    conversation["turns"].append({"role": "user", "text": prompt, "time": now, "voice": bool(args.voice)})
+    conversation["updated"] = now
+    save(conversation)
+    emit({"event": "start", "conversation": conversation["id"], "provider": provider.id, "slot": provider.slot,
+          "title": conversation["title"]})
+
+    run = Run()
+    signal.signal(signal.SIGINT, run.stop)
+    signal.signal(signal.SIGTERM, run.stop)
+    scratch = private_dir(SCRATCH)
+    parser = StreamParser(provider.id)
+    argv = provider_argv(provider.id, session)
+    stdin_text = sent
+    if provider.id in ("gemini",):
+        argv[-1] = sent
+        stdin_text = ""
+    elif provider.id in ("agy", "opencode"):
+        argv.append(sent)
+        stdin_text = ""
+    env = dict(os.environ)
+    env["NO_COLOR"] = "1"
+    try:
+        run.child = subprocess.Popen(argv, cwd=scratch, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE, text=True, bufsize=1, start_new_session=True)
+    except OSError as error:
+        emit({"event": "error", "message": str(error)})
+        return 3
+    errors = []
+    drain = threading.Thread(target=lambda: errors.extend(run.child.stderr.readlines()[-20:]), daemon=True)
+    drain.start()
+    try:
+        run.child.stdin.write(stdin_text)
+        run.child.stdin.close()
+    except OSError:
+        pass
+    if run.stopped:
+        run.stop()
+    for line in run.child.stdout:
+        delta = parser.feed(line)
+        if delta:
+            emit({"event": "delta", "text": delta})
+    code = run.child.wait()
+    drain.join(1)
+    rest = "" if run.stopped else parser.finish()
+    if rest:
+        emit({"event": "delta", "text": rest})
+    if parser.session:
+        sessions[provider.id] = parser.session
+    elif session["id"] and provider.id == "claude" and parser.text:
+        sessions[provider.id] = session["id"]
+    answer = parser.text.strip()
+    turn = {"role": "assistant", "text": answer, "time": int(time.time()), "provider": provider.id}
+    if run.stopped:
+        turn["stopped"] = True
+    failed = not run.stopped and (parser.error or (code != 0 and not answer))
+    if failed:
+        message = parser.error or (errors[-1].strip() if errors else f"{provider.id} exited with {code}")
+        turn["error"] = message[:500]
+    if answer or run.stopped or failed:
+        conversation["turns"].append(turn)
+    conversation["updated"] = int(time.time())
+    save(conversation)
+    if run.stopped:
+        emit({"event": "stopped", "conversation": conversation["id"]})
+        return 0
+    if failed:
+        emit({"event": "error", "conversation": conversation["id"], "message": turn["error"]})
+        return 1
+    emit({"event": "done", "conversation": conversation["id"]})
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="tohru-assistant")
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("providers")
+    p = sub.add_parser("signin")
+    p.add_argument("provider")
+    p = sub.add_parser("chat")
+    p.add_argument("--provider", required=True)
+    p.add_argument("--conversation", default="")
+    p.add_argument("--voice", action="store_true")
+    p = sub.add_parser("history")
+    p.add_argument("--query", default="")
+    p.add_argument("--provider", default="")
+    p.add_argument("--since", type=int)
+    p.add_argument("--limit", type=int, default=50)
+    p = sub.add_parser("show")
+    p.add_argument("conversation")
+    p = sub.add_parser("delete")
+    p.add_argument("conversation")
+    args = parser.parse_args(argv)
+
+    if args.command == "providers":
+        emit(discover())
+    elif args.command == "signin":
+        signin(args.provider)
+    elif args.command == "chat":
+        return chat(args)
+    elif args.command == "history":
+        emit(search(args.query, max(1, min(args.limit, 500)), args.provider or None, args.since))
+    elif args.command == "show":
+        conversation = load(args.conversation)
+        if conversation is None:
+            print("tohru-assistant: no such conversation", file=sys.stderr)
+            return 1
+        conversation.pop("sessions", None)
+        emit(conversation)
+    elif args.command == "delete":
+        try:
+            conversation_path(args.conversation).unlink()
+        except FileNotFoundError:
+            return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
