@@ -93,6 +93,7 @@ scene Tohru {
  include "bluetooth/popup.plm"
  include "assistant/popup.plm"
  include "assistant/menu.plm"
+ include "assistant/dragon.plm"
  include "info/popup.plm"
  include "about/popup.plm"
  include "wallpaper/popup.plm"
