@@ -13,10 +13,11 @@ part RootServiceControls {
     let sound_x = root_net_x - 26
     let bell_x = sound_x - 26
     let root_left = 112 + if(bar_mooncoil, 29, 0) + if(ws_available, ws_width, 0) + 14
-    let root_about_slot = if(bar_info_button, 3, 2)
-    let root_extra = clamp(floor((bell_x - 2 - root_left) / 26), 0, 1 + if(bar_info_button, 1, 0) + if(bar_about_button, 1, 0))
+    let root_about_slot = if(bar_info_button, 4, 3)
+    let root_extra = clamp(floor((bell_x - 2 - root_left) / 26), 0, 2 + if(bar_info_button, 1, 0) + if(bar_about_button, 1, 0))
     let root_bt_x = bell_x - 26
-    let root_info_x = bell_x - 52
+    let root_wall_x = bell_x - 52
+    let root_info_x = bell_x - 78
     let root_about_x = bell_x - root_about_slot * 26
     let root_tray_x = bell_x - root_extra * 26
     let media_text_w = min(160, bar_media_measure.width)
@@ -31,6 +32,7 @@ part RootServiceControls {
     follow net_button_x = root_net_x + 12
     follow media_button_x = if(media_shown, media_x + media_w / 2, -1)
     follow bt_button_x = root_bt_x + 12
+    follow wall_button_x = root_wall_x + 12
 
     zone box root_media { from: media_x, 4; size: media_w, 22; corner: 7; active: media_shown; cursor: pointer; label: "Media" }
     box { from: media_x, 4; size: media_w, 22; corner: 7; color: bar_ink; opacity: max(10%, max(media_open * 16%, max(root_media.hover * 16%, root_media.pressed * 20%))); show: media_shown }
@@ -53,9 +55,9 @@ part RootServiceControls {
     image root_bluetooth { at: round(root_bt_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: if(bt.powered, 92%, 38%); show: root_extra >= 1 }
     on press root_bluetooth_hit { emit bluetooth_toggle }
 
-    zone box root_information { from: root_info_x, 4; size: 24, 22; corner: 7; active: bar_info_button and root_extra >= 2; cursor: pointer; label: "System information" }
-    box { from: root_info_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(root_information.hover * 10%, root_information.pressed * 16%); show: bar_info_button and root_extra >= 2 }
-    image root_info { at: round(root_info_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 92%; show: bar_info_button and root_extra >= 2 }
+    zone box root_information { from: root_info_x, 4; size: 24, 22; corner: 7; active: bar_info_button and root_extra >= 3; cursor: pointer; label: "System information" }
+    box { from: root_info_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(root_information.hover * 10%, root_information.pressed * 16%); show: bar_info_button and root_extra >= 3 }
+    image root_info { at: round(root_info_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 92%; show: bar_info_button and root_extra >= 3 }
     on press root_information { emit info_toggle }
 
     zone box root_about { from: root_about_x, 4; size: 24, 22; corner: 7; active: bar_about_button and root_extra >= root_about_slot; cursor: pointer; label: "About Tohru" }

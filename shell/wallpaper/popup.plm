@@ -1,0 +1,133 @@
+part WallpaperPopup {
+    shader wall_tank = file "../sound/tank.wgsl"
+    shader wall_fill = file "../sound/fill.wgsl"
+    shader wall_scrim = file "scrim.wgsl"
+    measure wall_tank_number
+    measure wall_name_measure
+    measure wall_pill_lead
+    measure wall_pill_title
+    measure wall_pill_tail
+    measure wall_pill_hint
+    fact wall_tank_clock = 0
+    let wall_anchor_x = if(wall_button_x < 0, screen.width - 300, wall_button_x)
+    let wall_popup_x = clamp(wall_anchor_x - 168, 8, max(8, screen.width - 344))
+    // The tank sloshes as the panel starts to unfold and as it lands folded, as the sound tank does.
+    prop wall_open_kick = 0 ~spring(400, 100)
+    prop wall_shut_kick = 0 ~spring(240, 100)
+    follow wall_open_kick = 0
+    follow wall_shut_kick = 0
+    on change wall_fold > 0.02 while wall_fold > 0.02 { wall_open_kick: 1.2 ~0ms }
+    on change wall_fold < 0.04 while wall_fold < 0.04 and vel(wall_fold) < 0 { wall_shut_kick: 2.2 ~0ms }
+    let wall_slosh = 1 + wall_open_kick + wall_shut_kick + min(2.2, abs(vel(wall_water)) * 4)
+    let wall_all = wall_mon_count > 1 and wall_tab >= wall_mon_count
+    prop wall_allk = 0 ~spring(196, 24)
+    follow wall_allk = if(wall_all, 1, 0)
+
+    popup wallpaper {
+        at: wall_popup_x - 12, 37
+        size: 360, 456 + 18
+        open: wall_open
+        bright: panel_bright
+        // The popup keeps its widest size; the panel is centred under the button inside it as it grows.
+        let wall_ox = clamp(wall_anchor_x - wall_w / 2, 8, max(8, screen.width - 8 - wall_w)) - wall_popup_x + 12
+        let wall_ck = 1 - smooth(0, 0.45, wall_fc)
+        let wall_uk = smooth(0.35, 1, wall_fc)
+        let wall_rk = smooth(0.7, 1, wall_fc)
+        let wall_dx = wall_ox + 16 + 12 * wall_fold
+        let wall_bw = 1 - 0.4 * wall_fc
+        let wall_name_w = min(180, wall_name_measure.width)
+
+        body {
+            color: ink_glass; glass: 100%; frost: 100%; tint: 60% * (1 - wall_fc); vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+            shadow: 0, 4, 10, 0.22 - 0.1 * pk
+            box { from: wall_ox, 0; size: wall_w, wall_h; corner: 15 }
+        }
+        shader wall_fill { at: wall_ox, 0; size: wall_w, wall_h; corner: 15; values: 0.62, 0.46, 0.5, pk, 0; colors: ink_glass; opacity: wall_fc; show: wall_open and wall_fc > 0.001 }
+        box { from: wall_ox + wall_bw / 2, wall_bw / 2; size: wall_w - wall_bw, wall_h - wall_bw; corner: 15 - wall_bw / 2; stroke: wall_bw; color: ink_white; opacity: (0.6 + 0.4 * wall_fc) * (26% - 10% * pk) }
+        zone box wall_panel_hit { from: wall_ox, 0; size: wall_w, wall_h; corner: 15 }
+
+        group {
+            clip box { from: wall_ox, 0; size: wall_w, wall_h; corner: 15 }
+
+            // The tank: the current wallpaper seen softly through clear water, its place in the library as
+            // the numeral, and the water standing at how far the loop has played.
+            group {
+                show: wall_open and wall_ck > 0.001
+                opacity: wall_ck
+                group {
+                    blur: 3
+                    image wall_soft_img { at: wall_ox - 6, -6; size: wall_w + 12, wall_h + 12; fit: cover; opacity: 26% - 6% * pk; show: wall_has_soft }
+                }
+                group {
+                    move: wall_ox, 0
+                    shader: wall_tank, 0, wall_water, wall_slosh, wall_w, wall_tank_number.width - 3.6, pk, if(wall_video, 0, 0.35), wall_tank_clock
+                    box { from: 0, 0; size: wall_w, wall_h; color: #000000; opacity: 1% }
+                    text wall_number { at: 16, 92 + 0.308 * 60; anchor: left bottom; size: 60; weight: 200; family: "SF Pro Text"; color: ink_white; letter_move: -1.8 * letter, 0; measure: wall_tank_number }
+                }
+                text wall_time { at: wall_ox + wall_w - 15, 21; anchor: right center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 62% }
+                text wall_res { at: wall_ox + wall_w - 15, 76; anchor: right center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 62% }
+                text wall_rate { at: wall_ox + wall_w - 15, 92; anchor: right center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: if(wall_missing, ink_red, ink_white); opacity: 62% }
+
+                // The monitors, then pause and shuffle, along the bottom.
+                for m in wall_mons {
+                    let c_sel = m.index == wall_sel
+                    zone box c_hit { from: wall_ox + m.x, 171; size: m.chip, 22; corner: 7; cursor: pointer; active: wall_open and not wall_unfolded; label: "Show {m.name}" }
+                    box { from: wall_ox + m.x, 171; size: m.chip, 22; corner: 7; color: ink_white; opacity: if(c_sel, 10%, 6%) - 2% * pk + max(c_hit.hover * 6%, c_hit.pressed * 10%) }
+                    group {
+                        glow: 5, 70%, ink_white
+                        show: c_sel
+                        box { from: wall_ox + m.x + 8, 180; size: 4, 4; color: ink_white }
+                    }
+                    text m.name { at: wall_ox + m.x + if(c_sel, 18, 8), 182; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(c_sel, 88%, 55%) }
+                    on press c_hit { emit wall_chip(m.index) }
+                }
+                zone box wall_pause_hit { from: wall_ox + wall_w - 64, 171; size: 24, 22; corner: 7; cursor: pointer; active: wall_open and not wall_unfolded and wall_video; label: if(wall_paused, "Play wallpaper", "Pause wallpaper") }
+                box { from: wall_ox + wall_w - 64, 171; size: 24, 22; corner: 7; color: ink_white; opacity: 9% - 1% * pk + max(wall_pause_hit.hover * 6%, wall_pause_hit.pressed * 10%) }
+                image wall_pause_icon { at: wall_ox + wall_w - 58, 176; size: 12, 12; tint: ink_white; opacity: if(wall_video, 92%, 38%); show: not wall_paused }
+                image wall_play_icon { at: wall_ox + wall_w - 58, 176; size: 12, 12; tint: ink_white; opacity: if(wall_video, 92%, 38%); show: wall_paused }
+                zone box wall_shuffle_hit { from: wall_ox + wall_w - 36, 171; size: 24, 22; corner: 7; cursor: pointer; active: wall_open and not wall_unfolded; label: "Random wallpaper" }
+                box { from: wall_ox + wall_w - 36, 171; size: 24, 22; corner: 7; color: ink_white; opacity: 9% - 1% * pk + max(wall_shuffle_hit.hover * 6%, wall_shuffle_hit.pressed * 10%) }
+                image wall_shuffle_icon { at: wall_ox + wall_w - 30, 176; size: 12, 12; tint: ink_white; opacity: 92% }
+            }
+
+            // The name: the tank's heading, then the library's. Its pill folds and unfolds.
+            zone box wall_name_hit { from: wall_dx - 6 - 12 * wall_fold, 10; size: wall_name_w + 28 + 12 * wall_fold, 22; corner: 7; cursor: pointer; label: if(wall_unfolded, "Fold wallpapers", "Unfold wallpapers") }
+            box { from: wall_dx - 6 - 12 * wall_fold, 10; size: wall_name_w + 28 + 12 * wall_fold, 22; corner: 7; color: ink_white; opacity: max(wall_rk * 9%, max(wall_name_hit.hover * 10%, wall_name_hit.pressed * 16%)) }
+            text wall_name { at: wall_dx, 21; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 0%; measure: wall_name_measure }
+            text wall_name { at: wall_dx, 21; anchor: left center; width: 180; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+            group {
+                pivot: wall_dx + wall_name_w + 11, 21
+                rotate: wall_fold * 3.14159
+                path {
+                    at: wall_dx + wall_name_w + 11, 21
+                    stroke: 1.25; color: ink_white; opacity: 60%
+                    move -2.5, -1.25
+                    line 0, 1.25
+                    line 2.5, -1.25
+                }
+            }
+            group {
+                glow: 5, 70%, ink_white
+                opacity: wall_uk
+                show: wall_uk > 0.001
+                box { from: wall_ox + 18, 19; size: 4, 4; color: ink_white }
+            }
+
+            text "{wall_meta}  ·  {wall_count_text}" { at: wall_ox + wall_w - 14, 21; anchor: right center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 56% * wall_uk; show: wall_uk > 0.001 }
+
+            include "library.plm"
+        }
+
+        body {
+            color: ink_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+            shadow: 0, 4, 10, 0.22 - 0.1 * pk
+            show: wall_failed
+            box { from: wall_ox, wall_h + 6; size: wall_w, 40; corner: 15 }
+        }
+        text wall_error { at: wall_ox + 16, wall_h + 26; anchor: left center; size: 11; weight: 500; width: wall_w - 32; lines: 1; color: ink_red; show: wall_failed }
+
+        on press wall_name_hit { wall_keyed = false; emit wall_fold_toggle }
+        on press wall_pause_hit { emit wall_pause }
+        on press wall_shuffle_hit { emit wall_random }
+    }
+}

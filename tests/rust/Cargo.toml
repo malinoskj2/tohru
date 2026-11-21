@@ -48,3 +48,7 @@ path = "../lock/shaders.rs"
 [[test]]
 name = "lock-logic"
 path = "../lock/logic.rs"
+
+[[test]]
+name = "wallpaper-shaders"
+path = "../wallpaper/shaders.rs"

@@ -1,0 +1,21 @@
+part WallpaperView {
+    zone box root_wallpaper { from: root_wall_x, 4; size: 24, 22; corner: 7; active: root_extra >= 2; cursor: pointer; label: "Wallpaper" }
+    box { from: root_wall_x, 4; size: 24, 22; corner: 7; color: bar_ink; opacity: max(wall_open * 16%, max(root_wallpaper.hover * 10%, root_wallpaper.pressed * 16%)); show: root_extra >= 2 }
+    image wall_glyph { at: round(root_wall_x + 5), 8; size: 14, 14; tint: bar_ink; opacity: 92%; show: root_extra >= 2 }
+    on press root_wallpaper { emit wall_toggle }
+
+    on key Escape while wall_open { emit wall_escape }
+    on key Tab while wall_open { emit wall_fold_toggle }
+    on key Return while wall_open { emit wall_enter }
+    on key space while wall_open { emit wall_pause }
+    on key r while wall_open { emit wall_random }
+    on key Left while wall_open and not wall_unfolded { emit wall_chip(max(0, wall_sel - 1)) }
+    on key Right while wall_open and not wall_unfolded { emit wall_chip(min(wall_mon_count - 1, wall_sel + 1)) }
+    on key Down while wall_open and not wall_unfolded { emit wall_fold_toggle }
+    on key Left while wall_open and wall_unfolded { emit wall_focus_step(-1) }
+    on key Right while wall_open and wall_unfolded { emit wall_focus_step(1) }
+    on key Up while wall_open and wall_unfolded { emit wall_focus_step(-2) }
+    on key Down while wall_open and wall_unfolded { emit wall_focus_step(2) }
+    on key Prior while wall_open and wall_unfolded { emit wall_page_step(-1) }
+    on key Next while wall_open and wall_unfolded { emit wall_page_step(1) }
+}

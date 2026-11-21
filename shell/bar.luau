@@ -67,6 +67,7 @@ require("bar/launcher")()
 local calendar = require("calendar/controller")(make_rail(1, 21))
 local network = require("network/controller")()
 local bluetooth = require("bluetooth/controller")(make_rail(4))
+local wallpaper = require("wallpaper/controller")()
 local info = require("info/controller")(tohru_info.snapshot, nil, make_rail(3))
 local about
 local function close_panels(keep)
@@ -75,6 +76,7 @@ local function close_panels(keep)
     if keep ~= "network" then network.close() end
     if keep ~= "media" then media.close() end
     if keep ~= "bluetooth" then bluetooth.close() end
+    if keep ~= "wallpaper" then wallpaper.close() end
     if keep ~= "info" then info.close() end
     if about and keep ~= "about" then about.close() end
 end
@@ -99,6 +101,8 @@ on("bluetooth_question", function() if fact.bt_open then close_panels("bluetooth
 on("info_open", function() close_panels("info") end)
 on("info_toggle", function() if fact.info_visible then close_panels("info") end end)
 on("about_open", function() close_panels("about") end)
+on("wall_open_request", function() close_panels("wallpaper") end)
+on("wall_toggle", function() if fact.wall_open then close_panels("wallpaper") end end)
 on("about_toggle", function() if fact.about_visible then close_panels("about") end end)
 on("panel_close", function() close_panels() end)
 if fact.bt_open then close_panels("bluetooth") end

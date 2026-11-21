@@ -210,7 +210,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
               sound_open=false, sound_dragging=false, cal_open=false,
               media_open=false, media_unfolded=false, media_seeking=false, media_focus=0, media_volume=-1,
               media_vol_dragging=false, media_vol_requested=0}
-        for r=0,5 do for key,value in pairs({present=false,goal=8,land=0,serial=0}) do fact['rail.'..key..'.'..r]=value end end
+        for r=0,7 do for key,value in pairs({present=false,goal=8,land=0,serial=0}) do fact['rail.'..key..'.'..r]=value end end
         text,model,handlers,timers,calls,modules={},{},{},{},{},{}
         local model_rows={}
         model=setmetatable({}, {__index=function(_,key)return model_rows[key]end,
@@ -229,6 +229,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         end
         function after(ms,callback) timers[1]=callback; return 1 end
         function cancel(id) timers[id]=nil end
+        function run(program,args) table.insert(calls,{name='run',value=program..' '..table.concat(args,' ')}) end
         -- Match native direction: emit and fact writes do NOT call Lua handlers.
         function emit(name) table.insert(calls,{render_only=name}) end
         function require(name) return modules[name] end
@@ -299,6 +300,10 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         (
             "calendar/controller",
             include_str!("../../shell/calendar/controller.luau"),
+        ),
+        (
+            "wallpaper/controller",
+            include_str!("../../shell/wallpaper/controller.luau"),
         ),
         ("bar/rail", include_str!("../../shell/bar/rail.luau")),
         (

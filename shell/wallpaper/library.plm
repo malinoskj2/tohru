@@ -1,0 +1,118 @@
+part WallpaperLibrary {
+    // The monitor tabs (each output, then All), with the workspace ribbon's rail and bead under them.
+    let wl_tab_k = clamp(wall_lag.40, 0, 1)
+    let wl_tab_y = 38 + (1 - wl_tab_k) * 8
+    group {
+        show: wall_uk > 0.001 and wall_tabs > 1
+        opacity: smooth(0.3, 1, wl_tab_k)
+        box { from: wall_ox + 12, wl_tab_y; size: wall_w - 24, 26; corner: 9; color: ink_white; opacity: 6% }
+        for m in wall_mons {
+            let t_on = wall_tab == m.index
+            zone box t_hit { from: wall_ox + 12 + m.tx, wl_tab_y; size: m.tw, 26; corner: 8; cursor: pointer; active: wall_unfolded; label: "Wallpapers on {m.name}"; selected: t_on }
+            box { from: wall_ox + 12 + m.tx + 3, wl_tab_y + 3; size: m.tw - 6, 20; corner: 7; color: ink_white; opacity: max(t_hit.hover * 6%, t_hit.pressed * 10%) }
+            text m.name { at: wall_ox + 12 + m.nx, wl_tab_y + 12; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(t_on, 96%, 58%) }
+            text m.res { at: wall_ox + 12 + m.rx, wl_tab_y + 12.5; anchor: left center; size: 10; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: if(t_on, 96%, 58%) * 55% }
+            on press t_hit { wall_keyed = false; emit wall_tab(m.index) }
+        }
+        zone box wl_all_hit { from: wall_ox + 12 + wall_all_tx, wl_tab_y; size: wall_all_tw, 26; corner: 8; cursor: pointer; active: wall_unfolded; label: "All monitors"; selected: wall_all }
+        box { from: wall_ox + 12 + wall_all_tx + 3, wl_tab_y + 3; size: wall_all_tw - 6, 20; corner: 7; color: ink_white; opacity: max(wl_all_hit.hover * 6%, wl_all_hit.pressed * 10%) }
+        text "All" { at: wall_ox + 12 + wall_all_tx + wall_all_tw / 2, wl_tab_y + 12; anchor: center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(wall_all, 96%, 58%) }
+        on press wl_all_hit { wall_keyed = false; emit wall_tab(wall_mon_count) }
+        shader rail_shader { at: wall_ox, wl_tab_y + 7; size: wall_w, 42; values: rail.x.6, vel(rail.x.6), rail.bead.6, rail.c.6, rail.amp.6, rail.wash.6, rail.wc.6, rail.wave.6; colors: mix(rgb(rail.red.6, rail.green.6, rail.blue.6), #1c1826, 0.35 * pk), ink_white; opacity: wall_rk; show: wall_rk > 0.001 }
+    }
+
+    // Playback: pause, the scrub rail (the ribbon again) and the time; on All, the whole-desk actions.
+    let wl_row_k = clamp(wall_lag.80, 0, 1)
+    let wl_row_y = 76 - if(wall_tabs > 1, 0, 34) + (1 - wl_row_k) * 8
+    group {
+        show: wall_uk > 0.001 and wall_allk < 0.999
+        opacity: smooth(0.3, 1, wl_row_k) * (1 - wall_allk)
+        zone box wl_pause_hit { from: wall_ox + 12, wl_row_y; size: 24, 22; corner: 7; cursor: pointer; active: wall_unfolded and not wall_all and wall_video; label: if(wall_paused, "Play wallpaper", "Pause wallpaper") }
+        box { from: wall_ox + 12, wl_row_y; size: 24, 22; corner: 7; color: ink_white; opacity: 9% - 1% * pk + max(wl_pause_hit.hover * 6%, wl_pause_hit.pressed * 10%) }
+        image wall_pause_icon { at: wall_ox + 18, wl_row_y + 5; size: 12, 12; tint: ink_white; opacity: if(wall_video, 92%, 38%); show: not wall_paused }
+        image wall_play_icon { at: wall_ox + 18, wl_row_y + 5; size: 12, 12; tint: ink_white; opacity: if(wall_video, 92%, 38%); show: wall_paused }
+        shader rail_shader { at: wall_ox + 32, wl_row_y - 10; size: 234, 42; values: rail.x.7, vel(rail.x.7), rail.bead.7, rail.c.7, rail.amp.7, rail.wash.7, rail.wc.7, rail.wave.7; colors: mix(rgb(rail.red.7, rail.green.7, rail.blue.7), #1c1826, 0.35 * pk), ink_white; opacity: wall_rk * if(wall_video, if(wall_paused, 60%, 100%), 38%); show: wall_rk > 0.001 }
+        zone box wl_scrub_hit { from: wall_ox + 44, wl_row_y; size: 210, 22; cursor: pointer; active: wall_unfolded and not wall_all and wall_video; label: "Playback position"; role: slider; value: "{wall_elapsed}" }
+        text wall_elapsed { at: wall_ox + wall_w - 44, wl_row_y + 11; anchor: right center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 86% }
+        zone box wl_shuffle_hit { from: wall_ox + wall_w - 36, wl_row_y; size: 24, 22; corner: 7; cursor: pointer; active: wall_unfolded and not wall_all; label: "Random wallpaper" }
+        box { from: wall_ox + wall_w - 36, wl_row_y; size: 24, 22; corner: 7; color: ink_white; opacity: 9% - 1% * pk + max(wl_shuffle_hit.hover * 6%, wl_shuffle_hit.pressed * 10%) }
+        image wall_shuffle_icon { at: wall_ox + wall_w - 30, wl_row_y + 5; size: 12, 12; tint: ink_white; opacity: 92% }
+    }
+    group {
+        show: wall_uk > 0.001 and wall_allk > 0.001
+        opacity: smooth(0.3, 1, wl_row_k) * wall_allk
+        zone box wl_both_hit { from: wall_ox + 12, wl_row_y; size: (wall_w - 30) / 2, 22; corner: 7; cursor: pointer; active: wall_unfolded and wall_all; label: "Apply the selected monitor's wallpaper to every monitor" }
+        box { from: wall_ox + 12, wl_row_y; size: (wall_w - 30) / 2, 22; corner: 7; color: ink_white; opacity: 9% - 1% * pk + max(wl_both_hit.hover * 6%, wl_both_hit.pressed * 10%) }
+        text "Apply to Both" { at: wall_ox + 12 + (wall_w - 30) / 4, wl_row_y + 11; anchor: center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92%; show: wall_mon_count == 2 }
+        text "Apply to All" { at: wall_ox + 12 + (wall_w - 30) / 4, wl_row_y + 11; anchor: center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92%; show: wall_mon_count != 2 }
+        zone box wl_rand_hit { from: wall_ox + 18 + (wall_w - 30) / 2, wl_row_y; size: (wall_w - 30) / 2, 22; corner: 7; cursor: pointer; active: wall_unfolded and wall_all; label: "Randomize every monitor" }
+        box { from: wall_ox + 18 + (wall_w - 30) / 2, wl_row_y; size: (wall_w - 30) / 2, 22; corner: 7; color: ink_white; opacity: 9% - 1% * pk + max(wl_rand_hit.hover * 6%, wl_rand_hit.pressed * 10%) }
+        image wall_shuffle_icon { at: wall_ox + 18 + (wall_w - 30) / 4 * 3 - 44, wl_row_y + 5; size: 12, 12; tint: ink_white; opacity: 92% }
+        text "Randomize All" { at: wall_ox + 18 + (wall_w - 30) / 4 * 3 + 8, wl_row_y + 11; anchor: center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+    }
+    on press wl_pause_hit { emit wall_pause }
+    on press wl_shuffle_hit { emit wall_random }
+    on press wl_both_hit { emit wall_apply_all }
+    on press wl_rand_hit { emit wall_random_all }
+    on press wl_scrub_hit { emit wall_scrub_press(clamp((local.x - wall_ox - 52) / 194, 0, 1)) }
+    on drag wl_scrub_hit { emit wall_scrub_drag(clamp((local.x - wall_ox - 52) / 194, 0, 1)) }
+    on release wl_scrub_hit { emit wall_scrub_release }
+
+    // The library: two columns, three rows to a page. Each row rises in after the one above.
+    let wl_grid_y = wl_row_y + 38 - (1 - wl_row_k) * 8
+    for it in wall_items {
+        let i_p = it.index - wall_page * 6
+        let i_row = floor(i_p / 2)
+        let i_k = clamp(pick(clamp(i_row, 0, 2), wall_lag.80, wall_lag.120, wall_lag.160), 0, 1)
+        let i_x = wall_ox + 12 + mod(i_p, 2) * 160
+        let i_lit = it.live or wall_focus == it.index
+        let i_y = wl_grid_y + i_row * 103 + (1 - i_k) * 8 - if(i_lit, 1, 0)
+        group {
+            show: wall_uk > 0.001 and i_p >= 0 and i_p < 6 and i_k > 0.001
+            opacity: smooth(0.3, 1, i_k)
+            zone box i_hit { from: i_x, i_y; size: 152, 95; corner: 10; cursor: pointer; active: wall_unfolded; label: "{it.name}, {it.badge}"; selected: it.here }
+            group {
+                clip box { from: i_x, i_y; size: 152, 95; corner: 10 }
+                box { from: i_x, i_y; size: 152, 95; color: #17131f }
+                image it.thumb { at: i_x, i_y; size: 152, 95; fit: cover }
+                shader wall_scrim { at: i_x, i_y; size: 152, 95; values: 0.05, 0.72 + 0.06 * i_hit.hover; colors: #0a0810 }
+            }
+            box { from: i_x - 0.7, i_y - 0.7; size: 153.4, 96.4; corner: 10.7; stroke: 1.4; color: ink_lavender; opacity: if(i_lit, 85%, i_hit.hover * 50%) }
+            box { from: i_x + 152 - 6 - it.bw, i_y + 6; size: it.bw, 16; corner: 5; color: #100c18; opacity: 62% }
+            text it.badge { at: i_x + 152 - 6 - it.bw / 2, i_y + 14.3; anchor: center; size: 9.5; weight: 600; family: "SF Pro Text:tnum"; color: #ffffff; opacity: 90% }
+            group {
+                show: it.shown
+                box { from: i_x + 6, i_y + 6; size: it.mw, 16; corner: 5; color: #b4befe; opacity: 24% }
+                box { from: i_x + 6.3, i_y + 6.3; size: it.mw - 0.6, 15.4; corner: 4.7; stroke: 0.6; color: #b4befe; opacity: 55% }
+                group {
+                    glow: 4, 80%, #ffffff
+                    show: it.here
+                    box { from: i_x + 12, i_y + 12; size: 4, 4; color: #ffffff }
+                }
+                text it.mon { at: i_x + 6 + if(it.here, 14, 6), i_y + 14.3; anchor: left center; size: 9.5; weight: 600; family: "SF Pro Text"; color: #ffffff; opacity: 90% }
+            }
+            text it.name { at: i_x + 7, i_y + 84; anchor: left center; width: if(it.live, 108, 138); lines: 1; size: 11; weight: 500; family: "SF Pro Text"; color: #ffffff; opacity: 94% }
+            text "Live" { at: i_x + 145, i_y + 84.5; anchor: right center; size: 9.5; weight: 500; family: "SF Pro Text"; color: #b4befe; show: it.live }
+            on hover i_hit for 160ms { emit wall_hover(it.index) }
+            on leave i_hit { emit wall_leave(it.index) }
+            on press i_hit { wall_keyed = false; emit wall_choose(it.index) }
+        }
+    }
+
+    // The pager: where we are, what the folder holds, and the arrows.
+    let wl_pg_k = clamp(wall_lag.160, 0, 1)
+    let wl_pg_y = wl_grid_y + 3 * 103 + 2 + (1 - wl_pg_k) * 8
+    group {
+        show: wall_uk > 0.001 and wl_pg_k > 0.001
+        opacity: smooth(0.3, 1, wl_pg_k)
+        text wall_pager { at: wall_ox + 14, wl_pg_y + 11; anchor: left center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 56% }
+        zone box wl_prev { from: wall_ox + wall_w - 64, wl_pg_y; size: 24, 22; corner: 7; cursor: pointer; active: wall_unfolded and wall_page > 0; label: "Previous wallpapers" }
+        zone box wl_next { from: wall_ox + wall_w - 38, wl_pg_y; size: 24, 22; corner: 7; cursor: pointer; active: wall_unfolded and wall_page + 1 < wall_pages; label: "More wallpapers" }
+        box { from: wall_ox + wall_w - 64, wl_pg_y; size: 24, 22; corner: 7; color: ink_white; opacity: max(wl_prev.hover * 10%, wl_prev.pressed * 16%) }
+        box { from: wall_ox + wall_w - 38, wl_pg_y; size: 24, 22; corner: 7; color: ink_white; opacity: if(wall_page + 1 < wall_pages, 8%, 0%) + max(wl_next.hover * 10%, wl_next.pressed * 16%) }
+        text "‹" { at: wall_ox + wall_w - 52, wl_pg_y + 10; anchor: center; size: 16; color: ink_white; opacity: if(wall_page > 0, 92%, 35%) }
+        text "›" { at: wall_ox + wall_w - 26, wl_pg_y + 10; anchor: center; size: 16; color: ink_white; opacity: if(wall_page + 1 < wall_pages, 92%, 35%) }
+    }
+    on press wl_prev { emit wall_page_step(-1) }
+    on press wl_next { emit wall_page_step(1) }
+}

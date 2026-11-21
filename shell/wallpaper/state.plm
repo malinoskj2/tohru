@@ -1,0 +1,114 @@
+part WallpaperState {
+    model wall_items max 64 { path: text; name: text; file: text; video: bool; badge: text; bw: number; thumb: image 152, 95; mon: text; mw: number; shown: bool; here: bool; live: bool }
+    model wall_mons max 4 { name: text; res: text; x: number; chip: number; tx: number; tw: number; nx: number; rx: number }
+    // The bar button's centre, from services.plm.
+    prop wall_button_x = -1 ~0ms
+    fact wall_open = false
+    fact wall_unfolded = false
+    fact wall_keyed = false
+    fact wall_tab = 0
+    fact wall_tabs = 0
+    fact wall_all_tx = 0
+    fact wall_all_tw = 0
+    fact wall_sel = 0
+    fact wall_mon_count = 0
+    fact wall_count = 0
+    fact wall_page = 0
+    fact wall_pages = 1
+    fact wall_focus = -1
+    fact wall_live = -1
+    fact wall_previewing = false
+    fact wall_missing = false
+    fact wall_video = false
+    fact wall_playing = false
+    fact wall_paused = false
+    fact wall_progress = 0.5
+    fact wall_scrubbing = false
+    fact wall_pill_open = false
+    fact wall_has_soft = false
+    fact wall_failed = false
+    text wall_name = "Wallpaper"
+    text wall_number = "—"
+    text wall_count_text = ""
+    text wall_res = ""
+    text wall_rate = ""
+    text wall_time = ""
+    text wall_elapsed = ""
+    text wall_meta = ""
+    text wall_pager = ""
+    text wall_soft = ""
+    text wall_error = ""
+    text wall_pill_screen = ""
+    text wall_pill_mon = ""
+    text wall_pill_name = ""
+    text wall_pill_file = ""
+    repeat s in 0..4 {
+        text wall_sweep_screen.$s = ""
+        text wall_sweep_image.$s = ""
+        fact wall_sweep_live.$s = false
+        fact wall_sweep_old.$s = false
+        fact wall_sweep_hold.$s = 0
+        fact wall_sweep_go.$s = 0
+        // The old picture is held still until mpvpaper has the new file; then the meniscus takes 1.1 s
+        // from the bar to the bottom edge.
+        prop wall_sweep.$s = 0 ~1100ms
+        on change wall_sweep_hold.$s { wall_sweep.$s: 0 ~0ms }
+        on change wall_sweep_go.$s { wall_sweep.$s: 1 after 120ms }
+    }
+    event wall_toggle ->
+    event wall_open_request ->
+    event wall_fold_toggle ->
+    event wall_tab ->
+    event wall_chip ->
+    event wall_hover ->
+    event wall_leave ->
+    event wall_choose ->
+    event wall_escape ->
+    event wall_enter ->
+    event wall_focus_step ->
+    event wall_page_step ->
+    event wall_apply_all ->
+    event wall_random ->
+    event wall_random_all ->
+    event wall_pause ->
+    event wall_scrub_press ->
+    event wall_scrub_drag ->
+    event wall_scrub_release ->
+    event wall_rescan ->
+
+    image wall_glyph = file "wallpaper.svg", 14, 14
+    image wall_pause_icon = file "pause.svg", 12, 12
+    image wall_play_icon = file "play.svg", 12, 12
+    image wall_shuffle_icon = file "shuffle.svg", 12, 12
+    image wall_soft_img = from wall_soft, 64, 40
+
+    // 0 is the tank, 1 the library: the sound popup's spring (omega 14, damping ratio 0.78), with
+    // copies started later for the rows that follow it in.
+    prop wall_fold = 0 ~spring(196, 21.84)
+    prop wall_lag.40 = 0 ~spring(196, 21.84)
+    prop wall_lag.80 = 0 ~spring(196, 21.84)
+    prop wall_lag.120 = 0 ~spring(196, 21.84)
+    prop wall_lag.160 = 0 ~spring(196, 21.84)
+    on change wall_unfolded {
+        wall_fold: if(wall_unfolded, 1, 0)
+        wall_lag.40: if(wall_unfolded, 1, 0) after 40ms
+        wall_lag.80: if(wall_unfolded, 1, 0) after 80ms
+        wall_lag.120: if(wall_unfolded, 1, 0) after 120ms
+        wall_lag.160: if(wall_unfolded, 1, 0) after 160ms
+    }
+    // The water stands at how far the loop has played: a still, half full.
+    prop wall_water = 0.5 ~spring(56.25, 13.8)
+    follow wall_water = 0.06 + 0.88 * wall_progress
+    on change wall_open {
+        wall_fold: if(wall_unfolded, 1, 0) ~0ms
+        wall_lag.40: if(wall_unfolded, 1, 0) ~0ms
+        wall_lag.80: if(wall_unfolded, 1, 0) ~0ms
+        wall_lag.120: if(wall_unfolded, 1, 0) ~0ms
+        wall_lag.160: if(wall_unfolded, 1, 0) ~0ms
+        wall_water: 0.06 + 0.88 * wall_progress ~0ms
+    }
+    let wall_fc = clamp(wall_fold, 0, 1)
+    let wall_w = 268 + 68 * wall_fold
+    let wall_open_h = if(wall_tabs > 1, 456, 422)
+    let wall_h = 204 + (wall_open_h - 204) * wall_fold
+}
