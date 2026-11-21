@@ -3,7 +3,6 @@
   "source_commit": "3a8daa5e077f4085b5262041ea4832373b8754ca",
   "files_sha256": {
     "Abi.hpp": "27342837b9e5ff15dd0eaf4378c37d39d739bd007f49ffe9f0e42025cd523f0d",
-    "LogicalFramebuffer.hpp": "b3895d8903f279f817f47129bd780f573ffd159af9c277d16d0f63cbc7074c9a",
     "sheet.cpp": "7372775accb9377a49cea5279a6b215118ed22502cc7ae98248f29c914d370cf",
     "recede.cpp": "375c0a6a634998c9c0b99eb131ad11f0f06903cba002519f54a4160e1ed57568",
     "focus/globals.hpp": "9ab27d4ed121e9aaa21bd1488fb0868318c04c5881a9faa87f4c71ad7195b393",

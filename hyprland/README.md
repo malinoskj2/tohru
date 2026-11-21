@@ -13,7 +13,7 @@ An optional Hyprland plugin, `libtohru-hyprland.so`, with four window effects po
 
 ## Compatibility
 
-The plugin is built for Hyprland 0.56.2 and nothing else. On load it compares the build hash of the headers it was compiled against with the running compositor's, and refuses to load if they differ, so it must be built against the exact Hyprland derivation you run, including any local patches. `package.nix` also fails to evaluate for any other Hyprland version.
+The plugin is built for Hyprland 0.57.2 and nothing else. On load it compares the build hash of the headers it was compiled against with the running compositor's, and refuses to load if they differ, so it must be built against the exact Hyprland derivation you run, including any local patches. `package.nix` also fails to evaluate for any other Hyprland version.
 
 Do not load it next to hyprland-plugins' hyprfocus or hyprbars, or j2bar's plugin. They use the same hooks and config keys.
 
@@ -22,7 +22,7 @@ Do not load it next to hyprland-plugins' hyprfocus or hyprbars, or j2bar's plugi
 With Nix, from the repository root:
 
 ```sh
-nix build .#tohru-hyprland        # against the flake's pinned Hyprland 0.56.2
+nix build .#tohru-hyprland        # against the flake's pinned Hyprland 0.57.2
 nix build path:./hyprland         # the standalone flake in this folder
 nix develop path:./hyprland -c make -C hyprland -j1
 ```
@@ -59,4 +59,4 @@ Load it from your Hyprland Lua configuration with `hl.plugin.load("<path>/lib/li
 
 ## Known limitations
 
-Static checks and the unit tests pass, and the effects have been seen working in a nested Hyprland 0.56.2. Unloading the plugin from a running session, damage handling, scaling and rotation, and performance have not been checked. `VALIDATION.md` lists the remaining checks.
+Static checks and the unit tests pass, and the effects have been seen working in a nested Hyprland 0.57.2: title bars, focus dips, recession, and a chooser sheet opening and closing over its parent. Unloading the plugin from a small nested session removed the bars without crashing; unloading from a real session, damage handling, scaling and rotation, and performance have not been checked. `VALIDATION.md` lists the remaining checks.

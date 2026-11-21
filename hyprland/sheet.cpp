@@ -20,11 +20,14 @@
 #include <hyprland/src/config/values/types/FloatValue.hpp>
 #include <hyprland/src/config/values/types/StringValue.hpp>
 #include <hyprland/src/config/values/types/Vec2Value.hpp>
-#include <hyprland/src/desktop/Workspace.hpp>
 #include <hyprland/src/desktop/rule/windowRule/WindowRuleApplicator.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/desktop/state/WindowFadeout.hpp>
-#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/desktop/view/window/Window.hpp>
+#include <hyprland/src/desktop/view/window/WaylandBackend.hpp>
+#include <hyprland/src/desktop/view/window/WindowEffectsController.hpp>
+#include <hyprland/src/desktop/view/window/WindowPresentation.hpp>
+#include <hyprland/src/workspace/HLWorkspace.hpp>
 #include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/layout/LayoutManager.hpp>
 #include <hyprland/src/layout/target/Target.hpp>
@@ -35,13 +38,14 @@
 #include <hyprland/src/render/OpenGL.hpp>
 #include <hyprland/src/render/Renderer.hpp>
 #include <hyprland/src/render/pass/TexPassElement.hpp>
+#include <hyprland/src/render/WindowRenderPresentation.hpp>
 #include <hyprland/src/render/transformer/Transformer.hpp>
+#include <hyprland/src/render/transformer/TransformerList.hpp>
 #undef protected
 #undef private
 
 #include <hyprland/src/plugins/PluginAPI.hpp>
 
-#include "LogicalFramebuffer.hpp"
 #include "sheet/NoFocusRestore.hpp"
 
 using Desktop::View::IGeometric;
@@ -182,6 +186,17 @@ static CBox targetBox(const SSheet* sheet) {
     return CHOOSER && !sheet->isClosing() ? currentBox(CHOOSER) : sheet->into;
 }
 
+static Vector2D renderOffset(const PHLWINDOW& w, const PHLMONITOR& monitor) {
+    const auto PRESENTATION = w->presentation().renderPresentation();
+    return PRESENTATION.workspaceOffset + PRESENTATION.floatingOffset - monitor->m_position;
+}
+
+static CBox boundsUnion(const CBox& a, const CBox& b) {
+    const double X1 = std::min(a.x, b.x), Y1 = std::min(a.y, b.y);
+    const double X2 = std::max(a.x + a.w, b.x + b.w), Y2 = std::max(a.y + a.h, b.y + b.h);
+    return {X1, Y1, X2 - X1, Y2 - Y1};
+}
+
 // Draws a window's already rendered frame again, scaled from its own box into the sheet's current box
 // and faded. Borders, shadows, subsurfaces and the blur matte are all in that frame, so they scale
 // with it, and neither window is ever resized.
@@ -189,111 +204,140 @@ class CSheetTransformer : public Render::IWindowTransformer {
   public:
     CSheetTransformer(WP<SSheet> sheet, PHLWINDOWREF window, bool isParent) : m_sheet(std::move(sheet)), m_window(std::move(window)), m_isParent(isParent) {}
 
-    virtual void preWindowRender(CSurfacePassElement::SRenderData*) override {
-        m_nextIsFrame = true;
+    // Hyprland drops inactive transformers from the window's list.
+    void detach() {
+        m_attached = false;
     }
 
-    virtual SP<Render::IFramebuffer> transform(SP<Render::IFramebuffer> in) override {
-        const bool IS_FRAME = std::exchange(m_nextIsFrame, false);
-        const auto SHEET   = m_sheet.lock();
-        const auto WINDOW  = m_window.lock();
-        const auto PARENT  = SHEET ? SHEET->parent.lock() : nullptr;
-        const auto MONITOR = g_pHyprRenderer->m_renderData.pMonitor.lock();
-        if (!SHEET || !WINDOW || !PARENT || !MONITOR || !in || !in->getTexture())
-            return in;
+    virtual bool active() const override {
+        return m_attached;
+    }
+
+    // Its own box and where it is drawn, in the monitor's render pixels.
+    struct SMapping {
+        CBox  from;
+        CBox  to;
+        CBox  bounds;
+        float alpha = 0.F;
+    };
+
+    std::optional<SMapping> mapping(const PHLMONITOR& monitor) const {
+        const auto SHEET  = m_sheet.lock();
+        const auto WINDOW = m_window.lock();
+        const auto PARENT = SHEET ? SHEET->parent.lock() : nullptr;
+        if (!SHEET || !WINDOW || !PARENT || !monitor)
+            return std::nullopt;
 
         const auto OWN = currentBox(WINDOW);
         if (OWN.w <= 0 || OWN.h <= 0)
-            return in;
-
-        // Hyprland's final transformed-window pass expects a texture in logical output
-        // orientation. Its work buffers hold the window in the monitor's native orientation.
-        // Render into a logical-sized buffer here, so the final pass rotates it exactly once.
-        auto& output = IS_FRAME ? m_frame : m_matte;
-        if (!output)
-            output = makeShared<CLogicalFramebuffer>("j2bar-sheet-logical");
-        const auto FORMAT = MONITOR->useFP16() ? in->m_drmFormat : DRM_FORMAT_ARGB8888;
-        if (!output->alloc(MONITOR->m_transformedSize.x, MONITOR->m_transformedSize.y, FORMAT))
-            return in;
-        output->setImageDescription(in->getTexture()->m_imageDescription);
-        const auto OUT = output;
-
-        const auto GUARD = g_pHyprRenderer->bindTempFB(OUT);
-        Render::GL::g_pHyprOpenGL->setViewport(0, 0, OUT->m_size.x, OUT->m_size.y);
-        const auto PROJECTION = g_pHyprRenderer->m_renderData.projectionType;
-        const auto FB_SIZE = g_pHyprRenderer->m_renderData.fbSize;
-        const auto TRANSFORM_DAMAGE = g_pHyprRenderer->m_renderData.transformDamage;
-        g_pHyprRenderer->m_renderData.fbSize = OUT->m_size;
-        g_pHyprRenderer->setProjectionType(Render::RPT_EXPORT);
-        g_pHyprRenderer->m_renderData.transformDamage = false;
-        const auto PROJECTION_GUARD = Render::CScopeGuard([PROJECTION, FB_SIZE, TRANSFORM_DAMAGE] {
-            g_pHyprRenderer->m_renderData.fbSize = FB_SIZE;
-            g_pHyprRenderer->setProjectionType(PROJECTION);
-            g_pHyprRenderer->m_renderData.transformDamage = TRANSFORM_DAMAGE;
-        });
-        const CRegion FULL  = CBox{Vector2D{}, MONITOR->m_transformedSize};
-        // The renderer's clear element doesn't reliably clear this buffer, and using it here cuts part
-        // of a blurred bottom layer, such as a desktop widget, out of the frame.
-        Render::GL::g_pHyprOpenGL->setCapStatus(GL_SCISSOR_TEST, false);
-        glClearColor(0.F, 0.F, 0.F, 0.F);
-        glClear(GL_COLOR_BUFFER_BIT);
+            return std::nullopt;
 
         const float PROGRESS  = std::clamp(SHEET->progress->value(), 0.F, 1.F);
         const float TRAVELLED = SHEET->isClosing() ? 1.F - PROGRESS : PROGRESS;
         const float ALPHA     = m_isParent == SHEET->isClosing() ? incomingAlpha(TRAVELLED) : outgoingAlpha(TRAVELLED);
-        if (ALPHA <= 0.F)
-            return OUT;
 
-        const auto WORKSPACE = WINDOW->m_workspace;
-        const auto OFFSET    = (WINDOW->m_pinned || !WORKSPACE ? Vector2D{} : WORKSPACE->m_renderOffset->value()) + WINDOW->m_floatingOffset - MONITOR->m_position;
-        const auto FROM      = OWN.copy().translate(OFFSET).scale(MONITOR->m_scale);
-        auto       to        = SHEET->isOpen() ? FROM.copy().scaleFromCenter(SHEET->dip->value()) :
-                                                   lerpBox(currentBox(PARENT), targetBox(SHEET.get()), PROGRESS).translate(OFFSET).scale(MONITOR->m_scale);
+        const auto  OFFSET = renderOffset(WINDOW, monitor);
+        const auto  FROM   = OWN.copy().translate(OFFSET).scale(monitor->m_scale);
+        auto        to     = SHEET->isOpen() ? FROM.copy().scaleFromCenter(SHEET->dip->value()) :
+                                               lerpBox(currentBox(PARENT), targetBox(SHEET.get()), PROGRESS).translate(OFFSET).scale(monitor->m_scale);
 
         // Within two pixels of the window's own size it's drawn at that size on whole pixels, so it isn't
         // resampled as it comes to rest and looks the same once the sheet ends.
         if (std::abs(to.w - FROM.w) < 2.0 && std::abs(to.h - FROM.h) < 2.0)
             to = {FROM.x + std::round(to.x - FROM.x), FROM.y + std::round(to.y - FROM.y), FROM.w, FROM.h};
 
-        const auto TO    = to;
-        const auto SCALE = Vector2D{TO.w / FROM.w, TO.h / FROM.h};
+        return SMapping{FROM, to, WINDOW->getFullWindowBoundingBox().translate(OFFSET).scale(monitor->m_scale).round().expand(2), ALPHA};
+    }
+
+    static CBox mapBox(const SMapping& map, const CBox& box) {
+        const auto SCALE = Vector2D{map.to.w / map.from.w, map.to.h / map.from.h};
+        return {map.to.x + (box.x - map.from.x) * SCALE.x, map.to.y + (box.y - map.from.y) * SCALE.y, box.w * SCALE.x, box.h * SCALE.y};
+    }
+
+    // Hyprland only allocates and draws the transformed window within these extents.
+    virtual CBox transformedExtents(const CBox& currentBox) const override {
+        const auto WINDOW  = m_window.lock();
+        const auto MONITOR = WINDOW ? WINDOW->m_monitor.lock() : nullptr;
+        const auto MAP     = mapping(MONITOR);
+        if (!MAP)
+            return currentBox;
+
+        const double SCALE = MONITOR->m_scale;
+        const auto   DRAWN = mapBox(*MAP, MAP->bounds).expand(2).scale(1.0 / SCALE);
+        return boundsUnion(currentBox, DRAWN).expand(4.0 / SCALE);
+    }
+
+    virtual CBox sourceBoxForOutput(const CBox&, const CBox& inputBox) const override {
+        return inputBox;
+    }
+
+    virtual Render::SWindowTransformBuffer transform(Render::CRenderContext& ctx, const Render::SWindowTransformBuffer& in,
+                                                     const Render::SWindowTransformContext& context) override {
+        const auto MONITOR = context.monitor.lock();
+        if (!MONITOR || !in.framebuffer || !in.framebuffer->getTexture())
+            return in;
+
+        const auto MAP = mapping(MONITOR);
+        if (!MAP)
+            return in;
+
+        const auto OUTPUTCANVAS = Render::pixelBoxForLogical(context.outputBox.copy().expand(1.0 / MONITOR->m_scale), MONITOR->m_scale);
+        if (OUTPUTCANVAS.empty())
+            return in;
+
+        const auto OUT = g_pHyprRenderer->getWorkBuffer(ctx, OUTPUTCANVAS.size());
+        if (!OUT)
+            return {.framebuffer = in.framebuffer, .box = in.box, .success = false};
+
+        Render::GL::CFramebufferBindingGuard bindings{g_pHyprRenderer->glBackend()};
+        auto                                 state      = ctx.saveDrawState();
+        auto&                                renderData = ctx.m_data;
+        g_pHyprRenderer->bindFB(ctx, OUT);
+        const CRegion FULL     = CBox{{}, OUTPUTCANVAS.size()};
+        renderData.damage      = FULL;
+        renderData.fbSize      = OUTPUTCANVAS.size();
+        renderData.transformDamage = false;
+        g_pHyprRenderer->setProjectionType(ctx, Render::RPT_EXPORT);
+        Render::GL::g_pHyprOpenGL->setViewport(0, 0, OUTPUTCANVAS.w, OUTPUTCANVAS.h);
+        // The renderer's clear element doesn't reliably clear this buffer, and using it here cuts part
+        // of a blurred bottom layer, such as a desktop widget, out of the frame.
+        Render::GL::g_pHyprOpenGL->setCapStatus(GL_SCISSOR_TEST, false);
+        glClearColor(0.F, 0.F, 0.F, 0.F);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        const Render::SWindowTransformBuffer RESULT = {.framebuffer = OUT, .box = OUTPUTCANVAS};
+        if (MAP->alpha <= 0.F)
+            return RESULT;
 
         // Hyprland renders the window into `in` only within its full bounding box, so nothing outside
-        // that box's scaled copy needs drawing. `out` is a reused buffer, so all of it is cleared.
-        const auto BOUNDS = WINDOW->getFullWindowBoundingBox().translate(OFFSET).scale(MONITOR->m_scale).round().expand(2);
-        const auto DRAWN  = CBox{TO.x + (BOUNDS.x - FROM.x) * SCALE.x, TO.y + (BOUNDS.y - FROM.y) * SCALE.y, BOUNDS.w * SCALE.x, BOUNDS.h * SCALE.y}.expand(2).round();
+        // that box's scaled copy needs drawing.
+        const auto DRAWN = mapBox(*MAP, MAP->bounds).expand(2).round().translate(-OUTPUTCANVAS.pos());
 
         CTexPassElement::SRenderData data;
-        data.tex = in->getTexture();
-        data.box = {TO.x - FROM.x * SCALE.x, TO.y - FROM.y * SCALE.y, MONITOR->m_transformedSize.x * SCALE.x, MONITOR->m_transformedSize.y * SCALE.y};
-        data.a   = ALPHA;
-        const auto TRANSFORM = data.tex->m_transform;
-        if (!dynamic_cast<CLogicalFramebuffer*>(in.get()))
-            data.tex->m_transform = Math::composeTransform(Math::wlTransformToHyprutils(Math::invertTransform(MONITOR->m_transform)), TRANSFORM);
-        const auto TEXTURE_GUARD = Render::CScopeGuard([texture = data.tex, TRANSFORM] { texture->m_transform = TRANSFORM; });
-        g_pHyprRenderer->draw(data, CRegion{DRAWN}.intersect(FULL));
+        data.tex = in.framebuffer->getTexture();
+        data.box = mapBox(*MAP, in.box).translate(-OUTPUTCANVAS.pos());
+        data.a   = MAP->alpha;
+        g_pHyprRenderer->draw(ctx, data, CRegion{DRAWN}.intersect(FULL));
 
-        return OUT;
+        return RESULT;
     }
 
   private:
     WP<SSheet>   m_sheet;
     PHLWINDOWREF m_window;
     bool         m_isParent;
-    bool         m_nextIsFrame = true;
-    SP<Render::IFramebuffer> m_frame;
-    SP<Render::IFramebuffer> m_matte;
+    bool         m_attached = true;
 };
 
 static void attach(const WP<SSheet>& sheet, const PHLWINDOW& w, CSheetTransformer*& slot, bool isParent) {
-    auto transformer = makeUnique<CSheetTransformer>(sheet, w, isParent);
-    slot             = transformer.get();
-    w->m_transformers.emplace_back(std::move(transformer));
+    slot = w->effects().transformers()->emplace<CSheetTransformer>(sheet, PHLWINDOWREF{w}, isParent);
 }
 
 static void detach(const PHLWINDOWREF& w, CSheetTransformer*& slot) {
-    if (const auto WINDOW = w.lock(); WINDOW && slot)
-        std::erase_if(WINDOW->m_transformers, [slot](const auto& t) { return t.get() == slot; });
+    if (const auto WINDOW = w.lock(); WINDOW && slot) {
+        slot->detach();
+        WINDOW->effects().transformers()->removeInactive();
+    }
     slot = nullptr;
 }
 
@@ -308,7 +352,7 @@ void SSheet::hideParent() {
         return;
 
     detach(parent, parentTransformer);
-    PARENT->alpha(Desktop::View::WINDOW_ALPHA_MOVE_FROM_WORKSPACE)->setValueAndWarp(0.F);
+    PARENT->alpha()[Desktop::View::WINDOW_ALPHA_MOVE_FROM_WORKSPACE]->setValueAndWarp(0.F);
     parentNoFocus.hide(PARENT->m_ruleApplicator->noFocus());
     parentHidden = true;
 }
@@ -319,7 +363,7 @@ void SSheet::showParent() {
 
     parentHidden = false;
     if (const auto PARENT = parent.lock()) {
-        PARENT->alpha(Desktop::View::WINDOW_ALPHA_MOVE_FROM_WORKSPACE)->setValueAndWarp(1.F);
+        PARENT->alpha()[Desktop::View::WINDOW_ALPHA_MOVE_FROM_WORKSPACE]->setValueAndWarp(1.F);
         parentNoFocus.restore(PARENT->m_ruleApplicator->noFocus());
     }
 }
@@ -441,7 +485,7 @@ void SSheet::open(const PHLWINDOW& window, const PHLWINDOW& parentWindow) {
 
     window->positionAnimation()->warp();
     window->sizeAnimation()->warp();
-    window->alpha(Desktop::View::WINDOW_ALPHA_FADE)->warp();
+    window->alpha()[Desktop::View::WINDOW_ALPHA_FADE]->warp();
 
     // An end callback set on a variable at rest runs straight away, so it goes on once this has started.
     *progress = 1.F;
@@ -483,24 +527,30 @@ static std::optional<Vector2D> chooserSizeFor(const PHLWINDOW& parent) {
     return Vector2D{std::floor(std::max<double>(SIZE.x * SHARE, MIN.x)), std::floor(std::max<double>(SIZE.y * SHARE, MIN.y))};
 }
 
+static SP<CXDGSurfaceResource> xdgSurfaceFor(const PHLWINDOW& w) {
+    const auto* BACKEND = dynamic_cast<const Desktop::View::CWaylandBackend*>(&w->backend());
+    return BACKEND ? BACKEND->m_resource.lock() : nullptr;
+}
+
 // The size goes out in the chooser's first configure, so GTK draws its very first frame at it.
 static void onInitialCommit(SPendingChooser* pending) {
     pending->committed = true;
 
     const auto CHOOSER = pending->chooser.lock();
-    if (!CHOOSER || !CHOOSER->m_xdgSurface || !CHOOSER->m_xdgSurface->m_toplevel)
+    const auto XDG     = CHOOSER ? xdgSurfaceFor(CHOOSER) : nullptr;
+    if (!XDG || !XDG->m_toplevel)
         return;
 
-    const auto TOPLEVEL = CHOOSER->m_xdgSurface->m_toplevel.lock();
+    const auto TOPLEVEL = XDG->m_toplevel.lock();
     if (!isChooserClass(TOPLEVEL->m_state.appid))
         return;
 
     pending->isChooser = true;
 
-    auto parent = CHOOSER->parent();
+    auto parent = CHOOSER->backend().parent();
     if (!parent) {
         const auto FOCUSED = Desktop::focusState()->window();
-        if (Desktop::View::validMapped(FOCUSED) && FOCUSED != CHOOSER && !FOCUSED->isX11OverrideRedirect() && !isChooserClass(FOCUSED->m_class))
+        if (Desktop::View::validMapped(FOCUSED) && FOCUSED != CHOOSER && !FOCUSED->backend().traits().overrideRedirect && !isChooserClass(FOCUSED->metadata().appID()))
             parent = FOCUSED;
         pending->focusedParent = parent;
     }
@@ -518,13 +568,14 @@ static SPendingChooser* pendingFor(const PHLWINDOW& w) {
 }
 
 static void onWindowCreate(PHLWINDOW w) {
-    if (w->m_isX11 || !w->m_xdgSurface)
+    const auto XDG = w->backend().isX11() ? nullptr : xdgSurfaceFor(w);
+    if (!XDG)
         return;
 
     auto pending     = makeUnique<SPendingChooser>();
     pending->chooser = w;
     auto* raw        = pending.get();
-    pending->commit  = w->m_xdgSurface->m_events.commit.listen([raw] {
+    pending->commit  = XDG->m_events.commit.listen([raw] {
         if (!raw->committed)
             onInitialCommit(raw);
     });
@@ -532,7 +583,7 @@ static void onWindowCreate(PHLWINDOW w) {
 }
 
 static PHLWINDOW parentFor(const PHLWINDOW& chooser) {
-    if (const auto PARENT = chooser->parent())
+    if (const auto PARENT = chooser->backend().parent())
         return PARENT;
 
     if (const auto PENDING = pendingFor(chooser))
@@ -542,7 +593,7 @@ static PHLWINDOW parentFor(const PHLWINDOW& chooser) {
 }
 
 static bool sheetable(const PHLWINDOW& chooser, const PHLWINDOW& parent) {
-    return Desktop::View::validMapped(parent) && parent != chooser && chooser->m_isFloating && parent->m_workspace && parent->m_workspace == chooser->m_workspace &&
+    return Desktop::View::validMapped(parent) && parent != chooser && chooser->isFloating() && parent->m_workspace && parent->m_workspace == chooser->m_workspace &&
         !sheetFor(parent, true) && !sheetFor(parent, false);
 }
 
@@ -591,12 +642,12 @@ static void onWindowClose(PHLWINDOW w) {
         sheet->close(w);
 }
 
-typedef SP<Desktop::CWindowFadeout> (*origFadeoutCreate)(PHLWINDOW, SP<Render::IFramebuffer>, float);
+typedef SP<Desktop::CWindowFadeout> (*origFadeoutCreate)(PHLWINDOW, SP<Render::IFramebuffer>, float, SP<Render::IFramebuffer>);
 
 // The closing chooser's snapshot grows back out into the parent's box on the curve the parent grows
 // back on.
-static SP<Desktop::CWindowFadeout> hkFadeoutCreate(PHLWINDOW window, SP<Render::IFramebuffer> snapshot, float sourceAlpha) {
-    auto  fadeout = ((origFadeoutCreate)fadeoutCreateHook->m_original)(window, snapshot, sourceAlpha);
+static SP<Desktop::CWindowFadeout> hkFadeoutCreate(PHLWINDOW window, SP<Render::IFramebuffer> snapshot, float sourceAlpha, SP<Render::IFramebuffer> workspaceSnapshot) {
+    auto  fadeout = ((origFadeoutCreate)fadeoutCreateHook->m_original)(window, snapshot, sourceAlpha, workspaceSnapshot);
 
     auto* SHEET = window ? sheetFor(window, false) : nullptr;
     if (!fadeout || !SHEET || !SHEET->isClosing())

@@ -88,7 +88,7 @@ The repository ships no systemd units outside the Home Manager module. To write 
 
 ## Hyprland plugin
 
-The plugin builds separately with `make`. It needs a C++23 GCC toolchain, `pkg-config`, and the development headers of the exact Hyprland 0.56.2 build you run, plus pixman, libdrm, pangocairo, libinput, libudev, wayland-server, xkbcommon and Lua.
+The plugin builds separately with `make`. It needs a C++23 GCC toolchain, `pkg-config`, and the development headers of the exact Hyprland 0.57.2 build you run, plus pixman, libdrm, pangocairo, libinput, libudev, wayland-server, xkbcommon and Lua.
 
 ```sh
 cd hyprland

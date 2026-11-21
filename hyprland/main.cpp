@@ -4,11 +4,11 @@
 
 #include "Abi.hpp"
 
-#include <hyprland/src/managers/EventManager.hpp>
+#include <hyprland/src/ipc/s1/S1.hpp>
 #include <hyprland/src/render/Renderer.hpp>
 
 // Hook compatibility is reviewed for this exact source revision, not a version range.
-static_assert(std::string_view{GIT_COMMIT_HASH} == "efb50993780079460b0cbed1363e2166a2de1d9f",
+static_assert(std::string_view{GIT_COMMIT_HASH} == "11cbc6c577b84ffb1edf4df3fc5b6128c3ae6947",
               "Review private hooks before changing the supported Hyprland revision");
 
 APICALL PLUGIN_DESCRIPTION_INFO j2barFocusInit(HANDLE);
@@ -22,7 +22,7 @@ APICALL void j2barBarsExit();
 
 namespace {
 HANDLE pluginHandle = nullptr;
-SP<SHyprCtlCommand> capabilitiesCommand;
+SP<IPC::Socket1::SCommand> capabilitiesCommand;
 bool focusStarted = false;
 bool sheetStarted = false;
 bool recedeStarted = false;
@@ -30,7 +30,7 @@ bool barsStarted = false;
 
 void stop() {
     // Nested transformer passes may retain bar elements whose destructors live in this DSO.
-    g_pHyprRenderer->m_renderPass.clear();
+    g_pHyprRenderer->context().m_pass.clear();
     if (capabilitiesCommand) {
         HyprlandAPI::unregisterHyprCtlCommand(pluginHandle, capabilitiesCommand);
         capabilitiesCommand.reset();
@@ -74,10 +74,10 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         j2barRecedeInit(handle);
         barsStarted = true;
         j2barBarsInit(handle);
-        capabilitiesCommand = HyprlandAPI::registerHyprCtlCommand(handle, SHyprCtlCommand{
+        capabilitiesCommand = HyprlandAPI::registerHyprCtlCommand(handle, IPC::Socket1::SCommand{
             .name = "desktop-effects-capabilities",
-            .exact = true,
-            .fn = [handle](eHyprCtlOutputFormat, std::string) {
+            .match = IPC::Socket1::COMMAND_MATCH_EXACT,
+            .handler = [handle](const IPC::Socket1::SRequest&) -> IPC::Socket1::SResponse {
                 return "{\"protocol\":1,\"plugin\":\"desktop-effects\",\"hyprland_hash\":\"" +
                     HyprlandAPI::getHyprlandVersion(handle).hash +
                     "\",\"capabilities\":[\"focus-dips\",\"title-bars\",\"recession\",\"sheet-transitions\"]}";

@@ -1,6 +1,6 @@
 { hyprland, hyprlandPlugins, lib }:
-assert lib.assertMsg (hyprland.version == "0.56.2")
-  "tohru-hyprland requires reviewed Hyprland 0.56.2 headers; review private hooks before updating";
+assert lib.assertMsg (hyprland.version == "0.57.2")
+  "tohru-hyprland requires reviewed Hyprland 0.57.2 headers; review private hooks before updating";
 hyprlandPlugins.mkHyprlandPlugin {
   pluginName = "tohru-hyprland";
   version = "0.1.0";

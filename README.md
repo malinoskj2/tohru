@@ -8,7 +8,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
   <a href="flake.nix"><img src="https://img.shields.io/badge/Nix-flake-5277C3?logo=nixos&logoColor=white" alt="Nix flake"></a>
   <a href="#status"><img src="https://img.shields.io/badge/platform-x86__64--linux-lightgrey" alt="Platform: x86_64-linux"></a>
-  <a href="hyprland/README.md"><img src="https://img.shields.io/badge/Hyprland-0.56.2-58E1FF" alt="Hyprland 0.56.2"></a>
+  <a href="hyprland/README.md"><img src="https://img.shields.io/badge/Hyprland-0.57.2-58E1FF" alt="Hyprland 0.57.2"></a>
   <a href="runtime/pleamar/pin.json"><img src="https://img.shields.io/badge/Pleamar-0.7.27-1f6feb" alt="Pleamar 0.7.27"></a>
   <a href="#status"><img src="https://img.shields.io/badge/status-experimental-orange" alt="Status: experimental"></a>
 </p>
@@ -138,7 +138,7 @@ The `tohru` command sends requests to the running processes. It reports that a r
 | `tohru notifications toggle` | Open or close the Notification Center (`open`, `close`, `clear`, `seen`, `dnd on\|off\|toggle`) |
 | `tohru settings open` | Open Settings, starting it if needed |
 
-For example, in a Hyprland 0.56 Lua configuration:
+For example, in a Hyprland 0.57 Lua configuration:
 
 ```lua
 hl.bind("SUPER + Space", hl.dsp.exec_cmd("tohru launcher toggle"))
@@ -179,5 +179,5 @@ Tohru is MIT licensed ([LICENSE](LICENSE)).
 - [Pleamar](https://github.com/k4ditano/pleamar) is BSD-3-Clause. Its source is fetched at build time and its license and third-party notices are installed with the runtime. `tools/reference/fixtures/workspace/PLEAMAR-LICENSE` carries its notice for the reference workspace rail code, which was first written inside a vendored Pleamar tree.
 - `shell/bar/`, `shell/corners/`, `shell/sound/` and `tools/reference/fixtures/workspace/` carry an additional MIT notice for layouts, assets, shaders and motion code ported from an earlier shell.
 - `shell/sound/LICENSE.LUCIDE`, `shell/media/LICENSE.LUCIDE` and `shell/service-assets/LICENSE` are the ISC license for icons from, or based on, [Lucide](https://lucide.dev).
-- The Hyprland plugin is MIT (`hyprland/LICENSE`). Its `focus/` and `bars/` components derive from [hyprwm/hyprland-plugins](https://github.com/hyprwm/hyprland-plugins) v0.56.0, under BSD-3-Clause (`hyprland/UPSTREAM-LICENSE`). See `hyprland/UPSTREAM.md` for provenance.
+- The Hyprland plugin is MIT (`hyprland/LICENSE`). Its `focus/` and `bars/` components derive from [hyprwm/hyprland-plugins](https://github.com/hyprwm/hyprland-plugins) v0.56.0, ported to Hyprland 0.57 with upstream's API changes, under BSD-3-Clause (`hyprland/UPSTREAM-LICENSE`). See `hyprland/UPSTREAM.md` for provenance.
 - The mascot and the bar's dragon mark (`shell/brand/`) are Tohru's own, under the same MIT license.
