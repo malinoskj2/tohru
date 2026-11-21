@@ -1,0 +1,122 @@
+diff --git a/src/platform/wayland.rs b/src/platform/wayland.rs
+index 77f80f1..0e3d058 100644
+--- a/src/platform/wayland.rs
++++ b/src/platform/wayland.rs
+@@ -1175,6 +1175,8 @@ struct State {
+     cursors: Arc<Mutex<Option<WpCursorShapeDeviceV1>>>,
+     serial: Arc<AtomicU32>,
+     mods: Mods,
++    keymap_layouts: Vec<String>,
++    last_indicators: (bool, bool, String),
+     /// To receive what gets dragged from another application.
+     drag_and_drop: Option<DataDeviceManagerState>,
+     data_device: Option<DataDevice>,
+@@ -2144,6 +2146,8 @@ pub fn run_event_loop(wanted: Vec<Surface>, extra_height: u32, instance: wgpu::I
+         cursors: Arc::default(),
+         serial: Arc::default(),
+         mods: Mods::default(),
++        keymap_layouts: Vec::new(),
++        last_indicators: (false, false, String::new()),
+         drag_and_drop: DataDeviceManagerState::bind(&globals, &qh).ok(),
+         data_device: None,
+         quit: false,
+@@ -2661,6 +2665,34 @@ fn key_name(e: &KeyEvent) -> String {
+     e.keysym.name().map(|n| n.trim_start_matches("XK_").to_owned()).unwrap_or_else(|| format!("{:#x}", e.keysym.raw()))
+ }
+ 
++fn parse_xkb_layouts(keymap: &str) -> Vec<String> {
++    let mut entries: Vec<(usize, String)> = Vec::new();
++    for line in keymap.lines() {
++        let trimmed = line.trim();
++        let Some(rest) = trimmed.strip_prefix("name[group") else { continue };
++        let Some((idx_str, after)) = rest.split_once(']') else { continue };
++        let Ok(idx) = idx_str.trim().parse::<usize>() else { continue };
++        let Some((_, rhs)) = after.split_once('=') else { continue };
++        let quoted = rhs.trim().trim_end_matches(';').trim();
++        let name = quoted.strip_prefix('"').and_then(|s| s.strip_suffix('"')).unwrap_or(quoted).trim();
++        if !name.is_empty() && !entries.iter().any(|(i, _)| *i == idx) {
++            entries.push((idx, name.to_owned()));
++        }
++    }
++    entries.sort_by_key(|(idx, _)| *idx);
++    entries.into_iter().map(|(_, name)| name).collect()
++}
++
++impl State {
++    fn emit_indicators(&mut self, caps_lock: bool, num_lock: bool, layout_idx: u32) {
++        let layout = self.keymap_layouts.get(layout_idx as usize).cloned().unwrap_or_default();
++        if self.last_indicators != (caps_lock, num_lock, layout.clone()) {
++            self.last_indicators = (caps_lock, num_lock, layout.clone());
++            let _ = self.to_render.send(ToRender::KeyboardIndicators { caps_lock, num_lock, layout });
++        }
++    }
++}
++
+ impl KeyboardHandler for State {
+     fn enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wayland_client::protocol::wl_keyboard::WlKeyboard, _: &wl_surface::WlSurface, _: u32, _: &[u32], _: &[Keysym]) {
+         let _ = self.to_render.send(ToRender::KeyboardFocus(true));
+@@ -2678,7 +2710,11 @@ impl KeyboardHandler for State {
+     /// The layout as the user has it: the scene's own compositor hands the
+     /// same one to its windows.
+     fn update_keymap(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wayland_client::protocol::wl_keyboard::WlKeyboard, keymap: smithay_client_toolkit::seat::keyboard::Keymap<'_>) {
+-        super::set_host_keymap(keymap.as_string());
++        let raw = keymap.as_string();
++        self.keymap_layouts = parse_xkb_layouts(&raw);
++        let (caps, num) = (self.last_indicators.0, self.last_indicators.1);
++        self.emit_indicators(caps, num, 0);
++        super::set_host_keymap(raw);
+     }
+     fn update_repeat_info(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wayland_client::protocol::wl_keyboard::WlKeyboard, info: RepeatInfo) {
+         let r = match info {
+@@ -2695,8 +2731,9 @@ impl KeyboardHandler for State {
+     fn release_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wayland_client::protocol::wl_keyboard::WlKeyboard, _: u32, e: KeyEvent) {
+         let _ = self.to_render.send(ToRender::KeyReleased(key_name(&e), e.raw_code));
+     }
+-    fn update_modifiers(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wayland_client::protocol::wl_keyboard::WlKeyboard, _: u32, m: Modifiers, _: RawModifiers, _: u32) {
++    fn update_modifiers(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wayland_client::protocol::wl_keyboard::WlKeyboard, _: u32, m: Modifiers, _: RawModifiers, layout: u32) {
+         self.mods = Mods { ctrl: m.ctrl, alt: m.alt, shift: m.shift, logo: m.logo };
++        self.emit_indicators(m.caps_lock, m.num_lock, layout);
+     }
+ }
+ 
+diff --git a/src/render.rs b/src/render.rs
+index 98b1238..d3c1268 100644
+--- a/src/render.rs
++++ b/src/render.rs
+@@ -1486,6 +1486,23 @@ pub fn run(
+                         send(ToNest::HostFocus(yes));
+                     }
+                 }
++                ToRender::KeyboardIndicators { caps_lock, num_lock, layout } => {
++                    for (name, on) in [("caps_lock", caps_lock), ("num_lock", num_lock)] {
++                        if let Some(i) = scene.facts.iter().position(|(n, _)| *n == name) {
++                            let v = if on { 1.0 } else { 0.0 };
++                            if (facts[i] - v).abs() > f32::EPSILON {
++                                facts[i] = v;
++                                let _ = to_logic.send(Event::Fact(scene.facts[i].0, v));
++                            }
++                        }
++                    }
++                    if let Some(i) = scene.texts.iter().position(|(n, _)| *n == "kb_layout") {
++                        if texts[i] != layout {
++                            texts[i] = layout.clone();
++                            let _ = to_logic.send(Event::Text(scene.texts[i].0, layout));
++                        }
++                    }
++                }
+                 ToRender::WatchWindow(slot, who, to) => {
+                     nest_watch.retain(|(s, w, _)| !(*s == slot && *w == who));
+                     if let Some(to) = to {
+diff --git a/src/scene.rs b/src/scene.rs
+index 249f24e..688108b 100644
+--- a/src/scene.rs
++++ b/src/scene.rs
+@@ -2504,6 +2504,8 @@ pub enum ToRender {
+     KeyReleased(String, u32),
+     /// The surface has gained or lost the keyboard.
+     KeyboardFocus(bool),
++    /// Keyboard lock indicators (Caps Lock, Num Lock) and the active XKB layout name.
++    KeyboardIndicators { caps_lock: bool, num_lock: bool, layout: String },
+     /// Put the text cursor in a field, or take it away from wherever it is.
+     FocusField(Option<&'static str>),
+     /// How this user's keys repeat: after how many ms it starts and every how many
