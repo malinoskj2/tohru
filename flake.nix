@@ -43,5 +43,9 @@
         tohru = import ./nix/home-manager.nix;
         default = self.homeManagerModules.tohru;
       };
+      nixosModules = {
+        tohru-greeter = import ./nix/nixos.nix;
+        default = self.nixosModules.tohru-greeter;
+      };
     };
 }
