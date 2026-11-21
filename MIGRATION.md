@@ -19,7 +19,7 @@ new packages on `PATH`) up to date. What is still open is unchecked below.
 | Still-image wallpaper (row 26) | Remove from Tohru | Plain Hyprland configuration (no effects plugin) |
 | Video wallpaper (row 26) | Remove from Tohru | mpvpaper, through the existing `~/nix` wallpaper units |
 | Idle (row 24) | Remove from Tohru | hypridle, configured in `~/nix` |
-| Polkit agent (row 25) | Remove from Tohru | hyprpolkitagent, configured in `~/nix` |
+| Polkit agent (row 25) | Removed, then brought back as an opt-in agent (`polkit.agent`, off by default) | hyprpolkitagent until `~/nix` switches; see [Polkit agent](#polkit-agent) |
 | Region screenshot (row 28) | Remove from Tohru | grimblast (hyprwm/contrib): `grimblast --notify --freeze copysave area` |
 
 Already dropped by the acceptance inventory and still dropped: dmenu picker
@@ -298,6 +298,35 @@ Polkit (hyprpolkitagent):
 - [x] Enable `services.hyprpolkitagent` in Home Manager (a user service bound to
       `graphical-session.target`), and remove `j2bar polkit-agent` so it is the
       only agent.
+
+### Polkit agent
+
+Tohru's agent (`tohru-polkit`, the Frosted Vessel dialog) can replace hyprpolkitagent. A session can have only one polkit agent: polkitd keeps the first registration and refuses the second, so hyprpolkitagent must be gone before `tohru-polkit` starts. Not done yet; `~/nix` still runs hyprpolkitagent.
+
+1. Update the `tohru` flake input to a revision that contains the agent (this branch, once merged), so `programs.tohru.polkit.enable` exists.
+2. In `users/jesse/hyprland-desktop/tohru.nix`, replace
+
+   ```nix
+   services.hyprpolkitagent.enable = true;
+   ```
+
+   with `polkit.enable = true;` inside the existing `programs.tohru` block:
+
+   ```nix
+   programs.tohru = {
+     enable = package != null;
+     package = lib.mkIf (package != null) package;
+     systemd.enable = true;
+     polkit.enable = true;
+     settings.bar.preferred_output = config.desktop.monitors.main.output;
+   };
+   ```
+
+   `polkit.enable` writes `[polkit] agent = true` into the managed settings file and adds the `tohru-polkit` user service (needs `systemd.enable`, which is already on). Nothing else in `~/nix` changes: NixOS's `security.polkit` already provides polkitd and the setuid `polkit-agent-helper-1` (or its socket) that the agent uses.
+3. Switch Home Manager, then make sure only one agent runs: `systemctl --user stop hyprpolkitagent` if it survived the switch, or log out and in. While another agent holds the session, `tohru-polkit` logs `another agent is` and keeps asking again, with growing pauses; `systemctl --user restart tohru-polkit` makes it ask at once.
+4. Check: `journalctl --user -u tohru-polkit` has no `cannot be the one asked` line; `pkexec true` shows the dialog; a wrong password shows "Incorrect password · 2 attempts remaining"; the right one returns 0.
+
+To go back, remove `polkit.enable = true;` and restore `services.hyprpolkitagent.enable = true;`.
 
 ## 4. Keybinds (`hyprland/hyprland.lua`)
 

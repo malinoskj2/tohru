@@ -18,10 +18,11 @@ Each role is its own `pleamar` process, started by a wrapper in `bin/`. Each can
 | `tohru-notifications` | `shell/notifications/notifications.plm` | `tohru-notifications-run` | Owns `org.freedesktop.Notifications`; must be the only notification daemon. Keeps whether something arrived unseen (saved across restarts) and Do Not Disturb (not saved) |
 | `tohru-settings` | `shell/settings/settings.plm` | `tohru-settings-run` | Settings window, started on demand. Sets `TOHRU_SHELL=1` |
 | `tohru-lock` | `shell/lock/lock.plm`, else `shell/lock/plain.plm` | `tohru-lock` | The lock screen, started by hypridle's `lock_cmd` or `tohru lock`. Sets `TOHRU_SHELL=1` and `TOHRU_LOCKER=1`. Exits when unlocked |
+| `tohru-polkit` | `shell/polkit/polkit.plm` | `tohru-polkit-run` | Registers as the session's polkit authentication agent when `polkit.agent` is true, and shows the Frosted Vessel dialog on a keyboard-exclusive overlay layer. Talks to PAM only through polkit's helper. Sets `TOHRU_SHELL=1` |
 
 The wrappers run `pleamar --scene <scene> --no-hud --stall 0 --answer-as <role>`. The role name is what other processes and the CLI address.
 
-Tohru has no idle handling, polkit agent, wallpaper player or screenshot tool. The bar's wallpaper popup chooses what the `~/nix` mpvpaper units play, through `bin/tohru-wallpaper`; it plays nothing itself. The session menu's Lock runs `loginctl lock-session`, which hypridle's `lock_cmd` answers by starting `tohru-lock`. Sleep runs `loginctl lock-session` and, only if that succeeds, `systemctl suspend`. Restart, Shut Down and Log Out use Pleamar's session services.
+Tohru has no idle handling, wallpaper player or screenshot tool. Its polkit agent is off unless `polkit.agent` is set. The bar's wallpaper popup chooses what the `~/nix` mpvpaper units play, through `bin/tohru-wallpaper`; it plays nothing itself. The session menu's Lock runs `loginctl lock-session`, which hypridle's `lock_cmd` answers by starting `tohru-lock`. Sleep runs `loginctl lock-session` and, only if that succeeds, `systemctl suspend`. Restart, Shut Down and Log Out use Pleamar's session services.
 
 ## Lock screen
 
@@ -76,6 +77,8 @@ Requests report that Pleamar accepted them, not that the action finished. If no 
 | `0027-lock-pam` | PAM picks the `tohru-lock` service first, the password copy is zeroed with volatile writes on every path, and the `tohru-test-pam` feature (never in a shipped build) lets `TOHRU_TEST_PAM_CONFDIR` point the check at a private service for nested-compositor tests |
 | `0028-lock-views-together` | An element on more than one view (a lock face per monitor) is clipped to all of them together. Clipped to the first alone, a face drew the backdrop only as large as a smaller monitor plugged in while locked |
 
+| `0030-polkit-agent` | Completes the `polkit` service into an agent: it refuses `BeginAuthentication` and `CancelAuthentication` from anyone but the owner of `org.freedesktop.PolicyKit1`, lists unix-user and unix-group identities, queues requests, relays the helper's PAM prompts, info and errors, switches identity, and reports the requesting app, command line, tries and outcome. Only the helper's `SUCCESS` line grants; a panic, a lost helper or a closed connection fails the request. The answer is zeroed after it is written. `polkit.answer`, `polkit.identity` and `polkit.cancel` are the scene's commands. Also sends the agent's path as an object path when registering. See `shell/polkit/README.md` |
+
 Numbers 0002 to 0004 and 0007 to 0009 belonged to features that were removed or moved into the scenes.
 
 ## Luau bindings and the Rust library
@@ -99,7 +102,8 @@ The bindings in `runtime/pleamar/bindings/` are copied into the Pleamar source a
 | `shell/bar/` | Bar contents and the workspace switcher |
 | `shell/sound/`, `shell/calendar/`, `shell/network/`, `shell/media/`, `shell/bluetooth/`, `shell/wallpaper/`, `shell/info/`, `shell/about/` | Popups shown by the bar |
 | `shell/osd/`, `shell/corners/` | Volume OSD and screen corners, also in the bar process |
-| `shell/session/`, `shell/launcher/`, `shell/notifications/`, `shell/settings/` | Scenes that run as their own processes |
+| `shell/session/`, `shell/launcher/`, `shell/notifications/`, `shell/settings/`, `shell/polkit/` | Scenes that run as their own processes |
+| `shell/water/` | Shaders shared between scenes (the water vessel of the polkit dialog and the lock screen) |
 | `shell/service-assets/` | Shared icons |
 | `bin/` | `tohru` CLI and launch wrappers |
 | `runtime/` | `tohru-shell` crate (`src/`, `tests/`) |

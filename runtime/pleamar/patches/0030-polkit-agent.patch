@@ -1,0 +1,1358 @@
+diff --git a/src/platform/polkit.rs b/src/platform/polkit.rs
+index 79224fb..90021b6 100644
+--- a/src/platform/polkit.rs
++++ b/src/platform/polkit.rs
+@@ -3,20 +3,27 @@
+ //! the dialog —its own, in its own look— instead of a program of somebody
+ //! else's putting one up, or none at all.
+ //!
+-//! `{ ready, pending, asking, message, action, icon, user, prompt, secret, info,
+-//!    error }`: `ready`, this process is the session's agent; `pending`, a
+-//! program waits to be let through, and then `message` is what polkit says is
+-//! wanted, `action` its name and `user` whose password it is; `asking`, an
+-//! answer is awaited —not while the last one is being checked—, with `prompt`
+-//! what is asked («Password: ») and `secret` whether the answer is to be
+-//! hidden; `info`, what the system says meanwhile; `error`, `none` or `wrong`
+-//! after an answer that was not it.
++//! `{ ready, pending, asking, message, action, icon, user, uid, identities,
++//!    app, command, prompt, secret, info, warning, error, tries, attempts,
++//!    queued, ended, outcome, outcome_user }`: `ready`, this process is the
++//! session's agent; `pending`, a program waits to be let through, and then
++//! `message` is what polkit says is wanted, `action` its name, `user` whose
++//! password is asked of `identities` (`{ name, uid, group }`, those polkit
++//! would take), `app` the program that asked and `command` what it runs;
++//! `asking`, an answer is awaited —not while the last one is being checked—,
++//! with `prompt` what is asked («Password: ») and `secret` whether the answer
++//! is to be hidden; `info` and `warning`, what PAM says meanwhile; `error`,
++//! `none` or `wrong` after an answer that was not it, with `tries` left of
++//! three; `queued`, how many requests wait behind this one. `ended` counts
++//! requests that have ended, and `outcome` (`granted`, `cancelled`, `failed`)
++//! and `outcome_user` say how the last one did.
+ //!
+-//! Commands (`polkit.*`): `answer(text)`, `cancel()`.
++//! Commands (`polkit.*`): `answer(text)`, `identity(name)`, `cancel()`.
+ //!
+ //! Who it is, is not decided here: the answer goes to polkit's own helper,
+ //! which is the one that asks PAM and tells polkit. This process is the
+-//! messenger, and never learns whether it may do anything itself.
++//! messenger, and never learns whether it may do anything itself. `granted`
++//! is only ever said after the helper's own `SUCCESS`.
+ 
+ use super::SysValue;
+ use std::collections::{HashMap, VecDeque};
+@@ -26,7 +33,7 @@ use std::os::unix::net::UnixStream;
+ use std::pin::Pin;
+ use std::process::{Command, Stdio};
+ use std::sync::mpsc::{channel, Receiver, Sender};
+-use std::sync::{Arc, Mutex, OnceLock};
++use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+ use std::task::{Context, Poll, Waker};
+ use zbus::blocking::{Connection, Proxy};
+ use zbus::zvariant::{OwnedValue, Value};
+@@ -38,9 +45,16 @@ const AGENT_PATH: &str = "/org/pleamar/polkit_agent";
+ /// Where polkit's helper waits to be connected to (polkit 126 and later).
+ const HELPER_SOCKET: &str = "/run/polkit/agent-helper.socket";
+ /// Where it is as a program of its own, which is how it was before that.
+-const HELPER_PROGRAMS: &[&str] = &["/usr/lib/polkit-1/polkit-agent-helper-1", "/usr/libexec/polkit-agent-helper-1", "/usr/lib/policykit-1/polkit-agent-helper-1"];
++const HELPER_PROGRAMS: &[&str] = &[
++    "/run/wrappers/bin/polkit-agent-helper-1",
++    "/usr/lib/polkit-1/polkit-agent-helper-1",
++    "/usr/libexec/polkit-agent-helper-1",
++    "/usr/lib/policykit-1/polkit-agent-helper-1",
++];
+ /// How many answers that were not it before giving up on a request.
+ const TRIES: usize = 3;
++/// The longest command line the scene is told.
++const COMMAND_CHARS: usize = 512;
+ 
+ /// How a request ended, which is what polkit is answered.
+ #[derive(Debug, Clone, Copy, PartialEq)]
+@@ -50,18 +64,46 @@ enum Outcome {
+     Failed,
+ }
+ 
+-/// What polkit's call waits on while somebody types: finished from another thread.
++impl Outcome {
++    fn name(self) -> &'static str {
++        match self {
++            Outcome::Granted => "granted",
++            Outcome::Cancelled => "cancelled",
++            Outcome::Failed => "failed",
++        }
++    }
++}
++
++/// What polkit's call waits on while somebody types: finished from another
++/// thread, once; a second finish changes nothing.
+ #[derive(Default)]
+ struct Done(Mutex<(Option<Outcome>, Option<Waker>)>);
+ 
+ impl Done {
+     fn finish(&self, outcome: Outcome) {
+-        let mut d = self.0.lock().unwrap();
++        let mut d = self.0.lock().unwrap_or_else(PoisonError::into_inner);
++        if d.0.is_some() {
++            return;
++        }
+         d.0 = Some(outcome);
+         if let Some(w) = d.1.take() {
+             w.wake();
+         }
+     }
++
++    fn outcome(&self) -> Option<Outcome> {
++        self.0.lock().unwrap_or_else(PoisonError::into_inner).0
++    }
++}
++
++/// Fails the request if whatever attends it goes without saying how it ended
++/// (a panic): a request that is never answered is never let through.
++struct Settle(Arc<Done>);
++
++impl Drop for Settle {
++    fn drop(&mut self) {
++        self.0.finish(Outcome::Failed);
++    }
+ }
+ 
+ struct Wait(Arc<Done>);
+@@ -69,7 +111,7 @@ struct Wait(Arc<Done>);
+ impl Future for Wait {
+     type Output = Outcome;
+     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Outcome> {
+-        let mut d = self.0 .0.lock().unwrap();
++        let mut d = self.0 .0.lock().unwrap_or_else(PoisonError::into_inner);
+         match d.0 {
+             Some(outcome) => Poll::Ready(outcome),
+             None => {
+@@ -80,17 +122,32 @@ impl Future for Wait {
+     }
+ }
+ 
++/// One of those whose password polkit would take.
++#[derive(Debug, Clone, PartialEq)]
++struct Identity {
++    name: String,
++    uid: u32,
++    /// What the scene shows next to the name: `superuser` for root, `wheel`
++    /// for an administrator, otherwise the primary group.
++    group: String,
++}
++
+ struct Request {
+     cookie: String,
+     action: String,
+     message: String,
+     icon: String,
++    app: String,
++    command: String,
++    identities: Vec<Identity>,
+     user: String,
+     done: Arc<Done>,
+ }
+ 
+ enum Answer {
+     Text(String),
++    /// Another identity was chosen: the helper asking for this one is let go.
++    Switch,
+     Cancel,
+ }
+ 
+@@ -100,36 +157,71 @@ struct Current {
+     action: String,
+     message: String,
+     icon: String,
++    app: String,
++    command: String,
++    identities: Vec<Identity>,
+     user: String,
+     prompt: String,
+     secret: bool,
+     asking: bool,
+     info: String,
++    warning: String,
+     wrong: bool,
++    tries: usize,
++    attempts: usize,
+     cancelled: bool,
++    /// The identity chosen while another was being asked, to ask next.
++    switch: Option<String>,
+     answer: Sender<Answer>,
+     /// Lets go of the helper, so that whoever reads from it stops waiting.
+     stop: Option<Box<dyn Fn() + Send>>,
+ }
+ 
+-#[derive(Default)]
+ struct State {
+     ready: bool,
+     now: Option<Current>,
+     waiting: VecDeque<Request>,
++    ended: u64,
++    outcome: Option<Outcome>,
++    outcome_user: String,
+ }
+ 
+-static STATE: Mutex<State> = Mutex::new(State { ready: false, now: None, waiting: VecDeque::new() });
++static STATE: Mutex<State> = Mutex::new(State { ready: false, now: None, waiting: VecDeque::new(), ended: 0, outcome: None, outcome_user: String::new() });
+ /// Whoever hears it: a scene that declares the service and its logic that
+ /// watches it are two, and both are told. The agent is one per process.
+ static LISTENERS: Mutex<Vec<Box<dyn Fn(SysValue) + Send>>> = Mutex::new(Vec::new());
+ /// The connection the agent lives on: polkit drops an agent whose connection goes.
+ static AGENT: OnceLock<Connection> = OnceLock::new();
++/// Where tests put a stand-in for the helper.
++static HELPER_AT: Mutex<Option<String>> = Mutex::new(None);
++
++/// The state, also after a thread panicked holding it: what it holds is
++/// still whole, since every change to it is made in one go.
++fn state() -> MutexGuard<'static, State> {
++    STATE.lock().unwrap_or_else(PoisonError::into_inner)
++}
++
++/// Overwrites a password before its memory goes back to the allocator.
++fn wipe(s: &mut String) {
++    // SAFETY: zero bytes are valid UTF-8, and the string is cleared right after.
++    for b in unsafe { s.as_mut_vec() }.iter_mut() {
++        unsafe { std::ptr::write_volatile(b, 0) };
++    }
++    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
++    s.clear();
++}
+ 
+ fn value(s: &State) -> SysValue {
+     let text = |t: &str| SysValue::Text(t.to_owned());
+     let now = s.now.as_ref();
+     let of = |f: fn(&Current) -> &str| text(now.map(f).unwrap_or_default());
++    let identities = now.map(|n| {
++        n.identities
++            .iter()
++            .map(|i| SysValue::Map(vec![("name".into(), text(&i.name)), ("uid".into(), SysValue::Num(i.uid as f64)), ("group".into(), text(&i.group))]))
++            .collect()
++    });
++    let uid = now.and_then(|n| n.identities.iter().find(|i| i.name == n.user)).map_or(-1.0, |i| i.uid as f64);
+     SysValue::Map(vec![
+         ("ready".into(), SysValue::Bool(s.ready)),
+         ("pending".into(), SysValue::Bool(now.is_some())),
+@@ -137,24 +229,35 @@ fn value(s: &State) -> SysValue {
+         ("message".into(), of(|n| &n.message)),
+         ("action".into(), of(|n| &n.action)),
+         ("icon".into(), of(|n| &n.icon)),
++        ("app".into(), of(|n| &n.app)),
++        ("command".into(), of(|n| &n.command)),
+         ("user".into(), of(|n| &n.user)),
++        ("uid".into(), SysValue::Num(uid)),
++        ("identities".into(), SysValue::List(identities.unwrap_or_default())),
+         ("prompt".into(), of(|n| &n.prompt)),
+         ("secret".into(), SysValue::Bool(now.is_none_or(|n| n.secret))),
+         ("info".into(), of(|n| &n.info)),
++        ("warning".into(), of(|n| &n.warning)),
+         ("error".into(), text(if now.is_some_and(|n| n.wrong) { "wrong" } else { "none" })),
++        ("tries".into(), SysValue::Num(now.map_or(TRIES, |n| n.tries) as f64)),
++        ("attempts".into(), SysValue::Num(now.map_or(0, |n| n.attempts) as f64)),
++        ("queued".into(), SysValue::Num(s.waiting.len() as f64)),
++        ("ended".into(), SysValue::Num(s.ended as f64)),
++        ("outcome".into(), text(s.outcome.map_or("none", Outcome::name))),
++        ("outcome_user".into(), text(&s.outcome_user)),
+     ])
+ }
+ 
+ fn tell() {
+-    let v = value(&STATE.lock().unwrap());
+-    for f in LISTENERS.lock().unwrap().iter() {
++    let v = value(&state());
++    for f in LISTENERS.lock().unwrap_or_else(PoisonError::into_inner).iter() {
+         f(v.clone());
+     }
+ }
+ 
+ /// Changes the request being attended and tells the scene.
+ fn change(f: impl FnOnce(&mut Current)) {
+-    if let Some(n) = STATE.lock().unwrap().now.as_mut() {
++    if let Some(n) = state().now.as_mut() {
+         f(n);
+     }
+     tell();
+@@ -199,8 +302,9 @@ fn unescape(line: &str) -> String {
+ }
+ 
+ /// One conversation with the helper, from what it asks to what it decides:
+-/// `Some(true)` it was who they said, `Some(false)` it was not, `None` it was
+-/// left halfway —cancelled, or the helper went away—.
++/// `Some(true)` only on the helper's own `SUCCESS` line, `Some(false)` on its
++/// `FAILURE`, `None` if it was left halfway —cancelled, another identity
++/// chosen, or the helper went away—.
+ fn converse(from: impl Read, mut to: impl Write, answers: &Receiver<Answer>) -> Option<bool> {
+     for line in BufReader::new(from).lines() {
+         let line = line.ok()?;
+@@ -213,24 +317,32 @@ fn converse(from: impl Read, mut to: impl Write, answers: &Receiver<Answer>) ->
+                     n.secret = what == "PAM_PROMPT_ECHO_OFF";
+                     n.asking = true;
+                 });
+-                let Ok(Answer::Text(mut answer)) = answers.recv() else { return None };
++                let mut answer = match answers.recv() {
++                    Ok(Answer::Text(answer)) => answer,
++                    _ => return None,
++                };
+                 // One line is one answer: what follows a line break would be read as the next.
+-                if let Some(end) = answer.find(['\n', '\r']) {
+-                    answer.truncate(end);
+-                }
++                let end = answer.find(['\n', '\r']).unwrap_or(answer.len());
+                 change(|n| {
+                     n.asking = false;
+                     n.wrong = false;
++                    n.attempts += 1;
+                     n.info.clear();
++                    n.warning.clear();
+                 });
+-                answer.push('\n');
+-                to.write_all(answer.as_bytes()).and_then(|_| to.flush()).ok()?;
++                let sent = to.write_all(&answer.as_bytes()[..end]).and_then(|_| to.write_all(b"\n")).and_then(|_| to.flush());
++                wipe(&mut answer);
++                sent.ok()?;
+             }
+-            "PAM_ERROR_MSG" | "PAM_TEXT_INFO" => {
++            "PAM_TEXT_INFO" => {
+                 let info = unescape(rest);
+                 change(|n| n.info = info);
+             }
+-            "SUCCESS" => return Some(true),
++            "PAM_ERROR_MSG" => {
++                let warning = unescape(rest);
++                change(|n| n.warning = warning);
++            }
++            "SUCCESS" if rest.is_empty() => return Some(true),
+             "FAILURE" => return Some(false),
+             _ => {}
+         }
+@@ -244,7 +356,12 @@ type Helper = (Box<dyn Read + Send>, Box<dyn Write + Send>, Box<dyn Fn() + Send>
+ fn helper(user: &str, cookie: &str) -> Result<Helper, String> {
+     // To try this against a stand-in for polkit, whose helper is another: the
+     // real one would take the stand-in's cookie for a wrong password.
+-    let socket = std::env::var("PLEAMAR_POLKIT_HELPER").unwrap_or_else(|_| HELPER_SOCKET.to_owned());
++    let socket = HELPER_AT
++        .lock()
++        .unwrap_or_else(PoisonError::into_inner)
++        .clone()
++        .or_else(|| std::env::var("PLEAMAR_POLKIT_HELPER").ok())
++        .unwrap_or_else(|| HELPER_SOCKET.to_owned());
+     if let Ok(mut stream) = UnixStream::connect(&socket) {
+         // Who is to be asked, then what polkit calls this request: a line each.
+         stream.write_all(format!("{user}\n{cookie}\n").as_bytes()).map_err(|e| e.to_string())?;
+@@ -268,40 +385,75 @@ fn helper(user: &str, cookie: &str) -> Result<Helper, String> {
+     ))
+ }
+ 
+-/// Attends one request to its end: asks, hears the answer, and asks again
+-/// after one that was not it, a few times.
++/// Attends one request to its end: asks, hears the answer, asks again after
++/// one that was not it, a few times, and starts over with another identity
++/// when one is chosen.
+ fn attend(r: &Request, answers: &Receiver<Answer>) -> Outcome {
+-    for _ in 0..TRIES {
+-        let (from, to, stop) = match helper(&r.user, &r.cookie) {
++    loop {
++        // Whatever was sent before this helper asked was meant for the last one.
++        while let Ok(stale) = answers.try_recv() {
++            if let Answer::Text(mut t) = stale {
++                wipe(&mut t);
++            }
++        }
++        let (user, cancelled) = {
++            let s = state();
++            let Some(n) = s.now.as_ref() else { return Outcome::Cancelled };
++            (n.user.clone(), n.cancelled)
++        };
++        if cancelled {
++            return Outcome::Cancelled;
++        }
++        let (from, to, stop) = match helper(&user, &r.cookie) {
+             Ok(h) => h,
+             Err(e) => {
+                 eprintln!("polkit · the helper that checks the password cannot be reached ({e})");
+                 return Outcome::Failed;
+             }
+         };
+-        let cancelled = {
+-            let mut s = STATE.lock().unwrap();
++        let go_on = {
++            let mut s = state();
+             let Some(n) = s.now.as_mut() else { return Outcome::Cancelled };
++            let go_on = !n.cancelled && n.switch.is_none();
+             n.stop = Some(stop);
+-            n.cancelled
++            go_on
+         };
+-        let verdict = if cancelled { None } else { converse(from, to, answers) };
+-        let cancelled = {
+-            let mut s = STATE.lock().unwrap();
++        let verdict = if go_on { converse(from, to, answers) } else { None };
++        let (cancelled, switched, tries) = {
++            let mut s = state();
+             let Some(n) = s.now.as_mut() else { return Outcome::Cancelled };
+             if let Some(stop) = n.stop.take() {
+                 stop();
+             }
+-            n.cancelled
++            let switched = n.switch.take();
++            if let Some(name) = &switched {
++                n.user = name.clone();
++                n.asking = false;
++                n.wrong = false;
++                n.prompt.clear();
++                n.info.clear();
++                n.warning.clear();
++            }
++            (n.cancelled, switched, n.tries)
+         };
+         match verdict {
+             _ if cancelled => return Outcome::Cancelled,
++            _ if switched.is_some() => tell(),
+             Some(true) => return Outcome::Granted,
+-            Some(false) => change(|n| n.wrong = true),
++            Some(false) if tries > 1 => change(|n| {
++                n.wrong = true;
++                n.tries -= 1;
++            }),
++            Some(false) => {
++                change(|n| {
++                    n.wrong = true;
++                    n.tries = 0;
++                });
++                return Outcome::Failed;
++            }
+             None => return Outcome::Failed,
+         }
+     }
+-    Outcome::Failed
+ }
+ 
+ fn current(r: &Request) -> (Current, Receiver<Answer>) {
+@@ -311,13 +463,20 @@ fn current(r: &Request) -> (Current, Receiver<Answer>) {
+         action: r.action.clone(),
+         message: r.message.clone(),
+         icon: r.icon.clone(),
++        app: r.app.clone(),
++        command: r.command.clone(),
++        identities: r.identities.clone(),
+         user: r.user.clone(),
+         prompt: String::new(),
+         secret: true,
+         asking: false,
+         info: String::new(),
++        warning: String::new(),
+         wrong: false,
++        tries: TRIES,
++        attempts: 0,
+         cancelled: false,
++        switch: None,
+         answer,
+         stop: None,
+     };
+@@ -327,9 +486,11 @@ fn current(r: &Request) -> (Current, Receiver<Answer>) {
+ /// A request arrives: attended now if none is, behind the others if one is.
+ fn take(r: Request) {
+     let answers = {
+-        let mut s = STATE.lock().unwrap();
++        let mut s = state();
+         if s.now.is_some() {
+             s.waiting.push_back(r);
++            drop(s);
++            tell();
+             return;
+         }
+         let (now, answers) = current(&r);
+@@ -341,10 +502,19 @@ fn take(r: Request) {
+         let mut next = Some((r, answers));
+         while let Some((r, answers)) = next {
+             tell();
+-            let outcome = attend(&r, &answers);
++            let settle = Settle(r.done.clone());
++            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| attend(&r, &answers))).unwrap_or(Outcome::Failed);
+             r.done.finish(outcome);
+-            let mut s = STATE.lock().unwrap();
+-            s.now = None;
++            drop(settle);
++            let mut s = state();
++            if let Some(mut n) = s.now.take() {
++                if let Some(stop) = n.stop.take() {
++                    stop();
++                }
++                s.outcome_user = n.user;
++            }
++            s.ended += 1;
++            s.outcome = r.done.outcome();
+             next = s.waiting.pop_front().map(|r| {
+                 let (now, answers) = current(&r);
+                 s.now = Some(now);
+@@ -356,28 +526,53 @@ fn take(r: Request) {
+     });
+     if started.is_err() {
+         eprintln!("polkit · no thread to attend the request on");
+-        STATE.lock().unwrap().now = None;
++        state().now = None;
+         done.finish(Outcome::Failed);
+     }
+ }
+ 
+ /// Gives up on a request: the one being attended, or one still waiting its turn.
+ fn cancel(cookie: Option<&str>) {
+-    let mut s = STATE.lock().unwrap();
++    let mut s = state();
+     if let Some(cookie) = cookie {
+         if let Some(at) = s.waiting.iter().position(|r| r.cookie == cookie) {
+             if let Some(r) = s.waiting.remove(at) {
+                 r.done.finish(Outcome::Cancelled);
+             }
++            drop(s);
++            tell();
+             return;
+         }
+     }
+     let Some(n) = s.now.as_mut().filter(|n| cookie.is_none_or(|c| c == n.cookie)) else { return };
+     n.cancelled = true;
++    n.asking = false;
+     let _ = n.answer.send(Answer::Cancel);
+     if let Some(stop) = n.stop.take() {
+         stop();
+     }
++    drop(s);
++    tell();
++}
++
++/// Asks another of the request's identities instead: the helper asking for
++/// the current one is let go, and no try is spent.
++fn choose(name: &str) -> Result<(), String> {
++    let mut s = state();
++    let n = s.now.as_mut().ok_or("nothing is being asked")?;
++    if !n.identities.iter().any(|i| i.name == name) {
++        return Err(format!("'{name}' is not one of those polkit would take"));
++    }
++    if n.user == name && n.switch.is_none() {
++        return Ok(());
++    }
++    n.switch = Some(name.to_owned());
++    n.asking = false;
++    let _ = n.answer.send(Answer::Switch);
++    if let Some(stop) = n.stop.take() {
++        stop();
++    }
++    Ok(())
+ }
+ 
+ /// What polkit is told of a request that did not end in a yes.
+@@ -388,10 +583,12 @@ enum AgentError {
+     ZBus(zbus::Error),
+     Failed(String),
+     Cancelled(String),
++    NotAuthorized(String),
+ }
+ 
+-fn name_of(uid: u32) -> Option<String> {
+-    let mut buffer = vec![0 as libc::c_char; 4096];
++/// A user's name and primary group, from the system's user database.
++fn user_of(uid: u32) -> Option<(String, u32)> {
++    let mut buffer = vec![0 as libc::c_char; 16384];
+     let mut entry: libc::passwd = unsafe { std::mem::zeroed() };
+     let mut found: *mut libc::passwd = std::ptr::null_mut();
+     // SAFETY: the buffer outlives the call and the name is copied out of it before it goes.
+@@ -399,16 +596,117 @@ fn name_of(uid: u32) -> Option<String> {
+     if ok != 0 || found.is_null() {
+         return None;
+     }
+-    Some(unsafe { std::ffi::CStr::from_ptr(entry.pw_name) }.to_string_lossy().into_owned())
++    Some((unsafe { std::ffi::CStr::from_ptr(entry.pw_name) }.to_string_lossy().into_owned(), entry.pw_gid))
+ }
+ 
+-/// Whose password is asked, of those polkit would take: one's own if it is
+-/// among them —an administrator—, and otherwise the first, which is root's.
+-fn whose(identities: &[(String, HashMap<String, OwnedValue>)]) -> Option<String> {
+-    let users: Vec<u32> = identities.iter().filter(|(kind, _)| kind == "unix-user").filter_map(|(_, d)| d.get("uid").and_then(|v| u32::try_from(v).ok())).collect();
+-    let me = unsafe { libc::getuid() };
+-    let uid = if users.contains(&me) { me } else { *users.first()? };
+-    name_of(uid)
++fn uid_of(name: &str) -> Option<u32> {
++    let name = std::ffi::CString::new(name).ok()?;
++    let mut buffer = vec![0 as libc::c_char; 16384];
++    let mut entry: libc::passwd = unsafe { std::mem::zeroed() };
++    let mut found: *mut libc::passwd = std::ptr::null_mut();
++    // SAFETY: as in `user_of`.
++    let ok = unsafe { libc::getpwnam_r(name.as_ptr(), &mut entry, buffer.as_mut_ptr(), buffer.len(), &mut found) };
++    (ok == 0 && !found.is_null()).then_some(entry.pw_uid)
++}
++
++/// A group's name and members, by its id or its name.
++fn group(by: Result<u32, &str>) -> Option<(String, Vec<String>)> {
++    let mut buffer = vec![0 as libc::c_char; 65536];
++    let mut entry: libc::group = unsafe { std::mem::zeroed() };
++    let mut found: *mut libc::group = std::ptr::null_mut();
++    // SAFETY: the buffer outlives the call and everything is copied out of it before it goes.
++    let ok = match by {
++        Ok(gid) => unsafe { libc::getgrgid_r(gid, &mut entry, buffer.as_mut_ptr(), buffer.len(), &mut found) },
++        Err(name) => {
++            let name = std::ffi::CString::new(name).ok()?;
++            unsafe { libc::getgrnam_r(name.as_ptr(), &mut entry, buffer.as_mut_ptr(), buffer.len(), &mut found) }
++        }
++    };
++    if ok != 0 || found.is_null() {
++        return None;
++    }
++    let text = |p: *const libc::c_char| unsafe { std::ffi::CStr::from_ptr(p) }.to_string_lossy().into_owned();
++    let mut members = Vec::new();
++    let mut at = entry.gr_mem;
++    while !at.is_null() && !unsafe { *at }.is_null() {
++        members.push(text(unsafe { *at }));
++        at = unsafe { at.add(1) };
++    }
++    Some((text(entry.gr_name), members))
++}
++
++fn identity(uid: u32) -> Option<Identity> {
++    let (name, gid) = user_of(uid)?;
++    let group = if uid == 0 {
++        "superuser".to_owned()
++    } else if group(Err("wheel")).is_some_and(|(_, members)| members.contains(&name)) {
++        "wheel".to_owned()
++    } else {
++        group(Ok(gid)).map(|(g, _)| g).unwrap_or_default()
++    };
++    Some(Identity { name, uid, group })
++}
++
++/// Those whose password polkit would take, one each, groups opened into their
++/// members; and whose is asked first: one's own if it is among them —an
++/// administrator—, and otherwise the first.
++fn identities(given: &[(String, HashMap<String, OwnedValue>)], me: u32) -> (Vec<Identity>, Option<String>) {
++    let mut uids: Vec<u32> = Vec::new();
++    for (kind, d) in given {
++        match kind.as_str() {
++            "unix-user" => uids.extend(d.get("uid").and_then(|v| u32::try_from(v).ok())),
++            "unix-group" => {
++                let members = d.get("gid").and_then(|v| u32::try_from(v).ok()).and_then(|gid| group(Ok(gid))).map(|(_, m)| m).unwrap_or_default();
++                uids.extend(members.iter().filter_map(|m| uid_of(m)));
++            }
++            _ => {}
++        }
++    }
++    let mut seen = std::collections::HashSet::new();
++    uids.retain(|u| seen.insert(*u));
++    let list: Vec<Identity> = uids.into_iter().filter_map(identity).collect();
++    let first = list.iter().find(|i| i.uid == me).or(list.first()).map(|i| i.name.clone());
++    (list, first)
++}
++
++/// The program a request comes from, as a person would name it: the nearest
++/// ancestor of the process polkit asks about that is not a shell or a tool
++/// that only passes the request on (`pkexec` in a terminal is the terminal's).
++fn app_of(details: &HashMap<String, String>) -> String {
++    const PASSERS: &[&str] = &["sh", "bash", "zsh", "fish", "dash", "nu", "ksh", "tcsh", "pkexec", "sudo", "doas", "env", "nix", "xargs", "timeout", "script", "tmux: server", "screen", "login", "systemd"];
++    let Some(mut pid) = details.get("polkit.subject-pid").or(details.get("polkit.caller-pid")).and_then(|p| p.trim().parse::<u32>().ok()) else {
++        return String::new();
++    };
++    for _ in 0..16 {
++        if pid <= 1 {
++            break;
++        }
++        let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
++        let comm = comm.trim();
++        if !comm.is_empty() && !PASSERS.contains(&comm) && !comm.starts_with(".") {
++            let mut c = comm.chars();
++            return c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default();
++        }
++        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
++        // The name is between parentheses and may hold spaces; the parent follows the state after it.
++        let Some(parent) = stat.rsplit_once(')').and_then(|(_, rest)| rest.split_whitespace().nth(1)).and_then(|p| p.parse().ok()) else { break };
++        pid = parent;
++    }
++    String::new()
++}
++
++fn command_of(details: &HashMap<String, String>) -> String {
++    let line = details.get("command_line").or(details.get("program")).cloned().unwrap_or_default();
++    line.chars().filter(|c| !c.is_control()).take(COMMAND_CHARS).collect()
++}
++
++/// Only polkit asks: a call from anyone else on the bus is turned away, so
++/// no other program can put up this dialog.
++async fn from_polkit(conn: &zbus::Connection, header: &zbus::message::Header<'_>) -> bool {
++    let Some(sender) = header.sender() else { return false };
++    let Ok(bus) = zbus::fdo::DBusProxy::new(conn).await else { return false };
++    let Ok(name) = zbus::names::BusName::try_from(AUTHORITY) else { return false };
++    bus.get_name_owner(name).await.is_ok_and(|owner| owner.as_str() == sender.as_str())
+ }
+ 
+ struct Agent;
+@@ -416,10 +714,25 @@ struct Agent;
+ #[zbus::interface(name = "org.freedesktop.PolicyKit1.AuthenticationAgent")]
+ impl Agent {
+     /// It answers when the request has ended, however long somebody takes to type.
+-    async fn begin_authentication(&self, action_id: String, message: String, icon_name: String, _details: HashMap<String, String>, cookie: String, identities: Vec<(String, HashMap<String, OwnedValue>)>) -> Result<(), AgentError> {
+-        let Some(user) = whose(&identities) else { return Err(AgentError::Failed("nobody whose password could be asked".into())) };
++    async fn begin_authentication(
++        &self,
++        #[zbus(connection)] conn: &zbus::Connection,
++        #[zbus(header)] header: zbus::message::Header<'_>,
++        action_id: String,
++        message: String,
++        icon_name: String,
++        details: HashMap<String, String>,
++        cookie: String,
++        identities: Vec<(String, HashMap<String, OwnedValue>)>,
++    ) -> Result<(), AgentError> {
++        if !from_polkit(conn, &header).await {
++            return Err(AgentError::NotAuthorized("only polkit may ask".into()));
++        }
++        let (identities, first) = self::identities(&identities, unsafe { libc::getuid() });
++        let Some(user) = first else { return Err(AgentError::Failed("nobody whose password could be asked".into())) };
+         let done = Arc::new(Done::default());
+-        take(Request { cookie, action: action_id, message, icon: icon_name, user, done: done.clone() });
++        let request = Request { cookie, action: action_id, message, icon: icon_name, app: app_of(&details), command: command_of(&details), identities, user, done: done.clone() };
++        take(request);
+         match Wait(done).await {
+             Outcome::Granted => Ok(()),
+             Outcome::Cancelled => Err(AgentError::Cancelled("it was cancelled".into())),
+@@ -427,12 +740,15 @@ impl Agent {
+         }
+     }
+ 
+-    fn cancel_authentication(&self, cookie: String) {
++    async fn cancel_authentication(&self, #[zbus(connection)] conn: &zbus::Connection, #[zbus(header)] header: zbus::message::Header<'_>, cookie: String) -> Result<(), AgentError> {
++        if !from_polkit(conn, &header).await {
++            return Err(AgentError::NotAuthorized("only polkit may ask".into()));
++        }
+         cancel(Some(&cookie));
++        Ok(())
+     }
+ }
+ 
+-/// The session this process is in, which is whom the agent answers for.
+ fn session(c: &Connection) -> Option<String> {
+     if let Ok(id) = std::env::var("XDG_SESSION_ID") {
+         if !id.is_empty() {
+@@ -454,7 +770,8 @@ fn register(c: &Connection, session: &str) -> Result<(), String> {
+     let subject = ("unix-session", HashMap::from([("session-id", Value::from(session))]));
+     let locale = std::env::var("LANG").ok().filter(|l| !l.is_empty()).unwrap_or_else(|| "C".into());
+     let authority = Proxy::new(c, AUTHORITY, AUTHORITY_PATH, AUTHORITY_IFACE).map_err(|e| e.to_string())?;
+-    authority.call_method("RegisterAuthenticationAgent", &(subject, locale, AGENT_PATH)).map_err(|e| e.to_string())?;
++    let path = zbus::zvariant::ObjectPath::try_from(AGENT_PATH).map_err(|e| e.to_string())?;
++    authority.call_method("RegisterAuthenticationAgent", &(subject, locale, path)).map_err(|e| e.to_string())?;
+     Ok(())
+ }
+ 
+@@ -586,7 +903,7 @@ fn keep(c: Connection, session: String, heard: Receiver<Heard>, mut standing: St
+             }
+         }
+         let changed = {
+-            let mut s = STATE.lock().unwrap();
++            let mut s = state();
+             std::mem::replace(&mut s.ready, standing.ready) != standing.ready
+         };
+         if changed {
+@@ -657,7 +974,7 @@ fn start() {
+     if let Some(line) = standing.registered(register(&c, &session)) {
+         eprintln!("{line}");
+     }
+-    STATE.lock().unwrap().ready = standing.ready;
++    state().ready = standing.ready;
+     if let Some(heard) = heard {
+         let kept = std::thread::Builder::new().name("polkit-agent".into()).spawn(move || keep(c, session, heard, standing));
+         if kept.is_err() {
+@@ -669,21 +986,254 @@ fn start() {
+ pub fn command(what: &str, args: &[SysValue]) -> Result<(), String> {
+     match (what, args) {
+         ("polkit.answer", [SysValue::Text(answer)]) => {
+-            let s = STATE.lock().unwrap();
+-            let n = s.now.as_ref().filter(|n| n.asking).ok_or("nothing is being asked")?;
++            let s = state();
++            let n = s.now.as_ref().filter(|n| n.asking && !n.cancelled && n.switch.is_none()).ok_or("nothing is being asked")?;
+             n.answer.send(Answer::Text(answer.clone())).map_err(|_| "nobody is waiting for that answer any more".to_owned())
+         }
++        ("polkit.identity", [SysValue::Text(name)]) => {
++            choose(name)?;
++            tell();
++            Ok(())
++        }
+         ("polkit.cancel", []) => {
+             cancel(None);
+             Ok(())
+         }
+-        _ => Err(format!("'{what}' is not asked like that: polkit.answer(text), polkit.cancel()")),
++        _ => Err(format!("'{what}' is not asked like that: polkit.answer(text), polkit.identity(name), polkit.cancel()")),
+     }
+ }
+ 
++/// Named so that the packaged build, which runs only Tohru's tests, runs these.
+ #[cfg(test)]
+-mod tests {
++mod tohru_polkit {
+     use super::*;
++    use std::os::unix::net::UnixListener;
++    use std::time::{Duration, Instant};
++
++    /// These share the one state a process has: one at a time.
++    static ONE: Mutex<()> = Mutex::new(());
++
++    fn one() -> MutexGuard<'static, ()> {
++        let guard = ONE.lock().unwrap_or_else(PoisonError::into_inner);
++        settle_down();
++        guard
++    }
++
++    /// Waits for whatever an earlier test left to end, then forgets it.
++    fn settle_down() {
++        cancel(None);
++        let quiet = Instant::now() + Duration::from_secs(5);
++        while state().now.is_some() && Instant::now() < quiet {
++            cancel(None);
++            std::thread::sleep(Duration::from_millis(5));
++        }
++        let mut s = state();
++        s.now = None;
++        for r in s.waiting.drain(..) {
++            r.done.finish(Outcome::Cancelled);
++        }
++        drop(s);
++        LISTENERS.lock().unwrap().clear();
++        *HELPER_AT.lock().unwrap() = None;
++    }
++
++    fn until(what: &str, f: impl Fn(&State) -> bool) {
++        let end = Instant::now() + Duration::from_secs(10);
++        while !f(&state()) {
++            assert!(Instant::now() < end, "timed out waiting until {what}");
++            std::thread::sleep(Duration::from_millis(5));
++        }
++    }
++
++    fn asking(s: &State) -> bool {
++        s.now.as_ref().is_some_and(|n| n.asking)
++    }
++
++    fn me() -> Identity {
++        identity(unsafe { libc::getuid() }).expect("the user running the tests has a name")
++    }
++
++    fn root() -> Identity {
++        identity(0).expect("root has a name")
++    }
++
++    fn request(cookie: &str, identities: Vec<Identity>) -> Request {
++        let user = identities[0].name.clone();
++        Request { cookie: cookie.into(), action: "org.example.do".into(), message: "Wants to do it".into(), icon: String::new(), app: "Term".into(), command: "/bin/true".into(), identities, user, done: Arc::default() }
++    }
++
++    /// Everything every listener was ever told, to show what never reached the scene.
++    fn record() -> Arc<Mutex<Vec<String>>> {
++        let told = Arc::new(Mutex::new(Vec::new()));
++        let t = told.clone();
++        LISTENERS.lock().unwrap().push(Box::new(move |v| t.lock().unwrap().push(format!("{v:?}"))));
++        told
++    }
++
++    fn scratch(name: &str) -> std::path::PathBuf {
++        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
++        let n = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
++        let dir = std::env::temp_dir().join(format!("pleamar-polkit-{}-{n}", std::process::id()));
++        std::fs::create_dir_all(&dir).unwrap();
++        dir.join(name)
++    }
++
++    /// What one turn of the stand-in for polkit's helper heard.
++    #[derive(Debug, Clone, PartialEq)]
++    struct Heard {
++        user: String,
++        cookie: String,
++        answers: Vec<String>,
++    }
++
++    /// A stand-in for polkit's helper on a socket: each connection is one
++    /// conversation, played by `script`, which is given the user, a way to
++    /// read the agent's answers and the stream to write to.
++    struct StandIn {
++        heard: Arc<Mutex<Vec<Heard>>>,
++    }
++
++    type Script = dyn Fn(&str, &mut dyn FnMut() -> Option<String>, &mut UnixStream) + Send + Sync;
++
++    impl StandIn {
++        fn start(script: Arc<Script>) -> StandIn {
++            let at = scratch("helper.socket");
++            let listener = UnixListener::bind(&at).unwrap();
++            *HELPER_AT.lock().unwrap() = Some(at.to_string_lossy().into_owned());
++            let heard = Arc::new(Mutex::new(Vec::new()));
++            let h = heard.clone();
++            std::thread::spawn(move || {
++                for stream in listener.incoming() {
++                    let Ok(mut stream) = stream else { return };
++                    let (script, h) = (script.clone(), h.clone());
++                    std::thread::spawn(move || {
++                        let mut lines = BufReader::new(stream.try_clone().unwrap()).lines();
++                        let user = lines.next().and_then(Result::ok).unwrap_or_default();
++                        let cookie = lines.next().and_then(Result::ok).unwrap_or_default();
++                        let at = {
++                            let mut h = h.lock().unwrap();
++                            h.push(Heard { user: user.clone(), cookie, answers: Vec::new() });
++                            h.len() - 1
++                        };
++                        let hh = h.clone();
++                        let mut read = move || {
++                            let line = lines.next().and_then(Result::ok)?;
++                            hh.lock().unwrap()[at].answers.push(line.clone());
++                            Some(line)
++                        };
++                        script(&user, &mut read, &mut stream);
++                    });
++                }
++            });
++            StandIn { heard }
++        }
++
++        fn heard(&self) -> Vec<Heard> {
++            self.heard.lock().unwrap().clone()
++        }
++    }
++
++    /// The helper as PAM would have it: `right` is the password of everyone.
++    fn pam() -> Arc<Script> {
++        Arc::new(|_user, read, out| {
++            out.write_all(b"PAM_TEXT_INFO Place a finger\nPAM_ERROR_MSG Caps Lock is on\nPAM_PROMPT_ECHO_OFF Contrase\\303\\261a: \n").unwrap();
++            let verdict = if read().as_deref() == Some("right") { "SUCCESS\n" } else { "FAILURE\n" };
++            let _ = out.write_all(verdict.as_bytes());
++        })
++    }
++
++    /// A private bus with a stand-in for polkit on it, and the agent on its own connection.
++    struct Bus {
++        daemon: std::process::Child,
++        address: String,
++        authority: Connection,
++        agent: Option<Connection>,
++        registered: Arc<Mutex<Vec<(String, String)>>>,
++    }
++
++    struct MockAuthority(Arc<Mutex<Vec<(String, String)>>>);
++
++    #[zbus::interface(name = "org.freedesktop.PolicyKit1.Authority")]
++    impl MockAuthority {
++        fn register_authentication_agent(&self, #[zbus(header)] h: zbus::message::Header<'_>, subject: (String, HashMap<String, OwnedValue>), _locale: String, path: zbus::zvariant::OwnedObjectPath) {
++            assert_eq!(subject.0, "unix-session");
++            self.0.lock().unwrap().push((h.sender().unwrap().to_string(), path.to_string()));
++        }
++    }
++
++    impl Bus {
++        fn start() -> Bus {
++            let socket = scratch("bus");
++            let config = scratch("bus.conf");
++            std::fs::write(
++                &config,
++                format!(
++                    "<busconfig><type>session</type><listen>unix:path={}</listen><auth>EXTERNAL</auth>\
++                     <policy context=\"default\"><allow send_destination=\"*\" eavesdrop=\"true\"/><allow eavesdrop=\"true\"/><allow own=\"*\"/></policy></busconfig>",
++                    socket.display()
++                ),
++            )
++            .unwrap();
++            let mut daemon = Command::new("dbus-daemon")
++                .args(["--nofork", "--nopidfile", "--print-address=1"])
++                .arg(format!("--config-file={}", config.display()))
++                .stdout(Stdio::piped())
++                .stderr(Stdio::null())
++                .spawn()
++                .expect("dbus-daemon runs the private bus these tests need");
++            let mut address = String::new();
++            BufReader::new(daemon.stdout.take().unwrap()).read_line(&mut address).unwrap();
++            let address = address.trim().to_owned();
++            let registered = Arc::new(Mutex::new(Vec::new()));
++            let authority = zbus::blocking::connection::Builder::address(address.as_str())
++                .unwrap()
++                .name(AUTHORITY)
++                .unwrap()
++                .serve_at(AUTHORITY_PATH, MockAuthority(registered.clone()))
++                .unwrap()
++                .build()
++                .unwrap();
++            let agent = zbus::blocking::connection::Builder::address(address.as_str()).unwrap().serve_at(AGENT_PATH, Agent).unwrap().build().unwrap();
++            register(&agent, "c1").expect("the agent registers with the signature polkit takes");
++            assert_eq!(registered.lock().unwrap().as_slice(), &[(agent.unique_name().unwrap().to_string(), AGENT_PATH.to_owned())]);
++            Bus { daemon, address, authority, agent: Some(agent), registered }
++        }
++
++        fn agent_name(&self) -> String {
++            self.registered.lock().unwrap()[0].0.clone()
++        }
++
++        /// polkit asks, from `from`; the answer comes back on the returned thread.
++        fn begin(&self, from: &Connection, cookie: &str, uids: &[u32]) -> std::thread::JoinHandle<Result<(), String>> {
++            let (from, to, cookie) = (from.clone(), self.agent_name(), cookie.to_owned());
++            let uids = uids.to_vec();
++            std::thread::spawn(move || {
++                let agent = Proxy::new(&from, to, AGENT_PATH, "org.freedesktop.PolicyKit1.AuthenticationAgent").unwrap();
++                let details = HashMap::from([("command_line", "/run/current-system/sw/bin/nixos-rebuild switch"), ("polkit.subject-pid", "1")]);
++                let identities: Vec<(&str, HashMap<&str, Value>)> = uids.iter().map(|u| ("unix-user", HashMap::from([("uid", Value::from(*u))]))).collect();
++                agent
++                    .call_method("BeginAuthentication", &("org.freedesktop.policykit.exec", "Run nixos-rebuild as the super user", "", details, cookie.as_str(), identities))
++                    .map(|_| ())
++                    .map_err(|e| e.to_string())
++            })
++        }
++
++        fn cancel_from(&self, from: &Connection, cookie: &str) -> Result<(), String> {
++            let agent = Proxy::new(from, self.agent_name(), AGENT_PATH, "org.freedesktop.PolicyKit1.AuthenticationAgent").unwrap();
++            agent.call_method("CancelAuthentication", &(cookie,)).map(|_| ()).map_err(|e| e.to_string())
++        }
++    }
++
++    impl Drop for Bus {
++        fn drop(&mut self) {
++            let _ = self.daemon.kill();
++            let _ = self.daemon.wait();
++        }
++    }
++
++    fn uid() -> u32 {
++        unsafe { libc::getuid() }
++    }
+ 
+     #[test]
+     fn what_the_helper_says_is_read_as_it_was_written() {
+@@ -693,73 +1243,277 @@ mod tests {
+         assert_eq!(unescape("ends in a bar\\"), "ends in a bar\\");
+     }
+ 
+-    /// The whole of it but the bus: a request, a stand-in for the helper at the
+-    /// other end of a pair of sockets, and the answers a scene would give.
+     #[test]
+-    fn a_wrong_answer_is_asked_again_and_the_right_one_ends_it() {
+-        let _one_at_a_time = ONE.lock().unwrap();
+-        let (told, heard) = channel::<String>();
+-        LISTENERS.lock().unwrap().push(Box::new(move |v| drop(told.send(format!("{v:?}")))));
+-        let request = Request { cookie: "c1".into(), action: "org.example.do".into(), message: "Wants to do it".into(), icon: String::new(), user: "ana".into(), done: Arc::default() };
+-        let (now, answers) = current(&request);
+-        STATE.lock().unwrap().now = Some(now);
+-
+-        let mut answers = Some(answers);
+-        for (given, verdict) in [("no", "FAILURE"), ("yes", "SUCCESS")] {
+-            let (ours, theirs) = UnixStream::pair().unwrap();
+-            let stand_in = std::thread::spawn(move || {
+-                let mut lines = BufReader::new(theirs.try_clone().unwrap()).lines();
+-                let mut theirs = theirs;
+-                theirs.write_all(b"PAM_TEXT_INFO Place a finger\nPAM_PROMPT_ECHO_OFF Contrase\\303\\261a: \n").unwrap();
+-                let answer = lines.next().unwrap().unwrap();
+-                theirs.write_all(format!("{verdict}\n").as_bytes()).unwrap();
+-                answer
+-            });
+-            let mine = answers.take().unwrap();
+-            let talk = std::thread::spawn(move || {
+-                let verdict = converse(ours.try_clone().unwrap(), ours, &mine);
+-                (verdict, mine)
+-            });
+-            // The scene answers once it has been asked.
+-            loop {
+-                let v = heard.recv().unwrap();
+-                if v.contains("(\"asking\", Bool(true))") {
+-                    assert!(v.contains("Contraseña: "), "{v}");
+-                    assert!(v.contains("Wants to do it"), "{v}");
+-                    assert!(v.contains("Place a finger"), "{v}");
+-                    break;
+-                }
+-            }
+-            command("polkit.answer", &[SysValue::Text(format!("{given}\nwhat follows a line break is not sent"))]).unwrap();
+-            let (verdict_read, back) = talk.join().unwrap();
+-            answers = Some(back);
+-            assert_eq!(stand_in.join().unwrap(), given);
+-            assert_eq!(verdict_read, Some(verdict == "SUCCESS"));
++    fn a_wiped_password_leaves_zeroes_where_it_was() {
++        let mut s = String::from("hunter2");
++        let at = s.as_ptr();
++        let len = s.len();
++        wipe(&mut s);
++        assert!(s.is_empty());
++        let left = unsafe { std::slice::from_raw_parts(at, len) };
++        assert!(left.iter().all(|b| *b == 0));
++    }
++
++    #[test]
++    fn a_request_whose_attendant_dies_fails() {
++        let done: Arc<Done> = Arc::default();
++        let d = done.clone();
++        let died = std::thread::spawn(move || {
++            let _settle = Settle(d);
++            panic!("the attendant died");
++        });
++        assert!(died.join().is_err());
++        assert_eq!(done.outcome(), Some(Outcome::Failed));
++        // What was decided stays decided.
++        let granted: Arc<Done> = Arc::default();
++        granted.finish(Outcome::Granted);
++        drop(Settle(granted.clone()));
++        assert_eq!(granted.outcome(), Some(Outcome::Granted));
++        let failed: Arc<Done> = Arc::default();
++        failed.finish(Outcome::Failed);
++        failed.finish(Outcome::Granted);
++        assert_eq!(failed.outcome(), Some(Outcome::Failed));
++    }
++
++    /// Only the helper's own `SUCCESS` line lets a request through: one in a
++    /// message, one with more after it, or a helper that goes without a word
++    /// all fail it.
++    #[test]
++    fn nothing_but_the_helpers_success_grants() {
++        let _one = one();
++        for script in [
++            b"PAM_TEXT_INFO SUCCESS\n".as_slice(),
++            b"PAM_ERROR_MSG SUCCESS\n",
++            b"SUCCESS but not quite\n",
++            b"SUCCESSFUL\n",
++            b"success\n",
++            b"",
++        ] {
++            let (ours, mut theirs) = UnixStream::pair().unwrap();
++            let r = request("x", vec![me()]);
++            let (now, answers) = current(&r);
++            state().now = Some(now);
++            theirs.write_all(script).unwrap();
++            drop(theirs);
++            assert_eq!(converse(ours.try_clone().unwrap(), ours, &answers), None, "{}", String::from_utf8_lossy(script));
++            state().now = None;
+         }
+-        STATE.lock().unwrap().now = None;
+-        LISTENERS.lock().unwrap().clear();
+     }
+ 
+     #[test]
+-    fn cancelling_lets_go_of_whoever_waits_for_an_answer() {
+-        let _one_at_a_time = ONE.lock().unwrap();
+-        let request = Request { cookie: "c2".into(), action: "org.example.do".into(), message: String::new(), icon: String::new(), user: "ana".into(), done: Arc::default() };
+-        let (now, answers) = current(&request);
+-        STATE.lock().unwrap().now = Some(now);
+-        let (ours, mut theirs) = UnixStream::pair().unwrap();
+-        theirs.write_all(b"PAM_PROMPT_ECHO_OFF Password: \n").unwrap();
++    fn identities_are_one_each_and_ones_own_first() {
++        let me = me();
++        let given: Vec<(String, HashMap<String, OwnedValue>)> = [0, me.uid, 0]
++            .iter()
++            .map(|u| ("unix-user".to_owned(), HashMap::from([("uid".to_owned(), OwnedValue::from(*u))])))
++            .collect();
++        let (list, first) = identities(&given, me.uid);
++        assert_eq!(first.as_deref(), Some(me.name.as_str()));
++        assert_eq!(list.iter().filter(|i| i.uid == 0).count(), 1);
++        assert_eq!(list.iter().find(|i| i.uid == 0).unwrap().group, "superuser");
++        let (_, first) = identities(&given, u32::MAX - 7);
++        assert_eq!(first.as_deref(), Some(root().name.as_str()));
++        assert_eq!(identities(&[], 0), (Vec::new(), None));
++    }
++
++    #[test]
++    fn the_command_line_is_kept_short_and_printable() {
++        let long = format!("a\u{1b}[31mb{}", "x".repeat(2000));
++        let c = command_of(&HashMap::from([("command_line".to_owned(), long)]));
++        assert!(c.starts_with("a[31mb") && c.chars().count() == COMMAND_CHARS);
++        assert_eq!(command_of(&HashMap::from([("program".to_owned(), "/bin/sh".to_owned())])), "/bin/sh");
++    }
++
++    /// The whole of it over a bus: polkit asks, PAM says things, a wrong
++    /// password costs a try and the right one lets it through.
++    #[test]
++    fn a_wrong_answer_costs_a_try_and_the_right_one_grants() {
++        let _one = one();
++        let told = record();
++        let helper = StandIn::start(pam());
++        let bus = Bus::start();
++        let ended = state().ended;
++        let call = bus.begin(&bus.authority, "c1", &[uid(), 0]);
++        until("asked", asking);
++        {
++            let s = state();
++            let n = s.now.as_ref().unwrap();
++            assert_eq!((n.prompt.as_str(), n.info.as_str(), n.warning.as_str()), ("Contraseña: ", "Place a finger", "Caps Lock is on"));
++            assert_eq!(n.command, "/run/current-system/sw/bin/nixos-rebuild switch");
++            assert_eq!((n.tries, n.attempts, n.identities.len()), (3, 0, 2));
++            assert_eq!(n.user, me().name);
++        }
++        command("polkit.answer", &[SysValue::Text("wrong\nsent no further".into())]).unwrap();
++        until("asked again", |s| asking(s) && s.now.as_ref().unwrap().wrong);
++        assert_eq!(state().now.as_ref().map(|n| (n.tries, n.attempts)), Some((2, 1)));
++        command("polkit.answer", &[SysValue::Text("right".into())]).unwrap();
++        assert_eq!(call.join().unwrap(), Ok(()));
++        until("ended", |s| s.ended == ended + 1);
++        let (outcome, user) = { let s = state(); (s.outcome, s.outcome_user.clone()) };
++        assert_eq!((outcome, user), (Some(Outcome::Granted), me().name));
++        let heard = helper.heard();
++        assert_eq!(heard.iter().map(|h| h.answers.clone()).collect::<Vec<_>>(), vec![vec!["wrong".to_owned()], vec!["right".to_owned()]]);
++        assert!(heard.iter().all(|h| h.cookie == "c1" && h.user == me().name));
++        // The password went to the helper and nowhere else the scene can read.
++        assert!(told.lock().unwrap().iter().all(|v| !v.contains("right") && !v.contains("wrong\n") && !v.contains("sent no further")));
++    }
++
++    #[test]
++    fn three_wrong_answers_fail_the_request() {
++        let _one = one();
++        let _helper = StandIn::start(pam());
++        let bus = Bus::start();
++        let call = bus.begin(&bus.authority, "c3", &[uid()]);
++        for left in [3, 2, 1] {
++            until("asked", |s| asking(s) && s.now.as_ref().unwrap().tries == left);
++            command("polkit.answer", &[SysValue::Text("nope".into())]).unwrap();
++        }
++        let refused = call.join().unwrap().unwrap_err();
++        assert!(refused.contains("PolicyKit1.Error.Failed"), "{refused}");
++        until("ended", |s| s.now.is_none());
++        assert_eq!(state().outcome, Some(Outcome::Failed));
++    }
++
++    #[test]
++    fn polkit_cancelling_ends_the_request_and_lets_go_of_the_helper() {
++        let _one = one();
++        let helper = StandIn::start(pam());
++        let bus = Bus::start();
++        let call = bus.begin(&bus.authority, "c4", &[uid()]);
++        until("asked", asking);
+         // Another request's cookie cancels nothing of this one.
+-        cancel(Some("another"));
+-        assert!(!STATE.lock().unwrap().now.as_ref().unwrap().cancelled);
+-        cancel(Some("c2"));
+-        assert_eq!(converse(ours.try_clone().unwrap(), ours, &answers), None);
+-        assert!(STATE.lock().unwrap().now.as_ref().unwrap().cancelled);
+-        STATE.lock().unwrap().now = None;
++        bus.cancel_from(&bus.authority, "another").unwrap();
++        assert!(!state().now.as_ref().unwrap().cancelled);
++        bus.cancel_from(&bus.authority, "c4").unwrap();
++        let refused = call.join().unwrap().unwrap_err();
++        assert!(refused.contains("PolicyKit1.Error.Cancelled"), "{refused}");
++        assert_eq!(state().outcome, Some(Outcome::Cancelled));
++        assert!(command("polkit.answer", &[SysValue::Text("right".into())]).is_err());
++        assert!(helper.heard().iter().all(|h| h.answers.is_empty()));
++    }
++
++    #[test]
++    fn the_scene_cancelling_ends_the_request() {
++        let _one = one();
++        let _helper = StandIn::start(pam());
++        let bus = Bus::start();
++        let call = bus.begin(&bus.authority, "c5", &[uid()]);
++        until("asked", asking);
++        command("polkit.cancel", &[]).unwrap();
++        assert!(call.join().unwrap().unwrap_err().contains("Cancelled"));
++    }
++
++    /// Several requests wait their turn, and one still waiting can be cancelled.
++    #[test]
++    fn requests_are_attended_in_turn() {
++        let _one = one();
++        let helper = StandIn::start(pam());
++        let bus = Bus::start();
++        let first = bus.begin(&bus.authority, "q1", &[uid()]);
++        until("asked", asking);
++        let second = bus.begin(&bus.authority, "q2", &[uid()]);
++        let third = bus.begin(&bus.authority, "q3", &[uid()]);
++        until("two waiting", |s| s.waiting.len() == 2);
++        bus.cancel_from(&bus.authority, "q3").unwrap();
++        assert!(third.join().unwrap().unwrap_err().contains("Cancelled"));
++        assert_eq!(state().waiting.len(), 1);
++        assert_eq!(state().now.as_ref().unwrap().cookie, "q1");
++        command("polkit.answer", &[SysValue::Text("right".into())]).unwrap();
++        assert_eq!(first.join().unwrap(), Ok(()));
++        until("the second asked", |s| asking(s) && s.now.as_ref().unwrap().cookie == "q2");
++        command("polkit.answer", &[SysValue::Text("right".into())]).unwrap();
++        assert_eq!(second.join().unwrap(), Ok(()));
++        assert_eq!(helper.heard().iter().map(|h| h.cookie.as_str()).collect::<Vec<_>>(), ["q1", "q2"]);
++    }
++
++    /// Choosing another identity asks the helper for that one, spending no try.
++    #[test]
++    fn another_identity_is_asked_without_spending_a_try() {
++        let _one = one();
++        let helper = StandIn::start(pam());
++        let bus = Bus::start();
++        let call = bus.begin(&bus.authority, "c6", &[uid(), 0]);
++        until("asked", asking);
++        command("polkit.answer", &[SysValue::Text("nope".into())]).unwrap();
++        until("asked again", |s| asking(s) && s.now.as_ref().unwrap().tries == 2);
++        assert!(command("polkit.identity", &[SysValue::Text("nobody-at-all".into())]).is_err());
++        command("polkit.identity", &[SysValue::Text(root().name)]).unwrap();
++        until("root asked", |s| asking(s) && s.now.as_ref().unwrap().user == root().name);
++        assert_eq!(state().now.as_ref().map(|n| (n.tries, n.wrong)), Some((2, false)));
++        command("polkit.answer", &[SysValue::Text("right".into())]).unwrap();
++        assert_eq!(call.join().unwrap(), Ok(()));
++        assert_eq!(state().outcome_user, root().name);
++        let users: Vec<_> = helper.heard().iter().map(|h| h.user.clone()).collect();
++        assert_eq!(users, [me().name, me().name, root().name]);
++    }
++
++    /// A helper that goes away halfway fails the request; it is never let through.
++    #[test]
++    fn a_helper_that_dies_fails_the_request() {
++        let _one = one();
++        let _helper = StandIn::start(Arc::new(|_, read, out| {
++            out.write_all(b"PAM_PROMPT_ECHO_OFF Password: \n").unwrap();
++            let _ = read();
++        }));
++        let bus = Bus::start();
++        let call = bus.begin(&bus.authority, "c7", &[uid()]);
++        until("asked", asking);
++        command("polkit.answer", &[SysValue::Text("right".into())]).unwrap();
++        assert!(call.join().unwrap().unwrap_err().contains("Failed"));
++        assert_eq!(state().outcome, Some(Outcome::Failed));
++    }
++
++    /// Without its helper nothing is asked and the request fails.
++    #[test]
++    fn no_helper_fails_the_request() {
++        let _one = one();
++        *HELPER_AT.lock().unwrap() = Some(scratch("nothing-here").to_string_lossy().into_owned());
++        let r = request("c8", vec![me()]);
++        let (now, answers) = current(&r);
++        state().now = Some(now);
++        let missing = HELPER_PROGRAMS.iter().all(|p| !std::path::Path::new(p).exists());
++        if missing {
++            assert_eq!(attend(&r, &answers), Outcome::Failed);
++        }
++        state().now = None;
++    }
++
++    /// Only polkit's own connection may ask or cancel: another program on the
++    /// bus can neither put the dialog up nor take it down.
++    #[test]
++    fn only_polkit_may_ask() {
++        let _one = one();
++        let _helper = StandIn::start(pam());
++        let bus = Bus::start();
++        let stranger = zbus::blocking::connection::Builder::address(bus.address.as_str()).unwrap().build().unwrap();
++        let refused = bus.begin(&stranger, "c9", &[uid()]).join().unwrap().unwrap_err();
++        assert!(refused.contains("NotAuthorized"), "{refused}");
++        assert!(state().now.is_none());
++        let call = bus.begin(&bus.authority, "c9", &[uid()]);
++        until("asked", asking);
++        assert!(bus.cancel_from(&stranger, "c9").unwrap_err().contains("NotAuthorized"));
++        assert!(!state().now.as_ref().unwrap().cancelled);
++        command("polkit.answer", &[SysValue::Text("right".into())]).unwrap();
++        assert_eq!(call.join().unwrap(), Ok(()));
++    }
++
++    /// The agent's process going away mid-request: polkit's call ends in an
++    /// error, never a yes.
++    #[test]
++    fn an_agent_that_goes_away_never_grants() {
++        let _one = one();
++        let _helper = StandIn::start(pam());
++        let mut bus = Bus::start();
++        let call = bus.begin(&bus.authority, "c10", &[uid()]);
++        until("asked", asking);
++        bus.agent.take().unwrap().close().unwrap();
++        assert!(call.join().unwrap().is_err());
+     }
+ 
+     const TAKEN: &str = "org.freedesktop.PolicyKit1.Error.Failed: An authentication agent already exists for the given subject";
+     const ABSENT: &str = "org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.PolicyKit1 was not provided by any .service files";
+ 
++
+     #[test]
+     fn why_registering_failed_is_told_apart() {
+         assert_eq!(refusal(TAKEN), Refusal::Taken);
+@@ -837,6 +1591,4 @@ mod tests {
+         assert!(s.ready);
+     }
+ 
+-    /// These share the one state a process has: one at a time.
+-    static ONE: Mutex<()> = Mutex::new(());
+ }

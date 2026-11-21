@@ -1,0 +1,227 @@
+language 0.4
+scene TohruPolkit {
+    surface {
+        size: full, full
+        anchor: top
+        level: overlay
+        reserve: -1
+        screens: polkit_output
+        keyboard: exclusive
+        open: polkit_shown or polkit_seen > 0.01
+        captures: hidden
+    }
+    permissions { services: "polkit", "polkit.*", "window" }
+
+    fact polkit_enabled = false
+    fact polkit_ready = false
+    fact polkit_shown = false
+    fact polkit_outcome = false
+    fact polkit_asking = false
+    fact polkit_unfolded = false
+    fact polkit_alarm = false
+    fact polkit_chars = 0
+    fact polkit_identities = 0
+    fact polkit_identity = -1
+    fact polkit_picked = 0
+    fact polkit_level = 0.24
+    fact polkit_tint = 0
+    fact polkit_slosh = 0.65
+    // Above 0 it stands in for the clock, so a capture can be matched deterministically.
+    fact polkit_clock = 0
+    text polkit_output = ""
+    text polkit_phase = ""
+    text polkit_answer = ""
+    text polkit_placeholder = ""
+    text polkit_app = ""
+    text polkit_message = ""
+    text polkit_action = ""
+    text polkit_command = ""
+    text polkit_user = ""
+    text polkit_numeral = ""
+    text polkit_caption = ""
+    text polkit_footer = ""
+    text polkit_result = ""
+    text polkit_result_tag = ""
+    text polkit_closing = ""
+    text polkit_id0 = ""
+    text polkit_id1 = ""
+    text polkit_id2 = ""
+    text polkit_id3 = ""
+    text polkit_id4 = ""
+    text polkit_id5 = ""
+    text polkit_id0_meta = ""
+    text polkit_id1_meta = ""
+    text polkit_id2_meta = ""
+    text polkit_id3_meta = ""
+    text polkit_id4_meta = ""
+    text polkit_id5_meta = ""
+    event polkit_submit ->
+    event polkit_cancel ->
+    event polkit_fold ->
+    event polkit_choose ->
+
+    include "../panel-ink.plm"
+    shader polkit_vessel = file "../water/vessel.wgsl"
+    image polkit_lock = file "../network/lock.svg", 13, 13
+    measure polkit_app_m
+    measure polkit_user_m
+
+    prop polkit_seen = 0 ~spring(260, 32)
+    follow polkit_seen = if(polkit_shown, 1, 0)
+    prop polkit_fold = 0 ~spring(196, 22)
+    follow polkit_fold = if(polkit_unfolded, 1, 0)
+    prop polkit_water = 0.24 ~spring(90, 13)
+    follow polkit_water = polkit_level
+    prop polkit_hue = 0 ~spring(120, 22)
+    follow polkit_hue = polkit_tint
+    prop polkit_wash = 0.65 ~spring(60, 10)
+    follow polkit_wash = polkit_slosh
+    prop polkit_rail = 0 ~spring(220, 26)
+    follow polkit_rail = if(polkit_identities > 1, polkit_picked / (polkit_identities - 1), 0)
+    // Each answer sloshes the water; a wrong one sloshes harder.
+    prop polkit_kick = 0 ~spring(240, 9)
+    follow polkit_kick = 0
+    on change polkit_tint > 0.5 while polkit_tint > 0.5 { polkit_kick: 1.6 ~0ms }
+    on change polkit_chars while polkit_chars > 0 { polkit_kick: 0.35 ~0ms }
+
+    let pw = round(mix(360, 380, polkit_fold))
+    let ph = round(mix(230, 240 + 26 * max(polkit_identities, 1), polkit_fold))
+    let pfy = ph - 94
+    let pfoot = ph - 28
+    let pck = 1 - smooth(0, 0.45, polkit_fold)
+    let puk = smooth(0.35, 1, polkit_fold)
+    let pquiet = if(polkit_outcome and polkit_tint == 0, 1, 0)
+    let polkit_red = ink_red
+    let polkit_green = ink_green
+    let polkit_state_ink = if(polkit_tint > 0.5, ink_red, if(polkit_tint < -0.5, ink_green, ink_white))
+
+    // A faint scrim: the request is modal, and the pointer cannot reach what is under it.
+    zone box polkit_scrim { from: 0, 0; size: screen.width, screen.height; active: polkit_shown }
+    box { from: 0, 0; size: screen.width, screen.height; color: #0e0816; opacity: 12% * polkit_seen }
+
+    popup polkit {
+        at: round((screen.width - 400) / 2), round((screen.height - 440) / 2)
+        size: 400, 440
+        open: polkit_shown
+        bright: panel_bright
+        let pcx = round((400 - pw) / 2)
+        let pcy = round((440 - ph) / 2) + round(8 * (1 - polkit_seen))
+
+        group {
+            opacity: polkit_seen
+            body {
+                color: ink_glass; glass: 100%; frost: 100%; tint: 60%; vivid: 135%; refraction: 0%; dispersion: 0%; mirror: 0%; highlight: 0%; ripple: 0%
+                shadow: 0, 4, 10, 0.22 - 0.1 * pk
+                box { from: pcx, pcy; size: pw, ph; corner: 15 }
+            }
+            box { from: pcx + 0.5, pcy + 0.5; size: pw - 1, ph - 1; corner: 14.5; stroke: 1; color: ink_white; opacity: 0.6 * (26% - 10% * pk) }
+
+            // The vessel: clear water over drifting frost, cut by the waterline through the numeral.
+            group {
+                move: pcx, pcy
+                shader: polkit_vessel, polkit_water, polkit_wash + polkit_kick, pk, pquiet, polkit_clock, polkit_hue, polkit_fold, 15
+                box { from: 0, 0; size: pw, ph; color: ink_glass; opacity: 1% }
+                text polkit_numeral {
+                    at: 16, 97 + 0.308 * 52
+                    anchor: left bottom; size: 52; weight: 200; family: "SF Pro Text:tnum"; color: polkit_state_ink
+                    opacity: if(pquiet > 0.5, 42%, 92%) * pck
+                    letter_move: -1.6 * letter, 0
+                }
+            }
+
+            group {
+                move: pcx, pcy
+
+                // Header: who asks, and whose password is asked.
+                text polkit_app { at: 17, 26; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 72%; measure: polkit_app_m }
+                text "·" { at: 23 + polkit_app_m.width, 26; anchor: left center; size: 12; family: "SF Pro Text"; color: ink_white; opacity: 32% }
+                text "polkit" { at: 32 + polkit_app_m.width, 26; anchor: left center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 46% }
+
+                let pill_w = polkit_user_m.width + 40
+                zone box polkit_pill { from: pw - 17 - pill_w, 15; size: pill_w, 22; corner: 7; cursor: pointer; active: polkit_shown and not polkit_outcome and polkit_identities > 0; label: "Authenticate as another identity" }
+                box { from: pw - 17 - pill_w, 15; size: pill_w, 22; corner: 7; color: ink_white; opacity: if(polkit_unfolded, 12%, 8%) - 3% * pk + polkit_pill.hover * 4% }
+                group {
+                    glow: 4.5, 55%, polkit_state_ink
+                    box { from: pw - 9 - pill_w, 24; size: 4, 4; color: polkit_state_ink }
+                }
+                text polkit_user { at: pw - 1 - pill_w, 26; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92%; measure: polkit_user_m }
+                line { from: pw - 31, 24.5 + 3 * polkit_fold; to: pw - 27.5, 27.5 - 3 * polkit_fold; width: 1.2; color: ink_white; opacity: 60% }
+                line { from: pw - 27.5, 27.5 - 3 * polkit_fold; to: pw - 24, 24.5 + 3 * polkit_fold; width: 1.2; color: ink_white; opacity: 60% }
+                on press polkit_pill { emit polkit_fold }
+
+                // Compact: the numeral's caption, then what is asked for.
+                group {
+                    opacity: pck
+                    show: pck > 0.001
+                    text polkit_caption { at: 17, 118; anchor: left center; size: 10; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; letter_move: 0.6 * letter, 0 }
+                    text polkit_message { at: 105, 63; width: pw - 122; anchor: left top; lines: 2; size: 13.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+                    text polkit_action { at: 105, 106; anchor: left center; width: pw - 122; lines: 1; size: 11; family: "SF Pro Text"; color: ink_white; opacity: 52% }
+                }
+
+                // Unfolded: the full message, the command line and the identities.
+                group {
+                    opacity: puk
+                    show: puk > 0.001
+                    text polkit_message { at: 17, 46; width: pw - 34; anchor: left top; lines: 2; size: 13.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+                    text polkit_command { at: 17, 90; anchor: left center; width: pw - 34; lines: 1; size: 11; family: "monospace"; color: ink_white; opacity: 58% }
+                    box { from: 17, 102; size: pw - 34, 1; color: ink_white; opacity: 12% }
+                    text "AUTHENTICATE AS" { at: 17, 116; anchor: left center; size: 10.5; weight: 600; family: "SF Pro Text"; color: ink_white; opacity: 60%; letter_move: 0.6 * letter, 0 }
+                    repeat i in 0..6 {
+                        zone box polkit_row.$i { from: 13, 128 + 26 * i; size: pw - 26, 24; corner: 6; cursor: pointer; active: polkit_unfolded and i < polkit_identities; label: "Authenticate as this identity" }
+                        box { from: 13, 128 + 26 * i; size: pw - 26, 24; corner: 6; color: ink_white; opacity: if(polkit_picked == i, 9%, 0%) + polkit_row.$i.hover * 5% - 2% * pk; show: i < polkit_identities }
+                        group {
+                            glow: 4.5, 55%, ink_white
+                            show: polkit_identity == i
+                            box { from: 23, 138 + 26 * i; size: 4, 4; color: ink_white }
+                        }
+                        text pick(i, polkit_id0, polkit_id1, polkit_id2, polkit_id3, polkit_id4, polkit_id5) { at: 35, 140 + 26 * i; anchor: left center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92%; show: i < polkit_identities }
+                        text pick(i, polkit_id0_meta, polkit_id1_meta, polkit_id2_meta, polkit_id3_meta, polkit_id4_meta, polkit_id5_meta) { at: pw - 23, 140 + 26 * i; anchor: right center; size: 11; family: "SF Pro Text:tnum"; color: ink_white; opacity: 50%; show: i < polkit_identities }
+                        on press polkit_row.$i { emit polkit_choose(i) }
+                    }
+                    // The rail: where the chosen identity sits among them.
+                    let rail_y = 132 + 26 * max(polkit_identities, 1)
+                    box { from: 17, rail_y; size: pw - 34, 3; corner: 1.5; color: ink_white; opacity: 10% }
+                    group {
+                        glow: 6, 60%, ink_peach
+                        box { from: 17 + polkit_rail * (pw - 34 - 22), rail_y; size: 22, 3; corner: 1.5; color: ink_peach }
+                    }
+                }
+
+                // The password well, with the same states as the lock screen's field.
+                let well_fill = if(polkit_tint > 0.5, ink_red, if(polkit_tint < -0.5, ink_green, ink_white))
+                box { from: 17, pfy; size: pw - 34, 34; corner: 9; color: well_fill; opacity: if(polkit_tint != 0, 11% - 4% * pk, if(polkit_chars > 0, 12%, 8%) - 3% * pk); show: not polkit_outcome or polkit_tint != 0 }
+                box { from: 17.5, pfy + 0.5; size: pw - 35, 33; corner: 8.5; stroke: 1; color: well_fill; opacity: if(polkit_tint != 0, 55% - 15% * pk, if(polkit_chars > 0, 22%, 12%)); show: not polkit_outcome or polkit_tint != 0 }
+                box { from: 17, pfy; size: pw - 34, 34; corner: 9; color: ink_white; opacity: 5%; show: polkit_outcome and polkit_tint == 0 }
+                image polkit_lock { at: 29, pfy + 10; size: 13, 13; tint: if(polkit_tint != 0, well_fill, ink_white); opacity: if(polkit_tint != 0, 100%, 60%); show: not polkit_outcome or polkit_tint != 0 }
+                input polkit_answer {
+                    at: 49, pfy + 9; width: pw - 110; size: 13; family: "SF Pro Text"; color: ink_white
+                    secret: true; agent: no; label: "Password"
+                    show: polkit_shown and not polkit_outcome
+                }
+                text polkit_placeholder { at: 49, pfy + 17; anchor: left center; width: pw - 110; lines: 1; size: 13; family: "SF Pro Text"; color: ink_white; opacity: 38%; show: polkit_chars == 0 and not polkit_outcome }
+                text "{polkit_chars}" { at: pw - 29, pfy + 17; anchor: right center; size: 11; family: "SF Pro Text:tnum"; color: ink_white; opacity: 52%; show: polkit_chars > 0 and not polkit_outcome }
+                text polkit_result { at: 49, pfy + 17; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: polkit_state_ink; opacity: if(pquiet > 0.5, 55%, 100%); show: polkit_outcome }
+                text "×" { at: 30, pfy + 17; anchor: left center; size: 14; family: "SF Pro Text"; color: ink_white; opacity: 50%; show: polkit_outcome and polkit_tint == 0 }
+                text polkit_result_tag { at: pw - 29, pfy + 17; anchor: right center; size: 11; weight: 500; family: "SF Pro Text"; color: polkit_state_ink; opacity: if(pquiet > 0.5, 45%, 90%); show: polkit_outcome }
+
+                // Footer: what is going on, then the two choices.
+                text polkit_footer { at: 17, pfoot; anchor: left center; width: pw - 210; lines: 2; align: left; size: 11; weight: 500; family: "SF Pro Text"; color: if(polkit_alarm, ink_red, ink_white); opacity: if(polkit_alarm, 100%, 60%) }
+
+                zone box polkit_cancel_button { from: pw - 186, pfoot - 13; size: 72, 26; corner: 7; cursor: pointer; active: polkit_shown and not polkit_outcome; label: "Cancel" }
+                box { from: pw - 186, pfoot - 13; size: 72, 26; corner: 7; color: ink_white; opacity: (8% - 2% * pk + polkit_cancel_button.hover * 5%) * if(polkit_outcome, 0, 1) }
+                text "Cancel" { at: pw - 150, pfoot; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 72%; show: not polkit_outcome }
+                on press polkit_cancel_button { emit polkit_cancel }
+
+                zone box polkit_accept_button { from: pw - 109, pfoot - 13; size: 92, 26; corner: 7; cursor: pointer; active: polkit_asking and not polkit_outcome; agent: no; label: "Authenticate" }
+                box { from: pw - 109, pfoot - 13; size: 92, 26; corner: 7; color: ink_white; opacity: (12% - 3% * pk + polkit_accept_button.hover * 5%) * if(polkit_outcome, 0, 1) }
+                box { from: pw - 108.5, pfoot - 12.5; size: 91, 25; corner: 6.5; stroke: 0.75; color: ink_white; opacity: 22% * if(polkit_outcome, 0, 1) }
+                text "Authenticate" { at: pw - 63, pfoot; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(polkit_asking, 92%, 45%); show: not polkit_outcome }
+                on press polkit_accept_button { emit polkit_submit }
+
+                // After the request: one quiet button, closing by itself.
+                box { from: pw - 127, pfoot - 13; size: 110, 26; corner: 7; color: if(polkit_tint < -0.5, ink_green, ink_white); opacity: if(polkit_tint < -0.5, 14% - 3% * pk, 5%); show: polkit_outcome }
+                text polkit_closing { at: pw - 72, pfoot; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: if(polkit_tint < -0.5, ink_green, ink_white); opacity: if(polkit_tint < -0.5, 100%, 38%); show: polkit_outcome }
+            }
+        }
+    }
+}

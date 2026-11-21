@@ -19,7 +19,7 @@ Usage: tohru panel toggle|open sound|calendar|network|media|bluetooth|wallpaper|
        tohru status --json
        tohru config reload
        tohru config set appearance.palette mocha|macchiato|rose_pine|nord|gruvbox|tokyo_night|dracula|everforest
-       tohru config set bar.mooncoil|bar.info_button|bar.about_button|appearance.corners true|false
+       tohru config set bar.mooncoil|bar.info_button|bar.about_button|appearance.corners|polkit.agent true|false
        tohru config set appearance.corner_size 1..100
        tohru config set lock.style STYLE   (still-glass, ribbon-key, flooded-monolith, drifting-frost-veil, unfolding-glass-capsule, edge-glass-drawer, horizon-meniscus, refractive-typographic-lens, corner-anchor, bar-drop-curtain)
        tohru config set bar.preferred_output OUTPUT   ('' for every output)
@@ -161,13 +161,14 @@ case ${1:-help} in
             set)
                 [[ $# == 4 ]] || fail 'Usage: tohru config set KEY VALUE'
                 case $3 in
-                    bar.mooncoil|bar.info_button|bar.about_button|appearance.corners)
+                    bar.mooncoil|bar.info_button|bar.about_button|appearance.corners|polkit.agent)
                         case $4 in true) number=1 ;; false) number=0 ;; *) fail 'Value must be true or false' ;; esac
                         case $3 in
                             bar.mooncoil) event=setting_mooncoil ;;
                             bar.info_button) event=setting_info_button ;;
                             bar.about_button) event=setting_about_button ;;
                             appearance.corners) event=setting_corners ;;
+                            polkit.agent) event=setting_polkit_agent ;;
                         esac
                         exec "$pleamar" --say tohru "emit $event $number"
                         ;;

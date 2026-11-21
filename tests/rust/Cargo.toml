@@ -52,3 +52,11 @@ path = "../lock/logic.rs"
 [[test]]
 name = "wallpaper-shaders"
 path = "../wallpaper/shaders.rs"
+
+[[test]]
+name = "polkit"
+path = "../polkit/logic.rs"
+
+[[test]]
+name = "water-vessel-shader"
+path = "../polkit/vessel-shader.rs"

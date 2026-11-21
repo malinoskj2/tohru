@@ -21,6 +21,7 @@ Only the bar and Settings processes read settings. Nothing is imported from j2ba
 | `appearance.corners` | boolean | `true` | Draw rounded screen corners. Corners show on every output |
 | `appearance.corner_size` | integer, 1 to 100 | `32` | Size of the screen corners |
 | `lock.style` | string | `"flooded-monolith"` | The lock screen's look: `still-glass`, `ribbon-key`, `flooded-monolith`, `drifting-frost-veil`, `unfolding-glass-capsule`, `edge-glass-drawer`, `horizon-meniscus`, `refractive-typographic-lens`, `corner-anchor` or `bar-drop-curtain`. An unknown value logs a warning and locks with `flooded-monolith`. `tohru-lock` reads it each time it locks; `TOHRU_LOCK_STYLE` in the locker's environment overrides it |
+| `polkit.agent` | boolean | `false` | Let `tohru-polkit` become the session's polkit authentication agent. Read when `tohru-polkit` starts; another agent such as hyprpolkitagent must not be running. See [MIGRATION.md](../MIGRATION.md#polkit-agent) |
 
 Example `config.toml`:
 
@@ -67,6 +68,7 @@ tohru config set lock.style corner-anchor
 tohru config set bar.info_button true
 tohru config set bar.preferred_output DP-1
 tohru config set bar.preferred_output ''    # every output
+tohru config set polkit.agent true          # takes effect when tohru-polkit restarts
 tohru config reload                         # re-read both files
 tohru status --json                         # current values and where each came from
 tohru settings-error                        # the last settings error, if any
@@ -74,6 +76,6 @@ tohru settings-error                        # the last settings error, if any
 
 These commands talk to the running bar. They report that the bar accepted the request, not that it succeeded; check `tohru status --json` or `tohru settings-error` afterwards. Changes made with the CLI reach an open Settings window the next time it is opened.
 
-The Settings window has Bar, Appearance and System pages. It shows `bar.preferred_output` but does not offer a control for it. The lock style is on the Appearance page; clicking it steps to the next style.
+The Settings window has Bar, Appearance and System pages. It shows `bar.preferred_output` but does not offer a control for it, and does not show `polkit.agent`. The lock style is on the Appearance page; clicking it steps to the next style.
 
 The locker is a separate process that reads the files when it locks, so a runtime override (a change to a Nix-managed `lock.style` made in Settings or with `tohru config set`) does not reach it; change `programs.tohru.lock.style` instead.

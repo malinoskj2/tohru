@@ -9,7 +9,8 @@ let
     else if systemHyprland != null then systemHyprland
     else pkgs.hyprland;
   format = pkgs.formats.toml { };
-  managed = format.generate "tohru-managed.toml" cfg.settings;
+  managed = format.generate "tohru-managed.toml"
+    (lib.recursiveUpdate cfg.settings (lib.optionalAttrs cfg.polkit.enable { polkit.agent = true; }));
   # hypridle runs outside the login shell, so the locker is told where the managed file is.
   locker = pkgs.writeShellScript "tohru-lock" ''
     TOHRU_MANAGED_CONFIG=${managed} exec ${cfg.package}/bin/tohru-lock "$@"
@@ -84,6 +85,16 @@ in {
         The notification service must be the session's only notification daemon.
       '';
     };
+    polkit.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Whether Tohru is the session's polkit authentication agent: sets the
+        managed `polkit.agent` setting and, with {option}`programs.tohru.systemd.enable`,
+        starts the `tohru-polkit` user service. Only one agent can hold a session,
+        so disable any other (such as `services.hyprpolkitagent`) first.
+      '';
+    };
     systemd.target = lib.mkOption {
       type = lib.types.str;
       default = "graphical-session.target";
@@ -107,6 +118,8 @@ in {
           Service.KillMode = "process";
         };
         tohru-notifications = service "Tohru notification daemon" "tohru-notifications-run" { };
+      } // lib.optionalAttrs cfg.polkit.enable {
+        tohru-polkit = service "Tohru polkit authentication agent" "tohru-polkit-run" { };
       };
     })
   ]);

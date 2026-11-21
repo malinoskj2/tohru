@@ -1,5 +1,5 @@
 { lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage
-, fontconfig, wayland, jq, socat, ffmpeg-headless, findutils, gnugrep, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3
+, fontconfig, wayland, jq, socat, ffmpeg-headless, findutils, gnugrep, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3, dbus
 , util-linux, systemd, procps, coreutils }:
 let
   pin = builtins.fromJSON (builtins.readFile ../runtime/pleamar/pin.json);
@@ -34,7 +34,7 @@ let
       cp ${../runtime/pleamar/Cargo.lock} Cargo.lock
     '';
     nativeBuildInputs = [ pkg-config makeWrapper ];
-    nativeCheckInputs = [ python3 ];
+    nativeCheckInputs = [ python3 dbus ];
     buildInputs = [ fontconfig wayland libxkbcommon linux-pam libffi ];
     # Owned native boundaries only; includes the isolated role-install regression.
     # Upstream's broader tests can require desktop services and remain separate.
@@ -62,7 +62,7 @@ in stdenvNoCC.mkDerivation {
     cp -r shell $out/share/tohru/
     cp LICENSE $out/share/tohru/LICENSE
     cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-session-run \
-      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-wallpaper $out/bin/
+      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-wallpaper bin/tohru-polkit-run $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar
     wrapProgram $out/bin/tohru-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
@@ -87,6 +87,9 @@ in stdenvNoCC.mkDerivation {
     # hyprctl is left to the session's PATH so it always matches the running compositor.
     wrapProgram $out/bin/tohru-wallpaper \
       --prefix PATH : ${lib.makeBinPath [ jq socat ffmpeg-headless util-linux coreutils findutils gnugrep ]}
+    wrapProgram $out/bin/tohru-polkit-run \
+      --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
+      --set TOHRU_POLKIT_SCENE $out/share/tohru/shell/polkit/polkit.plm
     runHook postInstall
   '';
   passthru = { inherit runtime; };

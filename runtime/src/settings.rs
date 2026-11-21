@@ -19,10 +19,11 @@ pub enum Key {
     CornerSize,
     Palette,
     LockStyle,
+    PolkitAgent,
 }
 
 impl Key {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::InfoButton,
@@ -31,6 +32,7 @@ impl Key {
         Self::CornerSize,
         Self::Palette,
         Self::LockStyle,
+        Self::PolkitAgent,
     ];
 
     #[must_use]
@@ -44,6 +46,7 @@ impl Key {
             Self::CornerSize => "appearance.corner_size",
             Self::Palette => "appearance.palette",
             Self::LockStyle => "lock.style",
+            Self::PolkitAgent => "polkit.agent",
         }
     }
 
@@ -84,6 +87,7 @@ impl Key {
             Self::CornerSize => ("appearance", "corner_size"),
             Self::Palette => ("appearance", "palette"),
             Self::LockStyle => ("lock", "style"),
+            Self::PolkitAgent => ("polkit", "agent"),
         }
     }
 
@@ -98,7 +102,7 @@ impl Key {
     fn default_value(self) -> Value {
         match self {
             Self::PreferredOutput => Value::Text(String::new()),
-            Self::Mooncoil | Self::InfoButton | Self::AboutButton => Value::Bool(false),
+            Self::Mooncoil | Self::InfoButton | Self::AboutButton | Self::PolkitAgent => Value::Bool(false),
             Self::Corners => Value::Bool(true),
             Self::CornerSize => Value::Integer(32),
             Self::Palette => Value::Palette(Palette::Mocha),
@@ -114,7 +118,7 @@ impl Key {
                 Ok(())
             }
             (
-                Self::Mooncoil | Self::InfoButton | Self::AboutButton | Self::Corners,
+                Self::Mooncoil | Self::InfoButton | Self::AboutButton | Self::Corners | Self::PolkitAgent,
                 Value::Bool(_),
             )
             | (Self::Palette, Value::Palette(_))
@@ -144,7 +148,7 @@ pub enum Palette {
 }
 
 impl Palette {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Mocha,
         Self::Macchiato,
         Self::RosePine,
