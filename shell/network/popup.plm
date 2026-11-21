@@ -2,7 +2,7 @@ part NetworkPopup {
     let net_anchor_x = if(net_button_x < 0, screen.width - 260, net_button_x)
     popup network {
         at: clamp(net_anchor_x - 144, 8, max(8, screen.width - 296)) - 12, 37
-        size: 312, max(200, net_open_h) + 18
+        size: 312, max(net_wifi_h, net_eth_h) + 18
         open: net_open
         bright: panel_bright
         let net_ox = clamp(net_anchor_x - net_w / 2, 8, max(8, screen.width - 8 - net_w)) - clamp(net_anchor_x - 144, 8, max(8, screen.width - 296)) + 12
@@ -17,20 +17,12 @@ part NetworkPopup {
         // Crisp 0.6-alpha inset hairline matching the bar and sound popup.
         box { from: net_ox + 0.5, 0.5; size: net_w - 1, net_h - 1; corner: 14.5; stroke: 1; color: ink_white; opacity: 0.6 * (26% - 10% * pk) }
 
-        // Water chamber (compact) and buoyant drifting light plumes (unfolded).
-        group {
-            move: net_ox, 0
-            show: net_open
-            include "water.plm"
-        }
-
-        // Compact state: dry Wi-Fi & Ethernet interface tiles above the water chamber.
+        // Compact state: the Wi-Fi and Ethernet interface tiles, each opening its view.
         group {
             show: net_ck > 0.001
             opacity: net_ck
 
-            // Wi-Fi interface tile (click toggles Wi-Fi power).
-            zone box net_tile_wifi { from: net_ox + 10, 10; size: 122, 64; corner: 10; cursor: pointer; active: not net_unfolded; label: if(net.wifi, "Turn Wi-Fi off", "Turn Wi-Fi on") }
+            zone box net_tile_wifi { from: net_ox + 10, 10; size: 122, 64; corner: 10; cursor: pointer; active: not net_unfolded; label: "Wi-Fi"; role: button }
             box { from: net_ox + 10, 10; size: 122, 64; corner: 10; color: ink_white; opacity: if(net.wifi, 9% - 3% * pk, 4%) + max(net_tile_wifi.hover * 6%, net_tile_wifi.pressed * 10%) }
             box { from: net_ox + 10.5, 10.5; size: 121, 63; corner: 9.5; stroke: 1; color: ink_white; opacity: if(net.wifi, 20% - 6% * pk, 10% - 2% * pk) }
             image net_wifi_full { at: net_ox + 20, 18; size: 14, 14; tint: ink_white; opacity: 92%; show: net.wifi and net_wifi_connected and net.strength >= 0.6 }
@@ -56,8 +48,8 @@ part NetworkPopup {
             text "Not connected" { at: net_ox + 20, 62; anchor: left center; width: 102; lines: 1; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 48%; show: net.wifi and not net_wifi_connected }
             text "Disabled" { at: net_ox + 20, 62; anchor: left center; width: 102; lines: 1; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 38%; show: not net.wifi }
 
-            // Ethernet interface tile.
-            box { from: net_ox + 140, 10; size: 122, 64; corner: 10; color: ink_white; opacity: if(net_wired, 9% - 3% * pk, 4%) }
+            zone box net_tile_eth { from: net_ox + 140, 10; size: 122, 64; corner: 10; cursor: pointer; active: not net_unfolded; label: "Ethernet"; role: button }
+            box { from: net_ox + 140, 10; size: 122, 64; corner: 10; color: ink_white; opacity: if(net_wired, 9% - 3% * pk, 4%) + max(net_tile_eth.hover * 6%, net_tile_eth.pressed * 10%) }
             box { from: net_ox + 140.5, 10.5; size: 121, 63; corner: 9.5; stroke: 1; color: ink_white; opacity: if(net_wired, 20% - 6% * pk, 10% - 2% * pk) }
             image net_ethernet { at: net_ox + 150, 18; size: 14, 14; tint: ink_white; opacity: if(net_wired, 92%, 38%) }
             group {
@@ -75,61 +67,30 @@ part NetworkPopup {
             text "{net.name}" { at: net_ox + 150, 62; anchor: left center; width: 102; lines: 1; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 58%; show: net_wired }
             text "Unplugged" { at: net_ox + 150, 62; anchor: left center; width: 102; lines: 1; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 38%; show: not net_wired }
 
-            // Subtle hairline separating dry top tiles from the water chamber.
-            box { from: net_ox, 82; size: net_w, 1; color: ink_white; opacity: 9% - 2% * pk }
-
-            // Hero chamber annotations beside the refracted water numeral.
-            text "%" { at: net_ox + 20 + net_hero_w, 104; anchor: left center; size: 16; weight: 300; family: "SF Pro Text"; color: ink_white; opacity: 58%; show: net_online_num }
-            text "{net.name}" { at: net_ox + net_w - 16, 114; anchor: right center; width: 130; lines: 1; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 90%; show: net.online }
-            text "Wi-Fi Off" { at: net_ox + net_w - 16, 114; anchor: right center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 58%; show: not net.online and not net.wifi }
-            text "Offline" { at: net_ox + net_w - 16, 114; anchor: right center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 58%; show: not net.online and net.wifi }
-            text "Connected" { at: net_ox + net_w - 16, 132; anchor: right center; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 58%; show: net_wifi_connected }
-            text "Wired" { at: net_ox + net_w - 16, 132; anchor: right center; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 58%; show: net_wired }
-            text "Tap Wi-Fi to enable" { at: net_ox + net_w - 16, 132; anchor: right center; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 42%; show: not net.online and not net.wifi }
-            text "Not connected" { at: net_ox + net_w - 16, 132; anchor: right center; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 45%; show: not net.online and net.wifi }
-
-            // Compact footer: unfold trigger + Scan button.
-            zone box net_unfold_hit { from: net_ox + 8, 168; size: 124, 22; corner: 7; cursor: pointer; active: not net_unfolded; label: "Show networks" }
-            box { from: net_ox + 8, 168; size: 124, 22; corner: 7; color: ink_white; opacity: max(net_unfold_hit.hover * 10%, net_unfold_hit.pressed * 16%) }
-            text "Nearby ({net_rows.count})" { at: net_ox + 14, 179; anchor: left center; size: 12.5; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 90%; show: net_rows.count > 0 }
-            text "Networks" { at: net_ox + 14, 179; anchor: left center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 80%; show: net_rows.count == 0 }
-            path {
-                at: net_ox + 98, 179
-                stroke: 1.25; color: ink_white; opacity: 60%
-                move -2.5, -1.25
-                line 0, 1.25
-                line 2.5, -1.25
-            }
-
-            zone box net_compact_scan { from: net_ox + net_w - 32, 168; size: 24, 22; corner: 7; cursor: pointer; active: not net_unfolded; label: "Scan networks" }
-            box { from: net_ox + net_w - 32, 168; size: 24, 22; corner: 7; color: ink_white; opacity: max(net_compact_scan.hover * 10%, net_compact_scan.pressed * 16%) }
-            image net_scan_icon { at: net_ox + net_w - 27, 172; size: 14, 14; tint: ink_white; opacity: 80% }
+            // The keyboard's tile.
+            box { from: net_ox + 7.5 + 130 * net_focus, 7.5; size: 127, 69; corner: 12.5; stroke: 1; color: ink_white; opacity: 40%; show: net_keyed and not net_unfolded }
         }
-        on press net_tile_wifi { emit network_power }
-        on press net_unfold_hit { emit network_fold_toggle }
-        on press net_compact_scan { emit network_scan }
+        on press net_tile_wifi { net_keyed = false; emit network_open_view(0) }
+        on press net_tile_eth { net_keyed = false; emit network_open_view(1) }
 
-        // Unfolded state: Wi-Fi | Ethernet segmented header, network list, inline password card, pager & status.
+        // Unfolded state: the Wi-Fi | Ethernet segmented header over the chosen interface's view.
         group {
             show: net_uk > 0.001
             opacity: net_uk
 
-            // Top segmented bar: Wi-Fi toggle pill, Ethernet status pill, Scan, Fold.
-            zone box net_power { from: net_ox + 10, 10; size: 78, 26; corner: 8; cursor: pointer; active: net_unfolded; label: if(net.wifi, "Turn Wi-Fi off", "Turn Wi-Fi on") }
-            box { from: net_ox + 10, 10; size: 78, 26; corner: 8; color: ink_white; opacity: if(net.wifi, 11% - 3% * pk, 4%) + max(net_power.hover * 8%, net_power.pressed * 14%) }
-            box { from: net_ox + 10.5, 10.5; size: 77, 25; corner: 7.5; stroke: 1; color: ink_white; opacity: if(net.wifi, 22% - 8% * pk, 10%) }
-            image net_wifi_full { at: net_ox + 20, 16; size: 14, 14; tint: ink_white; opacity: 92%; show: net.wifi }
-            image net_wifi_off { at: net_ox + 20, 16; size: 14, 14; tint: ink_white; opacity: 45%; show: not net.wifi }
-            text "Wi-Fi" { at: net_ox + 40, 23; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(net.wifi, 92%, 48%) }
-
-            box { from: net_ox + 94, 10; size: 90, 26; corner: 8; color: ink_white; opacity: if(net_wired, 11% - 3% * pk, 4%) }
-            box { from: net_ox + 94.5, 10.5; size: 89, 25; corner: 7.5; stroke: 1; color: ink_white; opacity: if(net_wired, 22% - 8% * pk, 10%) }
-            image net_ethernet { at: net_ox + 104, 16; size: 14, 14; tint: ink_white; opacity: if(net_wired, 92%, 40%) }
-            text "Ethernet" { at: net_ox + 124, 23; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(net_wired, 92%, 46%) }
-
-            zone box net_scan { from: net_ox + net_w - 60, 12; size: 24, 22; corner: 7; cursor: pointer; active: net_unfolded; label: "Scan networks" }
-            box { from: net_ox + net_w - 60, 12; size: 24, 22; corner: 7; color: ink_white; opacity: max(net_scan.hover * 10%, net_scan.pressed * 16%) }
-            image net_scan_icon { at: net_ox + net_w - 55, 16; size: 14, 14; tint: ink_white; opacity: 82% }
+            // Segmented control: Wi-Fi 66 px, Ethernet 88 px, with a thumb gliding to the chosen one.
+            box { from: net_ox + 10, 10; size: 154, 26; corner: 8; color: ink_white; opacity: 4% }
+            box { from: net_ox + 10.5, 10.5; size: 153, 25; corner: 7.5; stroke: 1; color: ink_white; opacity: 10% - 2% * pk }
+            box { from: net_ox + 12 + 66 * net_vk, 12; size: 62 + 22 * net_vk, 22; corner: 6.5; color: ink_white; opacity: 13% - 4% * pk }
+            zone box net_seg_wifi { from: net_ox + 10, 10; size: 66, 26; corner: 8; cursor: pointer; active: net_unfolded; label: "Wi-Fi"; role: tab; selected: net_view == 0 }
+            zone box net_seg_eth { from: net_ox + 76, 10; size: 88, 26; corner: 8; cursor: pointer; active: net_unfolded; label: "Ethernet"; role: tab; selected: net_view == 1 }
+            box { from: net_ox + 12, 12; size: 62, 22; corner: 6.5; color: ink_white; opacity: max(net_seg_wifi.hover * 6%, net_seg_wifi.pressed * 10%) * if(net_view == 0, 0, 1) }
+            box { from: net_ox + 78, 12; size: 84, 22; corner: 6.5; color: ink_white; opacity: max(net_seg_eth.hover * 6%, net_seg_eth.pressed * 10%) * if(net_view == 1, 0, 1) }
+            image net_wifi_full { at: net_ox + 19, 16; size: 14, 14; tint: ink_white; opacity: mix(92%, 60%, net_vk); show: net.wifi }
+            image net_wifi_off { at: net_ox + 19, 16; size: 14, 14; tint: ink_white; opacity: mix(60%, 40%, net_vk); show: not net.wifi }
+            text "Wi-Fi" { at: net_ox + 38, 23; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: mix(92%, 56%, net_vk) }
+            image net_ethernet { at: net_ox + 85, 16; size: 14, 14; tint: ink_white; opacity: mix(56%, 92%, net_vk) }
+            text "Ethernet" { at: net_ox + 104, 23; anchor: left center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: mix(56%, 92%, net_vk) }
 
             zone box net_fold_hit { from: net_ox + net_w - 34, 12; size: 24, 22; corner: 7; cursor: pointer; active: net_unfolded; label: "Fold network panel" }
             box { from: net_ox + net_w - 34, 12; size: 24, 22; corner: 7; color: ink_white; opacity: max(net_fold_hit.hover * 10%, net_fold_hit.pressed * 16%) }
@@ -143,98 +104,146 @@ part NetworkPopup {
 
             box { from: net_ox + 10, 44; size: net_w - 20, 1; color: ink_white; opacity: 10% - 2% * pk }
 
-            // Nearby Wi-Fi list (7 rows per page).
-            for n in net_rows {
-                let n_shown = floor(n.index / 7) == net_page and not net_joining
-                let n_y = 52 + (n.index - floor(n.index / 7) * 7) * 28
-                let n_forget_inline = not n.active and n.known and n.index == net_selected
-                let n_hit_w = net_w - if(n.active, 96, if(n_forget_inline, 72, 16))
-                group {
-                    show: n_shown
-                    zone box net_row.$n.index { from: net_ox + 8, n_y; size: n_hit_w, 26; corner: 7; active: net_unfolded and n_shown; cursor: pointer; label: "{n.ssid}" }
-                    box { from: net_ox + 8, n_y; size: net_w - 16, 26; corner: 7; color: ink_white; opacity: max(if(n.index == net_selected, 12%, 0%), max(net_row.$n.index.hover * 10%, net_row.$n.index.pressed * 16%)) }
+            // The Wi-Fi view: power switch and scan in the header, nearby list, password card, pager and status.
+            group {
+                show: net_vk < 0.999
+                opacity: 1 - net_vk
 
-                    // Glowing 4 px mark on active network; signal icon on others.
+                // Power switch: a two-stop ribbon rail (rail 8), Off at its left end and On at its right.
+                box { from: net_ox + 178, 22; size: 36, 2; corner: 1; color: ink_white; opacity: pk * 22% }
+                shader rail_shader { at: net_ox + 166, 2; size: 60, 42; values: rail.x.8, vel(rail.x.8), rail.bead.8, rail.c.8, rail.amp.8, rail.wash.8, rail.wc.8, rail.wave.8; colors: mix(rgb(rail.red.8, rail.green.8, rail.blue.8), ink_white, 0.35 * pk), ink_white; opacity: if(net_power_stop == 1, 100%, 62%) }
+                zone box net_power_rail { from: net_ox + 170, 10; size: 52, 26; corner: 8; cursor: pointer; active: net_unfolded and net_view == 0; label: "Wi-Fi power"; role: toggle; checked: net_power_stop == 1 }
+
+                zone box net_scan { from: net_ox + net_w - 60, 12; size: 24, 22; corner: 7; cursor: pointer; active: net_unfolded and net_view == 0; label: "Scan networks" }
+                box { from: net_ox + net_w - 60, 12; size: 24, 22; corner: 7; color: ink_white; opacity: max(net_scan.hover * 10%, net_scan.pressed * 16%) }
+                image net_scan_icon { at: net_ox + net_w - 55, 16; size: 14, 14; tint: ink_white; opacity: if(net.wifi, 82%, 40%) }
+
+                // Nearby Wi-Fi list (7 rows per page), strongest first.
+                for n in net_rows {
+                    let n_shown = floor(n.index / 7) == net_page and not net_joining
+                    let n_y = 52 + (n.index - floor(n.index / 7) * 7) * 28
+                    let n_forget_inline = not n.active and n.known and n.index == net_selected
+                    let n_hit_w = net_w - if(n.active, 96, if(n_forget_inline, 72, 16))
                     group {
-                        glow: 9, 35%, ink_white
-                        show: n.active
-                        box { from: net_ox + 18, n_y + 11; size: 4, 4; color: ink_white }
+                        show: n_shown
+                        zone box net_row.$n.index { from: net_ox + 8, n_y; size: n_hit_w, 26; corner: 7; active: net_unfolded and net_view == 0 and n_shown; cursor: pointer; label: "{n.ssid}" }
+                        box { from: net_ox + 8, n_y; size: net_w - 16, 26; corner: 7; color: ink_white; opacity: max(if(n.index == net_selected, 12%, 0%), max(net_row.$n.index.hover * 10%, net_row.$n.index.pressed * 16%)) }
+
+                        // Glowing 4 px mark on active network; signal icon on others.
+                        group {
+                            glow: 9, 35%, ink_white
+                            show: n.active
+                            box { from: net_ox + 18, n_y + 11; size: 4, 4; color: ink_white }
+                        }
+                        group {
+                            glow: 3.5, 45%, ink_white
+                            show: n.active
+                            box { from: net_ox + 18, n_y + 11; size: 4, 4; color: ink_white }
+                        }
+                        image net_wifi_full { at: net_ox + 13, n_y + 6; size: 14, 14; tint: ink_white; opacity: 80%; show: not n.active and n.strength >= 0.6 }
+                        image net_wifi_high { at: net_ox + 13, n_y + 6; size: 14, 14; tint: ink_white; opacity: 80%; show: not n.active and n.strength >= 0.35 and n.strength < 0.6 }
+                        image net_wifi_low { at: net_ox + 13, n_y + 6; size: 14, 14; tint: ink_white; opacity: 80%; show: not n.active and n.strength >= 0.15 and n.strength < 0.35 }
+                        image net_wifi_zero { at: net_ox + 13, n_y + 6; size: 14, 14; tint: ink_white; opacity: 56%; show: not n.active and n.strength < 0.15 }
+
+                        text n.ssid { at: net_ox + 36, n_y + 13; width: if(n.active, 152, if(n.known, 148, 184)); lines: 1; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+
+                        // Active Wi-Fi row gets an inline Disconnect pill.
+                        zone box net_row_disc.$n.index { from: net_ox + net_w - 86, n_y + 3; size: 72, 20; corner: 6; cursor: pointer; active: net_unfolded and net_view == 0 and n_shown and n.active; label: "Disconnect {n.ssid}" }
+                        box { from: net_ox + net_w - 86, n_y + 3; size: 72, 20; corner: 6; color: ink_white; opacity: 10% + max(net_row_disc.$n.index.hover * 8%, net_row_disc.$n.index.pressed * 14%); show: n.active }
+                        text "Disconnect" { at: net_ox + net_w - 50, n_y + 13; anchor: center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 90%; show: n.active }
+
+                        // Non-active rows: Saved and the lock (or Forget when selected & saved).
+                        text "Saved" { at: net_ox + net_w - 34, n_y + 13; anchor: right center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 50%; show: not n.active and n.known and not n_forget_inline }
+                        image net_lock_icon { at: net_ox + net_w - if(n_forget_inline, 78, 28), n_y + 7.5; size: 11, 11; tint: ink_white; opacity: 52%; show: not n.active and n.secure }
+
+                        zone box net_row_forget.$n.index { from: net_ox + net_w - 62, n_y + 3; size: 48, 20; corner: 6; cursor: pointer; active: net_unfolded and net_view == 0 and n_shown and n_forget_inline; label: "Forget {n.ssid}" }
+                        box { from: net_ox + net_w - 62, n_y + 3; size: 48, 20; corner: 6; color: ink_red; opacity: 14% + max(net_row_forget.$n.index.hover * 10%, net_row_forget.$n.index.pressed * 16%); show: n_forget_inline }
+                        text "Forget" { at: net_ox + net_w - 38, n_y + 13; anchor: center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_red; show: n_forget_inline }
+
+                        on press net_row.$n.index { emit network_select(n.index) }
+                        on press net_row_disc.$n.index { emit network_disconnect_active }
+                        on press net_row_forget.$n.index { emit network_forget_row(n.index) }
                     }
-                    group {
-                        glow: 3.5, 45%, ink_white
-                        show: n.active
-                        box { from: net_ox + 18, n_y + 11; size: 4, 4; color: ink_white }
-                    }
-                    image net_wifi_full { at: net_ox + 13, n_y + 6; size: 14, 14; tint: ink_white; opacity: 80%; show: not n.active and n.strength >= 0.6 }
-                    image net_wifi_high { at: net_ox + 13, n_y + 6; size: 14, 14; tint: ink_white; opacity: 80%; show: not n.active and n.strength >= 0.35 and n.strength < 0.6 }
-                    image net_wifi_low { at: net_ox + 13, n_y + 6; size: 14, 14; tint: ink_white; opacity: 80%; show: not n.active and n.strength >= 0.15 and n.strength < 0.35 }
-                    image net_wifi_zero { at: net_ox + 13, n_y + 6; size: 14, 14; tint: ink_white; opacity: 56%; show: not n.active and n.strength < 0.15 }
-
-                    text n.ssid { at: net_ox + 36, n_y + 13; width: if(n.active, 152, 166); lines: 1; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
-
-                    // Active Wi-Fi row gets an inline Disconnect pill.
-                    zone box net_row_disc.$n.index { from: net_ox + net_w - 86, n_y + 3; size: 72, 20; corner: 6; cursor: pointer; active: net_unfolded and n_shown and n.active; label: "Disconnect {n.ssid}" }
-                    box { from: net_ox + net_w - 86, n_y + 3; size: 72, 20; corner: 6; color: ink_white; opacity: 10% + max(net_row_disc.$n.index.hover * 8%, net_row_disc.$n.index.pressed * 14%); show: n.active }
-                    text "Disconnect" { at: net_ox + net_w - 50, n_y + 13; anchor: center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 90%; show: n.active }
-
-                    // Non-active rows: lock icon + strength % (or Forget pill when selected & known).
-                    image net_lock_icon { at: net_ox + net_w - if(n_forget_inline, 78, 56), n_y + 7.5; size: 11, 11; tint: ink_white; opacity: 52%; show: not n.active and n.secure }
-                    text "{round(n.strength * 100)}%" { at: net_ox + net_w - 16, n_y + 13; anchor: right center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 58%; show: not n.active and not n_forget_inline }
-
-                    zone box net_row_forget.$n.index { from: net_ox + net_w - 62, n_y + 3; size: 48, 20; corner: 6; cursor: pointer; active: net_unfolded and n_shown and n_forget_inline; label: "Forget {n.ssid}" }
-                    box { from: net_ox + net_w - 62, n_y + 3; size: 48, 20; corner: 6; color: ink_red; opacity: 14% + max(net_row_forget.$n.index.hover * 10%, net_row_forget.$n.index.pressed * 16%); show: n_forget_inline }
-                    text "Forget" { at: net_ox + net_w - 38, n_y + 13; anchor: center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_red; show: n_forget_inline }
-
-                    on press net_row.$n.index { emit network_select(n.index) }
-                    on press net_row_disc.$n.index { emit network_disconnect_active }
-                    on press net_row_forget.$n.index { emit network_forget_row(n.index) }
                 }
+
+                text "Wi-Fi is off" { at: net_ox + 16, 65; anchor: left center; size: 13; family: "SF Pro Text"; color: ink_white; opacity: 58%; show: not net.wifi and net_rows.count == 0 and not net_joining }
+                text "No Wi-Fi networks reported" { at: net_ox + 16, 65; anchor: left center; size: 13; family: "SF Pro Text"; color: ink_white; opacity: 58%; show: net.wifi and net_rows.count == 0 and not net_joining }
+
+                // Password join card when connecting to a new secured network.
+                group {
+                    show: net_joining
+                    box { from: net_ox + 10, 54; size: net_w - 20, 122; corner: 10; color: ink_white; opacity: 6% - 2% * pk }
+                    box { from: net_ox + 10.5, 54.5; size: net_w - 21, 121; corner: 9.5; stroke: 1; color: ink_white; opacity: 16% - 4% * pk }
+                    image net_lock_icon { at: net_ox + 20, 68.5; size: 11, 11; tint: ink_white; opacity: 65% }
+                    text "Join {net_target}" { at: net_ox + 36, 74; width: net_w - 56; lines: 1; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+                    input net_password { at: net_ox + 20, 94; width: net_w - 40; size: 13; family: "SF Pro Text"; color: ink_white; placeholder: "Password"; secret: true; agent: no; show: net_joining; label: "Wi-Fi password" }
+                    box net_join { from: net_ox + 20, 134; size: 118, 28; corner: 7; color: ink_green; opacity: 18%; cursor: pointer }
+                    text "Join" { at: net_ox + 79, 148; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white }
+                    box net_cancel { from: net_ox + net_w - 138, 134; size: 118, 28; corner: 7; color: ink_white; opacity: 10%; cursor: pointer }
+                    text "Cancel" { at: net_ox + net_w - 79, 148; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white }
+                }
+
+                // Pager row when > 7 networks.
+                group {
+                    show: net_pager_shown == 1
+                    text "{net_page + 1} of {net_pages}" { at: net_ox + 16, net_list_end + 12; anchor: left center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 58% }
+                    zone box net_prev { from: net_ox + net_w - 64, net_list_end + 1; size: 24, 22; corner: 7; active: net_unfolded and net_view == 0 and net_page > 0; cursor: pointer; label: "Previous networks" }
+                    zone box net_next { from: net_ox + net_w - 38, net_list_end + 1; size: 24, 22; corner: 7; active: net_unfolded and net_view == 0 and (net_page + 1) * 7 < net_rows.count; cursor: pointer; label: "More networks" }
+                    box { from: net_ox + net_w - 64, net_list_end + 1; size: 24, 22; corner: 7; color: ink_white; opacity: max(net_prev.hover * 10%, net_prev.pressed * 16%) }
+                    box { from: net_ox + net_w - 38, net_list_end + 1; size: 24, 22; corner: 7; color: ink_white; opacity: max(net_next.hover * 10%, net_next.pressed * 16%) }
+                    text "‹" { at: net_ox + net_w - 52, net_list_end + 11; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if(net_page > 0, 92%, 38%) }
+                    text "›" { at: net_ox + net_w - 26, net_list_end + 11; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if((net_page + 1) * 7 < net_rows.count, 92%, 38%) }
+                }
+
+                // Footer: the last request, or the Wi-Fi status, and Forget for the selected active network.
+                let net_foot_y = net_open_h - 22
+                text net_request { at: net_ox + 16, net_foot_y; width: net_w - 32; lines: 1; anchor: left center; size: 11; family: "SF Pro Text"; color: ink_white; opacity: 64%; show: net_has_request }
+                text "Connected to {net.name}" { at: net_ox + 16, net_foot_y; width: net_w - 96; lines: 1; anchor: left center; size: 11; family: "SF Pro Text"; color: ink_white; opacity: 56%; show: not net_has_request and net_wifi_connected }
+                text "Not connected" { at: net_ox + 16, net_foot_y; anchor: left center; size: 11; family: "SF Pro Text"; color: ink_white; opacity: 48%; show: not net_has_request and net.wifi and not net_wifi_connected }
+                text "Wi-Fi is off" { at: net_ox + 16, net_foot_y; anchor: left center; size: 11; family: "SF Pro Text"; color: ink_white; opacity: 48%; show: not net_has_request and not net.wifi and net_rows.count > 0 }
+
+                zone box net_forget { from: net_ox + net_w - 62, net_foot_y - 10; size: 48, 20; active: net_unfolded and net_view == 0 and net_target_known and net_target_active and not net_has_request; cursor: pointer; label: "Forget {net_target}" }
+                text "Forget" { at: net_ox + net_w - 16, net_foot_y; anchor: right center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_red; show: net_target_known and net_target_active and not net_has_request }
             }
 
-            text "Wi-Fi is off" { at: net_ox + 16, 65; anchor: left center; size: 13; family: "SF Pro Text"; color: ink_white; opacity: 58%; show: not net.wifi and net_rows.count == 0 and not net_joining }
-            text "No Wi-Fi networks reported" { at: net_ox + 16, 65; anchor: left center; size: 13; family: "SF Pro Text"; color: ink_white; opacity: 58%; show: net.wifi and net_rows.count == 0 and not net_joining }
-
-            // Password join card when connecting to a new secured network.
+            // The Ethernet view: the service reports only whether a wired connection is up and its name.
             group {
-                show: net_joining
-                box { from: net_ox + 10, 54; size: net_w - 20, 122; corner: 10; color: ink_white; opacity: 6% - 2% * pk }
-                box { from: net_ox + 10.5, 54.5; size: net_w - 21, 121; corner: 9.5; stroke: 1; color: ink_white; opacity: 16% - 4% * pk }
-                image net_lock_icon { at: net_ox + 20, 68.5; size: 11, 11; tint: ink_white; opacity: 65% }
-                text "Join {net_target}" { at: net_ox + 36, 74; width: net_w - 56; lines: 1; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
-                input net_password { at: net_ox + 20, 94; width: net_w - 40; size: 13; family: "SF Pro Text"; color: ink_white; placeholder: "Password"; secret: true; agent: no; show: net_joining; label: "Wi-Fi password" }
-                box net_join { from: net_ox + 20, 134; size: 118, 28; corner: 7; color: ink_green; opacity: 18%; cursor: pointer }
-                text "Join" { at: net_ox + 79, 148; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white }
-                box net_cancel { from: net_ox + net_w - 138, 134; size: 118, 28; corner: 7; color: ink_white; opacity: 10%; cursor: pointer }
-                text "Cancel" { at: net_ox + net_w - 79, 148; anchor: center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white }
+                show: net_vk > 0.001
+                opacity: net_vk
+
+                box { from: net_ox + 10, 52; size: net_w - 20, 62; corner: 10; color: ink_white; opacity: if(net_wired, 9% - 3% * pk, 4%) }
+                box { from: net_ox + 10.5, 52.5; size: net_w - 21, 61; corner: 9.5; stroke: 1; color: ink_white; opacity: if(net_wired, 20% - 6% * pk, 10% - 2% * pk) }
+                image net_ethernet { at: net_ox + 22, 61; size: 14, 14; tint: ink_white; opacity: if(net_wired, 92%, 40%) }
+                group {
+                    glow: 9, 35%, ink_white
+                    show: net_wired
+                    box { from: net_ox + net_w - 28, 66; size: 4, 4; color: ink_white }
+                }
+                group {
+                    glow: 3.5, 45%, ink_white
+                    show: net_wired
+                    box { from: net_ox + net_w - 28, 66; size: 4, 4; color: ink_white }
+                }
+                text "{net.name}" { at: net_ox + 44, 68; anchor: left center; width: net_w - 84; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92%; show: net_wired }
+                text "Ethernet" { at: net_ox + 44, 68; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: not net_wired }
+                text "Connected" { at: net_ox + 44, 86; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 64%; show: net_wired }
+                text "Not connected" { at: net_ox + 44, 86; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 48%; show: not net_wired }
+                text "No further details available" { at: net_ox + 44, 102; anchor: left center; size: 10.5; family: "SF Pro Text"; color: ink_white; opacity: 40%; show: net_wired }
+                text "No wired connection reported" { at: net_ox + 44, 102; anchor: left center; size: 10.5; family: "SF Pro Text"; color: ink_white; opacity: 40%; show: not net_wired }
+
+                text net_request { at: net_ox + 16, net_open_h - 22; width: net_w - 32; lines: 1; anchor: left center; size: 11; family: "SF Pro Text"; color: ink_white; opacity: 64%; show: net_has_request }
             }
 
-            // Pager row when > 7 networks.
-            group {
-                show: net_pager_shown == 1
-                text "{net_page + 1} of {net_pages}" { at: net_ox + 16, net_list_end + 12; anchor: left center; size: 11; weight: 500; family: "SF Pro Text:tnum"; color: ink_white; opacity: 58% }
-                zone box net_prev { from: net_ox + net_w - 64, net_list_end + 1; size: 24, 22; corner: 7; active: net_unfolded and net_page > 0; cursor: pointer; label: "Previous networks" }
-                zone box net_next { from: net_ox + net_w - 38, net_list_end + 1; size: 24, 22; corner: 7; active: net_unfolded and (net_page + 1) * 7 < net_rows.count; cursor: pointer; label: "More networks" }
-                box { from: net_ox + net_w - 64, net_list_end + 1; size: 24, 22; corner: 7; color: ink_white; opacity: max(net_prev.hover * 10%, net_prev.pressed * 16%) }
-                box { from: net_ox + net_w - 38, net_list_end + 1; size: 24, 22; corner: 7; color: ink_white; opacity: max(net_next.hover * 10%, net_next.pressed * 16%) }
-                text "‹" { at: net_ox + net_w - 52, net_list_end + 11; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if(net_page > 0, 92%, 38%) }
-                text "›" { at: net_ox + net_w - 26, net_list_end + 11; anchor: center; size: 16; family: "SF Pro Text"; color: ink_white; opacity: if((net_page + 1) * 7 < net_rows.count, 92%, 38%) }
-            }
-
-            // Footer status / error / active-target Forget fallback.
-            let net_foot_y = net_open_h - 22
-            text net_request { at: net_ox + 16, net_foot_y; width: net_w - 32; lines: 1; anchor: left center; size: 11; family: "SF Pro Text"; color: ink_white; opacity: 64%; show: net_has_request }
-            text "Ethernet connected" { at: net_ox + 16, net_foot_y; anchor: left center; size: 11; family: "SF Pro Text"; color: ink_white; opacity: 56%; show: not net_has_request and net_wired }
-            text "Ethernet unplugged" { at: net_ox + 16, net_foot_y; anchor: left center; size: 11; family: "SF Pro Text"; color: ink_white; opacity: 48%; show: not net_has_request and not net_wired }
             text net.error { at: net_ox + 16, net_open_h - 8; width: net_w - 32; lines: 1; anchor: left center; size: 10.5; family: "SF Pro Text"; color: ink_red }
-
-            // Forget button in the footer when the active connected Wi-Fi network is selected.
-            zone box net_forget { from: net_ox + net_w - 62, net_foot_y - 10; size: 48, 20; active: net_unfolded and net_target_known and net_target_active and not net_has_request; cursor: pointer; label: "Forget {net_target}" }
-            text "Forget" { at: net_ox + net_w - 16, net_foot_y; anchor: right center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_red; show: net_target_known and net_target_active and not net_has_request }
         }
 
-        on press net_power { emit network_power }
+        on press net_seg_wifi { emit network_view(0) }
+        on press net_seg_eth { emit network_view(1) }
+        on press net_power_rail { emit network_power_press(local.x - net_ox - 178) }
+        on drag net_power_rail { emit network_power_drag(local.x - net_ox - 178) }
+        on release net_power_rail { emit network_power_release }
         on press net_scan { emit network_scan }
-        on press net_fold_hit { emit network_fold_toggle }
+        on press net_fold_hit { emit network_fold }
         on press net_join { emit network_join }
         on press net_cancel { emit network_cancel }
         on press net_prev { emit network_page(-1) }
@@ -243,13 +252,19 @@ part NetworkPopup {
         on change net_joining while net_joining { focus net_password }
     }
 
-    on key Tab while net_open and not net_joining { emit network_fold_toggle }
+    on key Tab while net_open and not net_unfolded { emit network_focus_move(1) }
+    on key Left while net_open and not net_unfolded { emit network_focus_move(-1) }
+    on key Right while net_open and not net_unfolded { emit network_focus_move(1) }
+    on key Return while net_open and not net_unfolded { emit network_open_view(net_focus) }
+    on key space while net_open and not net_unfolded { emit network_open_view(net_focus) }
+    on key Tab while net_open and net_unfolded and not net_joining { emit network_view(1 - net_view) }
     on key Down while net_open and not net_joining { emit network_move(1) }
     on key Up while net_open and not net_joining { emit network_move(-1) }
     on key Prior while net_open and net_unfolded and not net_joining { emit network_page(-1) }
     on key Next while net_open and net_unfolded and not net_joining { emit network_page(1) }
-    on key Return while net_open and not net_joining { emit network_activate }
+    on key Return while net_open and net_unfolded and not net_joining { emit network_activate }
     on key Escape while net_open and net_joining { emit network_cancel }
-    on key Escape while net_open and not net_joining { emit network_close }
+    on key Escape while net_open and net_unfolded and not net_joining { emit network_fold }
+    on key Escape while net_open and not net_unfolded { emit network_close }
     on blur { emit network_close }
 }

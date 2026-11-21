@@ -34,6 +34,7 @@ def verify(root,runtime,evidence,env,start,say,expect,wait_for):
     include "bluetooth/state.plm"
     include "info/state.plm"
     include "about/state.plm"
+    include "bar/rail-state.plm"
     fact fixture_reads = 0
     event fixture_network ->
     event fixture_bluetooth ->
