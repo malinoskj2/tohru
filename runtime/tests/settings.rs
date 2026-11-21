@@ -468,10 +468,16 @@ fn assistant_settings_default_to_voice_on_and_validate() {
         owner.get(Key::AssistantProvider).value,
         Value::Text(String::new())
     );
-    assert_eq!(
-        owner.get(Key::AssistantVoiceModels).value,
-        Value::Text(String::new())
-    );
+    for key in [
+        Key::AssistantVadModel,
+        Key::AssistantAsrModel,
+        Key::AssistantTurnModel,
+        Key::AssistantTtsModel,
+        Key::AssistantKwsModel,
+    ] {
+        assert_eq!(owner.get(key).value, Value::Text(String::new()));
+    }
+    assert!(Key::parse("assistant.voice_models").is_err());
     assert_eq!(
         owner.get(Key::AssistantTtsEngine).value,
         Value::Text("kokoro".into())
@@ -491,8 +497,8 @@ fn assistant_settings_default_to_voice_on_and_validate() {
         .unwrap();
     owner
         .set(
-            Key::AssistantVoiceModels,
-            Value::Text("/mnt/models/by-name".into()),
+            Key::AssistantAsrModel,
+            Value::Text("/models/sherpa-onnx-streaming-zipformer-en-2023-06-21".into()),
         )
         .unwrap();
     let restarted = files.owner();
@@ -516,10 +522,8 @@ fn assistant_settings_default_to_voice_on_and_validate() {
         (Key::AssistantTtsEngine, Value::Text("say".into())),
         (Key::AssistantTtsVoice, Value::Text("en us; rm".into())),
         (Key::AssistantTtsVoice, Value::Text(String::new())),
-        (
-            Key::AssistantVoiceModels,
-            Value::Text("relative/path".into()),
-        ),
+        (Key::AssistantVadModel, Value::Text("relative/path".into())),
+        (Key::AssistantTurnModel, Value::Text("~/turn.onnx".into())),
         (Key::AssistantTtsSpeed, Value::Integer(10)),
         (
             Key::AssistantEffort(Cli::Codex),

@@ -25,7 +25,8 @@ Usage: tohru panel toggle|open sound|calendar|network|media|bluetooth|wallpaper|
        tohru config set lock.style STYLE   (still-glass, ribbon-key, flooded-monolith, drifting-frost-veil, unfolding-glass-capsule, edge-glass-drawer, horizon-meniscus, refractive-typographic-lens, corner-anchor, bar-drop-curtain)
        tohru config set notifications.position top-right|bottom-right
        tohru config set assistant.KEY VALUE   (voice, provider, models.PROVIDER.model, models.PROVIDER.effort,
-                                               persona, persona_file, memory, voice_models, voice_wake, kws_model, tts_*;
+                                               persona, persona_file, memory, vad_model, asr_model, turn_model,
+                                               voice_wake, kws_model, tts_*;
                                                see docs/configuration.md)
        tohru config set bar.preferred_output OUTPUT   ('' for every output)
        tohru assistant memory list [--json] | memory forget ID | memory clear

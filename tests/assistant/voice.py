@@ -3,6 +3,7 @@
 import importlib.machinery
 import importlib.util
 from pathlib import Path
+import tempfile
 import unittest
 
 try:
@@ -254,6 +255,88 @@ class VoiceTests(unittest.TestCase):
         for _ in range(10):
             voice.step(louder)
         self.assertFalse(voice.in_speech)
+
+
+class ModelPathTests(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.dir.name)
+        self.vad = self.touch("silero-vad-v6.2.3.onnx")
+        self.turn = self.touch("smart-turn-v3.2-cpu.onnx")
+        self.asr = self.transducer("asr")
+        self.kws = self.transducer("kws")
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def touch(self, name):
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"")
+        return str(path)
+
+    def transducer(self, name):
+        for file in ("tokens.txt", "encoder-epoch-99-avg-1.int8.onnx", "decoder-epoch-99-avg-1.onnx", "joiner-epoch-99-avg-1.int8.onnx"):
+            self.touch(f"{name}/{file}")
+        return str(self.root / name)
+
+    def test_complete_paths_pass(self):
+        self.assertEqual(voice_module.check_models(self.vad, self.asr, self.turn, "kws", self.kws), ([], []))
+        self.assertEqual(voice_module.check_models(self.vad, self.asr, "", "asr", ""), ([], []))
+
+    def test_unset_required_paths_name_each_setting_and_file(self):
+        errors, warnings = voice_module.check_models("", "", "", "kws", "")
+        self.assertEqual(len(errors), 3)
+        self.assertIn("assistant.vad_model is not set", errors[0])
+        self.assertIn(".onnx", errors[0])
+        self.assertIn("assistant.asr_model is not set", errors[1])
+        self.assertIn("tokens.txt, encoder*.onnx, decoder*.onnx, joiner*.onnx", errors[1])
+        self.assertIn("assistant.kws_model is not set", errors[2])
+        self.assertEqual(warnings, [])
+
+    def test_kws_folder_is_only_needed_for_kws_wake(self):
+        self.assertEqual(voice_module.check_models(self.vad, self.asr, "", "asr", "/nowhere"), ([], []))
+
+    def test_invalid_paths_are_reported(self):
+        (self.root / "asr/joiner-epoch-99-avg-1.int8.onnx").unlink()
+        (self.root / "asr/tokens.txt").unlink()
+        errors, _ = voice_module.check_models(self.asr, self.asr, "", "asr", "")
+        self.assertIn(f"assistant.vad_model: no .onnx file at {self.asr}", errors[0])
+        self.assertIn(f"assistant.asr_model: {self.asr} has no tokens.txt, joiner*.onnx", errors[1])
+        errors, _ = voice_module.check_models(self.vad, str(self.root / "missing"), "", "asr", "")
+        self.assertIn("missing is not a folder", errors[0])
+
+    def test_bad_turn_model_warns_and_falls_back_to_silence(self):
+        errors, warnings = voice_module.check_models(self.vad, self.asr, str(self.root / "turn.onnx"), "asr", "")
+        self.assertEqual(errors, [])
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("assistant.turn_model", warnings[0])
+        self.assertIn("silence only", warnings[0])
+
+    def test_transducer_picks_int8_and_rejects_incomplete_folders(self):
+        files = voice_module.transducer(Path(self.asr))
+        self.assertTrue(files["encoder"].endswith("encoder-epoch-99-avg-1.int8.onnx"))
+        (self.root / "asr/tokens.txt").unlink()
+        with self.assertRaises(FileNotFoundError):
+            voice_module.transducer(Path(self.asr))
+
+    def test_kokoro_needs_an_explicit_folder(self):
+        with self.assertRaisesRegex(FileNotFoundError, "assistant.tts_model is not set"):
+            voice_module.kokoro_files({"model": ""})
+        with self.assertRaisesRegex(FileNotFoundError, "has no model.onnx and tokenizer.json"):
+            voice_module.kokoro_files({"model": self.asr})
+        self.touch("kokoro/model.onnx")
+        self.touch("kokoro/tokenizer.json")
+        self.touch("kokoro/voices/af_heart.bin")
+        model, vocab, pack = voice_module.kokoro_files({"model": str(self.root / "kokoro"), "voicepack": "af_heart"})
+        self.assertEqual((model.name, vocab.name, pack.name), ("model.onnx", "tokenizer.json", "af_heart.bin"))
+
+    def test_missing_kokoro_warns_through_the_given_callback(self):
+        notes = []
+        engine = voice_module.make_engine({"engine": "kokoro", "model": ""}, notes.append)
+        self.assertIsInstance(engine, voice_module.Espeak)
+        self.assertIn("assistant.tts_model is not set", notes[0])
+        self.assertIn("using espeak-ng", notes[0])
 
 
 if __name__ == "__main__":

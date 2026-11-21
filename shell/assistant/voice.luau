@@ -24,13 +24,18 @@ return function(assistant)
 
     local start
 
+    local function voice_error(message)
+        text.ai_voice_error = message
+        fact.ai_voice_failed = message ~= ""
+    end
+
     local function line(raw)
         local ok, message = pcall(json.decode, raw)
         if not ok or type(message) ~= "table" then return end
         local event = message.event
         if event == "ready" then
             failures = 0
-            text.ai_voice_error = ""
+            voice_error(tostring(message.warning or ""))
         elseif event == "listening" then
             assistant.listening(message.on == true)
         elseif event == "conversation" then
@@ -60,7 +65,7 @@ return function(assistant)
         elseif event == "paused" then
             fact.ai_voice_paused = (message.reason or "") ~= ""
         elseif event == "error" then
-            text.ai_voice_error = tostring(message.message or "")
+            voice_error(tostring(message.message or ""))
         end
     end
 
@@ -113,7 +118,8 @@ return function(assistant)
             load_on_conversation = value("assistant.tts_load_on_conversation", false) == true,
         }
         local next = {
-            "--models", value("assistant.voice_models", ""),
+            "--vad-model", value("assistant.vad_model", ""), "--asr-model", value("assistant.asr_model", ""),
+            "--turn-model", value("assistant.turn_model", ""),
             "--wake", value("assistant.voice_wake", "asr"), "--kws-model", value("assistant.kws_model", ""),
             "--tts-engine", tts.engine, "--tts-model", tts.model, "--tts-voicepack", tts.voicepack,
             "--tts-voice", tts.voice, "--tts-speed", tostring(tts.speed), "--tts-pitch", tostring(tts.pitch),
@@ -121,9 +127,9 @@ return function(assistant)
         if tts.load_on_conversation then next[#next + 1] = "--tts-load-on-conversation" end
         local on = value("assistant.voice", false) == true
         local models_changed = false
-        for i = 1, 6 do if next[i] ~= args[i] then models_changed = true end end
+        for i = 1, 10 do if next[i] ~= args[i] then models_changed = true end end
         local tts_changed = #next ~= #args
-        for i = 7, #next do if next[i] ~= args[i] then tts_changed = true end end
+        for i = 11, #next do if next[i] ~= args[i] then tts_changed = true end end
         args = next
         fact.ai_voice_enabled = on
         if not on then
@@ -132,7 +138,7 @@ return function(assistant)
             if id then kill(id, "term") end
             id = nil
             quiet()
-            text.ai_voice_error = ""
+            voice_error("")
             return
         end
         wanted = true

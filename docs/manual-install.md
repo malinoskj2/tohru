@@ -86,6 +86,38 @@ To point a wrapper at different scene files, set `TOHRU_SCENE` (bar), `TOHRU_SES
 
 The repository ships no systemd units outside the Home Manager module. To write your own, follow what that module generates (see [nix.md](nix.md#services)): one user service per wrapper, part of your graphical session target, restarting on failure, with `KillMode=process` for the launcher so restarting it leaves launched applications alone. Import `WAYLAND_DISPLAY`, `PATH` and `XDG_DATA_DIRS` into the user manager before the target starts. Starting the wrappers from your compositor's startup configuration also works, without restarts.
 
+## Voice
+
+`bin/tohru-voice` needs Python 3 with numpy, onnxruntime, sherpa-onnx and misaki (for Kokoro), and `parec`, `pacat`, `pactl` and `espeak-ng` on `PATH`. Without them, set `assistant.voice = false`; the chat popup works either way.
+
+### Voice models
+
+Nothing is downloaded. Fetch the models listed in [configuration.md](configuration.md#voice-models), at the revisions and hashes given there, to any folder, and set their absolute paths:
+
+```sh
+tohru config set assistant.vad_model "$HOME/models/silero-vad/silero_vad.onnx"
+tohru config set assistant.asr_model "$HOME/models/sherpa-onnx-streaming-zipformer-en-2023-06-21"
+tohru config set assistant.turn_model "$HOME/models/smart-turn-v3/smart-turn-v3.2-cpu.onnx"
+tohru config set assistant.tts_model "$HOME/models/kokoro-82m"
+```
+
+For example, from Hugging Face:
+
+```sh
+hf download csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-21 --revision 9a65b6ea94c311ca770c2bf895b30f456a22d703 \
+  encoder-epoch-99-avg-1.int8.onnx decoder-epoch-99-avg-1.onnx joiner-epoch-99-avg-1.int8.onnx tokens.txt \
+  --local-dir ~/models/sherpa-onnx-streaming-zipformer-en-2023-06-21
+hf download pipecat-ai/smart-turn-v3 --revision f766f81d3cfdf7737ac64aad813d91bbfd56bf93 smart-turn-v3.2-cpu.onnx --local-dir ~/models/smart-turn-v3
+hf download onnx-community/Kokoro-82M-v1.0-ONNX --revision 1939ad2a8e416c0acfeecc08a694d14ef25f2231 onnx/model.onnx tokenizer.json \
+  --local-dir ~/models/kokoro-82m && mv ~/models/kokoro-82m/onnx/model.onnx ~/models/kokoro-82m/model.onnx
+hf download onnx-community/Kokoro-82M-v1.0-ONNX --revision 1939ad2a8e416c0acfeecc08a694d14ef25f2231 --include 'voices/*' \
+  --local-dir ~/models/kokoro-82m   # only for stock voices such as af_heart
+mkdir -p ~/models/silero-vad && curl -L -o ~/models/silero-vad/silero_vad.onnx \
+  https://raw.githubusercontent.com/snakers4/silero-vad/5cd7945676eb32225748052e2e6a0580e4686a08/src/silero_vad/data/silero_vad.onnx
+```
+
+Check each file against the SHA-256 in that table. Until `vad_model` and `asr_model` are valid the assistant popup names what is missing.
+
 ## Hyprland plugin
 
 The plugin builds separately with `make`. It needs a C++23 GCC toolchain, `pkg-config`, and the development headers of the exact Hyprland 0.57.2 build you run, plus pixman, libdrm, pangocairo, libinput, libudev, wayland-server, xkbcommon and Lua.

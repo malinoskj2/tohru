@@ -109,6 +109,7 @@ part AssistantPopup {
             image ai_mascot { at: ai_ox + 106, 50; size: 68, 68; opacity: 95% }
             text if(ai_current < 0, "No AI CLIs found", "Ask anything") { at: ai_ox + 140, 136; anchor: center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
             text if(ai_current < 0, "Install claude, codex, gemini, agy or opencode", "{ai_provider_name}{? · {ai_provider_model}} · signed in") { at: ai_ox + 140, 155; anchor: center; width: 250; lines: 1; align: center; size: 11; family: "SF Pro Text"; color: ink_white; opacity: 55% }
+            text ai_voice_error { at: ai_ox + 15, 170; anchor: left top; width: 250; lines: 8; align: center; size: 10; family: "SF Pro Text"; color: ink_red; show: ai_voice_failed }
         }
 
         // The chat: questions on plates at the right, answers as plain text, the live answer with its caret.
