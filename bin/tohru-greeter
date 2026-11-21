@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -uo pipefail
+root=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd)
+runtime=${TOHRU_RUNTIME:-pleamar}
+styled=${TOHRU_GREETER_SCENE:-$root/shell/greeter/greeter.plm}
+plain=${TOHRU_GREETER_PLAIN_SCENE:-$root/shell/greeter/plain.plm}
+
+export TOHRU_SHELL=1 TOHRU_GREETER=1 PLEAMAR_NO_PORTAL=1 PLEAMAR_GENERIC=1
+
+scene=$styled
+if ! "$runtime" --check "$styled" >/dev/null 2>&1; then
+    printf 'tohru-greeter: %s does not load; using the plain style\n' "$styled" >&2
+    scene=$plain
+fi
+
+if [[ $scene == "$plain" ]]; then
+    exec "$runtime" --scene "$plain" --no-hud --stall 0 --answer-as tohru-greeter "$@"
+fi
+
+child=
+trap 'if [[ -n $child ]]; then kill -TERM "$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; fi; exit 143' TERM INT
+"$runtime" --scene "$scene" --no-hud --stall 0 --answer-as tohru-greeter "$@" &
+child=$!
+wait "$child"
+status=$?
+child=
+trap - TERM INT
+if [[ $status -ne 0 ]]; then
+    printf 'tohru-greeter: styled greeter ended with status %s; retrying with plain style\n' "$status" >&2
+    exec "$runtime" --scene "$plain" --no-hud --stall 0 --answer-as tohru-greeter "$@"
+fi
+exit "$status"

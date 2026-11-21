@@ -1,0 +1,123 @@
+part GreeterChrome {
+ // Anchored to the active primary surface so controls stay reachable at any resolution.
+ // Top bar: hostname on the left, Caps Lock warning and active keyboard layout on the right.
+ group {
+  opacity: clamp(1 - unlock * 1.4, 0, 1)
+  text host { at: 28, 26; anchor: left center; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 56% }
+
+  group {
+   show: caps_lock
+   box { from: primary.width - if(has_kb_layout, 232, 134), 13; size: 106, 26; corner: 13; color: #fab387; opacity: if(pk > 0.5, 24%, 18%) }
+   box { from: primary.width - if(has_kb_layout, 231.5, 133.5), 13.5; size: 105, 25; corner: 12.5; stroke: 1; color: #fab387; opacity: 62% }
+   text "CAPS LOCK" { at: primary.width - if(has_kb_layout, 179, 81), 26; anchor: center; size: 10.5; weight: 600; family: "SF Pro Text"; color: if(pk > 0.5, #8c4b14, #fab387); opacity: 96% }
+  }
+
+  group {
+   show: has_kb_layout
+   box { from: primary.width - 118, 13; size: 92, 26; corner: 13; color: glass_c; opacity: if(pk > 0.5, 58%, 48%) }
+   box { from: primary.width - 117.5, 13.5; size: 91, 25; corner: 12.5; stroke: 1; color: ink; opacity: if(pk > 0.5, 14%, 18%) }
+   text kb_layout { at: primary.width - 72, 26; anchor: center; width: 78; lines: 1; size: 11; weight: 500; family: "SF Pro Text"; color: ink; opacity: 82% }
+  }
+
+  // Bottom dock: user switcher, custom user trigger, session selector, and power controls.
+  let dock_w = if(allow_power, 612, 412)
+  let dock_x = round((primary.width - dock_w) / 2)
+  let dock_y = primary.height - 62
+
+  body {
+   color: glass_c
+   opacity: if(pk > 0.5, 62%, 54%)
+   shadow: 0, 8, 24, if(pk > 0.5, 10%, 26%)
+   box { from: dock_x, dock_y; size: dock_w, 40; corner: 20 }
+  }
+  box { from: dock_x + 0.5, dock_y + 0.5; size: dock_w - 1, 39; corner: 19.5; stroke: 1; color: ink; opacity: if(pk > 0.5, 14%, 18%) }
+
+  // User selector pill
+  zone box greeter_user_btn { from: dock_x + 6, dock_y + 5; size: 146, 30; corner: 15; active: not unlocking and not custom_user_open; cursor: pointer; label: "Switch user" }
+  box { from: dock_x + 6, dock_y + 5; size: 146, 30; corner: 15; color: ink; opacity: if(greeter_user_btn.hover, 12%, 6%) }
+  UserAvatar(dock_x + 24, dock_y + 20, 20)
+  text user_display { at: dock_x + if(has_avatar, 40, 18), dock_y + 20; anchor: left center; width: if(has_avatar, 102, 122); lines: 1; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 90% }
+  on press greeter_user_btn { emit greeter_next_user }
+
+  // Other user (manual username) button
+  zone box greeter_other_btn { from: dock_x + 156, dock_y + 5; size: 60, 30; corner: 15; active: not unlocking and not custom_user_open; cursor: pointer; label: "Other user" }
+  box { from: dock_x + 156, dock_y + 5; size: 60, 30; corner: 15; color: ink; opacity: if(greeter_other_btn.hover, 12%, 4%) }
+  text "Other" { at: dock_x + 186, dock_y + 20; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 72% }
+  on press greeter_other_btn { emit greeter_open_custom_user }
+
+  // Divider
+  box { from: dock_x + 222, dock_y + 11; size: 1, 18; color: ink; opacity: 14% }
+
+  // Session selector pill
+  zone box greeter_session_btn { from: dock_x + 229, dock_y + 5; size: 176, 30; corner: 15; active: not unlocking and not custom_user_open; cursor: pointer; label: "Switch session" }
+  box { from: dock_x + 229, dock_y + 5; size: 176, 30; corner: 15; color: ink; opacity: if(greeter_session_btn.hover, 12%, 6%) }
+  text session_name { at: dock_x + 317, dock_y + 20; anchor: center; width: 158; lines: 1; size: 12; weight: 500; family: "SF Pro Text"; color: ink; opacity: 86% }
+  on press greeter_session_btn { emit greeter_next_session }
+
+  // Power actions (when enabled by NixOS module)
+  group {
+   show: allow_power
+   box { from: dock_x + 412, dock_y + 11; size: 1, 18; color: ink; opacity: 14% }
+
+   zone box greeter_sleep_btn { from: dock_x + 419, dock_y + 5; size: 58, 30; corner: 15; active: allow_power and not unlocking and not custom_user_open; cursor: pointer; label: "Sleep" }
+   box { from: dock_x + 419, dock_y + 5; size: 58, 30; corner: 15; color: ink; opacity: if(greeter_sleep_btn.hover, 12%, 4%) }
+   text "Sleep" { at: dock_x + 448, dock_y + 20; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 82% }
+   on press greeter_sleep_btn { emit lock_sleep }
+
+   zone box greeter_restart_btn { from: dock_x + 481, dock_y + 5; size: 62, 30; corner: 15; active: allow_power and not unlocking and not custom_user_open; cursor: pointer; label: "Restart" }
+   box { from: dock_x + 481, dock_y + 5; size: 62, 30; corner: 15; color: if(restart_armed, err_c, ink); opacity: if(restart_armed, 24%, if(greeter_restart_btn.hover, 12%, 4%)) }
+   text "Restart" { at: dock_x + 512, dock_y + 20; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 82%; show: not restart_armed }
+   text "Confirm" { at: dock_x + 512, dock_y + 20; anchor: center; size: 11.5; weight: 600; family: "SF Pro Text"; color: err_c; opacity: 96%; show: restart_armed }
+   on press greeter_restart_btn { emit lock_restart }
+
+   zone box greeter_poweroff_btn { from: dock_x + 547, dock_y + 5; size: 59, 30; corner: 15; active: allow_power and not unlocking and not custom_user_open; cursor: pointer; label: "Shut Down" }
+   box { from: dock_x + 547, dock_y + 5; size: 59, 30; corner: 15; color: if(poweroff_armed, err_c, ink); opacity: if(poweroff_armed, 24%, if(greeter_poweroff_btn.hover, 12%, 4%)) }
+   text "Power" { at: dock_x + 576.5, dock_y + 20; anchor: center; size: 11.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 82%; show: not poweroff_armed }
+   text "Confirm" { at: dock_x + 576.5, dock_y + 20; anchor: center; size: 11.5; weight: 600; family: "SF Pro Text"; color: err_c; opacity: 96%; show: poweroff_armed }
+   on press greeter_poweroff_btn { emit greeter_poweroff }
+  }
+ }
+
+ // Multi-step PAM prompt modal (visible 2FA/OTP response or info prompt such as U2F touch)
+ group {
+  show: prompt_visible or prompt_info
+  box { from: 0, 0; size: primary.width, primary.height; color: #0b0812; opacity: 42% }
+  let pm_x = round((primary.width - 360) / 2)
+  let pm_y = round((primary.height - 156) / 2)
+  body {
+   color: glass_c
+   opacity: if(pk > 0.5, 84%, 82%)
+   shadow: 0, 12, 32, 32%
+   box { from: pm_x, pm_y; size: 360, 156; corner: 16 }
+  }
+  box { from: pm_x + 0.5, pm_y + 0.5; size: 359, 155; corner: 15.5; stroke: 1; color: lav_c; opacity: 45% }
+  text greeter_prompt { at: pm_x + 180, pm_y + 38; anchor: center; width: 320; lines: 2; size: 13.5; weight: 500; family: "SF Pro Text"; color: ink; opacity: 94% }
+  box { from: pm_x + 24, pm_y + 70; size: 312, 38; corner: 10; color: ink; opacity: 8%; show: prompt_visible }
+  input visible_answer { at: pm_x + 36, pm_y + 82; width: 288; size: 13; family: "SF Pro Text"; color: ink; show: prompt_visible; agent: no }
+  zone box greeter_info_ok { from: pm_x + 110, pm_y + 74; size: 140, 34; corner: 10; active: prompt_info; cursor: pointer; label: "Continue" }
+  box { from: pm_x + 110, pm_y + 74; size: 140, 34; corner: 10; color: lav_c; opacity: if(greeter_info_ok.hover, 32%, 22%); show: prompt_info }
+  text "Continue" { at: pm_x + 180, pm_y + 91; anchor: center; size: 13; weight: 500; family: "SF Pro Text"; color: ink; opacity: 94%; show: prompt_info }
+  on press greeter_info_ok { emit greeter_continue_info }
+  text "Press Return to continue  ·  Esc to cancel" { at: pm_x + 180, pm_y + 132; anchor: center; size: 11; family: "SF Pro Text"; color: ink; opacity: 56% }
+ }
+
+ // Manual username entry modal (for unlisted/hidden accounts or Ctrl+U)
+ group {
+  show: custom_user_open
+  box { from: 0, 0; size: primary.width, primary.height; color: #0b0812; opacity: 46% }
+  let cu_x = round((primary.width - 340) / 2)
+  let cu_y = round((primary.height - 146) / 2)
+  body {
+   color: glass_c
+   opacity: if(pk > 0.5, 86%, 84%)
+   shadow: 0, 12, 32, 32%
+   box { from: cu_x, cu_y; size: 340, 146; corner: 16 }
+  }
+  box { from: cu_x + 0.5, cu_y + 0.5; size: 339, 145; corner: 15.5; stroke: 1; color: lav_c; opacity: 45% }
+  text "Sign in as another user" { at: cu_x + 170, cu_y + 32; anchor: center; size: 13.5; weight: 600; family: "SF Pro Text"; color: ink; opacity: 94% }
+  box { from: cu_x + 24, cu_y + 58; size: 292, 38; corner: 10; color: ink; opacity: 8% }
+  box { from: cu_x + 24.5, cu_y + 58.5; size: 291, 37; corner: 9.5; stroke: 1; color: lav_c; opacity: 45% }
+  input custom_user_input { at: cu_x + 36, cu_y + 70; width: 268; size: 13; family: "SF Pro Text"; color: ink; agent: no }
+  text "Press Return to select  ·  Esc to cancel" { at: cu_x + 170, cu_y + 120; anchor: center; size: 11; family: "SF Pro Text"; color: ink; opacity: 56% }
+ }
+}

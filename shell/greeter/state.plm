@@ -1,0 +1,27 @@
+part GreeterState {
+ include "../lock/state.plm"
+
+ // Native greeter authority status:
+ // 0 idle, 1 checking, 2 accepted/starting, 3 rejected, 4 unavailable,
+ // 5 prompt_visible, 6 prompt_info, 7 prompt_secret.
+ fact greeter_auth = 0
+ fact user_count = 0
+ fact session_count = 0
+ fact allow_power = true
+ fact has_kb_layout = false
+ fact prompt_visible = false
+ fact prompt_info = false
+ fact custom_user_open = false
+
+ text greeter_primary_outputs = ""
+ text greeter_secondary_outputs = ""
+ text greeter_prompt = ""
+ text greeter_error = ""
+ text user_display = ""
+ text visible_answer = ""
+ text custom_user_input = ""
+
+ event greeter_open_custom_user ->
+ event greeter_close_custom_user ->
+ event greeter_continue_info ->
+}
