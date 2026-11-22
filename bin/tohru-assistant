@@ -757,11 +757,12 @@ def gemini_settings(scratch, model, effort):
     return "tohru-chat"
 
 
-def provider_argv(ident, session, model="", effort="", system="", scratch=None):
+def provider_argv(ident, session, model="", effort="", system="", scratch=None, tools=False):
     names = EFFORT_NAMES.get(ident, {})
     if ident == "claude":
         argv = ["claude", "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
-                "--tools", "", "--strict-mcp-config", "--setting-sources", "project"]
+                "--setting-sources", "project"]
+        argv += ["--permission-mode", "bypassPermissions"] if tools else ["--tools", "", "--strict-mcp-config"]
         if model:
             argv += ["--model", model]
         if effort:
@@ -776,7 +777,8 @@ def provider_argv(ident, session, model="", effort="", system="", scratch=None):
             argv += ["--session-id", session["id"]]
         return argv
     if ident == "codex":
-        common = ["--json", "--skip-git-repo-check", "-c", "mcp_servers={}"]
+        common = ["--json", "--skip-git-repo-check"]
+        common += ["--dangerously-bypass-approvals-and-sandbox"] if tools else ["-c", "mcp_servers={}"]
         if model:
             common += ["-m", model]
         if effort:
@@ -787,16 +789,17 @@ def provider_argv(ident, session, model="", effort="", system="", scratch=None):
             common += ["--ephemeral"]
         if session["resume"]:
             return ["codex", "exec", "resume", *common, session["id"], "-"]
-        return ["codex", "exec", *common, "--sandbox", "read-only", "--color", "never", "-"]
+        return ["codex", "exec", *common, *([] if tools else ["--sandbox", "read-only"]), "--color", "never", "-"]
     if ident == "gemini":
-        argv = ["gemini", "--output-format", "stream-json", "--approval-mode", "default"]
+        argv = ["gemini", "--output-format", "stream-json", "--approval-mode", "yolo" if tools else "default"]
         if model:
             argv += ["-m", gemini_settings(scratch or SCRATCH, model, effort)]
         if session["resume"]:
             argv += ["--resume", session["id"]]
         return argv + ["-p", ""]
     if ident == "agy":
-        argv = ["agy", "-p", "--output-format", "stream-json", "--mode", "plan", "--disable-slash-commands"]
+        argv = ["agy", "-p", "--output-format", "stream-json", "--disable-slash-commands"]
+        argv += ["--dangerously-skip-permissions"] if tools else ["--mode", "plan"]
         if model:
             argv += ["--model", model]
         if effort:
@@ -852,6 +855,8 @@ class StreamParser:
         kind = event.get("type")
         if kind == "stream_event":
             inner = event.get("event") or {}
+            if inner.get("type") == "message_start" and self.text and not self.text.endswith("\n"):
+                return "\n\n"
             if inner.get("type") == "content_block_delta":
                 delta = inner.get("delta") or {}
                 if delta.get("type") == "text_delta":
@@ -937,7 +942,7 @@ def run_provider(provider, argv, stdin_text, on_delta=None, run=None, timeout=No
     parser = StreamParser(provider.id)
     env = dict(os.environ)
     env["NO_COLOR"] = "1"
-    # Claude Code adds its own memory instructions even with no tools, and the model then writes tool calls as text.
+    # Tohru keeps her own memory; Claude Code's would be a second one she never sees in other providers.
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
     run.child = subprocess.Popen(argv, cwd=scratch, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                  stderr=subprocess.PIPE, text=True, bufsize=1, start_new_session=True)
@@ -1040,9 +1045,9 @@ def chat(args):
     model, effort = resolve_model(provider.id, args.model, args.effort)
     sent = prompt if session["resume"] or not earlier else transcript_prompt(earlier, prompt)
     if provider.id in SYSTEM_FLAG:
-        argv = provider_argv(provider.id, session, model, effort, system)
+        argv = provider_argv(provider.id, session, model, effort, system, tools=True)
     else:
-        argv = provider_argv(provider.id, session, model, effort)
+        argv = provider_argv(provider.id, session, model, effort, tools=True)
         if system and not session["resume"]:
             sent = f"{system}\n\n---\n\n{sent}"
 

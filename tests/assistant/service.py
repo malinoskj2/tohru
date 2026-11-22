@@ -134,9 +134,8 @@ class Assistant(unittest.TestCase):
         session = calls[0]["argv"][calls[0]["argv"].index("--session-id") + 1]
         self.assertEqual(calls[1]["argv"][calls[1]["argv"].index("--resume") + 1], session)
         for call in calls:
-            self.assertIn("--tools", call["argv"])
-            self.assertEqual(call["argv"][call["argv"].index("--tools") + 1], "")
-            self.assertIn("--strict-mcp-config", call["argv"])
+            self.assertEqual(call["argv"][call["argv"].index("--permission-mode") + 1], "bypassPermissions")
+            self.assertNotIn("--tools", call["argv"])
             self.assertEqual(Path(call["cwd"]), self.scratch)
         self.assertEqual(calls[1]["stdin"], "And a pint?")
         self.assertEqual(list(self.scratch.iterdir()), [])
@@ -156,7 +155,8 @@ class Assistant(unittest.TestCase):
         self.assertEqual(codex[1]["argv"][:2], ["exec", "resume"])
         self.assertIn("thread-1", codex[1]["argv"])
         self.assertEqual(codex[1]["stdin"], "Quart?")
-        self.assertIn("read-only", codex[0]["argv"])
+        self.assertIn("--dangerously-bypass-approvals-and-sandbox", codex[0]["argv"])
+        self.assertNotIn("read-only", codex[0]["argv"])
 
     def test_stop_interrupts_and_keeps_the_partial_answer(self):
         env = {**self.env, "FAKE_DELAY": "0.4", "FAKE_ANSWER": "one two three four five six seven eight nine ten"}
@@ -280,6 +280,9 @@ class Assistant(unittest.TestCase):
         self.assertEqual(state["relationship"]["conversations"], 1)
         self.assertEqual(state["relationship"]["nicknames"], ["Tor"])
         self.assertEqual(state["summaries"][0]["text"], "They asked about cups and said they bake bread.")
+        extraction = next(c["argv"] for c in self.calls("claude") if "--no-session-persistence" in c["argv"])
+        self.assertEqual(extraction[extraction.index("--tools") + 1], "")
+        self.assertNotIn("--permission-mode", extraction)
         calls = len(self.calls("claude"))
         self.assertEqual(self.invoke("remember", cid, FAKE_ANSWER=self.EXTRACTED).returncode, 0)
         self.assertEqual(len(self.calls("claude")), calls)
