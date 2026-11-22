@@ -39,6 +39,17 @@ As listed under "Services needed" in `.tmp/ai-widget-ideas/index.md`:
   | gemini | `gemini-4-neon`, high | `-m` plus a `tohru-chat` alias in the scratch `.gemini/settings.json` setting `thinkingConfig.thinkingLevel` | no: gemini CLI 0.47 (nixpkgs, marked as replaced by Antigravity) is not installed here; it has no effort flag, and "Gemini Neon" is not in its built-in model list |
   | opencode | its own configured model | `--model provider/model#variant` | flags only; no default is forced because opencode's providers are per user |
 
+  With neither model nor effort pinned, **tool-free voice drafts** use
+  `gpt-6-luna` / low for Codex. Optional semantic voice drafts instead use
+  `gpt-6.2-sol` / low: Luna failed two of six contextual turn decisions in the
+  evaluation. Typed chat, tool-enabled turns and tool fallback keep the defaults
+  above. Setting either provider model or effort opts out of these voice profiles,
+  preserving explicit choices. Claude defaults are unchanged because its quota
+  prevented a comparison. `providers` exposes `voice_draft_model_id`,
+  `voice_draft_effort`, `semantic_model_id` and `semantic_effort`; each local start
+  event reports the actual model and effort. The popup provider label still names
+  the regular model. See [measured comparison](voice-text-models.md).
+
 - **Persona:** `shell/assistant/persona.md`: an ancient dragon who is young at heart, never childish, helpful and accurate first. Voice answers add a rule for one to three short spoken sentences with no Markdown or links, offering more in the popup; typed chats get a lighter touch. claude gets it through `--append-system-prompt` and codex through `-c developer_instructions=`; gemini, agy and opencode have no system-prompt flag, so it is prepended to the first turn only and never shown in history. `assistant.persona = false` turns it off, `assistant.persona_file` replaces it. Claude Code runs with `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, so Tohru's database stays her only memory.
 - **Memory:** after a conversation ends (popup closed, new chat, five idle minutes, or a voice conversation timing out), one headless call to the same provider extracts facts, preferences, a summary and relationship notes as strict JSON. Anything malformed is rejected whole. Answers get a memory block of at most 600 tokens. "Forget that" (and "forget about X") in a chat is handled locally. `tohru assistant memory list|forget ID|clear` and the popup's Memory view (from History) list and drop memories. `assistant.memory = false` spawns no extraction and sends no block.
 - **Discord:** optional default-off bot integration, using the packaged `tohru-discord` shell tool and a turn-scoped local broker. All five local provider paths support bounded REST reads and text posts, with independent controls and no incoming-message activation. The opt-in Orca bot backend does not forward these local tools or credentials to remote sessions. See [setup, security boundaries and verification](discord.md).

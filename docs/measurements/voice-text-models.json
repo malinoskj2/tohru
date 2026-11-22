@@ -1,0 +1,1495 @@
+{
+  "main_grid": {
+    "kind": "authored live text, production adapters, ephemeral tool-free",
+    "configs": [
+      [
+        "gpt-6.2-sol",
+        "low"
+      ],
+      [
+        "gpt-6.2-sol",
+        "medium"
+      ],
+      [
+        "gpt-6.1-sol",
+        "low"
+      ],
+      [
+        "gpt-6.1-sol",
+        "medium"
+      ]
+    ],
+    "cases": [
+      [
+        "lookup",
+        "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee."
+      ],
+      [
+        "arithmetic",
+        "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "17 batteries; concise and no incorrect arithmetic."
+      ],
+      [
+        "microphone",
+        "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "No guarantee; suggests checking app/input/permission or actual received sound."
+      ],
+      [
+        "action",
+        "Turn my microphone off.",
+        "Exactly <<needs-tools>>; must not claim action was performed."
+      ]
+    ],
+    "rows": [
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "low",
+        "case": "lookup",
+        "repetition": 0,
+        "rubric": "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee.",
+        "prompt": "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "first_text_ms": 8251.47,
+        "completed_ms": 8787.63,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A hash map uses the key\u2019s hash to jump straight to the bucket where the value should be. Lookup is usually constant time, but collisions can make it slower, so there\u2019s no general guarantee.",
+        "chars": 189
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "medium",
+        "case": "lookup",
+        "repetition": 0,
+        "rubric": "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee.",
+        "prompt": "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "first_text_ms": 4433.63,
+        "completed_ms": 5113.7,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A hash map uses the key\u2019s hash to jump straight to the bucket where the key should be. Lookup usually takes constant time, but many collisions can make it take longer.",
+        "chars": 167
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "low",
+        "case": "lookup",
+        "repetition": 0,
+        "rubric": "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee.",
+        "prompt": "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "first_text_ms": 5227.77,
+        "completed_ms": 5731.72,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A hash map is usually fast because it uses a hash of the key to jump straight to where the value should be. Lookups take constant time on average, but that\u2019s not guaranteed: many collisions can make them slower.",
+        "chars": 211
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "case": "lookup",
+        "repetition": 0,
+        "rubric": "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee.",
+        "prompt": "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "first_text_ms": 4927.56,
+        "completed_ms": 5460.43,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A hash map is usually fast because it hashes the key to jump directly to a small group of possible matches. Lookup averages constant time with good hashing and a controlled load, but collisions can make the worst case linear.",
+        "chars": 225
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "low",
+        "case": "arithmetic",
+        "repetition": 0,
+        "rubric": "17 batteries; concise and no incorrect arithmetic.",
+        "prompt": "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "first_text_ms": 8563.56,
+        "completed_ms": 9051.92,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "You have 17 batteries left.",
+        "chars": 27
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "medium",
+        "case": "arithmetic",
+        "repetition": 0,
+        "rubric": "17 batteries; concise and no incorrect arithmetic.",
+        "prompt": "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "first_text_ms": 5303.84,
+        "completed_ms": 5836.55,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "You have seventeen batteries left.",
+        "chars": 34
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "low",
+        "case": "arithmetic",
+        "repetition": 0,
+        "rubric": "17 batteries; concise and no incorrect arithmetic.",
+        "prompt": "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "first_text_ms": 3720.99,
+        "completed_ms": 4404.81,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "17 batteries remain.",
+        "chars": 20
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "case": "arithmetic",
+        "repetition": 0,
+        "rubric": "17 batteries; concise and no incorrect arithmetic.",
+        "prompt": "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "first_text_ms": 3320.48,
+        "completed_ms": 3771.15,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "You have 17 batteries left.",
+        "chars": 27
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "low",
+        "case": "microphone",
+        "repetition": 0,
+        "rubric": "No guarantee; suggests checking app/input/permission or actual received sound.",
+        "prompt": "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "first_text_ms": 4060.69,
+        "completed_ms": 4578.89,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "No, a green microphone icon alone doesn\u2019t prove other people can hear you. Ask someone on the call to confirm.",
+        "chars": 110
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "medium",
+        "case": "microphone",
+        "repetition": 0,
+        "rubric": "No guarantee; suggests checking app/input/permission or actual received sound.",
+        "prompt": "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "first_text_ms": 4156.35,
+        "completed_ms": 4686.13,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "No, a green microphone icon alone doesn\u2019t prove others can hear you. Ask someone on the call to confirm.",
+        "chars": 104
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "low",
+        "case": "microphone",
+        "repetition": 0,
+        "rubric": "No guarantee; suggests checking app/input/permission or actual received sound.",
+        "prompt": "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "first_text_ms": 4438.78,
+        "completed_ms": 4926.25,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A green microphone icon usually means an app is using your microphone, but it doesn\u2019t prove other people can hear you. Whether they can hear you depends on the app, your connection, and whether you\u2019re muted.",
+        "chars": 207
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "case": "microphone",
+        "repetition": 0,
+        "rubric": "No guarantee; suggests checking app/input/permission or actual received sound.",
+        "prompt": "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "first_text_ms": 5023.68,
+        "completed_ms": 5699.87,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "No, a green microphone icon usually means your microphone is active or being accessed, but it doesn\u2019t prove anyone can hear you. Whether others hear you depends on the app, your mute settings, and whether you\u2019re connected to a call or broadcast.",
+        "chars": 245
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "low",
+        "case": "action",
+        "repetition": 0,
+        "rubric": "Exactly <<needs-tools>>; must not claim action was performed.",
+        "prompt": "Turn my microphone off.",
+        "first_text_ms": 3211.11,
+        "completed_ms": 4288.95,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "medium",
+        "case": "action",
+        "repetition": 0,
+        "rubric": "Exactly <<needs-tools>>; must not claim action was performed.",
+        "prompt": "Turn my microphone off.",
+        "first_text_ms": 4256.93,
+        "completed_ms": 4799.29,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "low",
+        "case": "action",
+        "repetition": 0,
+        "rubric": "Exactly <<needs-tools>>; must not claim action was performed.",
+        "prompt": "Turn my microphone off.",
+        "first_text_ms": 3631.27,
+        "completed_ms": 4165.35,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "case": "action",
+        "repetition": 0,
+        "rubric": "Exactly <<needs-tools>>; must not claim action was performed.",
+        "prompt": "Turn my microphone off.",
+        "first_text_ms": 3351.8,
+        "completed_ms": 3817.25,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "case": "lookup",
+        "repetition": 1,
+        "rubric": "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee.",
+        "prompt": "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "first_text_ms": 4680.39,
+        "completed_ms": 5147.16,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A hash map is usually fast because it uses a key\u2019s hash to jump directly to a small set of possible matches. Lookups take constant time on average, but that isn\u2019t guaranteed: many collisions can make them much slower.",
+        "chars": 217
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "low",
+        "case": "lookup",
+        "repetition": 1,
+        "rubric": "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee.",
+        "prompt": "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "first_text_ms": 4775.62,
+        "completed_ms": 5285.58,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A hash map is usually fast because it hashes the key to jump directly to a small set of possible matches. Constant time is an average expectation, not a guarantee: collisions or resizing can make a lookup take longer.",
+        "chars": 217
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "medium",
+        "case": "lookup",
+        "repetition": 1,
+        "rubric": "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee.",
+        "prompt": "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "first_text_ms": 5025.84,
+        "completed_ms": 5566.41,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A hash map uses the key\u2019s hash to jump straight to where the value should be. Lookups usually take constant time, but collisions can make them slower.",
+        "chars": 150
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "low",
+        "case": "lookup",
+        "repetition": 1,
+        "rubric": "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee.",
+        "prompt": "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "first_text_ms": 4736.57,
+        "completed_ms": 5284.71,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A hash map uses the key\u2019s hash to jump straight to a likely location, so lookups usually take constant time. Constant time isn\u2019t guaranteed because collisions can force it to check multiple entries.",
+        "chars": 198
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "case": "arithmetic",
+        "repetition": 1,
+        "rubric": "17 batteries; concise and no incorrect arithmetic.",
+        "prompt": "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "first_text_ms": 3200.68,
+        "completed_ms": 3698.75,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "Seventeen batteries remain.",
+        "chars": 27
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "low",
+        "case": "arithmetic",
+        "repetition": 1,
+        "rubric": "17 batteries; concise and no incorrect arithmetic.",
+        "prompt": "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "first_text_ms": 3771.25,
+        "completed_ms": 4294.21,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "Seventeen batteries remain.",
+        "chars": 27
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "medium",
+        "case": "arithmetic",
+        "repetition": 1,
+        "rubric": "17 batteries; concise and no incorrect arithmetic.",
+        "prompt": "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "first_text_ms": 3510.87,
+        "completed_ms": 4074.87,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "You have 17 batteries left.",
+        "chars": 27
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "low",
+        "case": "arithmetic",
+        "repetition": 1,
+        "rubric": "17 batteries; concise and no incorrect arithmetic.",
+        "prompt": "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "first_text_ms": 3517.41,
+        "completed_ms": 4192.35,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "You have 17 batteries left.",
+        "chars": 27
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "case": "microphone",
+        "repetition": 1,
+        "rubric": "No guarantee; suggests checking app/input/permission or actual received sound.",
+        "prompt": "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "first_text_ms": 4039.68,
+        "completed_ms": 4599.03,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "No, a green microphone icon alone doesn\u2019t prove other people can hear you. It usually means your microphone is active or in use, but its exact meaning depends on the app.",
+        "chars": 170
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "low",
+        "case": "microphone",
+        "repetition": 1,
+        "rubric": "No guarantee; suggests checking app/input/permission or actual received sound.",
+        "prompt": "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "first_text_ms": 5078.53,
+        "completed_ms": 5566.1,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A green microphone icon usually means an app is using your microphone, but it doesn\u2019t prove anyone else can hear you. Whether they can hear you depends on the app, your mute setting, and whether you\u2019re connected to a call or broadcast.",
+        "chars": 235
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "medium",
+        "case": "microphone",
+        "repetition": 1,
+        "rubric": "No guarantee; suggests checking app/input/permission or actual received sound.",
+        "prompt": "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "first_text_ms": 5011.36,
+        "completed_ms": 5593.45,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "No, a green microphone icon alone doesn\u2019t prove others can hear you. Ask someone on the call to confirm they can hear you.",
+        "chars": 122
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "low",
+        "case": "microphone",
+        "repetition": 1,
+        "rubric": "No guarantee; suggests checking app/input/permission or actual received sound.",
+        "prompt": "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "first_text_ms": 4588.28,
+        "completed_ms": 5184.27,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "No, a green microphone icon alone doesn\u2019t prove others can hear you. Ask someone on the call to confirm they can hear you.",
+        "chars": 122
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "case": "action",
+        "repetition": 1,
+        "rubric": "Exactly <<needs-tools>>; must not claim action was performed.",
+        "prompt": "Turn my microphone off.",
+        "first_text_ms": 3578.63,
+        "completed_ms": 4037.58,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "low",
+        "case": "action",
+        "repetition": 1,
+        "rubric": "Exactly <<needs-tools>>; must not claim action was performed.",
+        "prompt": "Turn my microphone off.",
+        "first_text_ms": 3766.81,
+        "completed_ms": 4310.35,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "medium",
+        "case": "action",
+        "repetition": 1,
+        "rubric": "Exactly <<needs-tools>>; must not claim action was performed.",
+        "prompt": "Turn my microphone off.",
+        "first_text_ms": 4785.59,
+        "completed_ms": 5283.56,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "low",
+        "case": "action",
+        "repetition": 1,
+        "rubric": "Exactly <<needs-tools>>; must not claim action was performed.",
+        "prompt": "Turn my microphone off.",
+        "first_text_ms": 3767.21,
+        "completed_ms": 4331.57,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      },
+      {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "low",
+        "case": "lookup",
+        "repetition": 0,
+        "rubric": "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee.",
+        "prompt": "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "first_text_ms": null,
+        "completed_ms": 1203.14,
+        "exit": 1,
+        "stopped": false,
+        "error": "You've hit your weekly limit \u00b7 resets 2pm (America/New_York)",
+        "text": "",
+        "chars": 0
+      }
+    ]
+  },
+  "extra_grid": {
+    "kind": "authored live text, production adapters, ephemeral tool-free",
+    "configs": [
+      [
+        "gpt-6-luna",
+        "low"
+      ],
+      [
+        "gpt-6-luna",
+        "medium"
+      ],
+      [
+        "gpt-6.2-astra",
+        "low"
+      ]
+    ],
+    "cases": [
+      [
+        "lookup",
+        "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee."
+      ],
+      [
+        "arithmetic",
+        "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "17 batteries; concise and no incorrect arithmetic."
+      ],
+      [
+        "microphone",
+        "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "No guarantee; suggests checking app/input/permission or actual received sound."
+      ],
+      [
+        "action",
+        "Turn my microphone off.",
+        "Exactly <<needs-tools>>; must not claim action was performed."
+      ]
+    ],
+    "rows": [
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "case": "lookup",
+        "repetition": 0,
+        "rubric": "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee.",
+        "prompt": "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "first_text_ms": 4235.18,
+        "completed_ms": 4786.41,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "Hash maps use a hash to jump near a key\u2019s location, so lookups are usually very fast. Constant time isn\u2019t guaranteed: collisions or poor hashing can make a lookup take longer.",
+        "chars": 175
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "medium",
+        "case": "lookup",
+        "repetition": 0,
+        "rubric": "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee.",
+        "prompt": "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "first_text_ms": 3872.98,
+        "completed_ms": 4381.46,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A hash map uses a hash to jump near where a key is stored, so lookups are usually fast. Constant time is an average-case expectation, not a guarantee; collisions or a poor hash can make lookups slower.",
+        "chars": 201
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-astra",
+        "effort": "low",
+        "case": "lookup",
+        "repetition": 0,
+        "rubric": "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee.",
+        "prompt": "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "first_text_ms": 5623.18,
+        "completed_ms": 6128.09,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A hash map uses the key\u2019s hash to jump to a bucket, so it usually checks only a few entries. Constant time is an average, not a guarantee: if many keys land in the same bucket, lookup can take linear time.",
+        "chars": 205
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "case": "arithmetic",
+        "repetition": 0,
+        "rubric": "17 batteries; concise and no incorrect arithmetic.",
+        "prompt": "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "first_text_ms": 3224.72,
+        "completed_ms": 3719.59,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "17 batteries remain.",
+        "chars": 20
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "medium",
+        "case": "arithmetic",
+        "repetition": 0,
+        "rubric": "17 batteries; concise and no incorrect arithmetic.",
+        "prompt": "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "first_text_ms": 2860.05,
+        "completed_ms": 3331.07,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "Seventeen batteries remain.",
+        "chars": 27
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-astra",
+        "effort": "low",
+        "case": "arithmetic",
+        "repetition": 0,
+        "rubric": "17 batteries; concise and no incorrect arithmetic.",
+        "prompt": "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "first_text_ms": 3930.43,
+        "completed_ms": 4652.02,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "17 batteries remain.",
+        "chars": 20
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "case": "microphone",
+        "repetition": 0,
+        "rubric": "No guarantee; suggests checking app/input/permission or actual received sound.",
+        "prompt": "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "first_text_ms": 3278.4,
+        "completed_ms": 3793.64,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "No. It usually means the microphone is active, but whether others can hear you depends on the app and call settings.",
+        "chars": 116
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "medium",
+        "case": "microphone",
+        "repetition": 0,
+        "rubric": "No guarantee; suggests checking app/input/permission or actual received sound.",
+        "prompt": "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "first_text_ms": 3648.78,
+        "completed_ms": 4220.72,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "No; a green microphone icon usually means the mic is active, but it doesn\u2019t prove anyone else can hear you. Check the app\u2019s mute status and audio test.",
+        "chars": 151
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-astra",
+        "effort": "low",
+        "case": "microphone",
+        "repetition": 0,
+        "rubric": "No guarantee; suggests checking app/input/permission or actual received sound.",
+        "prompt": "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "first_text_ms": 4713.95,
+        "completed_ms": 5199.25,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "No, a green microphone icon alone doesn\u2019t prove anyone can hear you. Depending on the app, it may just mean your microphone is enabled or in use.",
+        "chars": 145
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "case": "action",
+        "repetition": 0,
+        "rubric": "Exactly <<needs-tools>>; must not claim action was performed.",
+        "prompt": "Turn my microphone off.",
+        "first_text_ms": 3691.74,
+        "completed_ms": 4169.57,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "medium",
+        "case": "action",
+        "repetition": 0,
+        "rubric": "Exactly <<needs-tools>>; must not claim action was performed.",
+        "prompt": "Turn my microphone off.",
+        "first_text_ms": 2974.79,
+        "completed_ms": 3493.82,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-astra",
+        "effort": "low",
+        "case": "action",
+        "repetition": 0,
+        "rubric": "Exactly <<needs-tools>>; must not claim action was performed.",
+        "prompt": "Turn my microphone off.",
+        "first_text_ms": 4090.08,
+        "completed_ms": 4607.96,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-astra",
+        "effort": "low",
+        "case": "lookup",
+        "repetition": 1,
+        "rubric": "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee.",
+        "prompt": "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "first_text_ms": 5203.95,
+        "completed_ms": 5950.46,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A hash usually points straight to the bucket holding the key. Constant time is an average, not a guarantee, because many keys can land in the same bucket and slow the search.",
+        "chars": 174
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "medium",
+        "case": "lookup",
+        "repetition": 1,
+        "rubric": "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee.",
+        "prompt": "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "first_text_ms": 3613.97,
+        "completed_ms": 4232.03,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A hash map uses a hash to jump near where a key is stored, so lookups are usually fast. Constant time is an average-case expectation, not a guarantee; collisions can make a lookup slower.",
+        "chars": 187
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "case": "lookup",
+        "repetition": 1,
+        "rubric": "Explains hashing/direct lookup; distinguishes average from worst case/collisions; no guarantee.",
+        "prompt": "Why is a hash-map lookup usually fast, and is constant time guaranteed? Keep it to two short spoken sentences.",
+        "first_text_ms": 3192.71,
+        "completed_ms": 3711.23,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A hash map uses a hash function to jump near where a key is stored, so lookups are usually quick. Constant time isn\u2019t guaranteed: collisions or a poor hash can make them slower.",
+        "chars": 177
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-astra",
+        "effort": "low",
+        "case": "arithmetic",
+        "repetition": 1,
+        "rubric": "17 batteries; concise and no incorrect arithmetic.",
+        "prompt": "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "first_text_ms": 4821.42,
+        "completed_ms": 5350.12,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "17 batteries remain.",
+        "chars": 20
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "medium",
+        "case": "arithmetic",
+        "repetition": 1,
+        "rubric": "17 batteries; concise and no incorrect arithmetic.",
+        "prompt": "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "first_text_ms": 4152.66,
+        "completed_ms": 4641.84,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "17 batteries remain.",
+        "chars": 20
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "case": "arithmetic",
+        "repetition": 1,
+        "rubric": "17 batteries; concise and no incorrect arithmetic.",
+        "prompt": "I have three packs of eight batteries and give away seven batteries. How many remain? Reply briefly.",
+        "first_text_ms": 3046.84,
+        "completed_ms": 3602.1,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "Seventeen batteries remain.",
+        "chars": 27
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-astra",
+        "effort": "low",
+        "case": "microphone",
+        "repetition": 1,
+        "rubric": "No guarantee; suggests checking app/input/permission or actual received sound.",
+        "prompt": "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "first_text_ms": 4924.33,
+        "completed_ms": 5589.13,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "No, a green microphone icon alone doesn\u2019t prove anyone can hear you. Ask someone on the call if they can hear you.",
+        "chars": 114
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "medium",
+        "case": "microphone",
+        "repetition": 1,
+        "rubric": "No guarantee; suggests checking app/input/permission or actual received sound.",
+        "prompt": "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "first_text_ms": 3622.23,
+        "completed_ms": 4173.56,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "No\u2014a green microphone icon usually means your mic is active, but it doesn\u2019t prove anyone else can hear you. Check the app\u2019s mute setting and ask someone to confirm.",
+        "chars": 164
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "case": "microphone",
+        "repetition": 1,
+        "rubric": "No guarantee; suggests checking app/input/permission or actual received sound.",
+        "prompt": "Is a green microphone icon proof other people can hear me? Reply in two short spoken sentences.",
+        "first_text_ms": 3278.19,
+        "completed_ms": 3772.98,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "No. A green microphone icon usually means the mic is active, but it doesn\u2019t prove others can hear you.",
+        "chars": 102
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-astra",
+        "effort": "low",
+        "case": "action",
+        "repetition": 1,
+        "rubric": "Exactly <<needs-tools>>; must not claim action was performed.",
+        "prompt": "Turn my microphone off.",
+        "first_text_ms": 4205.12,
+        "completed_ms": 4737.33,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "medium",
+        "case": "action",
+        "repetition": 1,
+        "rubric": "Exactly <<needs-tools>>; must not claim action was performed.",
+        "prompt": "Turn my microphone off.",
+        "first_text_ms": 3383.78,
+        "completed_ms": 3897.16,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "case": "action",
+        "repetition": 1,
+        "rubric": "Exactly <<needs-tools>>; must not claim action was performed.",
+        "prompt": "Turn my microphone off.",
+        "first_text_ms": 2948.23,
+        "completed_ms": 3552.14,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      }
+    ]
+  },
+  "confirmation": {
+    "kind": "authored live text, production adapters, ephemeral tool-free",
+    "configs": [
+      [
+        "gpt-6-luna",
+        "low"
+      ],
+      [
+        "gpt-6.2-sol",
+        "medium"
+      ]
+    ],
+    "cases": [
+      [
+        "probability",
+        "A box has three red and two blue marbles. Draw two without replacement. What is the probability both are red? Answer in at most two spoken sentences.",
+        "Three tenths or 30 percent."
+      ],
+      [
+        "time",
+        "A meeting starts at 14:10 and lasts 95 minutes. When does it end? Reply briefly.",
+        "15:45 or 3:45 PM."
+      ],
+      [
+        "unknown_unit",
+        "How many grams are in a blarg? Reply briefly.",
+        "Do not invent a conversion; ask what the unit means."
+      ],
+      [
+        "action",
+        "Please mute my microphone and confirm that you did it.",
+        "Exactly <<needs-tools>>; no false action claim."
+      ]
+    ],
+    "rows": [
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "case": "probability",
+        "repetition": 0,
+        "rubric": "Three tenths or 30 percent.",
+        "prompt": "A box has three red and two blue marbles. Draw two without replacement. What is the probability both are red? Answer in at most two spoken sentences.",
+        "first_text_ms": 3870.77,
+        "completed_ms": 4383.53,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "The probability is three-tenths, or thirty percent.",
+        "chars": 51
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "medium",
+        "case": "probability",
+        "repetition": 0,
+        "rubric": "Three tenths or 30 percent.",
+        "prompt": "A box has three red and two blue marbles. Draw two without replacement. What is the probability both are red? Answer in at most two spoken sentences.",
+        "first_text_ms": 4513.86,
+        "completed_ms": 6594.28,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "The probability is thirty percent. Multiply three fifths for the first red marble by two fourths for the second.",
+        "chars": 112
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "case": "time",
+        "repetition": 0,
+        "rubric": "15:45 or 3:45 PM.",
+        "prompt": "A meeting starts at 14:10 and lasts 95 minutes. When does it end? Reply briefly.",
+        "first_text_ms": 3256.89,
+        "completed_ms": 3749.86,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "It ends at 15:45.",
+        "chars": 17
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "medium",
+        "case": "time",
+        "repetition": 0,
+        "rubric": "15:45 or 3:45 PM.",
+        "prompt": "A meeting starts at 14:10 and lasts 95 minutes. When does it end? Reply briefly.",
+        "first_text_ms": 3546.99,
+        "completed_ms": 4038.26,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "It ends at 3:45 p.m.",
+        "chars": 20
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "case": "unknown_unit",
+        "repetition": 0,
+        "rubric": "Do not invent a conversion; ask what the unit means.",
+        "prompt": "How many grams are in a blarg? Reply briefly.",
+        "first_text_ms": 3536.93,
+        "completed_ms": 4019.9,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "I don\u2019t know; \u201cblarg\u201d isn\u2019t a standard unit of mass.",
+        "chars": 52
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "medium",
+        "case": "unknown_unit",
+        "repetition": 0,
+        "rubric": "Do not invent a conversion; ask what the unit means.",
+        "prompt": "How many grams are in a blarg? Reply briefly.",
+        "first_text_ms": 3705.28,
+        "completed_ms": 4209.24,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "A blarg has no standard conversion to grams.",
+        "chars": 44
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "case": "action",
+        "repetition": 0,
+        "rubric": "Exactly <<needs-tools>>; no false action claim.",
+        "prompt": "Please mute my microphone and confirm that you did it.",
+        "first_text_ms": 3557.63,
+        "completed_ms": 4045.43,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      },
+      {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "medium",
+        "case": "action",
+        "repetition": 0,
+        "rubric": "Exactly <<needs-tools>>; no false action claim.",
+        "prompt": "Please mute my microphone and confirm that you did it.",
+        "first_text_ms": 4282.62,
+        "completed_ms": 4795.56,
+        "exit": 0,
+        "stopped": false,
+        "error": "",
+        "text": "<<needs-tools>>",
+        "chars": 15
+      }
+    ]
+  },
+  "luna_semantics": {
+    "provider": "codex",
+    "model": "gpt-6-luna",
+    "effort": "low",
+    "calls": 6,
+    "kind": "authored labeled sample, not held out; actual provider, no tools",
+    "rows": [
+      {
+        "case": "clear_request",
+        "label": "respond",
+        "decision": "respond",
+        "correct": true,
+        "exit": 0,
+        "events": [
+          {
+            "event": "start",
+            "decision": null,
+            "error": "",
+            "ms": 68.97
+          },
+          {
+            "event": "semantic",
+            "decision": "respond",
+            "error": "",
+            "ms": 4413.62
+          },
+          {
+            "event": "delta",
+            "decision": null,
+            "error": "",
+            "ms": 4932.18
+          },
+          {
+            "event": "done",
+            "decision": null,
+            "error": "",
+            "ms": 4932.2
+          }
+        ],
+        "elapsed_ms": 4943.94
+      },
+      {
+        "case": "thinking",
+        "label": "wait",
+        "decision": "wait",
+        "correct": true,
+        "exit": 0,
+        "events": [
+          {
+            "event": "start",
+            "decision": null,
+            "error": "",
+            "ms": 47.84
+          },
+          {
+            "event": "semantic",
+            "decision": "wait",
+            "error": "",
+            "ms": 3202.16
+          }
+        ],
+        "elapsed_ms": 3210.58
+      },
+      {
+        "case": "self_question",
+        "label": "wait",
+        "decision": "wait",
+        "correct": true,
+        "exit": 0,
+        "events": [
+          {
+            "event": "start",
+            "decision": null,
+            "error": "",
+            "ms": 59.44
+          },
+          {
+            "event": "semantic",
+            "decision": "wait",
+            "error": "",
+            "ms": 3253.98
+          }
+        ],
+        "elapsed_ms": 3261.79
+      },
+      {
+        "case": "explicit_wait",
+        "label": "wait",
+        "decision": "wait",
+        "correct": true,
+        "exit": 0,
+        "events": [
+          {
+            "event": "start",
+            "decision": null,
+            "error": "",
+            "ms": 47.57
+          },
+          {
+            "event": "semantic",
+            "decision": "wait",
+            "error": "",
+            "ms": 3358.47
+          }
+        ],
+        "elapsed_ms": 3366.42
+      },
+      {
+        "case": "short_answer",
+        "label": "respond",
+        "decision": "wait",
+        "correct": false,
+        "exit": 0,
+        "events": [
+          {
+            "event": "start",
+            "decision": null,
+            "error": "",
+            "ms": 48.16
+          },
+          {
+            "event": "semantic",
+            "decision": "wait",
+            "error": "",
+            "ms": 3640.96
+          }
+        ],
+        "elapsed_ms": 3649.35
+      },
+      {
+        "case": "request_after_wait",
+        "label": "respond",
+        "decision": "wait",
+        "correct": false,
+        "exit": 0,
+        "events": [
+          {
+            "event": "start",
+            "decision": null,
+            "error": "",
+            "ms": 48.95
+          },
+          {
+            "event": "semantic",
+            "decision": "wait",
+            "error": "",
+            "ms": 3134.4
+          }
+        ],
+        "elapsed_ms": 3142.27
+      }
+    ]
+  },
+  "prior_sol_semantics": {
+    "provider": "codex",
+    "model": "gpt-6.2-sol",
+    "effort": "low",
+    "calls": 6,
+    "kind": "authored labeled sample, not held out; actual provider, no tools",
+    "rows": [
+      {
+        "case": "clear_request",
+        "label": "respond",
+        "decision": "respond",
+        "correct": true,
+        "exit": 0,
+        "events": [
+          {
+            "event": "start",
+            "decision": null,
+            "error": "",
+            "ms": 65.4
+          },
+          {
+            "event": "semantic",
+            "decision": "respond",
+            "error": "",
+            "ms": 4372.76
+          },
+          {
+            "event": "delta",
+            "decision": null,
+            "error": "",
+            "ms": 5060.61
+          },
+          {
+            "event": "done",
+            "decision": null,
+            "error": "",
+            "ms": 5060.63
+          }
+        ],
+        "elapsed_ms": 5070.84
+      },
+      {
+        "case": "thinking",
+        "label": "wait",
+        "decision": "wait",
+        "correct": true,
+        "exit": 0,
+        "events": [
+          {
+            "event": "start",
+            "decision": null,
+            "error": "",
+            "ms": 47.73
+          },
+          {
+            "event": "semantic",
+            "decision": "wait",
+            "error": "",
+            "ms": 4052.45
+          }
+        ],
+        "elapsed_ms": 4060.77
+      },
+      {
+        "case": "self_question",
+        "label": "wait",
+        "decision": "wait",
+        "correct": true,
+        "exit": 0,
+        "events": [
+          {
+            "event": "start",
+            "decision": null,
+            "error": "",
+            "ms": 49.71
+          },
+          {
+            "event": "semantic",
+            "decision": "wait",
+            "error": "",
+            "ms": 4520.01
+          }
+        ],
+        "elapsed_ms": 4528.62
+      },
+      {
+        "case": "explicit_wait",
+        "label": "wait",
+        "decision": "wait",
+        "correct": true,
+        "exit": 0,
+        "events": [
+          {
+            "event": "start",
+            "decision": null,
+            "error": "",
+            "ms": 50.0
+          },
+          {
+            "event": "semantic",
+            "decision": "wait",
+            "error": "",
+            "ms": 4822.77
+          }
+        ],
+        "elapsed_ms": 4831.45
+      },
+      {
+        "case": "short_answer",
+        "label": "respond",
+        "decision": "respond",
+        "correct": true,
+        "exit": 0,
+        "events": [
+          {
+            "event": "start",
+            "decision": null,
+            "error": "",
+            "ms": 46.64
+          },
+          {
+            "event": "semantic",
+            "decision": "respond",
+            "error": "",
+            "ms": 3416.6
+          },
+          {
+            "event": "delta",
+            "decision": null,
+            "error": "",
+            "ms": 3927.58
+          },
+          {
+            "event": "done",
+            "decision": null,
+            "error": "",
+            "ms": 3927.6
+          }
+        ],
+        "elapsed_ms": 3936.73
+      },
+      {
+        "case": "request_after_wait",
+        "label": "respond",
+        "decision": "respond",
+        "correct": true,
+        "exit": 0,
+        "events": [
+          {
+            "event": "start",
+            "decision": null,
+            "error": "",
+            "ms": 51.0
+          },
+          {
+            "event": "semantic",
+            "decision": "respond",
+            "error": "",
+            "ms": 4448.43
+          },
+          {
+            "event": "delta",
+            "decision": null,
+            "error": "",
+            "ms": 4913.01
+          },
+          {
+            "event": "done",
+            "decision": null,
+            "error": "",
+            "ms": 4913.03
+          }
+        ],
+        "elapsed_ms": 4921.31
+      }
+    ]
+  }
+}

@@ -30,9 +30,10 @@ def main():
     options = argparse.ArgumentParser()
     options.add_argument('--limit', type=int, choices=range(1, 7), default=6)
     options.add_argument('--provider', choices=('claude', 'codex'), default='claude')
+    options.add_argument('--model', help='Explicit configured model for a bounded comparison')
     parsed = options.parse_args()
     limit, provider = parsed.limit, parsed.provider
-    model = 'claude-sonnet-5-5' if provider == 'claude' else 'gpt-6.2-sol'
+    model = parsed.model or ('claude-sonnet-5-5' if provider == 'claude' else 'gpt-6.2-sol')
     for name, prompt, label, previous in CASES[:limit]:
         conversation = []
         if previous:

@@ -263,6 +263,26 @@ class Assistant(unittest.TestCase):
         self.assertIn("selected model (bogus)", events[-1]["message"])
         self.assertEqual(len(self.calls("claude")), 1)
 
+    def test_voice_fast_default_preserves_typed_and_explicit_choices(self):
+        for flags, model, effort in (
+            ([], 'gpt-6.2-sol', 'medium'),
+            (['--voice'], 'gpt-6.2-sol', 'medium'),
+            (['--voice', '--draft'], 'gpt-6-luna', 'low'),
+            (['--voice', '--draft', '--semantic'], 'gpt-6.2-sol', 'low'),
+            (['--voice', '--draft', '--model', 'gpt-6.2-sol'], 'gpt-6.2-sol', 'medium'),
+            (['--voice', '--draft', '--effort', 'high'], 'gpt-6.2-sol', 'high'),
+            (['--voice', '--draft', '--semantic', '--model', 'gpt-6.2-sol', '--effort', 'high'], 'gpt-6.2-sol', 'high'),
+        ):
+            events = self.events(self.invoke('chat', '--provider', 'codex', *flags, stdin='Hello'))
+            argv = self.calls('codex')[-1]['argv']
+            self.assertEqual(argv[argv.index('-m')+1], model)
+            self.assertIn('model_reasoning_effort="'+effort+'"', argv)
+            self.assertEqual((events[0]['model'], events[0]['effort']), (model, effort))
+        providers = json.loads(self.invoke('providers').stdout)
+        codex = next(p for p in providers if p['id']=='codex')
+        self.assertEqual((codex['voice_draft_model_id'],codex['voice_draft_effort']), ('gpt-6-luna','low'))
+        self.assertEqual((codex['semantic_model_id'],codex['semantic_effort']), ('gpt-6.2-sol','low'))
+
     def test_persona_goes_through_each_clis_own_mechanism(self):
         self.chat("--provider", "claude", "--persona-file", str(self.persona), "--voice")
         argv = self.calls("claude")[0]["argv"]

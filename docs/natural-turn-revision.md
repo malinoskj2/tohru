@@ -100,6 +100,10 @@ invocation ranged **3416.60–4822.77 ms**, median **4410.60 ms** (n=6; max equa
 nearest-rank p95 and is not a population-tail estimate). For the three responses,
 decision preceded validated completion by **687.87, 511.00 and 464.60 ms**. That
 separation is real transport evidence, not a claim of equivalent audio-latency gain.
+In particular, the current Codex adapter emits text on `item.completed`, not on
+individual model tokens: this interval includes completion/CLI shutdown after a
+completed assistant message. Claude supports token deltas, but its quota prevented
+an equivalent live measurement. See [model/effort follow-up](voice-text-models.md).
 
 Replaying those actual decisions and timings through production capture against
 the same six authored transcripts yields:

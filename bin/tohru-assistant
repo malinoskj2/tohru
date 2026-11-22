@@ -119,6 +119,10 @@ DEFAULT_MODELS = {
     "agy": ("gemini-4-neon", "high"),
     "opencode": ("", ""),
 }
+# Tool-free spoken drafts use the measured fast profile when neither setting is
+# pinned. Tool-enabled turns and explicit choices retain their existing defaults.
+VOICE_DRAFT_DEFAULT_MODELS = {"codex": ("gpt-6-luna", "low")}
+SEMANTIC_DEFAULT_MODELS = {"codex": ("gpt-6.2-sol", "low")}
 EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
 # Each CLI's own names for the levels it has.
 EFFORT_NAMES = {
@@ -131,9 +135,12 @@ EFFORT_NAMES = {
 MODEL_TEXT = re.compile(r"^[A-Za-z0-9._:/@#+-]{0,128}$")
 
 
-def resolve_model(ident, model="", effort=""):
+def resolve_model(ident, model="", effort="", voice_draft=False, semantic=False):
     """The model and effort a provider runs with: the configured ones, else Tohru's default for it."""
     default_model, default_effort = DEFAULT_MODELS.get(ident, ("", ""))
+    if voice_draft and not model and not effort:
+        defaults = SEMANTIC_DEFAULT_MODELS if semantic else VOICE_DRAFT_DEFAULT_MODELS
+        default_model, default_effort = defaults.get(ident, (default_model, default_effort))
     model = model if model and MODEL_TEXT.match(model) else default_model
     effort = effort if effort in EFFORTS else default_effort
     return model, effort
@@ -200,8 +207,12 @@ def discover(models=None):
     for p in found:
         chosen = models.get(p.id) if isinstance(models.get(p.id), dict) else {}
         model, effort = resolve_model(p.id, str(chosen.get("model") or ""), str(chosen.get("effort") or ""))
+        voice_model, voice_effort = resolve_model(p.id, str(chosen.get("model") or ""), str(chosen.get("effort") or ""), voice_draft=True)
+        semantic_model, semantic_effort = resolve_model(p.id, str(chosen.get("model") or ""), str(chosen.get("effort") or ""), voice_draft=True, semantic=True)
         out.append({"id": p.id, "name": p.name, "slot": p.slot, "signed_in": results.get(p.id, False),
-                    "model": model_label(p.id, model, effort), "model_id": model, "effort": effort})
+                    "model": model_label(p.id, model, effort), "model_id": model, "effort": effort,
+                    "voice_draft_model_id": voice_model, "voice_draft_effort": voice_effort,
+                    "semantic_model_id": semantic_model, "semantic_effort": semantic_effort})
     return out
 
 
@@ -2031,6 +2042,9 @@ def local_chat(args, prompt):
             add_turn(db, conversation["id"], {"role": "user", "text": prompt, "time": now, "voice": bool(args.voice)})
     start_event = {"event": "start", "conversation": conversation["id"], "provider": provider.id, "slot": provider.slot,
                    "title": conversation["title"]}
+    model, effort = resolve_model(provider.id, args.model, args.effort, voice_draft=args.voice and args.draft,
+                                  semantic=args.draft and getattr(args, 'semantic', False))
+    start_event.update(model=model, effort=effort)
     if args.draft:
         start_event["draft"] = True
     emit(start_event)
@@ -2053,7 +2067,6 @@ def local_chat(args, prompt):
         system = f"{system}\n\n{DRAFT_RULE}" if system else DRAFT_RULE
         if getattr(args, "semantic", False):
             system += "\n\n" + VOICE_TURN_RULE
-    model, effort = resolve_model(provider.id, args.model, args.effort)
     sent = prompt if session["resume"] or not earlier else transcript_prompt(earlier, prompt)
     note = interrupted_note(args.interrupted)
     if note:
