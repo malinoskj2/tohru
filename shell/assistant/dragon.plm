@@ -23,7 +23,7 @@ part AssistantDragon {
                     // One sheet for every body frame: changing between separate large images blanked her for a few frames.
                     // Light moving through the glass: a slow drift of hue across the body and a highlight now and then.
                     shader: ai_dg_glass, 1
-                    image ai_dg_body { at: ai_dg_x, ai_dg_y; size: 150, 150; cell: ai_dg_frame, 8, 23 }
+                    image ai_dg_body { at: ai_dg_x, ai_dg_y; size: 150, 150; cell: ai_dg_frame, 8, 26 }
                     image ai_dg_eyes { at: ai_dg_x + 28 + ai_dg_ex, ai_dg_y + 33 + ai_dg_ey; size: 50, 26; cell: max(ai_dg_eye, 0), 4, 1; opacity: if(ai_dg_eye >= 0, 100%, 0.1%) }
                     image ai_dg_mouths {
                         at: ai_dg_x + 43.5 + ai_dg_mx, ai_dg_y + 47 + ai_dg_my + 0.8 * ai_mouth_s; size: 22, 20
