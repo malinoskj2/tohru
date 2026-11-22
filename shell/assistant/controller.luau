@@ -72,8 +72,16 @@ return function(settings)
         return args
     end
     local PROVIDER_IDS = {"claude", "codex", "gemini", "agy", "opencode"}
-    local function model_flags(id)
-        return {"--model", setting("assistant.models." .. id .. ".model", ""), "--effort", setting("assistant.models." .. id .. ".effort", "")}
+    local function model_flags(id, voice, opts)
+        local args = {"--model", setting("assistant.models." .. id .. ".model", ""), "--effort", setting("assistant.models." .. id .. ".effort", "")}
+        if voice and opts and opts.draft then
+            local group = opts.semantic and "semantic_models" or "voice_models"
+            args[#args+1] = "--scenario-model"
+            args[#args+1] = setting("assistant." .. group .. "." .. id .. ".model", "")
+            args[#args+1] = "--scenario-effort"
+            args[#args+1] = setting("assistant." .. group .. "." .. id .. ".effort", "")
+        end
+        return args
     end
     local DISCORD_KEYS = {"enabled", "read", "post", "token_file", "guild_id", "channels", "allowed_user_id"}
     local function discord_config()
@@ -91,8 +99,22 @@ return function(settings)
         local models = {}
         for _, id in ipairs(PROVIDER_IDS) do
             models[id] = {model = setting("assistant.models." .. id .. ".model", ""), effort = setting("assistant.models." .. id .. ".effort", "")}
+            for _, group in ipairs({"voice_models", "semantic_models"}) do
+                models[id][group] = {model=setting("assistant."..group.."."..id..".model", ""), effort=setting("assistant."..group.."."..id..".effort", "")}
+            end
         end
         return models
+    end
+    local function model_signature()
+        local fields = {}
+        for _, id in ipairs(PROVIDER_IDS) do
+            for _, group in ipairs({"models", "voice_models", "semantic_models"}) do
+                for _, field in ipairs({"model", "effort"}) do
+                    fields[#fields+1] = setting("assistant."..group.."."..id.."."..field, "")
+                end
+            end
+        end
+        return table.concat(fields, "|")
     end
 
     function remember(id)
@@ -387,7 +409,7 @@ return function(settings)
             args[#args + 1] = "--interrupted"
             args[#args + 1] = opts.interrupted
         end
-        for _, flag in ipairs(model_flags(provider_id)) do args[#args + 1] = flag end
+        for _, flag in ipairs(model_flags(provider_id, voice, opts)) do args[#args + 1] = flag end
         args[#args + 1] = "--persona"
         args[#args + 1] = setting("assistant.persona", true) == true and "on" or "off"
         args[#args + 1] = "--persona-file"
@@ -803,10 +825,17 @@ return function(settings)
     end)
 
     last_backend_sig = backend_signature()
+    local last_model_sig = model_signature()
     probe(true)
     if is_orca() then sync_orca(true) end
 
     local function configure()
+        local models = model_signature()
+        if models ~= last_model_sig then
+            last_model_sig = models
+            discard_draft()
+            probe(true)
+        end
         local sig = backend_signature()
         if sig == last_backend_sig then
             if #providers > 0 then settle() end

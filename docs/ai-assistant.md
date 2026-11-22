@@ -43,12 +43,43 @@ As listed under "Services needed" in `.tmp/ai-widget-ideas/index.md`:
   `gpt-6-luna` / low for Codex. Optional semantic voice drafts instead use
   `gpt-6.2-sol` / low: Luna failed two of six contextual turn decisions in the
   evaluation. Typed chat, tool-enabled turns and tool fallback keep the defaults
-  above. Setting either provider model or effort opts out of these voice profiles,
-  preserving explicit choices. Claude defaults are unchanged because its quota
+  above. Provider model/effort settings remain the fallback for all scenarios;
+  specific voice or semantic settings take precedence. Claude defaults are unchanged because its quota
   prevented a comparison. `providers` exposes `voice_draft_model_id`,
   `voice_draft_effort`, `semantic_model_id` and `semantic_effort`; each local start
   event reports the actual model and effort. The popup provider label still names
   the regular model. See [measured comparison](voice-text-models.md).
+
+  **Settings → Assistant** lets you choose a provider to edit, enter a model ID,
+  and cycle effort separately for regular replies/tools, tool-free spoken replies,
+  and turn decisions/draft answers. Choosing a provider here does not switch the
+  active assistant. Press Enter to save a model ID, Escape to cancel, or save an
+  empty value to restore inheritance. Nix-managed edits remain temporary runtime
+  overrides, just like other settings. Changes affect subsequent requests and
+  discard unused speculative drafts; already active replies finish normally.
+
+  Equivalent config (replace `codex` with `claude` or another local provider):
+
+  ```toml
+  [assistant.models.codex]
+  model = "gpt-6.2-sol"
+  effort = "medium"
+  [assistant.voice_models.codex]
+  model = "gpt-6-luna"
+  effort = "low"
+  [assistant.semantic_models.codex]
+  model = "gpt-6.2-sol"
+  effort = "low"
+  ```
+
+  Each scenario field overrides its corresponding provider field; empty means
+  inherit. With no provider or scenario override, the built-in scenario default
+  applies. Existing provider-only configurations keep their previous behavior.
+  CLI example: `tohru config set assistant.voice_models.codex.model gpt-6-luna`.
+  Home Manager exposes `programs.tohru.assistant.models`, `.voiceModels` and
+  `.semanticModels`, each keyed by provider with `model` and `effort` fields.
+  These settings configure local CLIs, not Orca bot model selection, and do not
+  enable semantic detection or choose a different TTS engine.
 
 - **Persona:** `shell/assistant/persona.md`: an ancient dragon who is young at heart, never childish, helpful and accurate first. Voice answers add a rule for one to three short spoken sentences with no Markdown or links, offering more in the popup; typed chats get a lighter touch. claude gets it through `--append-system-prompt` and codex through `-c developer_instructions=`; gemini, agy and opencode have no system-prompt flag, so it is prepended to the first turn only and never shown in history. `assistant.persona = false` turns it off, `assistant.persona_file` replaces it. Claude Code runs with `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, so Tohru's database stays her only memory.
 - **Memory:** after a conversation ends (popup closed, new chat, five idle minutes, or a voice conversation timing out), one headless call to the same provider extracts facts, preferences, a summary and relationship notes as strict JSON. Anything malformed is rejected whole. Answers get a memory block of at most 600 tokens. "Forget that" (and "forget about X") in a chat is handled locally. `tohru assistant memory list|forget ID|clear` and the popup's Memory view (from History) list and drop memories. `assistant.memory = false` spawns no extraction and sends no block.

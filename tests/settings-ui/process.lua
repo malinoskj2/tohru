@@ -89,3 +89,36 @@ local probe_count=#probes
 handlers.settings_open_request()
 assert(fact.settings_open and text.settings_ui_error:find(reload_error,1,true))
 assert(publications==before and #probes==probe_count and model.settings_rows[1].detail=="unknown · new microphone")
+
+reload_error=nil
+for _,group in ipairs({'models','voice_models','semantic_models'}) do
+    for _,provider in ipairs({'codex','claude'}) do
+        for _,field in ipairs({'model','effort'}) do
+            config['assistant.'..group..'.'..provider..'.'..field]={value=''}
+        end
+    end
+end
+handlers.settings_category(4)
+assert(#model.settings_rows==8)
+handlers.settings_row(3) -- spoken model
+assert(fact.settings_model_editing)
+text.settings_model_edit='gpt-6.2-sol'
+handlers['submit:settings_model_edit']()
+assert(config['assistant.voice_models.codex.model'].value=='gpt-6.2-sol' and not fact.settings_model_editing)
+handlers.settings_row(4) -- spoken effort
+assert(config['assistant.voice_models.codex.effort'].value=='low')
+handlers.settings_row(5) -- semantic model
+text.settings_model_edit='gpt-6.2-astra'
+handlers['submit:settings_model_edit']()
+assert(config['assistant.semantic_models.codex.model'].value=='gpt-6.2-astra')
+assert(config['assistant.models.codex.model'].value=='')
+handlers.settings_row(3)
+text.settings_model_edit=''
+handlers['submit:settings_model_edit']()
+assert(config['assistant.voice_models.codex.model'].value=='')
+handlers.settings_row(0) -- edit Claude without changing the active provider
+handlers.settings_row(1)
+assert(text.settings_model_edit=='')
+handlers.settings_model_cancel()
+assert(not fact.settings_model_editing)
+print('PASS Assistant scenario model editing, effort cycling, inheritance reset and provider selection')

@@ -272,6 +272,10 @@ class Assistant(unittest.TestCase):
             (['--voice', '--draft', '--model', 'gpt-6.2-sol'], 'gpt-6.2-sol', 'medium'),
             (['--voice', '--draft', '--effort', 'high'], 'gpt-6.2-sol', 'high'),
             (['--voice', '--draft', '--semantic', '--model', 'gpt-6.2-sol', '--effort', 'high'], 'gpt-6.2-sol', 'high'),
+            (['--voice', '--draft', '--model', 'gpt-6.2-sol', '--effort', 'high', '--scenario-model', 'gpt-6.1-sol', '--scenario-effort', 'low'], 'gpt-6.1-sol', 'low'),
+            (['--voice', '--draft', '--scenario-effort', 'medium'], 'gpt-6-luna', 'medium'),
+            (['--voice', '--draft', '--semantic', '--scenario-model', 'gpt-6.2-astra'], 'gpt-6.2-astra', 'low'),
+            (['--voice', '--scenario-model', 'gpt-6-luna'], 'gpt-6.2-sol', 'medium'),
         ):
             events = self.events(self.invoke('chat', '--provider', 'codex', *flags, stdin='Hello'))
             argv = self.calls('codex')[-1]['argv']
@@ -282,6 +286,15 @@ class Assistant(unittest.TestCase):
         codex = next(p for p in providers if p['id']=='codex')
         self.assertEqual((codex['voice_draft_model_id'],codex['voice_draft_effort']), ('gpt-6-luna','low'))
         self.assertEqual((codex['semantic_model_id'],codex['semantic_effort']), ('gpt-6.2-sol','low'))
+        configured = json.loads(self.invoke('providers', '--models', json.dumps({'codex': {
+            'model':'gpt-6.2-sol', 'effort':'high',
+            'voice_models':{'model':'gpt-6-luna','effort':'low'},
+            'semantic_models':{'model':'gpt-6.2-astra','effort':'medium'},
+        }})).stdout)
+        codex = next(p for p in configured if p['id']=='codex')
+        self.assertEqual((codex['model_id'],codex['effort']), ('gpt-6.2-sol','high'))
+        self.assertEqual((codex['voice_draft_model_id'],codex['voice_draft_effort']), ('gpt-6-luna','low'))
+        self.assertEqual((codex['semantic_model_id'],codex['semantic_effort']), ('gpt-6.2-astra','medium'))
 
     def test_persona_goes_through_each_clis_own_mechanism(self):
         self.chat("--provider", "claude", "--persona-file", str(self.persona), "--voice")

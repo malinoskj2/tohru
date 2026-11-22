@@ -238,8 +238,16 @@ assert(#killed == k_before + 1 and killed[#killed][2] == "int")
 -- Draft replying <<needs-tools>> (both pre-commit and while promoted) falls back to a fresh full-tools run; marker is never committed or spoken.
 local early_answers, early_commits = #answers, #runs_of('commit')
 local decision = nil
+values['assistant.semantic_models.claude.model']='claude-opus-5-5'
+values['assistant.semantic_models.claude.effort']='low'
 assert(assistant.draft('Explain the index please', 'v1', {semantic=true, on_semantic=function(value) decision=value end}))
 local early = spawned[#spawned]
+local scenario_model, scenario_effort
+for i,arg in ipairs(early.args) do
+    if arg=='--scenario-model' then scenario_model=early.args[i+1] end
+    if arg=='--scenario-effort' then scenario_effort=early.args[i+1] end
+end
+assert(scenario_model=='claude-opus-5-5' and scenario_effort=='low')
 early.line(json.encode({event='start', conversation='v1', draft=true}))
 early.line(json.encode({event='semantic', decision='respond'}))
 assert(decision == 'respond' and #answers == early_answers and #runs_of('commit') == early_commits)
@@ -248,6 +256,15 @@ early.line(json.encode({event='delta', text='A validated answer.'}))
 assert(#answers == early_answers and #runs_of('commit') == early_commits)
 early.line(json.encode({event='done', conversation='v1'}))
 assert(#runs_of('commit') == early_commits+1 and #answers == early_answers+1)
+values['assistant.semantic_models.claude.model']=''
+values['assistant.semantic_models.claude.effort']=''
+assert(assistant.draft('A draft before changing voice settings', 'v1'))
+local kills_before_settings = #killed
+values['assistant.voice_models.claude.model']='claude-sonnet-5-5'
+assistant.configure()
+assert(#killed==kills_before_settings+1)
+values['assistant.voice_models.claude.model']=''
+assistant.configure()
 
 local commits_before = #runs_of("commit")
 local ans_nt = #answers

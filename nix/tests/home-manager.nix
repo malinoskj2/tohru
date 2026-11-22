@@ -44,6 +44,8 @@ let
         provider = "codex";
         models.codex = { model = "gpt-6.2-sol"; effort = "high"; };
         models.claude.effort = "low";
+        voiceModels.codex = { model = "gpt-6-luna"; effort = "low"; };
+        semanticModels.codex = { model = "gpt-6.2-sol"; effort = "medium"; };
       };
     };
   } ]).config;
@@ -124,7 +126,8 @@ assert !quiet.programs.tohru.assistant.voice.echoCancel;
 assert !(quiet.xdg.configFile ? "pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf");
 assert !(disabled.xdg.configFile ? "pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf");
 assert pkgs.lib.hasInfix "[assistant]\nasr_model = \"/asr\"\nkws_model = \"/k\"\nmemory = false\norca = \"false\"\nprovider = \"codex\"\ntts_model = \"/kokoro\"\nturn_model = \"/turn.onnx\"\nvad_model = \"/vad.onnx\"\nvoice = false\nvoice_wake = \"kws\"" quietManaged;
-assert !(pkgs.lib.hasInfix "voice_models" quietManaged);
+assert pkgs.lib.hasInfix "[assistant.voice_models.codex]\neffort = \"low\"\nmodel = \"gpt-6-luna\"" quietManaged;
+assert pkgs.lib.hasInfix "[assistant.semantic_models.codex]\neffort = \"medium\"\nmodel = \"gpt-6.2-sol\"" quietManaged;
 assert pkgs.lib.hasInfix "[assistant.models.codex]\neffort = \"high\"\nmodel = \"gpt-6.2-sol\"" quietManaged;
 assert pkgs.lib.hasInfix "[assistant.models.claude]\neffort = \"low\"" quietManaged;
 assert pkgs.lib.hasInfix "[assistant]\nbackend = \"orca\"\norca = \"auto\"\norca_bot = \"Tohru\"\norca_offline = \"error\"\norca_voice_chat = \"home\"\nvoice_source = \"usb-integration-mic\"" orcaManaged;

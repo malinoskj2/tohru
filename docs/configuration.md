@@ -30,6 +30,8 @@ Only the bar and Settings processes read settings; the bar forwards `notificatio
 | `assistant.orca_offline` | string | `"error"` | What happens when `assistant.backend = "orca"` and Orca isn't running: `error` (shows an offline note so state never splits) or `local` (falls back to local CLIs) |
 | `assistant.models.<cli>.model` | string, up to 128 of `A-Z a-z 0-9 . _ : / @ # + -` | `""` | The model for `claude`, `codex`, `gemini`, `agy` or `opencode`, passed to that CLI as is. Empty means Tohru's default for it: `claude-opus-5-5`, `gpt-6.2-sol`, `gemini-4-neon`, `gemini-4-neon`, and opencode's own configured model. A model the CLI rejects shows its error; nothing falls back |
 | `assistant.models.<cli>.effort` | string | `""` | Reasoning effort: `minimal`, `low`, `medium`, `high`, `xhigh` or `max`, mapped to what each CLI accepts. Empty means `medium` for claude and codex, `high` for gemini and agy, and opencode's default |
+| `assistant.voice_models.<cli>.model` / `.effort` | same model/effort formats | `""` | Overrides for tool-free spoken drafts; provider settings and scenario defaults supply unset values |
+| `assistant.semantic_models.<cli>.model` / `.effort` | same model/effort formats | `""` | Overrides for optional semantic turn decisions and their draft answers; does not enable semantic detection |
 | `assistant.persona` | boolean | `true` | Speak as Tohru (`shell/assistant/persona.md`). False sends prompts without the persona |
 | `assistant.persona_file` | absolute path or `""` | `""` | A Markdown file used in place of the shipped persona |
 | `assistant.memory` | boolean | `true` | Learn facts and preferences after a chat ends and give answers a short memory block. False runs no extraction and sends no memory; history is still kept |

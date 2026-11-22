@@ -135,12 +135,15 @@ EFFORT_NAMES = {
 MODEL_TEXT = re.compile(r"^[A-Za-z0-9._:/@#+-]{0,128}$")
 
 
-def resolve_model(ident, model="", effort="", voice_draft=False, semantic=False):
+def resolve_model(ident, model="", effort="", voice_draft=False, semantic=False, scenario_model="", scenario_effort=""):
     """The model and effort a provider runs with: the configured ones, else Tohru's default for it."""
     default_model, default_effort = DEFAULT_MODELS.get(ident, ("", ""))
-    if voice_draft and not model and not effort:
+    if voice_draft and (not model and not effort or scenario_model or scenario_effort):
         defaults = SEMANTIC_DEFAULT_MODELS if semantic else VOICE_DRAFT_DEFAULT_MODELS
         default_model, default_effort = defaults.get(ident, (default_model, default_effort))
+    if voice_draft:
+        model = scenario_model or model
+        effort = scenario_effort or effort
     model = model if model and MODEL_TEXT.match(model) else default_model
     effort = effort if effort in EFFORTS else default_effort
     return model, effort
@@ -207,8 +210,12 @@ def discover(models=None):
     for p in found:
         chosen = models.get(p.id) if isinstance(models.get(p.id), dict) else {}
         model, effort = resolve_model(p.id, str(chosen.get("model") or ""), str(chosen.get("effort") or ""))
-        voice_model, voice_effort = resolve_model(p.id, str(chosen.get("model") or ""), str(chosen.get("effort") or ""), voice_draft=True)
-        semantic_model, semantic_effort = resolve_model(p.id, str(chosen.get("model") or ""), str(chosen.get("effort") or ""), voice_draft=True, semantic=True)
+        voice = chosen.get('voice_models') if isinstance(chosen.get('voice_models'), dict) else {}
+        semantic = chosen.get('semantic_models') if isinstance(chosen.get('semantic_models'), dict) else {}
+        voice_model, voice_effort = resolve_model(p.id, str(chosen.get("model") or ""), str(chosen.get("effort") or ""), voice_draft=True,
+                                                scenario_model=voice.get('model', ''), scenario_effort=voice.get('effort', ''))
+        semantic_model, semantic_effort = resolve_model(p.id, str(chosen.get("model") or ""), str(chosen.get("effort") or ""), voice_draft=True, semantic=True,
+                                                       scenario_model=semantic.get('model', ''), scenario_effort=semantic.get('effort', ''))
         out.append({"id": p.id, "name": p.name, "slot": p.slot, "signed_in": results.get(p.id, False),
                     "model": model_label(p.id, model, effort), "model_id": model, "effort": effort,
                     "voice_draft_model_id": voice_model, "voice_draft_effort": voice_effort,
@@ -2043,7 +2050,8 @@ def local_chat(args, prompt):
     start_event = {"event": "start", "conversation": conversation["id"], "provider": provider.id, "slot": provider.slot,
                    "title": conversation["title"]}
     model, effort = resolve_model(provider.id, args.model, args.effort, voice_draft=args.voice and args.draft,
-                                  semantic=args.draft and getattr(args, 'semantic', False))
+                                  semantic=args.draft and getattr(args, 'semantic', False),
+                                  scenario_model=args.scenario_model, scenario_effort=args.scenario_effort)
     start_event.update(model=model, effort=effort)
     if args.draft:
         start_event["draft"] = True
@@ -2536,6 +2544,8 @@ def main(argv=None):
             p.add_argument("--draft", action="store_true")
             p.add_argument("--interrupted", default="")
             p.add_argument("--semantic", action="store_true", help="Strict semantic protocol for tool-free voice drafts")
+            p.add_argument("--scenario-model", default="")
+            p.add_argument("--scenario-effort", default="")
             p.add_argument("--persona", choices=("on", "off"), default="on")
             p.add_argument("--persona-file", default="")
             p.add_argument("--discord-settings", default="", help="Nonsecret effective settings from the shell")

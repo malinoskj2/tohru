@@ -243,6 +243,11 @@ class Cli(unittest.TestCase):
                 self.assertEqual(result.stdout, "")
 
     def test_assistant_settings_are_text_requests_and_assistant_commands_reach_the_helper(self):
+        for group in ('voice_models', 'semantic_models'):
+            key = f'assistant.{group}.codex.model'
+            result = self.invoke('config', 'set', key, 'gpt-6.2-sol')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('text setting_key ' + key, json.loads(result.stdout))
         result = self.invoke("config", "set", "assistant.models.codex.effort", "high")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), ["--say", "tohru", "text setting_key assistant.models.codex.effort",

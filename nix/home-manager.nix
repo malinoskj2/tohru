@@ -12,6 +12,13 @@ let
   assistant = cfg.assistant;
   providers = [ "claude" "codex" "gemini" "agy" "opencode" ];
   efforts = [ "minimal" "low" "medium" "high" "xhigh" "max" ];
+  modelSettings = models: lib.mapAttrs (_: m: lib.filterAttrs (_: v: v != null) { inherit (m) model effort; }) models;
+  modelSettingsType = lib.types.attrsOf (lib.types.submodule {
+    options = {
+      model = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; description = "Model ID passed to the CLI."; };
+      effort = lib.mkOption { type = lib.types.nullOr (lib.types.enum efforts); default = null; description = "Reasoning effort passed to the CLI."; };
+    };
+  });
   assistantSettings = lib.optionalAttrs (!assistant.voice.enable) { voice = false; }
     // lib.optionalAttrs (assistant.tts.loadOnConversation != null) { tts_load_on_conversation = assistant.tts.loadOnConversation; }
     // lib.optionalAttrs (assistant.persona.enable != null) { persona = assistant.persona.enable; }
@@ -34,7 +41,13 @@ let
     // lib.optionalAttrs (assistant.orcaBot.offline != null) { orca_offline = assistant.orcaBot.offline; }
     // lib.optionalAttrs (assistant.persona.file != null) { persona_file = "${assistant.persona.file}"; }
     // lib.optionalAttrs (assistant.models != { }) {
-      models = lib.mapAttrs (_: m: lib.filterAttrs (_: v: v != null) { inherit (m) model effort; }) assistant.models;
+      models = modelSettings assistant.models;
+    }
+    // lib.optionalAttrs (assistant.voiceModels != { }) {
+      voice_models = modelSettings assistant.voiceModels;
+    }
+    // lib.optionalAttrs (assistant.semanticModels != { }) {
+      semantic_models = modelSettings assistant.semanticModels;
     };
   managed = format.generate "tohru-managed.toml"
     (lib.recursiveUpdate cfg.settings (lib.optionalAttrs cfg.polkit.enable { polkit.agent = true; }));
@@ -239,15 +252,20 @@ in {
         };
       };
       models = lib.mkOption {
-        type = lib.types.attrsOf (lib.types.submodule {
-          options = {
-            model = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; description = "The model ID passed to the CLI."; };
-            effort = lib.mkOption { type = lib.types.nullOr (lib.types.enum efforts); default = null; description = "The reasoning effort passed to the CLI."; };
-          };
-        });
+        type = modelSettingsType;
         default = { };
         example = lib.literalExpression ''{ codex = { model = "gpt-6.2-sol"; effort = "high"; }; }'';
         description = "Per-provider model and effort, written to `assistant.models.<provider>`; unset ones use Tohru's defaults (see docs/ai-assistant.md).";
+      };
+      voiceModels = lib.mkOption {
+        type = modelSettingsType;
+        default = { };
+        description = "Per-provider model and effort overrides for tool-free spoken drafts (assistant.voice_models).";
+      };
+      semanticModels = lib.mkOption {
+        type = modelSettingsType;
+        default = { };
+        description = "Per-provider overrides for semantic decisions and draft answers (assistant.semantic_models); does not enable the feature.";
       };
       persona.enable = lib.mkOption {
         type = lib.types.nullOr lib.types.bool;
