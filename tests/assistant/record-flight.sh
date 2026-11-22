@@ -59,7 +59,7 @@ window=$!
 pids+=("$window")
 sleep 1
 hyprctl -j activewindow | jq '{at,size,workspace,monitor,mapped,hidden,address}' >"$out/window.json"
-for entry in '1 cold-warm' '1 wrap' '2 rise' '3 right' '4 sweep' '1 moved' '1 interrupted' '5 reduced'; do
+for entry in '1 cold-warm' '1 wrap' '2 rise' '3 right' '4 sweep' '1 moved' '1 hearing' '1 speaking' '1 interrupted' '5 reduced'; do
     read -r number variant <<< "$entry"
     if [[ -n ${1:-} && $variant != "$1" ]]; then continue; fi
     "$FLIGHT_RUNTIME" --scene "$scene" --screen "$monitor" --answer-as "$tag" --no-hud --stall 0 \
@@ -88,14 +88,24 @@ for entry in '1 cold-warm' '1 wrap' '2 rise' '3 right' '4 sweep' '1 moved' '1 in
         hyprctl -j activewindow | jq '{at,size,address}' >"$out/window-moved.json"
     fi
     if [[ "$variant" == interrupted ]]; then kill "$window"; fi
+    if [[ $variant == hearing ]]; then send '{"event":"hearing","on":true}'; fi
+    if [[ $variant == speaking ]]; then send '{"event":"speaking","on":true,"conversation":"test"}'; fi
     "$FLIGHT_RUNTIME" --say "$tag" 'get ai_flight_trace' >"$out/selection-$variant.json"
     hyprctl -j layers >"$out/layers-$variant.json"
     if [[ $variant != reduced ]]; then
-        jq -e --arg name "$monitor" '.scene.output == $name' "$out/selection-$variant.json" >/dev/null || {
+        jq -se --arg name "$monitor" 'length == 1 and .[0].scene.output == $name' "$out/selection-$variant.json" >/dev/null || {
             echo "No entrance trace for $variant on $monitor" >&2; exit 1;
         }
     fi
-    sleep 3.3
+    if [[ $variant == hearing || $variant == speaking ]]; then
+        sleep .35
+        "$FLIGHT_RUNTIME" --say "$tag" 'get ai_flying' 'get ai_flight_art' 'get ai_dragon_open' >"$out/preempt-$variant.log"
+        [[ $(tr '\n' / <"$out/preempt-$variant.log") == false/false/true/ ]] || exit 1
+        sleep 2.95
+    else
+        sleep 3.3
+    fi
+    if [[ $variant == hearing ]]; then send '{"event":"hearing","on":false}'; fi
     send '{"event":"speaking","on":true,"conversation":"test"}'
     sleep .3
     send '{"event":"speaking","on":false,"conversation":"test"}'
