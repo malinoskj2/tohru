@@ -1,7 +1,7 @@
 part SettingsWindow {
- let settings_keys = settings_open
+ let settings_keys = settings_open and not settings_model_editing
  let settings_width = clamp(screen.width - 244, 300, 760)
- let settings_list_height = max(116, screen.height - 216)
+ let settings_list_height = max(116, screen.height - if(settings_model_editing, 300, 216))
  box { from: 0, 0; size: screen.width, screen.height; color: ink_body }
  box { from: 0, 0; size: 220, screen.height; color: ink_sidebar }
  text "Settings" { at: 18, 30; anchor: left center; size: 20; weight: 600; family: "SF Pro Display"; color: ink_text }
@@ -35,9 +35,16 @@ part SettingsWindow {
   }
  }
  include "corner-size.plm"
+ group {
+  show: settings_model_editing
+  text settings_model_label { at: 244, screen.height - 164; width: settings_width - 28; size: 11; family: "SF Pro Text"; color: ink_sub0 }
+  input settings_model_edit { at: 244, screen.height - 140; width: settings_width - 28; size: 13; family: "SF Pro Text"; color: ink_text; placeholder: "Default / inherit"; label: "Assistant model ID; press Enter to save" }
+ }
  text settings_notice { at: 244, screen.height - 72; anchor: left top; size: 11; family: "SF Pro Text"; width: settings_width - 28; lines: 2; color: ink_sub0 }
  text settings_ui_error { at: 244, screen.height - 30; anchor: left top; size: 11; family: "SF Pro Text"; width: settings_width - 28; lines: 2; color: ink_red }
  on press settings_back_button { emit settings_back }
+ on change settings_model_editing while settings_model_editing { focus settings_model_edit }
+ on key Escape while settings_model_editing { emit settings_model_cancel }
  on press settings_forward_button { emit settings_forward }
  on key Escape while settings_keys { emit settings_close }
  on key Ctrl+f while settings_keys { focus settings_search }

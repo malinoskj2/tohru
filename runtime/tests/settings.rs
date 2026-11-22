@@ -673,6 +673,32 @@ fn assistant_models_nest_under_each_provider() {
 }
 
 #[test]
+fn voice_and_semantic_models_validate_and_persist_independently() {
+    let files = Fixture::new();
+    let mut owner = files.owner();
+    for group in ["voice_models", "semantic_models"] {
+        for cli in ["codex", "claude", "gemini", "agy", "opencode"] {
+            let model = Key::parse(&format!("assistant.{group}.{cli}.model")).unwrap();
+            let effort = Key::parse(&format!("assistant.{group}.{cli}.effort")).unwrap();
+            owner
+                .set(model, Value::Text("chosen-model".into()))
+                .unwrap();
+            owner.set(effort, Value::Text("low".into())).unwrap();
+            assert!(owner.set(model, Value::Text("bad model\n".into())).is_err());
+            assert!(owner.set(effort, Value::Text("bogus".into())).is_err());
+            assert_eq!(
+                files.owner().get(model).value,
+                Value::Text("chosen-model".into())
+            );
+        }
+    }
+    assert_eq!(
+        files.owner().get(Key::AssistantModel(Cli::Codex)).value,
+        Value::Text(String::new())
+    );
+}
+
+#[test]
 fn dragon_reduced_motion_persists_and_rejects_non_boolean_values() {
     let files = Fixture::new();
     fs::write(files.managed(), "").unwrap();

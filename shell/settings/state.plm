@@ -10,11 +10,14 @@ part SettingsState {
  text settings_corner_size_edit = ""
  text settings_corner_size_notice = ""
  text settings_search = ""
+ fact settings_model_editing = false
+ text settings_model_edit = ""
+ text settings_model_label = ""
  text settings_heading = "Bar"
  text settings_notice = ""
  text settings_ui_error = ""
  model settings_categories max 5 { id: number; title: text; selected: bool }
- model settings_rows max 40 { title: text; detail: text; value: bool; choice: bool; editable: bool; managed: bool; temporary: bool }
+ model settings_rows max 64 { title: text; detail: text; value: bool; choice: bool; editable: bool; managed: bool; temporary: bool }
  event settings_open_request ->
  event settings_close ->
  event settings_category ->
@@ -23,4 +26,5 @@ part SettingsState {
  event settings_move ->
  event settings_activate ->
  event settings_row ->
+ event settings_model_cancel ->
 }

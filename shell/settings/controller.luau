@@ -1,8 +1,14 @@
 -- Navigation belongs to this window; all values belong to the existing process owner.
 return function(applied, publish_corner)
-    local pages = {"Bar", "Appearance", "System", "Shortcuts"}
+    local pages = {"Bar", "Appearance", "System", "Shortcuts", "Assistant"}
+    local providers = {"codex", "claude", "gemini", "agy", "opencode"}
+    local selected_provider, editing = 1, nil
+    local function cancel_edit() editing=nil;fact.settings_model_editing=false end
     local history, position, rows = {1}, 1, {}
     local snapshot = tohru_settings.snapshot()
+    for index, provider in ipairs(providers) do
+        if snapshot['assistant.provider'] and snapshot['assistant.provider'].value == provider then selected_provider=index end
+    end
     local devices, device_generation = nil, 0
     local query_shortcuts
     local shortcut_offset = 0
@@ -110,6 +116,18 @@ return function(applied, publish_corner)
             catalog[#catalog+1] = {page=4, title="Next shortcuts page", detail=tostring(shortcut_offset+1) .. "–" .. tostring(math.min(shortcut_offset+10,#bindings)) .. " of " .. tostring(#bindings),
                 editable=true, choice=true, operation="shortcut_page"}
         end
+        catalog[#catalog+1] = {page=5, title="Model settings for "..providers[selected_provider], detail="Activate to choose a provider; does not switch the active assistant", editable=true, choice=true, provider_picker=true}
+        for _, group in ipairs({{"models", "Regular replies and tools"}, {"voice_models", "Tool-free spoken replies"}, {"semantic_models", "Turn decisions and draft answers"}}) do
+            for _, field in ipairs({"model", "effort"}) do
+                local key = "assistant."..group[1].."."..providers[selected_provider].."."..field
+                local entry = snapshot[key] or {value=""}
+                if field == "effort" then choices[key] = {"", "low", "medium", "high", "xhigh", "max"} end
+                catalog[#catalog+1] = {page=5, key=key, title=group[2].." · "..field,
+                    detail=(entry.value ~= "" and entry.value or "Default / inherit").." · "..(entry.managed and "Nix managed; edits are temporary" or "Saved in config.toml").." · "..(field=="model" and "Activate to edit" or "Activate to cycle"),
+                    editable=true, choice=true, text_edit=field=="model"}
+            end
+        end
+        catalog[#catalog+1] = {page=5, title="Local provider models", detail="Configure Orca bot models in Orca. Turn settings do not enable the feature.", editable=false}
         rows = {}
         for _, row in ipairs(catalog) do
             local matches = (row.title .. " " .. row.detail .. " " .. (row.key or "")):lower():find(query, 1, true)
@@ -127,6 +145,8 @@ return function(applied, publish_corner)
             history[#history+1]=page; position=#history
         end
         text.settings_search=""
+        editing=nil
+        fact.settings_model_editing=false
         fact.settings_selected=0
         refresh()
     end
@@ -142,12 +162,26 @@ return function(applied, publish_corner)
             if shortcut_offset >= #(shortcut_report.bindings or {}) then shortcut_offset = 0 end
             refresh(); return
         end
+        if row.provider_picker then
+            selected_provider=selected_provider%#providers+1
+            editing=nil
+            fact.settings_model_editing=false
+            refresh()
+            return
+        end
+        if row.text_edit then
+            editing=row.key
+            text.settings_model_edit=(snapshot[row.key] and snapshot[row.key].value) or ""
+            text.settings_model_label=row.title.." (empty restores inheritance)"
+            fact.settings_model_editing=true
+            return
+        end
         local value
         local cycle=choices[row.key]
         if cycle then
             value = cycle[1]
             for i,current in ipairs(cycle)do
-                if current==snapshot[row.key].value then value=cycle[i%#cycle+1];break end
+                if current==((snapshot[row.key] and snapshot[row.key].value) or "") then value=cycle[i%#cycle+1];break end
             end
         else
             value = not snapshot[row.key].value
@@ -161,6 +195,7 @@ return function(applied, publish_corner)
         else text.settings_ui_error=tostring(settings) end
     end
     on("settings_open_request",function()
+        cancel_edit()
         fact.settings_open = true
         local ok, settings = pcall(tohru_settings.reload)
         if not ok then
@@ -172,12 +207,23 @@ return function(applied, publish_corner)
         devices()
         query_shortcuts()
     end)
-    on("settings_close",function() fact.settings_open=false end)
+    on("settings_close",function() cancel_edit();fact.settings_open=false end)
     on("settings_category",navigate)
-    on("settings_back",function() if position>1 then position=position-1; text.settings_search=""; refresh() end end)
-    on("settings_forward",function() if position<#history then position=position+1; text.settings_search=""; refresh() end end)
-    on("text:settings_search",function() fact.settings_sidebar=false; fact.settings_selected=0; refresh() end)
+    on("settings_back",function() cancel_edit();if position>1 then position=position-1; text.settings_search=""; refresh() end end)
+    on("settings_forward",function() cancel_edit();if position<#history then position=position+1; text.settings_search=""; refresh() end end)
+    on("text:settings_search",function() cancel_edit();fact.settings_sidebar=false; fact.settings_selected=0; refresh() end)
     on("settings_row",activate)
+    on("settings_model_cancel",cancel_edit)
+    on("submit:settings_model_edit",function()
+        if not editing then return end
+        local ok, settings, warning=pcall(tohru_settings.set,editing,text.settings_model_edit or "")
+        if not ok then text.settings_ui_error=tostring(settings); return end
+        editing=nil
+        fact.settings_model_editing=false
+        text.settings_ui_error=warning or ""
+        refresh(settings)
+        applied(settings,warning)
+    end)
     on("submit:settings_search",function() activate(fact.settings_selected) end)
     on("settings_move",function(delta)
         if fact.settings_sidebar then navigate(math.clamp(history[position]+delta,1,#pages))

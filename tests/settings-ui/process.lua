@@ -135,3 +135,37 @@ assert(not search('Configure granted shortcuts').editable)
 config['shortcuts.mode'].managed=true
 assert(not search('Shortcut ownership mode').editable)
 print('PASS portal setup/configure actions, backend-confirmed read-only triggers, v1 limitations and managed mode')
+
+reload_error=nil
+for _,group in ipairs({'models','voice_models','semantic_models'}) do
+    for _,provider in ipairs({'codex','claude'}) do
+        for _,field in ipairs({'model','effort'}) do
+            config['assistant.'..group..'.'..provider..'.'..field]={value=''}
+        end
+    end
+end
+handlers.settings_category(5)
+assert(#model.settings_categories==5 and model.settings_categories[4].title=="Shortcuts" and model.settings_categories[5].title=="Assistant")
+assert(#model.settings_rows==8)
+handlers.settings_row(3) -- spoken model
+assert(fact.settings_model_editing)
+text.settings_model_edit='gpt-6.2-sol'
+handlers['submit:settings_model_edit']()
+assert(config['assistant.voice_models.codex.model'].value=='gpt-6.2-sol' and not fact.settings_model_editing)
+handlers.settings_row(4) -- spoken effort
+assert(config['assistant.voice_models.codex.effort'].value=='low')
+handlers.settings_row(5) -- semantic model
+text.settings_model_edit='gpt-6.2-astra'
+handlers['submit:settings_model_edit']()
+assert(config['assistant.semantic_models.codex.model'].value=='gpt-6.2-astra')
+assert(config['assistant.models.codex.model'].value=='')
+handlers.settings_row(3)
+text.settings_model_edit=''
+handlers['submit:settings_model_edit']()
+assert(config['assistant.voice_models.codex.model'].value=='')
+handlers.settings_row(0) -- edit Claude without changing the active provider
+handlers.settings_row(1)
+assert(text.settings_model_edit=='')
+handlers.settings_model_cancel()
+assert(not fact.settings_model_editing)
+print('PASS Assistant scenario model editing, effort cycling, inheritance reset and provider selection')

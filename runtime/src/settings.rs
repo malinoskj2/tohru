@@ -74,6 +74,10 @@ pub enum Key {
     AssistantOrcaOffline,
     AssistantModel(Cli),
     AssistantEffort(Cli),
+    AssistantVoiceModel(Cli),
+    AssistantVoiceEffort(Cli),
+    AssistantSemanticModel(Cli),
+    AssistantSemanticEffort(Cli),
 }
 
 fn valid_discord_id(text: &str) -> bool {
@@ -118,7 +122,7 @@ pub const ORCA_VOICE_CHATS: [&str; 2] = ["home", "new"];
 pub const ORCA_OFFLINE_MODES: [&str; 2] = ["error", "local"];
 
 impl Key {
-    pub const ALL: [Self; 71] = [
+    pub const ALL: [Self; 91] = [
         Self::ShortcutsMode,
         Self::ShortcutLauncher,
         Self::ShortcutSession,
@@ -190,6 +194,26 @@ impl Key {
         Self::AssistantEffort(Cli::Agy),
         Self::AssistantModel(Cli::Opencode),
         Self::AssistantEffort(Cli::Opencode),
+        Self::AssistantVoiceModel(Cli::Claude),
+        Self::AssistantVoiceEffort(Cli::Claude),
+        Self::AssistantVoiceModel(Cli::Codex),
+        Self::AssistantVoiceEffort(Cli::Codex),
+        Self::AssistantVoiceModel(Cli::Gemini),
+        Self::AssistantVoiceEffort(Cli::Gemini),
+        Self::AssistantVoiceModel(Cli::Agy),
+        Self::AssistantVoiceEffort(Cli::Agy),
+        Self::AssistantVoiceModel(Cli::Opencode),
+        Self::AssistantVoiceEffort(Cli::Opencode),
+        Self::AssistantSemanticModel(Cli::Claude),
+        Self::AssistantSemanticEffort(Cli::Claude),
+        Self::AssistantSemanticModel(Cli::Codex),
+        Self::AssistantSemanticEffort(Cli::Codex),
+        Self::AssistantSemanticModel(Cli::Gemini),
+        Self::AssistantSemanticEffort(Cli::Gemini),
+        Self::AssistantSemanticModel(Cli::Agy),
+        Self::AssistantSemanticEffort(Cli::Agy),
+        Self::AssistantSemanticModel(Cli::Opencode),
+        Self::AssistantSemanticEffort(Cli::Opencode),
     ];
 
     #[must_use]
@@ -268,6 +292,30 @@ impl Key {
             Self::AssistantEffort(Cli::Agy) => "assistant.models.agy.effort",
             Self::AssistantModel(Cli::Opencode) => "assistant.models.opencode.model",
             Self::AssistantEffort(Cli::Opencode) => "assistant.models.opencode.effort",
+            Self::AssistantVoiceModel(Cli::Claude) => "assistant.voice_models.claude.model",
+            Self::AssistantVoiceEffort(Cli::Claude) => "assistant.voice_models.claude.effort",
+            Self::AssistantVoiceModel(Cli::Codex) => "assistant.voice_models.codex.model",
+            Self::AssistantVoiceEffort(Cli::Codex) => "assistant.voice_models.codex.effort",
+            Self::AssistantVoiceModel(Cli::Gemini) => "assistant.voice_models.gemini.model",
+            Self::AssistantVoiceEffort(Cli::Gemini) => "assistant.voice_models.gemini.effort",
+            Self::AssistantVoiceModel(Cli::Agy) => "assistant.voice_models.agy.model",
+            Self::AssistantVoiceEffort(Cli::Agy) => "assistant.voice_models.agy.effort",
+            Self::AssistantVoiceModel(Cli::Opencode) => "assistant.voice_models.opencode.model",
+            Self::AssistantVoiceEffort(Cli::Opencode) => "assistant.voice_models.opencode.effort",
+            Self::AssistantSemanticModel(Cli::Claude) => "assistant.semantic_models.claude.model",
+            Self::AssistantSemanticEffort(Cli::Claude) => "assistant.semantic_models.claude.effort",
+            Self::AssistantSemanticModel(Cli::Codex) => "assistant.semantic_models.codex.model",
+            Self::AssistantSemanticEffort(Cli::Codex) => "assistant.semantic_models.codex.effort",
+            Self::AssistantSemanticModel(Cli::Gemini) => "assistant.semantic_models.gemini.model",
+            Self::AssistantSemanticEffort(Cli::Gemini) => "assistant.semantic_models.gemini.effort",
+            Self::AssistantSemanticModel(Cli::Agy) => "assistant.semantic_models.agy.model",
+            Self::AssistantSemanticEffort(Cli::Agy) => "assistant.semantic_models.agy.effort",
+            Self::AssistantSemanticModel(Cli::Opencode) => {
+                "assistant.semantic_models.opencode.model"
+            }
+            Self::AssistantSemanticEffort(Cli::Opencode) => {
+                "assistant.semantic_models.opencode.effort"
+            }
         }
     }
 
@@ -375,6 +423,64 @@ impl Key {
             Self::AssistantOrcaOffline => (&["assistant"], "orca_offline"),
             Self::AssistantModel(cli) => (cli.tables(), "model"),
             Self::AssistantEffort(cli) => (cli.tables(), "effort"),
+            Self::AssistantVoiceModel(Cli::Claude) => {
+                (&["assistant", "voice_models", "claude"], "model")
+            }
+            Self::AssistantVoiceEffort(Cli::Claude) => {
+                (&["assistant", "voice_models", "claude"], "effort")
+            }
+            Self::AssistantVoiceModel(Cli::Codex) => {
+                (&["assistant", "voice_models", "codex"], "model")
+            }
+            Self::AssistantVoiceEffort(Cli::Codex) => {
+                (&["assistant", "voice_models", "codex"], "effort")
+            }
+            Self::AssistantVoiceModel(Cli::Gemini) => {
+                (&["assistant", "voice_models", "gemini"], "model")
+            }
+            Self::AssistantVoiceEffort(Cli::Gemini) => {
+                (&["assistant", "voice_models", "gemini"], "effort")
+            }
+            Self::AssistantVoiceModel(Cli::Agy) => (&["assistant", "voice_models", "agy"], "model"),
+            Self::AssistantVoiceEffort(Cli::Agy) => {
+                (&["assistant", "voice_models", "agy"], "effort")
+            }
+            Self::AssistantVoiceModel(Cli::Opencode) => {
+                (&["assistant", "voice_models", "opencode"], "model")
+            }
+            Self::AssistantVoiceEffort(Cli::Opencode) => {
+                (&["assistant", "voice_models", "opencode"], "effort")
+            }
+            Self::AssistantSemanticModel(Cli::Claude) => {
+                (&["assistant", "semantic_models", "claude"], "model")
+            }
+            Self::AssistantSemanticEffort(Cli::Claude) => {
+                (&["assistant", "semantic_models", "claude"], "effort")
+            }
+            Self::AssistantSemanticModel(Cli::Codex) => {
+                (&["assistant", "semantic_models", "codex"], "model")
+            }
+            Self::AssistantSemanticEffort(Cli::Codex) => {
+                (&["assistant", "semantic_models", "codex"], "effort")
+            }
+            Self::AssistantSemanticModel(Cli::Gemini) => {
+                (&["assistant", "semantic_models", "gemini"], "model")
+            }
+            Self::AssistantSemanticEffort(Cli::Gemini) => {
+                (&["assistant", "semantic_models", "gemini"], "effort")
+            }
+            Self::AssistantSemanticModel(Cli::Agy) => {
+                (&["assistant", "semantic_models", "agy"], "model")
+            }
+            Self::AssistantSemanticEffort(Cli::Agy) => {
+                (&["assistant", "semantic_models", "agy"], "effort")
+            }
+            Self::AssistantSemanticModel(Cli::Opencode) => {
+                (&["assistant", "semantic_models", "opencode"], "model")
+            }
+            Self::AssistantSemanticEffort(Cli::Opencode) => {
+                (&["assistant", "semantic_models", "opencode"], "effort")
+            }
         }
     }
 
@@ -439,7 +545,11 @@ impl Key {
             | Self::AssistantTtsModel
             | Self::AssistantKwsModel
             | Self::AssistantModel(_)
-            | Self::AssistantEffort(_) => Value::Text(String::new()),
+            | Self::AssistantEffort(_)
+            | Self::AssistantVoiceModel(_)
+            | Self::AssistantVoiceEffort(_)
+            | Self::AssistantSemanticModel(_)
+            | Self::AssistantSemanticEffort(_) => Value::Text(String::new()),
             Self::AssistantTtsEngine => Value::Text(TTS_ENGINES[0].to_owned()),
             Self::AssistantTtsVoice => Value::Text("en-us+f3".to_owned()),
             Self::AssistantTtsVoicepack => Value::Text("tide".to_owned()),
@@ -513,8 +623,16 @@ impl Key {
             }
             Self::AssistantProvider if ASSISTANT_PROVIDERS.contains(&text) => true,
             Self::AssistantTtsEngine if TTS_ENGINES.contains(&text) => true,
-            Self::AssistantEffort(_) if ASSISTANT_EFFORTS.contains(&text) => true,
+            Self::AssistantEffort(_)
+            | Self::AssistantVoiceEffort(_)
+            | Self::AssistantSemanticEffort(_)
+                if ASSISTANT_EFFORTS.contains(&text) =>
+            {
+                true
+            }
             Self::AssistantModel(_)
+            | Self::AssistantVoiceModel(_)
+            | Self::AssistantSemanticModel(_)
                 if text.len() <= 128
                     && text
                         .chars()

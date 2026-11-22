@@ -11,7 +11,8 @@ The faster profile is deliberately limited to the path tested with tools disable
 If an answer needs tools, the existing marker validation and ordinary fallback use
 the regular model; no untested downgrade of desktop-action handling is introduced.
 Short turns which do not start a speculative draft also keep the regular model.
-Either explicit provider model or explicit effort bypasses these profiles. This
+Provider-only overrides bypass these profiles; specific `voice_models` or
+`semantic_models` overrides can now select each scenario independently. This
 keeps existing user pins authoritative; it does not silently replace a selected
 Claude provider with Codex. Semantic detection remains off by default.
 
