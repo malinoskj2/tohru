@@ -54,3 +54,14 @@ TOHRU_SHELL=1 .tmp/pleamar-runtime/target/release/pleamar --scene shell/bar.plm 
 ```
 
 `bin/tohru-run` does the same with `TOHRU_RUNTIME` set to the binary.
+
+## Portability runtime contract
+
+Patches 0034–0036 expose `outputs` independently of workspace/window protocols,
+retain connection-scoped generic workspace IDs and activation capabilities, map
+scene font roles to native appearance settings, and send locker readiness only
+after ext-session-lock confirms ownership. `pleamar --tohru-capabilities` prints
+a versioned JSON marker without opening a display or loading models. Doctor uses
+it to reject unknown/stock runtimes. All three patches are part of the prepared
+source and Nix/release build paths. See [standalone setup](../docs/standalone.md)
+and [actual verification/gates](../docs/portability-verification.md).

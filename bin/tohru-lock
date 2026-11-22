@@ -15,18 +15,18 @@ if [[ ${1:-} == --running ]]; then
 fi
 [[ -n ${XDG_RUNTIME_DIR:-} && -d $XDG_RUNTIME_DIR ]] || { printf 'tohru-lock: XDG_RUNTIME_DIR is not set\n' >&2; exit 2; }
 
-# One locker per session: hypridle, loginctl lock-session and a keybind may all ask at once.
-# Without flock, or its file, lock anyway: a second locker is refused by the compositor (exit 3).
-if exec 9>"$XDG_RUNTIME_DIR/tohru-lock.lock" && command -v flock >/dev/null; then
-    flock -n 9 || exit 0
-fi
+# A private readiness endpoint must never be unlinked by a second wrapper.
+# util-linux flock is a supported dependency; fail visibly when it is missing.
+command -v flock >/dev/null || { printf 'tohru-lock: install util-linux (flock)\n' >&2; exit 2; }
+exec 9>"$XDG_RUNTIME_DIR/tohru-lock-$(printf '%s\0%s' "${WAYLAND_DISPLAY:-}" "${XDG_SESSION_ID:-}" | sha256sum | cut -c1-16).lock" || exit 2
+flock -n 9 || exit 0
 
 session_path() {
     command -v busctl >/dev/null || return 1
-    local id=${XDG_SESSION_ID:-$(loginctl show-user "$USER" --property=Display --value 2>/dev/null)}
+    local id=${XDG_SESSION_ID:-$(timeout 2 loginctl show-user "$USER" --property=Display --value 2>/dev/null)}
     [[ -n $id ]] || return 1
     local reply
-    reply=$(busctl --system call org.freedesktop.login1 /org/freedesktop/login1 \
+    reply=$(timeout 2 busctl --system call org.freedesktop.login1 /org/freedesktop/login1 \
         org.freedesktop.login1.Manager GetSession s "$id" 2>/dev/null) || return 1
     reply=${reply#o \"}
     printf '%s\n' "${reply%\"}"
@@ -35,13 +35,15 @@ session_path() {
 # locker dies, since the compositor then keeps the session locked.
 hint() {
     [[ -n ${session:-} ]] || return 0
-    busctl --system call org.freedesktop.login1 "$session" \
+    timeout 2 busctl --system call org.freedesktop.login1 "$session" \
         org.freedesktop.login1.Session SetLockedHint b "$1" >/dev/null 2>&1 || true
 }
 session=$(session_path) || session=
 
+lock_session=$(printf '%s\0%s' "${WAYLAND_DISPLAY:-}" "${XDG_SESSION_ID:-}" | sha256sum | cut -c1-16)
+export TOHRU_LOCK_STATUS_SOCKET="$XDG_RUNTIME_DIR/tohru-lock-$lock_session.status"
+trap 'rm -f -- "$TOHRU_LOCK_STATUS_SOCKET"' EXIT
 export TOHRU_SHELL=1 TOHRU_LOCKER=1
-hint true
 scene=$styled
 # A style that does not compile (a shader, a typo) never gets the chance to fail mid-lock.
 if ! "$runtime" --check "$styled" >/dev/null 2>&1; then
@@ -50,6 +52,7 @@ if ! "$runtime" --check "$styled" >/dev/null 2>&1; then
 fi
 delay=0
 while :; do
+    rm -f -- "$TOHRU_LOCK_STATUS_SOCKET"
     "$runtime" --scene "$scene" --no-hud --stall 0 --answer-as tohru-lock "$@"
     status=$?
     case $status in

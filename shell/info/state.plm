@@ -1,4 +1,7 @@
 part InformationState {
+    text info_platform_title = "Platform"
+    text info_platform_short = "OS"
+    text info_platform_opening = "Unfolding Platform…"
     include "power-state.plm"
     fact info_visible = false
     fact info_page = 0

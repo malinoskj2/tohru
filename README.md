@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <b>A glassy Linux desktop shell for Hyprland, written as <a href="https://github.com/k4ditano/pleamar">Pleamar</a> scenes.</b>
+  <b>A glassy Linux Wayland desktop shell, written as <a href="https://github.com/k4ditano/pleamar">Pleamar</a> scenes.</b>
 </p>
 
 Tohru (透, "clear, passing through") is a bar, its popups and the rest of a desktop shell, built from `.plm` scene files, Luau logic and WGSL shaders and run by a patched build of Pleamar 0.7.27. An optional Hyprland plugin adds window effects.
@@ -57,7 +57,7 @@ Then, in your Home Manager configuration:
     enable = true;
     systemd.enable = true;
     settings = {
-      bar.preferred_output = "DP-1";
+      bar.preferred_output = ""; # all connected outputs
       bar.mooncoil = false;
       appearance.palette = "nord";
       appearance.corners = true;
@@ -87,7 +87,7 @@ tohru-launcher-run &
 tohru-notifications-run &   # only if no other notification daemon runs
 ```
 
-It needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12 or later), libxkbcommon, linux-pam, libwayland-client, libwayland-egl, libEGL, a Vulkan loader and driver, and `setsid` and `sh` on `PATH`. The Hyprland plugin is not included.
+It needs Python 3.11+, Bash, systemd/logind, coreutils and util-linux, plus glibc 2.35 or newer (Ubuntu 22.04, Debian 12 or later), libxkbcommon, linux-pam, libwayland-client, libwayland-egl, libEGL, a Vulkan loader and driver, and `setsid` and `sh` on `PATH`. The Hyprland plugin is not included.
 
 ### Without Nix, from source
 
@@ -119,7 +119,7 @@ export TOHRU_RUNTIME="$PWD/.tmp/pleamar-runtime/target/release/pleamar"
 - The workspace switcher's motion is built from Pleamar springs. It starts 50 to 100 ms after the switch, because Pleamar gathers Hyprland's workspace events for 50 ms before reporting them.
 - The Hyprland plugin registers its animation leaves only once it is loaded, which at startup is after your configuration runs. Set them as shown in `hyprland/examples/effects.lua`. Its unload and damage checks have not been done.
 - The native test suites run on a private headless Sway, not Hyprland, and check behaviour rather than looks or performance. They last passed on 2026-11-11. In the bar suite's `--services-only` mode the closing `quit` once took longer than its 10 s limit.
-- There is no idle handling or screenshot tool. Use hypridle and grimblast or similar.
+- Optional standalone wallpaper and swayidle ownership are available. Layer-shell and systemd/logind are required; workspace/window capabilities depend on the compositor. See [standalone setup](docs/standalone.md). There is no screenshot tool.
 - x86_64-linux only. ARM is untested. Only tested with an NVIDIA GPU. Non-NixOS distributions are untested.
 - Tohru needs its own patched Pleamar build. Stock Pleamar will not run the bar.
 
@@ -153,6 +153,8 @@ The bell in the bar shows a dot while a notification has arrived unseen; left-cl
 Run `tohru help` for the full list, including per-app volume, output/input selection and `tohru config set`.
 
 ## Documentation
+
+- [docs/standalone.md](docs/standalone.md): capability matrix, user services, wallpaper/idle, fonts, shortcuts, voice, AEC, greetd and doctor.
 
 - [docs/nix.md](docs/nix.md): flake outputs, Home Manager options, the Hyprland plugin, pinning.
 - [docs/manual-install.md](docs/manual-install.md): building and running without Nix.

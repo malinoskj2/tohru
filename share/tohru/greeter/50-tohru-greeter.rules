@@ -1,0 +1,8 @@
+// Optional administrator policy; requires greeter.allow_power_actions = true.
+// Never grant arbitrary systemctl, session control, or configuration access.
+polkit.addRule(function(action, subject) {
+    var allowed = ["org.freedesktop.login1.suspend", "org.freedesktop.login1.reboot", "org.freedesktop.login1.power-off"];
+    if (subject.user == "greeter" && subject.local && subject.active && allowed.indexOf(action.id) >= 0) {
+        return polkit.Result.YES;
+    }
+});

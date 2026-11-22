@@ -339,3 +339,18 @@ fn unresolved_eligible_generation_invalidates_apparent_unique_match() {
             .all(|generation| !generation.current)
     );
 }
+
+#[test]
+fn ordinary_installation_does_not_probe_nix_generation_sources() {
+    let fixture = Fixture::new();
+    let snapshot = collect(&fixture.0);
+    assert!(snapshot.generations.is_empty());
+    assert!(snapshot.system.system_target.is_none());
+    assert!(
+        snapshot
+            .issues
+            .iter()
+            .all(|issue| !issue.source.starts_with("nix/")
+                && !issue.source.starts_with("run/current-system"))
+    );
+}

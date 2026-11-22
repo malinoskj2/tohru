@@ -13,7 +13,8 @@ Build:
 
 Run:
 
-- A Wayland compositor with layer-shell. Tohru targets Hyprland.
+- Linux with systemd/logind and a Wayland compositor with layer-shell (including Settings). Hyprland IPC and standard-protocol capabilities are described in [standalone.md](standalone.md).
+- Bash, Python 3.11+, coreutils and util-linux. Run `tohru doctor` for feature-specific dependencies.
 - A Vulkan loader and libglvnd. Development used an NVIDIA GPU; other GPUs are untested.
 - `setsid` (util-linux) and `sh` on `PATH`: Pleamar launches applications through `setsid -f sh -c`.
 - For the popups to show anything: PulseAudio or PipeWire's PulseAudio server, NetworkManager, and BlueZ.
@@ -84,11 +85,18 @@ To point a wrapper at different scene files, set `TOHRU_SCENE` (bar), `TOHRU_SES
 
 ## Starting with the session
 
-The repository ships no systemd units outside the Home Manager module. To write your own, follow what that module generates (see [nix.md](nix.md#services)): one user service per wrapper, part of your graphical session target, restarting on failure, with `KillMode=process` for the launcher so restarting it leaves launched applications alone. Import `WAYLAND_DISPLAY`, `PATH` and `XDG_DATA_DIRS` into the user manager before the target starts. Starting the wrappers from your compositor's startup configuration also works, without restarts.
+Use `tohru session-units --output ./units --prefix /absolute/path/to/tohru/bin`
+to generate the shared service definitions without activating anything. Install,
+enable, import environment, restart, inspect journals and disable them as shown in
+[standalone.md#services-and-environment](standalone.md#services-and-environment).
+Optional notification/polkit/wallpaper/idle ownership is explicit. A generated
+on-demand locker uses native compositor-confirmed readiness before suspend.
 
 ## Voice
 
-`bin/tohru-voice` needs Python 3 with numpy, onnxruntime, sherpa-onnx and misaki (for Kokoro), and `parec`, `pacat`, `pactl` and `espeak-ng` on `PATH`. Without them, set `assistant.voice = false`; the chat popup works either way.
+See [the complete standalone voice environment instructions](standalone.md#voice-without-nix) for pinned dependency metadata, explicit environment configuration and offline behavior.
+
+`bin/tohru-voice` needs Python 3.11+ with numpy, onnxruntime, sherpa-onnx and misaki (for Kokoro), and `parec`, `pacat`, `pactl` and `espeak-ng` on `PATH`. Without them, set `assistant.voice = false`; the chat popup works either way.
 
 ### Voice models
 

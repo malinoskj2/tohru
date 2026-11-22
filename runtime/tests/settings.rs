@@ -968,3 +968,59 @@ fn discord_author_id_invalid_disk_and_managed_settings_are_rejected() {
     .unwrap();
     assert!(Owner::load(files.user(), Some(files.managed())).is_err());
 }
+
+#[test]
+fn portability_settings_use_native_validation_and_managed_ownership() {
+    let fixture = Fixture::new();
+    let mut owner = fixture.owner();
+    assert_eq!(
+        owner.get(Key::FontText).value,
+        Value::Text("Noto Sans".into())
+    );
+    assert_eq!(
+        owner.get(Key::ShortcutsMode).value,
+        Value::Text("compositor".into())
+    );
+    assert!(
+        owner
+            .set(Key::ShortcutsMode, Value::Text("capture-all".into()))
+            .is_err()
+    );
+    owner
+        .set(Key::ShortcutLauncher, Value::Text("<Super>space".into()))
+        .unwrap();
+    assert_eq!(owner.get(Key::WallpaperEnabled).value, Value::Bool(false));
+    assert_eq!(
+        owner.get(Key::IdleOwner).value,
+        Value::Text("external".into())
+    );
+    owner.set(Key::WallpaperEnabled, Value::Bool(true)).unwrap();
+    owner
+        .set(Key::IdleLockSeconds, Value::Integer(600))
+        .unwrap();
+    assert!(owner.set(Key::IdleLockSeconds, Value::Integer(-1)).is_err());
+    assert!(
+        owner
+            .set(Key::IdleOwner, Value::Text("invented".into()))
+            .is_err()
+    );
+    assert!(owner.set(Key::FontText, Value::Text("\n".into())).is_err());
+    assert!(
+        owner
+            .set(Key::VoiceEnvironment, Value::Text("relative.toml".into()))
+            .is_err()
+    );
+    fs::write(
+        fixture.managed(),
+        "[appearance]\nfont_text = 'Managed Sans'\n[wallpaper]\nenabled = false\n",
+    )
+    .unwrap();
+    owner.reload().unwrap();
+    assert!(owner.get(Key::FontText).managed);
+    assert_eq!(owner.get(Key::WallpaperEnabled).value, Value::Bool(false));
+    assert!(
+        fs::read_to_string(fixture.user())
+            .unwrap()
+            .contains("enabled = true")
+    );
+}

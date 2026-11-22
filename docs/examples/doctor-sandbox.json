@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "read_only": true,
+  "summary": {
+    "exit_code": 1,
+    "status": "required-failures",
+    "required_failures": [
+      "environment.XDG_SESSION_ID",
+      "executable.setsid",
+      "executable.flock",
+      "executable.systemctl",
+      "executable.loginctl",
+      "executable.busctl",
+      "executable.systemd-notify",
+      "executable.espeak-ng",
+      "runtime",
+      "systemd-user",
+      "logind",
+      "voice.dependencies",
+      "voice.vad_model",
+      "voice.asr_model"
+    ],
+    "required_unknown": [
+      "protocol.layer-shell"
+    ],
+    "warnings": [
+      "executable.wayland-info",
+      "executable.xdg-terminal-exec",
+      "executable.swayidle",
+      "protocol.session-lock",
+      "protocol.idle-notify",
+      "protocol.window",
+      "protocol.workspace",
+      "outputs",
+      "compositor.backend",
+      "notifications.owner",
+      "polkit.conflicts",
+      "service.bar",
+      "service.session",
+      "service.launcher",
+      "service.notifications",
+      "service.polkit",
+      "service.idle",
+      "service.wallpaper",
+      "service.lock",
+      "locker.pam",
+      "locker.recovery",
+      "idle.processes",
+      "idle.inhibit-delay",
+      "appearance.font_text",
+      "appearance.font_display",
+      "appearance.font_mono",
+      "networkmanager",
+      "iwd",
+      "bluetooth",
+      "echo-cancel.module",
+      "echo-cancel.installed",
+      "echo-cancel.nodes",
+      "echo-cancel.selection",
+      "echo-cancel.effectiveness",
+      "shortcuts",
+      "shortcuts.portal"
+    ]
+  },
+  "checks": [
+    {
+      "name": "config",
+      "state": "ok",
+      "detail": "XDG native config",
+      "action": "Managed values are read-only for standalone lifecycle helpers",
+      "required": true,
+      "severity": "info"
+    },
+    {
+      "name": "runtime",
+      "state": "missing",
+      "detail": "Patch compatibility was not established",
+      "action": "Use the runtime shipped with this checkout/release; stock Pleamar is insufficient",
+      "required": true,
+      "severity": "error"
+    },
+    {
+      "name": "protocol.layer-shell",
+      "state": "unknown",
+      "detail": "zwlr_layer_shell_v1: missing",
+      "action": "Choose a layer-shell compositor; workspace/window support degrades independently",
+      "required": true,
+      "severity": "warning"
+    },
+    {
+      "name": "wallpaper.owner",
+      "state": "disabled",
+      "detail": "No owned supervisor observed",
+      "action": "Explicitly start the configured wallpaper owner; doctor never starts one",
+      "required": false,
+      "severity": "info"
+    },
+    {
+      "name": "echo-cancel.effectiveness",
+      "state": "unknown",
+      "detail": "No physical acoustic validation performed",
+      "action": "Select both the virtual source and playback sink; module presence alone proves no cancellation",
+      "required": false,
+      "severity": "warning"
+    },
+    {
+      "name": "shortcuts.registration",
+      "state": "disabled",
+      "detail": "runtime binding enumeration unsupported",
+      "action": "Use Settings \u2192 Shortcuts setup/configure after explicitly enabling the owner service; doctor never requests grants",
+      "required": false,
+      "severity": "info"
+    }
+  ],
+  "example_note": "Actual unconfigured sandbox response, with other checks omitted; not a healthy-session certification."
+}

@@ -30,7 +30,7 @@ part InformationPage {
         group {
             show: info_tile_out > 0.001 and info_tile_page >= 0
             opacity: info_tile_out
-            text pick(info_page, "System", "Displays", "Date & Time", "Users", "Storage", "Generations", "Power") { at: info_mx + 12, info_my + 15; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+            text pick(info_page, "System", "Displays", "Date & Time", "Users", "Storage", info_platform_title, "Power") { at: info_mx + 12, info_my + 15; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60% }
             text pick(info_tile_page, info_big.0, info_big.4, info_big.5, info_big.6) { at: info_mx + 11, info_my + 70 + 0.308 * 40; anchor: left bottom; size: 40; weight: 200; family: "SF Pro Text"; color: ink_white; opacity: 92%; letter_move: -1.4 * letter, 0; measure: info_carry_measure; show: info_page != 6 }
             text "{round(power_percent * 100)}" { at: info_mx + 11, info_my + 70 + 0.308 * 40; anchor: left bottom; size: 40; weight: 200; family: "SF Pro Text"; color: ink_white; opacity: 92%; letter_move: -1.4 * letter, 0; measure: info_carry_power_measure; show: info_page == 6 and power_present and power_known }
             text pick(info_tile_page, info_unit.0, info_unit.4, info_unit.5, info_unit.6) { at: info_mx + 15 + info_carry_measure.width, info_my + 66; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_page != 6 }
@@ -61,7 +61,7 @@ part InformationPage {
         zone box info_back { from: info_ox + 18, 14; size: 78, 22; corner: 7; cursor: pointer; active: info_unfolded; label: "Back to the overview" }
         box { from: info_ox + 18, 14; size: 78, 22; corner: 7; color: ink_white; opacity: 6% + max(info_back.hover * 6%, info_back.pressed * 12%) }
         text "‹ Overview" { at: info_ox + 57, 25; anchor: center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
-        text pick(info_page, "System", "Displays", "Date & Time", "Users", "Storage", "Generations", "Power") { at: info_ox + 106, 25; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+        text pick(info_page, "System", "Displays", "Date & Time", "Users", "Storage", info_platform_title, "Power") { at: info_ox + 106, 25; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
         zone box info_refresh_hit { from: info_ox + info_w - 42, 14; size: 24, 22; corner: 7; cursor: pointer; active: info_unfolded; label: "Refresh information" }
         box { from: info_ox + info_w - 42, 14; size: 24, 22; corner: 7; color: ink_white; opacity: 6% + max(info_refresh_hit.hover * 6%, info_refresh_hit.pressed * 12%) }
         image info_refresh_icon { at: info_ox + info_w - 36, 19; size: 12, 12; tint: ink_white; opacity: 85% }

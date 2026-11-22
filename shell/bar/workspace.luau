@@ -1,48 +1,64 @@
+-- Output ownership is independent of the optional window/workspace protocols.
 return function(rail)
-    local available, report, preferred = {}, nil, ""
-    local function publish()
-        -- One preferred monitor shows only its own workspaces; otherwise the rail spans them all.
-        local output = preferred:find(",", 1, true) and "" or preferred
-        local monitors, seen = {}, {}
-        local highest, active = 5, nil
-        available = {}
-        for slot = 1, 10 do fact["ws_advertised." .. slot] = false end
-        for _, workspace in ipairs(report and report.list or {}) do
-            local id, monitor = workspace.id, workspace.monitor
-            if type(monitor) == "string" and monitor ~= "" and not monitor:find(",", 1, true) and not seen[monitor] then
-                monitors[#monitors + 1] = monitor
-                seen[monitor] = true
-            end
-            if type(id) == "number" and id == math.floor(id) and id >= 1 and (output == "" or monitor == output) then
-                highest = math.max(highest, id)
-                if id <= 10 then available[id] = true; fact["ws_advertised." .. id] = true end
-                if output ~= "" and workspace.active then active = id end
+    local available, report, preferred, outputs = {}, nil, "", {}
+    local function publish_outputs()
+        local names, present = {}, {}
+        for _, output in ipairs(outputs) do
+            local name = output.name
+            if type(name) == "string" and name ~= "" and not name:find(",", 1, true) and not present[name] then
+                names[#names + 1] = name; present[name] = true
             end
         end
-        if output == "" and report then
-            active = report.active
-            if type(active) ~= "number" or active <= 0 or active ~= math.floor(active) then active = nil end
+        table.sort(names)
+        local selected = {}
+        for name in preferred:gmatch("[^,]+") do
+            name = name:match("^%s*(.-)%s*$")
+            if present[name] then selected[#selected+1] = name end
         end
-        -- Unset means every monitor, and only the workspace report names them.
-        table.sort(monitors)
-        text.bar_outputs = preferred ~= "" and preferred or table.concat(monitors, ", ")
-        if report then rail.observe(math.min(highest, 10), active) end
+        -- A temporarily disconnected preferred output falls back to the live outputs.
+        text.bar_outputs = table.concat(#selected > 0 and selected or names, ", ")
     end
-    fact.ws_available = sys.watch("workspaces", function(value)
-        report = value
-        publish()
-    end)
-    if not fact.ws_available then text.ws_error = "This compositor does not report workspaces" end
+    local function publish()
+        local output = preferred:find(",", 1, true) and "" or preferred
+        local list, active = {}, nil
+        available = {}
+        for slot = 1, 10 do fact["ws_advertised." .. slot] = false; text["ws_name." .. slot] = "" end
+        for _, workspace in ipairs(report and report.list or {}) do
+            if workspace.id ~= nil and (output == "" or not workspace.monitor or workspace.monitor == "" or workspace.monitor == output) then
+                list[#list+1] = workspace
+            end
+        end
+        table.sort(list, function(a,b)
+            if type(a.id) == "number" and type(b.id) == "number" then return a.id < b.id end
+            return tostring(a.id) < tostring(b.id)
+        end)
+        -- Generic IDs are opaque. Keep an active workspace visible even beyond the first page.
+        local start = 1
+        for i,w in ipairs(list) do if w.active or report.active == w.id then start = math.floor((i-1)/10)*10+1; break end end
+        local slots = math.min(10, #list - start + 1)
+        for slot = 1, slots do
+            local workspace = list[start + slot - 1]
+            available[slot] = workspace.can_activate ~= false and workspace.id or nil
+            fact["ws_advertised." .. slot] = available[slot] ~= nil
+            text["ws_name." .. slot] = tostring(workspace.name or workspace.id)
+            if workspace.active or report.active == workspace.id then active = slot end
+        end
+        fact.ws_available = slots > 0
+        rail.observe(math.max(0, slots), active)
+        text.ws_error = report and (#list > 10 and "Showing active workspace page; use compositor shortcuts for other pages" or "") or "Workspace protocol unavailable"
+    end
+    sys.watch("outputs", function(value) outputs = value.list or {}; publish_outputs() end)
+    sys.watch("workspaces", function(value) report = value; publish() end)
     on("workspace_select", function(value)
-        if type(value) ~= "number" or value ~= math.floor(value) or value < 1 or value > 10 then return end
-        if not available[value] then text.ws_error = "Workspace is not advertised"; return end
-        local ok, err = pcall(sys.call, "workspaces.focus", value)
+        if type(value) ~= "number" or value ~= math.floor(value) or not available[value] then
+            text.ws_error = "Workspace activation unavailable"; return
+        end
+        local ok, err = pcall(sys.call, "workspaces.focus", available[value])
         text.ws_error = ok and "" or tostring(err)
     end)
-    return {
-        prefer = function(value)
-            preferred = type(value) == "string" and value or ""
-            publish()
-        end,
-    }
+    publish()
+    return { prefer = function(value)
+        preferred = type(value) == "string" and value or ""
+        publish_outputs(); publish()
+    end }
 end

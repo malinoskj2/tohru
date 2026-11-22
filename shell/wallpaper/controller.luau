@@ -257,6 +257,8 @@ return function()
                 if is_video(saved.path) and saved.pos > 0 then args[4] = string.format("%.2f", saved.pos) end
                 enqueue(args, nil, "load:" .. name)
                 enqueue({"pause", name, saved.paused and "yes" or "no"}, nil, "pause:" .. name)
+            else
+                enqueue({"stop", name}, nil, "load:" .. name)
             end
             playing[name] = {path = saved.path, pos = saved.pos, duration = playing[name] and playing[name].duration or 0, paused = saved.paused}
         end
@@ -505,6 +507,11 @@ return function()
             local ok, decoded = pcall(json.decode, out)
             if not ok then report("Could not read the wallpapers"); return end
             adopt(decoded)
+            if decoded.owner == "disabled" then report("Wallpaper ownership is disabled; enable wallpaper.enabled to let Tohru manage it")
+            elseif decoded.owner == "unavailable" then report("Wallpaper backend unavailable; start tohru-wallpaper.service and inspect its journal")
+            elseif type(decoded.errors) == "table" then
+                for name, message in pairs(decoded.errors) do report(name .. ": " .. tostring(message)); break end
+            end
             publish()
             place_tabs(false)
             want_thumbs()

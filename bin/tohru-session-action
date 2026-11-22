@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Session menu/idle actions. Successful systemd start means compositor-confirmed lock."""
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+from tohru_portability import probe
+
+
+def confirmed():
+    session=os.environ.get("XDG_SESSION_ID")
+    if not session:return
+    out,_=probe(["busctl","--system","call","org.freedesktop.login1","/org/freedesktop/login1",
+                 "org.freedesktop.login1.Manager","GetSession","s",session],timeout=1)
+    if out:
+        parts=shlex.split(out)
+        if len(parts)==2 and parts[0]=="o" and parts[1].startswith("/org/freedesktop/login1/session/"):
+            probe(["busctl","--system","call","org.freedesktop.login1",parts[1],
+                   "org.freedesktop.login1.Session","SetLockedHint","b","true"],timeout=1)
+
+
+def lock_held():
+    import hashlib
+    import json
+    import secrets
+    import socket
+    import tempfile
+    from tohru_portability import session_directory
+    # Fresh native reply with a unique challenge; stale socket/files and a
+    # systemd service still marked active after a crash cannot pass this check.
+    runtime=session_directory().parent
+    identity=os.environ.get("WAYLAND_DISPLAY", "")+"\0"+os.environ.get("XDG_SESSION_ID", "")
+    endpoint=runtime/("tohru-lock-"+hashlib.sha256(identity.encode()).hexdigest()[:16]+".status")
+    nonce=secrets.token_hex(16)
+    try:
+        with tempfile.TemporaryDirectory(prefix="tlq-",dir=runtime) as directory:
+            with socket.socket(socket.AF_UNIX,socket.SOCK_DGRAM) as client:
+                client.settimeout(1)
+                client.bind(str(Path(directory)/"r"))
+                client.connect(str(endpoint))
+                client.send(nonce.encode())
+                result=json.loads(client.recv(1024))
+                return result.get("schema")==1 and result.get("nonce")==nonce and result.get("held") is True and type(result.get("cycle")) is int and result["cycle"]>0
+    except (OSError,ValueError):
+        return False
+
+
+def main(args):
+    if args==["confirmed"]:
+        confirmed();return 0
+    if len(args)!=1 or args[0] not in ("lock","sleep"):
+        raise ValueError("usage: tohru-session-action lock|sleep")
+    # Type=notify + native ext-session-lock ready: no request-acceptance shortcut.
+    out,state=probe(["systemctl","--user","start","tohru-lock.service"],timeout=35)
+    if out is None:
+        raise ValueError(f"lock not confirmed ({state}); install generated tohru-lock.service and inspect journalctl --user -u tohru-lock; not suspending")
+    active,_=probe(["systemctl","--user","is-active","tohru-lock.service"],timeout=2)
+    if not active or active.strip()!="active":
+        raise ValueError("locker is no longer active; not suspending")
+    if not lock_held():
+        raise ValueError("native locker no longer confirms the current lock cycle; not suspending")
+    if args[0]=="sleep":
+        result,state=probe(["systemctl","suspend"],timeout=10)
+        if result is None:raise ValueError(f"suspend unavailable ({state}); locker remains owned by systemd")
+    return 0
+
+
+if __name__=="__main__":
+    try:sys.exit(main(sys.argv[1:]))
+    except (ValueError,OSError) as error:
+        print(f"tohru-session-action: {error}",file=sys.stderr);sys.exit(1)

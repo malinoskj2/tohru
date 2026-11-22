@@ -17,19 +17,27 @@ Each role is its own `pleamar` process, started by a wrapper in `bin/`. Each can
 | `tohru-launcher` | `shell/launcher/entry.plm` | `tohru-launcher-run` | Launcher: a full-screen scrim layer named `tohru-launcher-backdrop` under a full-screen layer with the deck (a frosted tab sidebar beside a clearer grid stage) |
 | `tohru-notifications` | `shell/notifications/notifications.plm` | `tohru-notifications-run` | Owns `org.freedesktop.Notifications`; must be the only notification daemon. Keeps whether something arrived unseen (saved across restarts) and Do Not Disturb (not saved) |
 | `tohru-settings` | `shell/settings/settings.plm` | `tohru-settings-run` | Settings window, started on demand. Sets `TOHRU_SHELL=1` |
-| `tohru-lock` | `shell/lock/lock.plm`, else `shell/lock/plain.plm` | `tohru-lock` | The lock screen, started by hypridle's `lock_cmd` or `tohru lock`. Sets `TOHRU_SHELL=1` and `TOHRU_LOCKER=1`. Exits when unlocked |
+| `tohru-lock` | `shell/lock/lock.plm`, else `shell/lock/plain.plm` | `tohru-lock` | The lock screen, started by the on-demand user unit, an external idle manager or `tohru lock`. Sets `TOHRU_SHELL=1` and `TOHRU_LOCKER=1`. Exits when unlocked |
 | `tohru-greeter` | `shell/greeter/greeter.plm`, else `shell/greeter/plain.plm` | `tohru-greeter` | Pre-session `greetd` login screen, started inside a minimal compositor by `services.tohru-greeter`. Sets `TOHRU_SHELL=1`, `TOHRU_GREETER=1`, `PLEAMAR_NO_PORTAL=1`, `PLEAMAR_GENERIC=1`. Speaks `GREETD_SOCK` natively and exits on `start_session` |
 | `tohru-polkit` | `shell/polkit/polkit.plm` | `tohru-polkit-run` | Registers as the session's polkit authentication agent when `polkit.agent` is true, and shows the Frosted Vessel dialog on a keyboard-exclusive overlay layer. Talks to PAM only through polkit's helper. Sets `TOHRU_SHELL=1` |
 
 The wrappers run `pleamar --scene <scene> --no-hud --stall 0 --answer-as <role>`. The role name is what other processes and the CLI address.
 
-Tohru has no idle handling, wallpaper player or screenshot tool. Its polkit agent is off unless `polkit.agent` is set. The bar's wallpaper popup chooses what the `~/nix` mpvpaper units play, through `bin/tohru-wallpaper`; it plays nothing itself. The session menu's Lock runs `loginctl lock-session`, which hypridle's `lock_cmd` answers by starting `tohru-lock`. Sleep runs `loginctl lock-session` and, only if that succeeds, `systemctl suspend`. Restart, Shut Down and Log Out use Pleamar's session services.
+Standalone integration is described in [standalone.md](standalone.md). Wallpaper
+ownership is off by default; its foreground supervisor owns only its child
+mpvpaper processes and private session sockets. Optional swayidle ownership is
+independent of the shell. Session Lock/Sleep invokes `tohru-session-action`, which
+starts the on-demand systemd locker and requires compositor-confirmed readiness
+before requesting suspend. PAM/native unlock authority and plain-style recovery
+remain in the existing locker. There is no screenshot tool. Polkit stays opt-in.
+The shared service specification under `share/tohru/session` is consumed by both
+Home Manager and standalone generation.
 
 ## Lock screen
 
 `tohru-lock` locks with ext-session-lock-v1 and checks the password with PAM. The service is the first of `tohru-lock`, `pleamar` and `hyprlock` in `/etc/pam.d`, else `login`. Failures keep the session locked:
 
-- One locker per session (`flock` on `$XDG_RUNTIME_DIR/tohru-lock.lock`); without `flock` it locks anyway, and the compositor refuses a second lock (exit 3, not retried).
+- One locker per display/session (`flock` on a private hashed runtime path). Missing required flock is an explicit failure. The compositor also refuses a second lock (exit 3, not retried).
 - Before locking, the wrapper runs `pleamar --check` on the styled scene, which compiles its shaders. A scene that fails locks with `plain.plm`, which has no shaders and no screen capture.
 - Any other exit than 0 (a crash, a kill, exit 75 for a quit while still locked) starts the plain scene again. The compositor keeps the session locked meanwhile; Hyprland needs `misc:allow_session_lock_restore = true` to let the new locker take over.
 - Only the native side reads the password field. Luau sees bullets and a verdict (`lock_auth`: 0 idle, 1 checking, 2 accepted, 3 rejected, 4 PAM unavailable). The password is zeroed once PAM has answered.
@@ -86,6 +94,8 @@ Requests report that Pleamar accepted them, not that the action finished. If no 
 Numbers 0002 to 0004 and 0007 to 0009 belonged to features that were removed or moved into the scenes.
 
 ## Luau bindings and the Rust library
+
+New portability patches 0034–0036 add independent `outputs` discovery (wl_output/xdg-output), explicit generic workspace activation capability, native configurable text/display/monospace font roles, compositor-confirmed systemd locker readiness, and the read-only `--tohru-capabilities` runtime marker. Output topology is never derived from workspaces.
 
 The bindings in `runtime/pleamar/bindings/` are copied into the Pleamar source as `src/tohru_settings.rs` and `src/tohru_info.rs`. They wrap the `tohru-shell` crate in `runtime/`:
 

@@ -13,7 +13,7 @@ Only the bar and Settings processes read settings; the bar forwards `notificatio
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `bar.preferred_output` | string, up to 256 characters | `""` | Output name (such as `DP-1`) for the bar, its popups and the volume OSD. Empty means every output. With an output set, the workspace switcher counts only that output's workspaces |
+| `bar.preferred_output` | string, up to 256 characters | `""` | Output name (such as `DP-1`) for the bar, its popups and the volume OSD. Empty means every output. With an output set, workspace monitor metadata filters its ribbon; unknown metadata remains visible |
 | `bar.mooncoil` | boolean | `false` | Show the Mooncoil mark at the left of the bar |
 | `bar.info_button` | boolean | `false` | Show the System information button in the bar's tray |
 | `bar.about_button` | boolean | `false` | Show the About Tohru button in the bar's tray |
@@ -112,14 +112,47 @@ tts_model = "/home/me/models/kokoro-82m"
 
 `/home/me/models/kokoro-82m` holds `model.onnx`, `tokenizer.json` and, optionally, `voices/`. The same paths with `tohru config set assistant.vad_model /home/me/models/silero-vad/silero_vad.onnx` and so on, or in [Home Manager](nix.md#voice-models).
 
-Echo cancellation is configured at the PipeWire level via the Home Manager option `programs.tohru.assistant.voice.echoCancel` (enabled by default whenever `programs.tohru.assistant.voice.enable` is true), which installs `~/.config/pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf` without changing the default audio devices. `TOHRU_VOICE_SOURCE` and `TOHRU_VOICE_SINK` override the PipeWire capture source and TTS playback sink that `tohru-voice` selects.
+Echo cancellation is configured at the PipeWire level via the Home Manager option `programs.tohru.assistant.voice.echoCancel` (explicit opt-in, default false), which installs `~/.config/pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf` without changing the default audio devices. `TOHRU_VOICE_SOURCE` and `TOHRU_VOICE_SINK` override the PipeWire capture source and TTS playback sink that `tohru-voice` selects.
+
+## Standalone lifecycle and fonts
+
+These keys share the native schema, TOML layers and `tohru config set KEY VALUE`.
+All new keys honor `TOHRU_MANAGED_CONFIG`. Helpers read managed values from disk;
+restart their services after changing ownership, executable/options or environment.
+
+| Key | Default | Effect |
+|---|---|---|
+| `appearance.font_text` | `"Noto Sans"` | UI body family |
+| `appearance.font_display` | `"Noto Sans"` | UI headings family |
+| `appearance.font_mono` | `"DejaVu Sans Mono"` | Monospace UI family |
+| `shortcuts.mode` | `"compositor"` | `compositor`, `portal` or `disabled`; portal ownership requires explicit service start/setup |
+| `shortcuts.launcher_trigger` | `""` | Optional preferred trigger request for portal-owned launcher action |
+| `shortcuts.session_trigger` | `""` | Optional preferred trigger request for portal-owned session-menu action |
+| `shortcuts.assistant_trigger` | `""` | Optional preferred trigger request for portal-owned assistant action |
+| `wallpaper.enabled` | `false` | Explicitly allow Tohru wallpaper ownership |
+| `wallpaper.backend` | `"mpvpaper"` | Supported still/video backend |
+| `wallpaper.directory` | `""` | Empty uses `~/Pictures/Wallpapers`; otherwise absolute directory |
+| `wallpaper.assignments` | `""` | Empty uses `$XDG_STATE_HOME/tohru/wallpaper/assignments.json`; otherwise absolute path |
+| `wallpaper.executable` | `"mpvpaper"` | Executable name or absolute path |
+| `wallpaper.options` | `"no-audio loop-file=inf"` | libmpv options, excluding socket/config/script overrides |
+| `idle.owner` | `"external"` | `external`, `disabled` or `tohru`; never starts a second known idle owner |
+| `idle.lock_seconds` | `300` | 0 disables idle lock, otherwise 1–86400 seconds |
+| `idle.suspend_seconds` | `0` | 0 disables idle suspend; otherwise greater than lock_seconds, up to 86400 |
+| `assistant.voice_python` | `"python3"` | Keep packaged interpreter by default; select another executable/absolute venv Python explicitly |
+| `assistant.voice_environment` | `""` | Optional absolute TOML file with `[environment]` string entries; never shell-sourced |
+
+Font controls are in Appearance; managed font values are read-only there. Font
+changes apply on component restart and include greeter/lock. Settings → Shortcuts
+shows read-only compositor ownership/runtime observations and a separate opt-in
+portal action owner with desktop-controlled Setup/Configure; no invented bindings. [standalone.md](standalone.md) explains supported protocols, generated
+units, safe ownership setup, PipeWire AEC, voice dependencies and greetd templates.
 
 ## Precedence
 
 From lowest to highest: built-in defaults, the writable file, the managed file, runtime overrides.
 
 - Editing a key that the managed file does not set (in Settings or with `tohru config set`) applies at once and is written to the writable file.
-- Editing a key that the managed file sets applies at once, survives `tohru config reload`, but is never written and ends when the process exits. Settings marks these rows as Nix managed.
+- Editing a key that the managed file sets applies at once, survives `tohru config reload`, but is never written and ends when the process exits. Settings marks these rows as managed.
 - Settings is its own process, so its runtime overrides live there. It forwards them to the bar, which keeps its copy until it exits.
 
 ## Changing settings at runtime
@@ -142,6 +175,6 @@ tohru settings-error                        # the last settings error, if any
 
 These commands talk to the running bar. They report that the bar accepted the request, not that it succeeded; check `tohru status --json` or `tohru settings-error` afterwards. Changes made with the CLI reach an open Settings window the next time it is opened.
 
-The Settings window has Bar, Appearance and System pages. It shows `bar.preferred_output` but does not offer a control for it, and does not show `polkit.agent`. The lock style and the notification position are on the Appearance page; clicking one steps to the next value.
+The Settings window has Bar, Appearance, System and Shortcuts pages. It shows `bar.preferred_output` but does not offer a control for it, and does not show `polkit.agent`. The lock style and the notification position are on the Appearance page; clicking one steps to the next value.
 
 The locker is a separate process that reads the files when it locks, so a runtime override (a change to a Nix-managed `lock.style` made in Settings or with `tohru config set`) does not reach it; change `programs.tohru.lock.style` instead.

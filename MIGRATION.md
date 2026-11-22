@@ -1,3 +1,7 @@
+> Historical migration record. Current standalone wallpaper/idle/locking and
+> packaging behavior supersedes the external workstation setup below; see
+> [docs/standalone.md](docs/standalone.md). No personal Nix checkout is required.
+
 # Migrating from j2bar to Tohru
 
 Living checklist for replacing j2bar on the `home` (and `mac-vm`) desktop with

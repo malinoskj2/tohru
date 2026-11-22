@@ -1,0 +1,47 @@
+--- a/src/platform/wayland.rs
++++ b/src/platform/wayland.rs
+@@ -2303,6 +2303,14 @@
+     fn locked(&mut self, _: &Connection, _: &QueueHandle<Self>, _: smithay_client_toolkit::session_lock::SessionLock) {
+         println!("lock   · the session is locked");
+         crate::tohru_lock::held();
++        // READY is sent only after ext-session-lock confirms ownership. systemctl start
++        // may now complete; merely accepting a lock request never sends readiness.
++        if std::env::var_os("TOHRU_LOCKER").is_some() {
++            let _ = std::process::Command::new("timeout").args(["3", "tohru-session-action", "confirmed"]).status();
++            if std::env::var_os("NOTIFY_SOCKET").is_some() {
++                let _ = std::process::Command::new("timeout").args(["2", "systemd-notify", "--ready"]).status();
++            }
++        }
+         let _ = self.to_render.send(ToRender::LockScreen(true));
+     }
+     /// It didn't grant it —there's already another locker—, or it has ended it.
+--- a/src/text.rs
++++ b/src/text.rs
+@@ -281,6 +281,27 @@
+         let (family, features) = match c.family.and_then(|f| f.split_once(':')) {
+             Some((name, tags)) => (Some(name), Some(tags)),
+             None => (c.family, None),
++        };
++        // Legacy scene family names are semantic text/display roles. Read once per
++        // process; a font change requires restarting the component (including greeter).
++        static FONTS: std::sync::OnceLock<(String, String, String)> = std::sync::OnceLock::new();
++        let fonts = FONTS.get_or_init(|| {
++            use tohru_shell::settings::{Key, Owner, Value};
++            let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
++            let config = std::env::var_os("XDG_CONFIG_HOME").filter(|p| !p.is_empty()).map(std::path::PathBuf::from).unwrap_or_else(|| home.join(".config"));
++            let managed = std::env::var_os("TOHRU_MANAGED_CONFIG").filter(|p| !p.is_empty()).map(std::path::PathBuf::from);
++            let owner = Owner::load(config.join("tohru/config.toml"), managed).ok();
++            let get = |key| match owner.as_ref().map(|o| o.get(key).value) {
++                Some(Value::Text(v)) => v,
++                _ => "Noto Sans".to_owned(),
++            };
++            (get(Key::FontText), get(Key::FontDisplay), get(Key::FontMono))
++        });
++        let family = match family {
++            Some("SF Pro Text") => Some(fonts.0.as_str()),
++            Some("SF Pro Display") => Some(fonts.1.as_str()),
++            Some("SF Mono") => Some(fonts.2.as_str()),
++            other => other,
+         };
+         let mut attrs = Attrs::new().family(family.map_or(Family::SansSerif, Family::Name)).weight(Weight(c.weight));
+         if let Some(tags) = features {

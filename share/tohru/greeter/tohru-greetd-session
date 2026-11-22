@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+export PATH=/usr/local/bin:/usr/bin:/bin
+export TOHRU_MANAGED_CONFIG=/etc/greetd/tohru.toml
+export TOHRU_GREETER_SESSIONS_DIRS=/usr/local/share:/usr/share
+export TOHRU_GREETER_STATE_DIR=/var/lib/tohru-greeter
+export XDG_CACHE_HOME="$XDG_RUNTIME_DIR/tohru-greeter-cache"
+mkdir -p "$XDG_CACHE_HOME"
+exec /usr/local/bin/tohru-greeter

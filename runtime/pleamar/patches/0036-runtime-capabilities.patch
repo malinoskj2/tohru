@@ -1,0 +1,10 @@
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1,3 +1,7 @@
+ fn main() {
++    if std::env::args().any(|arg| arg == "--tohru-capabilities") {
++        println!(r#"{"schema":1,"runtime":"pleamar","version":"0.7.27","tohru_portability":1,"outputs":"wl_output","workspaces":"ext-workspace-v1-or-hyprland","lock_ready":"ext-session-lock-confirmed","lock_state":"native-cycle","fonts":"native-config"}"#);
++        return;
++    }
+     pleamar::run();
+ }

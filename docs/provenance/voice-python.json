@@ -1,0 +1,127 @@
+{
+  "checked": "2026-11-22",
+  "note": "Candidate CPython 3.11 CPU environment. Metadata verified against PyPI; installation/inference not run. Transitive dependencies are resolved by pip and are not hash-locked here.",
+  "packages": [
+    {
+      "package": "numpy",
+      "version": "2.2.6",
+      "source": "https://pypi.org/pypi/numpy/2.2.6/json",
+      "requires_python": ">=3.10",
+      "artifacts": [
+        {
+          "filename": "numpy-2.2.6-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+          "sha256": "ba10f8411898fc418a521833e014a77d3ca01c15b0c6cdcce6a0d2897e6dbbdf",
+          "url": "https://files.pythonhosted.org/packages/b3/dd/2238b898e51bd6d389b7389ffb20d7f4c10066d80351187ec8e303a5a475/numpy-2.2.6-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+        },
+        {
+          "filename": "numpy-2.2.6.tar.gz",
+          "sha256": "e29554e2bef54a90aa5cc07da6ce955accb83f21ab5de01a62c8478897b264fd",
+          "url": "https://files.pythonhosted.org/packages/76/21/7d2a95e4bba9dc13d043ee156a356c0a8f0c6309dff6b21b4d71a073b8a8/numpy-2.2.6.tar.gz"
+        }
+      ]
+    },
+    {
+      "package": "onnxruntime",
+      "version": "1.23.2",
+      "source": "https://pypi.org/pypi/onnxruntime/1.23.2/json",
+      "requires_python": ">=3.10",
+      "artifacts": [
+        {
+          "filename": "onnxruntime-1.23.2-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+          "sha256": "da44b99206e77734c5819aa2142c69e64f3b46edc3bd314f6a45a932defc0b3e",
+          "url": "https://files.pythonhosted.org/packages/e9/80/113381ba832d5e777accedc6cb41d10f9eca82321ae31ebb6bcede530cea/onnxruntime-1.23.2-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+        }
+      ]
+    },
+    {
+      "package": "misaki",
+      "version": "0.9.4",
+      "source": "https://pypi.org/pypi/misaki/0.9.4/json",
+      "requires_python": "<3.13,>=3.8",
+      "artifacts": [
+        {
+          "filename": "misaki-0.9.4-py3-none-any.whl",
+          "sha256": "90e2eeb169786c014c429e5058d2ea6bcd02d651f2a24450ba6c9ffc0f8da15a",
+          "url": "https://files.pythonhosted.org/packages/82/ec/0ee4110ddb54278b8f21c40a140370ae8f687036c4edf578316602697c56/misaki-0.9.4-py3-none-any.whl"
+        },
+        {
+          "filename": "misaki-0.9.4.tar.gz",
+          "sha256": "3960fa3e6de179a90ee8e628446a4a4f6b8c730b6e3410999cf396189f4d9c40",
+          "url": "https://files.pythonhosted.org/packages/1a/c7/fb01370a76585b46595a01b52f18e65c8ba6d7a313a05e5d9fff0a8e1c69/misaki-0.9.4.tar.gz"
+        }
+      ]
+    },
+    {
+      "package": "spacy",
+      "version": "3.8.11",
+      "source": "https://pypi.org/pypi/spacy/3.8.11/json",
+      "requires_python": "<3.15,>=3.9",
+      "artifacts": [
+        {
+          "filename": "spacy-3.8.11-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+          "sha256": "f860f9d51c1aeb2d61852442b232576e4ca4d239cb3d1b40ac452118b8eb2c68",
+          "url": "https://files.pythonhosted.org/packages/9d/3a/6c44c0b9b6a70595888b8d021514ded065548a5b10718ac253bd39f9fd73/spacy-3.8.11-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+        },
+        {
+          "filename": "spacy-3.8.11.tar.gz",
+          "sha256": "54e1e87b74a2f9ea807ffd606166bf29ac45e2bd81ff7f608eadc7b05787d90d",
+          "url": "https://files.pythonhosted.org/packages/59/9f/424244b0e2656afc9ff82fb7a96931a47397bfce5ba382213827b198312a/spacy-3.8.11.tar.gz"
+        }
+      ]
+    },
+    {
+      "package": "phonemizer",
+      "version": "3.3.0",
+      "source": "https://pypi.org/pypi/phonemizer/3.3.0/json",
+      "requires_python": ">=3.8",
+      "artifacts": [
+        {
+          "filename": "phonemizer-3.3.0-py3-none-any.whl",
+          "sha256": "17afaa98691fe73b025dd8d8727b0e67cc376c5e7ee27590853e457fb3f43602",
+          "url": "https://files.pythonhosted.org/packages/b6/23/e8d67c2052e132181c4c9027c2d8ed9e37e8acb27acfc13ed2d0c41ed850/phonemizer-3.3.0-py3-none-any.whl"
+        },
+        {
+          "filename": "phonemizer-3.3.0.tar.gz",
+          "sha256": "5e0c38122effe0b331a24e674aff256874ece169d70a9cf1120337b56f8e3d0c",
+          "url": "https://files.pythonhosted.org/packages/c4/ff/3574c55a71b42ad6944a5bf0a7d59f0251ea2ba47e51a5c4005e32e9145c/phonemizer-3.3.0.tar.gz"
+        }
+      ]
+    },
+    {
+      "package": "num2words",
+      "version": "0.5.14",
+      "source": "https://pypi.org/pypi/num2words/0.5.14/json",
+      "requires_python": null,
+      "artifacts": [
+        {
+          "filename": "num2words-0.5.14-py3-none-any.whl",
+          "sha256": "1c8e5b00142fc2966fd8d685001e36c4a9911e070d1b120e1beb721fa1edb33d",
+          "url": "https://files.pythonhosted.org/packages/d6/5b/545e9267a1cc080c8a1be2746113a063e34bcdd0f5173fd665a5c13cb234/num2words-0.5.14-py3-none-any.whl"
+        },
+        {
+          "filename": "num2words-0.5.14.tar.gz",
+          "sha256": "b066ec18e56b6616a3b38086b5747daafbaa8868b226a36127e0451c0cf379c6",
+          "url": "https://files.pythonhosted.org/packages/f6/58/ad645bd38b4b648eb2fc2ba1b909398e54eb0cbb6a7dbd2b4953e38c9621/num2words-0.5.14.tar.gz"
+        }
+      ]
+    },
+    {
+      "package": "sherpa-onnx",
+      "version": "1.12.40",
+      "source": "https://pypi.org/pypi/sherpa-onnx/1.12.40/json",
+      "requires_python": ">=3.7",
+      "artifacts": [
+        {
+          "filename": "sherpa_onnx-1.12.40-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+          "sha256": "076717aa2f3dbe0c9e515982d99117bab832b6faadf16a0279b8b3b9d69c283b",
+          "url": "https://files.pythonhosted.org/packages/3f/f2/0b3bb630f56661b2971890b1833f3cca5313692962068f75bc0a68b4591a/sherpa_onnx-1.12.40-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+        },
+        {
+          "filename": "sherpa_onnx-1.12.40.tar.gz",
+          "sha256": "08b7234679606c3d3f68d579382e312a5394fcbb7a72e91992ffff47ce877663",
+          "url": "https://files.pythonhosted.org/packages/9f/74/7e75912344eb26a24e501ec5d8f966a2f80895d419cc45d4758a4dc29c38/sherpa_onnx-1.12.40.tar.gz"
+        }
+      ]
+    }
+  ]
+}

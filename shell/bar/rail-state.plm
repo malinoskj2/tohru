@@ -28,7 +28,7 @@ part RailState {
     let ws_width = rail.slots.0 * 16
     text ws_error = ""
     text bar_outputs = ""
-    repeat i in 1..11 { fact ws_advertised.$i = false }
+    repeat i in 1..11 { fact ws_advertised.$i = false; text ws_name.$i = "" }
     fact ws_available = false
     event workspace_select ->
 }

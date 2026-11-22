@@ -68,7 +68,7 @@ With a standalone Home Manager flake, pass `inputs` through `extraSpecialArgs`, 
 | `programs.tohru.lock.style` | `null` | Sets the managed `lock.style` |
 | `programs.tohru.notifications.position` | `null` | Sets the managed `notifications.position` |
 | `programs.tohru.assistant.voice.enable` | `true` | False writes `assistant.voice = false` and builds the package without the voice service or its Python dependencies |
-| `programs.tohru.assistant.voice.echoCancel` | `programs.tohru.assistant.voice.enable` | Installs `~/.config/pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf` (`libpipewire-module-echo-cancel`, WebRTC AEC) with `tohru-echo-cancel-source` and `tohru-echo-cancel-sink` at priority 0 so default audio devices stay unchanged |
+| `programs.tohru.assistant.voice.echoCancel` | `false` | Installs `~/.config/pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf` (`libpipewire-module-echo-cancel`, WebRTC AEC) with `tohru-echo-cancel-source` and `tohru-echo-cancel-sink` at priority 0 so default audio devices stay unchanged |
 | `programs.tohru.assistant.voice.source` | `null` | Sets `assistant.voice_source`; empty selects automatically |
 | `programs.tohru.assistant.voice.wake` | `null` | Sets the managed `assistant.voice_wake` (`kws` or `asr`) |
 | `programs.tohru.assistant.voice.vadModel` | `null` | Sets the managed `assistant.vad_model` |
@@ -113,7 +113,7 @@ programs.tohru.assistant = {
 
 ### Services
 
-With `systemd.enable`, the module defines four user services, and a fifth with `polkit.enable`:
+With `systemd.enable`, the module defines the selected components plus an on-demand locker. `systemd.components` defaults to bar, session, launcher and notifications. Add idle/wallpaper only after explicit ownership configuration. It reads the same service specification as standalone `tohru session-units`:
 
 | Unit | Runs |
 |---|---|
@@ -121,9 +121,13 @@ With `systemd.enable`, the module defines four user services, and a fifth with `
 | `tohru-session` | `tohru-session-run` |
 | `tohru-launcher` | `tohru-launcher-run` |
 | `tohru-notifications` | `tohru-notifications-run` |
-| `tohru-polkit` | `tohru-polkit-run`, only with `polkit.enable` |
+| `tohru-polkit` | `tohru-polkit-run`, with `polkit.enable` or explicit component selection |
+| `tohru-wallpaper` | `tohru-wallpaper serve`, optional |
+| `tohru-idle` | `tohru-idle`, optional |
+| `tohru-shortcuts` | optional app-scoped portal owner; `settings.shortcuts.mode = "portal"`, then explicit Settings Setup |
+| `tohru-lock` | on-demand `tohru-lock`, Type=notify; no WantedBy |
 
-Each is `WantedBy`, `PartOf` and `After` the configured target, restarts on failure after 2 seconds, and only starts when `WAYLAND_DISPLAY` is in the user manager's environment. Each gets `TOHRU_MANAGED_CONFIG` in its unit environment. `tohru-launcher` uses `KillMode=process`, so restarting it does not kill applications it launched. Settings is not a service; it starts on demand.
+Each selected startup service is `WantedBy`, `PartOf` and `After` the configured target, restarts on failure after 2 seconds, and only starts when `WAYLAND_DISPLAY` is in the user manager's environment. Each gets `TOHRU_MANAGED_CONFIG` in its unit environment. `tohru-launcher` uses `KillMode=process`, so restarting it does not kill applications it launched. Settings is not a service; it starts on demand.
 
 The services inherit the systemd user manager's environment. Your compositor session must import `WAYLAND_DISPLAY`, plus the `PATH` and `XDG_DATA_DIRS` the launcher uses to find and start applications, before the target starts. UWSM does this, or run this from your compositor's startup:
 
@@ -149,7 +153,7 @@ and on NixOS:
 security.pam.services.tohru-lock = { };
 ```
 
-Without that service the locker uses `pleamar`'s or `hyprlock`'s PAM service if one exists, else `login`'s. On Hyprland keep `misc:allow_session_lock_restore = true`, so that after a crash the plain style can take over the lock. The session menu's Lock and Sleep go through `loginctl lock-session`, which hypridle answers with `lock_cmd`; `tohru lock` starts the locker directly.
+Without that service the locker uses `pleamar`'s or `hyprlock`'s PAM service if one exists, else `login`'s. On Hyprland keep `misc:allow_session_lock_restore = true`, so that after a crash the plain style can take over the lock. The session menu starts the on-demand locker and waits for native compositor-confirmed readiness before suspend. External hypridle can still use the foreground locker command; optional `settings.idle.owner = "tohru"` and the idle component provide standalone swayidle ownership. Do not enable both owners. `tohru lock` still starts the locker directly.
 
 ## Login screen (NixOS)
 
@@ -164,7 +168,7 @@ Import `inputs.tohru.nixosModules.tohru-greeter` (or `default`) in your NixOS co
     enable = true;
     style = "flooded-monolith"; # any of the 10 lock styles, or "plain"
     preferredOutput = "DP-2";
-    defaultUser = "jesse";
+    defaultUser = "alice";
     defaultSession = "hyprland-uwsm";
     monitors = [
       { output = "DP-1"; mode = "1920x1080@144"; position = "0x0"; transform = 1; }
@@ -172,12 +176,12 @@ Import `inputs.tohru.nixosModules.tohru-greeter` (or `default`) in your NixOS co
     ];
     # Optional static wallpaper (null uses the dusk gradient) and optional per-user avatars:
     # wallpaper = ./greeter-wallpaper.png;
-    # avatars.jesse = ./avatar.png;
+    # avatars.alice = ./avatar.png;
   };
 }
 ```
 
-The module configures `services.greetd` on VT1 (leaving `tty2–tty6` live for `Ctrl+Alt+F2` recovery), hosts `tohru-greeter` in a minimal isolated Hyprland (or Sway) session with a `tuigreet` fallback on compositor error, adds `video`/`render` groups to `greeter`, enables `services.accounts-daemon` so `tohru avatar set FILE` works across `0700` home directories, and installs a scoped Polkit rule for Sleep/Restart/Shut Down. Fonts required by scenes (`SF Pro Display`, `SF Pro Text`) must be in NixOS `fonts.packages` so the `greeter` user can read them. `nix/tests/nixos.nix` checks the NixOS module evaluation.
+The module configures `services.greetd` on VT1 (leaving `tty2–tty6` live for `Ctrl+Alt+F2` recovery), hosts `tohru-greeter` in a minimal isolated Hyprland (or Sway) session with a `tuigreet` fallback on compositor error, adds `video`/`render` groups to `greeter`, enables `services.accounts-daemon` so `tohru avatar set FILE` works across `0700` home directories, and installs a scoped Polkit rule for Sleep/Restart/Shut Down. The module installs Noto fonts system-wide; native appearance font settings also apply to the greeter. No SF Pro installation is required. `nix/tests/nixos.nix` checks the NixOS module evaluation.
 
 The Hyprland greeter config is Lua, so `compositor = "hyprland"` needs Hyprland 0.57 or later; the module asserts this. `extraCompositorConfig` is appended verbatim to that config, so for Hyprland it must be Lua (`hl.config({ ... })`, `hl.monitor({ ... })`, `hl.env(...)`), and for Sway it is Sway config syntax. The greeter starts on `hyprland.start` and leaves Hyprland with `hyprctl dispatch 'hl.dsp.exit()'` once it exits.
 
@@ -223,3 +227,7 @@ Its animation leaves (`hyprfocusIn`, `hyprsheetIn`, `hyprrecedeTilt` and the res
 - Pleamar is pinned separately in `runtime/pleamar/pin.json`: version 0.7.27, revision `dc902feb0ee9058b7db7c2bc2c9d59d9f655fd86`, with the archive hash. Both the Nix package and `runtime/pleamar/prepare.sh` read the archive and hash from `pin.json`, and both apply every `.patch` file in `runtime/pleamar/patches/` in name order. Changing the pin means editing `pin.json`, rebasing those patches and updating `runtime/pleamar/Cargo.lock`.
 
 `nix/tests/home-manager.nix` evaluates the module against a Home Manager input you supply and checks the options and units above.
+
+Standalone services, read-only doctor, greetd templates and PipeWire setup are documented in [standalone.md](standalone.md). Managed `settings` can set all wallpaper, idle, font and voice environment keys without adding Nix-specific runtime paths. `systemd.components` uses the shared `share/tohru/session/services.json`; do not install generated standalone units on top of HM units.
+
+The optional shortcuts component packages dbus-fast independently of voice. Compositor-managed bindings remain read-only; portal registration/configuration is explicitly user-triggered and publishes backend-confirmed triggers. See the standalone shortcut instructions for v1/v2 support and restart/grant semantics.

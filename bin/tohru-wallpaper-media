@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+readonly wall_dir="${TOHRU_WALLPAPER_DIR:?}"
+readonly cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/tohru/wallpaper"
+readonly video_re='.*\.(mp4|webm|mkv|mov|gif)'
+die() { printf 'tohru-wallpaper: %s\n' "$*" >&2; exit 1; }
+valid_monitor() { [[ -n "$1" && "$1" != */* ]] || die 'invalid output'; }
+playing_of() { "$(dirname -- "${BASH_SOURCE[0]}")/tohru-wallpaper" playing "$1"; }
+thumb_one() {
+  local file="$1"
+  local key dir meta seek probe
+  key="$(stat -L -c '%s %Y' -- "$file" | { read -r size mtime; printf '%s\0%s\0%s' "$file" "$size" "$mtime"; } | sha1sum)"
+  dir="$cache_dir/${key%% *}"
+  meta="$dir/meta.json"
+  if [[ ! -f "$meta" ]]; then
+    mkdir -p "$dir"
+    probe="$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height,avg_frame_rate:format=duration -of json -- "$file" 2>/dev/null)" || probe='{}'
+    seek=()
+    if printf '%s\n' "${file,,}" | grep -Eq "^$video_re$"; then
+      seek=(-ss "$(jq -r '[((.format.duration // "0") | tonumber) * 0.3, 1] | min' <<<"$probe")")
+    fi
+    for size in 320x200 64x40; do
+      local w="${size%x*}" h="${size#*x}"
+      nice -n 10 ffmpeg -nostdin -v error -y "${seek[@]}" -i "$file" -frames:v 1 -threads 1 \
+        -vf "scale=$w:$h:force_original_aspect_ratio=increase,crop=$w:$h" -q:v 4 "$dir/$size.tmp.jpg" &&
+        mv "$dir/$size.tmp.jpg" "$dir/$size.jpg" || rm -f "$dir/$size.tmp.jpg"
+    done
+    jq -c '
+      (.streams[0] // {}) as $v
+      | {
+          width: ($v.width // 0), height: ($v.height // 0),
+          fps: (($v.avg_frame_rate // "0/1") | split("/") | map(tonumber) | if .[1] > 0 then .[0] / .[1] else 0 end),
+          duration: ((.format.duration // "0") | tonumber)
+        }' <<<"$probe" >"$meta.tmp" && mv "$meta.tmp" "$meta"
+  fi
+  local thumb="" soft=""
+  [[ -f "$dir/320x200.jpg" ]] && thumb="$dir/320x200.jpg"
+  [[ -f "$dir/64x40.jpg" ]] && soft="$dir/64x40.jpg"
+  jq -c --arg path "$file" --arg thumb "$thumb" --arg soft "$soft" '. + {path: $path, thumb: $thumb, soft: $soft}' "$meta"
+}
+
+thumbs() {
+  local file
+  for file in "$@"; do
+    if [[ ! -f "$file" ]]; then
+      jq -nc --arg path "$file" '{path: $path, missing: true}'
+      continue
+    fi
+    thumb_one "$file" || jq -nc --arg path "$file" '{path: $path, failed: true}'
+  done
+}
+
+# The picture the monitor shows now, for the meniscus to sweep away: a still as it is, a video's frame at
+# the time mpv reports. mpv's own screenshot cannot read hardware-decoded frames.
+snapshot() {
+  local monitor="$1"
+  local file now path pos
+  valid_monitor "$monitor"
+  now="$(playing_of "$monitor")"
+  path="$(jq -r '.path // empty' <<<"$now")"
+  [[ -f "$path" ]] || die "nothing to snapshot on $monitor"
+  if ! printf '%s\n' "${path,,}" | grep -Eq "^$video_re$"; then
+    printf '%s\n' "$path"
+    return
+  fi
+  pos="$(jq -r '.pos // 0' <<<"$now")"
+  mkdir -p "$cache_dir"
+  file="$cache_dir/snapshot-$monitor.jpg"
+  ffmpeg -nostdin -v error -y -ss "$pos" -i "$path" -frames:v 1 -q:v 3 "$file.tmp.jpg" ||
+    die "no frame of $path at $pos"
+  mv "$file.tmp.jpg" "$file"
+  printf '%s\n' "$file"
+}
+
+case "${1:-}" in
+  thumbs) shift; thumbs "$@" ;;
+  snapshot) [[ $# == 2 ]] || exit 2; snapshot "$2" ;;
+  *) exit 2 ;;
+esac

@@ -1,11 +1,18 @@
 -- Navigation belongs to this window; all values belong to the existing process owner.
 return function(applied, publish_corner)
-    local pages = {"Bar", "Appearance", "System"}
+    local pages = {"Bar", "Appearance", "System", "Shortcuts"}
     local history, position, rows = {1}, 1, {}
     local snapshot = tohru_settings.snapshot()
     local devices, device_generation = nil, 0
+    local query_shortcuts
+    local shortcut_offset = 0
+    local shortcut_report = {owner="Unknown", state="Checking compositor", bindings={}}
     local source_status = "Unknown · effectiveness unmeasured"
     local choices = {
+        ["shortcuts.mode"]={"compositor","portal","disabled"},
+        ["appearance.font_mono"]={"DejaVu Sans Mono", "Noto Sans Mono", "Liberation Mono"},
+        ["appearance.font_text"]={"Noto Sans", "DejaVu Sans", "Liberation Sans"},
+        ["appearance.font_display"]={"Noto Sans", "DejaVu Sans", "Liberation Sans"},
         ["assistant.voice_source"]={""},
         ["appearance.palette"]={"mocha","macchiato","rose_pine","nord","gruvbox","tokyo_night","dracula","everforest"},
         ["lock.style"]={"still-glass","ribbon-key","flooded-monolith","drifting-frost-veil","unfolding-glass-capsule",
@@ -15,8 +22,8 @@ return function(applied, publish_corner)
     local function choice_detail(setting)
         local provenance
         if setting.runtime_override then
-            provenance=setting.managed and "Nix managed · temporary runtime override" or "Temporary until shell exit"
-        else provenance=setting.managed and "Nix managed · edits are temporary" or "Saved in config.toml" end
+            provenance=setting.managed and "Managed · temporary runtime override" or "Temporary until shell exit"
+        else provenance=setting.managed and "Managed · edits are temporary" or "Saved in config.toml" end
         return setting.value .. " · " .. provenance .. " · Activate to cycle"
     end
     local function refresh(settings)
@@ -45,8 +52,8 @@ return function(applied, publish_corner)
         model.settings_categories = categories
         local function switch(page, key, title)
             local setting = snapshot[key]
-            local detail = setting.managed and "Nix managed · runtime edits last until shell exits" or "Saved in writable config.toml"
-            if setting.runtime_override then detail = "Nix managed · temporary runtime override is active" end
+            local detail = setting.managed and "Managed · runtime edits last until shell exits" or "Saved in writable config.toml"
+            if setting.runtime_override then detail = "Managed · temporary runtime override is active" end
             return {page=page, key=key, title=title, detail=detail,
                     value=setting.value, editable=true, managed=setting.managed, temporary=setting.runtime_override}
         end
@@ -73,8 +80,36 @@ return function(applied, publish_corner)
             {page=3, title="Microphone", key="assistant.voice_source", choice=true, editable=true,
              detail=(snapshot["assistant.voice_source"] and snapshot["assistant.voice_source"].value ~= "" and snapshot["assistant.voice_source"].value or "Automatic") .. " · Activate to cycle sources"},
             {page=3, title="Echo cancellation", detail=source_status, editable=false},
+            {page=2, title="UI text font", key="appearance.font_text", choice=true,
+             detail=(snapshot["appearance.font_text"] and snapshot["appearance.font_text"].value or "Noto Sans") .. " · restart components after change",
+             editable=snapshot["appearance.font_text"] and not snapshot["appearance.font_text"].managed},
+            {page=2, title="UI display font", key="appearance.font_display", choice=true,
+             detail=(snapshot["appearance.font_display"] and snapshot["appearance.font_display"].value or "Noto Sans") .. " · managed values are read-only",
+             editable=snapshot["appearance.font_display"] and not snapshot["appearance.font_display"].managed},
+            {page=2, title="UI monospace font", key="appearance.font_mono", choice=true,
+             detail=(snapshot["appearance.font_mono"] and snapshot["appearance.font_mono"].value or "DejaVu Sans Mono") .. " · restart components after change",
+             editable=snapshot["appearance.font_mono"] and not snapshot["appearance.font_mono"].managed},
+            {page=4, title="Shortcut ownership mode", key="shortcuts.mode", choice=true,
+             detail=(snapshot["shortcuts.mode"] and snapshot["shortcuts.mode"].value or "compositor") .. " · portal owner requires explicit service start/restart",
+             editable=snapshot["shortcuts.mode"] and not snapshot["shortcuts.mode"].managed},
+            {page=4, title="Shortcuts", detail=shortcut_report.owner .. " · " .. shortcut_report.state .. " · read-only", editable=false},
+            {page=4, title="Refresh shortcut snapshot", detail="Read current compositor state; no configuration writes", editable=true, choice=true, operation="refresh_shortcuts"},
             {page=3, title="Shell", detail="Tohru · pinned native Pleamar 0.7.27", editable=false},
         }
+        if shortcut_report.registration == "portal-session" then
+            catalog[#catalog+1] = {page=4, title="Set up Tohru action shortcuts", detail="Request desktop grants; preferred keys are hints", editable=shortcut_report.setup_available, choice=true, operation="shortcut_setup"}
+            catalog[#catalog+1] = {page=4, title="Configure granted shortcuts", detail=(shortcut_report.portal_version or 0) >= 2 and "Open the desktop's shortcut configuration dialog" or "Requires portal v2; v1 supports initial setup only", editable=shortcut_report.configure_available, choice=true, operation="shortcut_configure"}
+        end
+        local bindings = shortcut_report.bindings or {}
+        for i=shortcut_offset+1,math.min(shortcut_offset+10,#bindings) do
+            local binding = bindings[i]
+            catalog[#catalog+1] = {page=4, title=binding.shortcut,
+                detail=(binding.submap ~= "" and binding.submap .. " · " or "") .. binding.action .. " " .. (binding.arguments or "") .. ((binding.flags or "") ~= "" and " · " .. binding.flags or "") .. (binding.conflict and " · possible conflict" or ""), editable=false}
+        end
+        if #bindings > 10 then
+            catalog[#catalog+1] = {page=4, title="Next shortcuts page", detail=tostring(shortcut_offset+1) .. "–" .. tostring(math.min(shortcut_offset+10,#bindings)) .. " of " .. tostring(#bindings),
+                editable=true, choice=true, operation="shortcut_page"}
+        end
         rows = {}
         for _, row in ipairs(catalog) do
             local matches = (row.title .. " " .. row.detail .. " " .. (row.key or "")):lower():find(query, 1, true)
@@ -82,7 +117,7 @@ return function(applied, publish_corner)
         end
         model.settings_rows = rows
         fact.settings_selected = math.clamp(fact.settings_selected or 0, 0, math.max(#rows-1, 0))
-        text.settings_notice = "Nix-managed edits apply immediately in memory and survive reload; a new shell process restores declared values."
+        text.settings_notice = "Managed edits apply immediately in memory and survive reload; a new shell process restores declared values."
     end
     local function navigate(page)
         if not pages[page] then return end
@@ -99,9 +134,18 @@ return function(applied, publish_corner)
         if type(index)~="number" or index~=math.floor(index) then return end
         local row=rows[index+1]
         if not row or not row.editable then return end
+        if row.operation == "shortcut_setup" then query_shortcuts("setup"); return end
+        if row.operation == "shortcut_configure" then query_shortcuts("configure"); return end
+        if row.operation == "refresh_shortcuts" then if query_shortcuts then query_shortcuts() end; return end
+        if row.operation == "shortcut_page" then
+            shortcut_offset = shortcut_offset + 10
+            if shortcut_offset >= #(shortcut_report.bindings or {}) then shortcut_offset = 0 end
+            refresh(); return
+        end
         local value
         local cycle=choices[row.key]
         if cycle then
+            value = cycle[1]
             for i,current in ipairs(cycle)do
                 if current==snapshot[row.key].value then value=cycle[i%#cycle+1];break end
             end
@@ -126,6 +170,7 @@ return function(applied, publish_corner)
         text.settings_ui_error = ""
         refresh(settings)
         devices()
+        query_shortcuts()
     end)
     on("settings_close",function() fact.settings_open=false end)
     on("settings_category",navigate)
@@ -159,7 +204,19 @@ return function(applied, publish_corner)
             refresh()
         end)
     end
+    query_shortcuts = function(operation)
+        if not run then return end
+        run("tohru", {"shortcuts", operation or "status"}, function(out,code)
+            local ok, info = pcall(json.decode,out)
+            if code == 0 and ok and type(info) == "table" and type(info.bindings) == "table" then
+                shortcut_report = info; if operation then shortcut_offset = 0 end; refresh()
+            elseif operation then text.settings_ui_error="Shortcut operation unavailable; inspect owner/portal state"
+            end
+        end)
+    end
     refresh(snapshot)
+    query_shortcuts()
+    if every then every(2000,function() if fact.settings_open and history[position]==4 and shortcut_report.registration=="portal-session" then query_shortcuts() end end) end
     devices()
     return refresh
 end

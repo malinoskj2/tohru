@@ -11,8 +11,6 @@ const MAX_SESSIONS_PER_DIR: usize = 64;
 const MAX_ACCOUNTS_FILE_BYTES: u64 = 16 * 1024;
 const MAX_AVATAR_BYTES: u64 = 16 * 1024 * 1024;
 const MIN_HUMAN_UID: u32 = 1000;
-/// NixOS `nixbld*` build users begin at UID 30001; `nobody` is 65534.
-const MAX_HUMAN_UID: u32 = 30000;
 
 const LOGIN_WRAPPER_SCRIPT: &str = "for f in /etc/profiles/per-user/\"$USER\"/etc/profile.d/hm-session-vars.sh \"$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh\"; do [ -r \"$f\" ] && . \"$f\"; done; exec \"$@\"";
 
@@ -77,6 +75,20 @@ pub fn discover_users(
         return Vec::new();
     }
 
+    let mut policy = String::new();
+    if let Ok(file) = File::open(root.join("etc/login.defs")) {
+        let _ = file.take(16 * 1024).read_to_string(&mut policy);
+    }
+    let min_uid = policy
+        .lines()
+        .find_map(|line| {
+            let mut fields = line.split_whitespace();
+            (fields.next() == Some("UID_MIN"))
+                .then(|| fields.next().and_then(|value| value.parse::<u32>().ok()))
+                .flatten()
+        })
+        .filter(|uid| *uid >= 100)
+        .unwrap_or(MIN_HUMAN_UID);
     let mut users = Vec::new();
     for line in text.lines().take(MAX_PASSWD_LINES) {
         let fields: Vec<_> = line.splitn(8, ':').collect();
@@ -86,7 +98,7 @@ pub fn discover_users(
         let Ok(uid) = uid.parse::<u32>() else {
             continue;
         };
-        if !(MIN_HUMAN_UID..MAX_HUMAN_UID).contains(&uid) {
+        if uid < min_uid || uid == 65534 || name.starts_with("nixbld") {
             continue;
         }
         if name.is_empty()
