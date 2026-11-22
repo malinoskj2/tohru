@@ -105,10 +105,10 @@ The spotter is about five times cheaper but fails the bar for the default (recal
   - Idle: she breathes on the loop, blinks every 3–6 s, and every 20–40 s she flutters her wings or looks around.
   - Listening: while follow-up speech is heard (`hearing` events).
   - Thinking: from the turn until her answer starts.
-  - Talking: she explains, and changes pose by sentence. `!` gives the wing cheer with two glass hearts, laughter gives the laugh, lists give the scroll, warm words give happy.
+  - Talking: she explains, and changes pose by sentence across her talking poses. `!` gives the wing cheer with two glass hearts, laughter gives the laugh, lists give the scroll, questions give a head tilt, step cues ("first", "second", "one thing") point up, caveats ("it depends", "either", "maybe") shrug, agreement ("yes", "right", "exactly") gives a soft nod, recalling ("let's see", paths) glances aside, summaries ("overall", "in short") open both palms, contrasts ("on the other hand", "however") gesture right, tips ("by the way", "handy") lean in, sincere remarks ("honestly", "recommend") rest a paw on her chest, light topic shifts ("good news", "speaking of") lift one wing, and warm words give happy; uncued sentences vary across general conversational poses without immediate repeats.
   - Pose changes wait for a dip in her voice (five quiet mouth events) and at least 2.5–4 s since the last change.
   - Done: pleased for a moment, then back to idle.
-  - Drawn moves go through neutral, except explain↔cheer. Poses without drawn in-betweens swap under a squash.
+  - Drawn moves go through neutral, except explain↔cheer. Poses without drawn in-betweens swap under a squash from their registered hub poses (`neutral`, `explain`, `listening`, `thinking`, `pleased`, `scroll`, or `happy`).
 - **Lip-sync:** `tohru-voice` maps each sentence's phonemes to eight mouths (rest, M/B/P, AA, EH, EE, OH, OO, F/V).
   - espeak-ng's IPA (`--ipa`) is spread over the voiced part of the clip.
   - Kokoro's misaki phonemes are placed by the model's own durations when the ONNX export returns them, and spread by weight otherwise.

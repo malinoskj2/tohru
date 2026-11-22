@@ -2,20 +2,46 @@
 return function()
     local TICK = 42
     local POSES = {
-        neutral = {cell = 0, talk = 12, mx = 0, my = 0},
+        neutral = {cell = 0, talk = 12, mx = 0, my = 0, ex = 0, ey = 0},
         explain = {cell = 4, talk = 13, mx = 0.59, my = 3.16},
         happy = {cell = 1, talk = 14, mx = -0.23, my = 2.11},
         scroll = {cell = 10, talk = 15, mx = -0.23, my = 1.76},
         cheer = {cell = 11, talk = 16, mx = -0.12, my = 3.87},
         thinking = {cell = 5}, listening = {cell = 6}, laugh = {cell = 7}, pleased = {cell = 8}, surprised = {cell = 9},
+        head_tilt = {cell = 17, talk = 27, mx = -0.3, my = -2.5},
+        lean_in = {cell = 18, talk = 28, mx = -10.35, my = 6.1, ex = -10.1, ey = 5.7},
+        right_gesture = {cell = 19, talk = 29, mx = 0, my = 0, ex = 0, ey = 0},
+        shrug = {cell = 20, talk = 30, mx = 0, my = 0, ex = 0, ey = 0},
+        wing_lift = {cell = 21, talk = 31, mx = 0, my = 0, ex = 0, ey = 0},
+        count_one = {cell = 22, talk = 32, mx = 0, my = 0, ex = 0, ey = 0},
+        soft_nod = {cell = 23, talk = 33, mx = 0.5, my = 7.9, ex = 0.25, ey = 7.8},
+        recall_glance = {cell = 24, talk = 34, mx = -1.2, my = 0.9},
+        open_palms = {cell = 25, talk = 35, mx = 0, my = 0, ex = 0, ey = 0},
+        chest_paw = {cell = 26, talk = 36, mx = 0, my = 0, ex = 0, ey = 0},
     }
     -- Drawn transitions (first cell among the moves, frames), played backwards for the way back.
     local MOVES = {
         {"neutral", "explain", 0, 17}, {"explain", "cheer", 17, 17, heart = 9},
         {"neutral", "laugh", 34, 17}, {"neutral", "thinking", 51, 18},
     }
-    -- Poses with no drawn in-between are swapped under a squash, from neutral or from the explaining pose.
-    local POPS = {"listening", "pleased", "happy", "scroll", "surprised"}
+    -- Poses with no drawn in-between swap under a squash from their registered hub poses.
+    local POPS = {
+        {"listening", {"neutral", "explain"}},
+        {"pleased", {"neutral", "explain"}},
+        {"happy", {"neutral", "explain"}},
+        {"scroll", {"neutral", "explain"}},
+        {"surprised", {"neutral", "explain"}},
+        {"head_tilt", {"neutral"}},
+        {"lean_in", {"neutral", "listening"}},
+        {"right_gesture", {"neutral", "explain"}},
+        {"shrug", {"neutral", "explain"}},
+        {"wing_lift", {"neutral", "pleased"}},
+        {"count_one", {"explain", "neutral"}},
+        {"soft_nod", {"neutral", "pleased"}},
+        {"recall_glance", {"neutral", "thinking"}},
+        {"open_palms", {"explain", "scroll"}},
+        {"chest_paw", {"neutral", "happy"}},
+    }
     local edges = {}
     local function edge(a, b, step)
         edges[a] = edges[a] or {}
@@ -25,8 +51,9 @@ return function()
         edge(m[1], m[2], {kind = "move", first = m[3], count = m[4], back = false, to = m[2], heart = m.heart})
         edge(m[2], m[1], {kind = "move", first = m[3], count = m[4], back = true, to = m[1]})
     end
-    for _, p in ipairs(POPS) do
-        for _, hub in ipairs({"neutral", "explain"}) do
+    for _, item in ipairs(POPS) do
+        local p, hubs = item[1], item[2]
+        for _, hub in ipairs(hubs) do
             edge(hub, p, {kind = "pop", to = p})
             edge(p, hub, {kind = "pop", to = hub})
         end
@@ -102,7 +129,7 @@ return function()
         end
     end
 
-    -- body.webp holds the loop (0-95), the moves (96-164) and the poses (165-181).
+    -- body.webp holds the loop (0-95), the moves (96-164) and the poses (165-201).
     local FIRST = {[0] = 0, [1] = 96, [2] = 165}
     local function draw(sheet, cell, eye, ex, ey)
         set("ai_dg_sheet", sheet)
@@ -131,7 +158,7 @@ return function()
         end
         set("ai_dg_tilt", tilt)
         if talking and p.talk then
-            draw(2, p.talk, pose == "neutral" and eye or -1)
+            draw(2, p.talk, p.ex and eye or -1, p.ex, p.ey)
             set("ai_dg_mouth", mouth_cell)
             set("ai_dg_mx", p.mx)
             set("ai_dg_my", p.my)
@@ -145,7 +172,7 @@ return function()
             end
         else
             set("ai_dg_mouth", -1)
-            draw(2, p.cell, pose == "neutral" and eye or -1)
+            draw(2, p.cell, p.ex and eye or -1, p.ex, p.ey)
         end
     end
 
@@ -240,15 +267,57 @@ return function()
         rest()
     end
 
-    local function pick(sentence)
-        local s = string.lower(sentence or "")
-        if s:find("%f[%a]ha%s?ha") or s:find("%f[%a]he%s?he%f[%A]") or s:find("%f[%a]hah%f[%A]") then return "laugh" end
-        if s:find("!") then return "cheer" end
-        if s:find(":") or s:find(";") or s:find("first") or s:find("second") or s:find("then") and select(2, s:gsub(",", "")) >= 2 then return "scroll" end
-        for _, w in ipairs({"glad", "love", "happy", "lovely", "wonderful", "great", "thank", "sweet", "nice", "welcome"}) do
-            if s:find(w) then return "happy" end
+    local VARIETY = {"explain", "right_gesture", "open_palms", "wing_lift", "lean_in", "chest_paw"}
+    local last_pick = nil
+
+    local function any(s, patterns)
+        for _, p in ipairs(patterns) do
+            if s:find(p) then return true end
         end
-        return "explain"
+        return false
+    end
+
+    local function pick(sentence, avoid)
+        local s = string.lower(sentence or "")
+        local chosen = nil
+        if s:find("%f[%a]ha%s?ha") or s:find("%f[%a]he%s?he%f[%A]") or s:find("%f[%a]hah%f[%A]") then
+            chosen = "laugh"
+        elseif s:find("!") then
+            chosen = "cheer"
+        elseif s:find("?") or any(s, {"%f[%a]curious%f[%A]", "%f[%a]wonder"}) then
+            chosen = "head_tilt"
+        elseif s:find(":") or s:find(";") or (select(2, s:gsub(",", "")) >= 2 and any(s, {"%f[%a]first%f[%A]", "%f[%a]second%f[%A]", "%f[%a]third%f[%A]", "%f[%a]then%f[%A]", "%f[%a]finally%f[%A]"})) then
+            chosen = "scroll"
+        elseif any(s, {"%f[%a]first%f[%A]", "%f[%a]second%f[%A]", "%f[%a]third%f[%A]", "one thing", "one more", "step one", "%f[%a]specifically%f[%A]", "to note", "point is"}) then
+            chosen = "count_one"
+        elseif any(s, {"%f[%a]depends", "%f[%a]either%f[%A]", "%f[%a]maybe%f[%A]", "%f[%a]perhaps%f[%A]", "might be", "could be", "not sure", "hard to say", "%f[%a]probably%f[%A]"}) then
+            chosen = "shrug"
+        elseif any(s, {"%f[%a]yes%f[%A]", "%f[%a]yeah%f[%A]", "%f[%a]yep%f[%A]", "^%s*right%f[%A]", "you'?re right", "that'?s right", "%f[%a]right,", "%f[%a]exactly%f[%A]", "%f[%a]indeed%f[%A]", "%f[%a]agreed?%f[%A]", "makes sense", "%f[%a]correct%f[%A]", "of course", "got it"}) then
+            chosen = "soft_nod"
+        elseif any(s, {"let'?s see", "i remember", "i recall", "back in", "last time", "%f[%a]hmm%f[%A]", "~/", "/[%w_%-%.]+/[%w_%-%.]+"}) then
+            chosen = "recall_glance"
+        elseif any(s, {"in short", "%f[%a]overall%f[%A]", "%f[%a]summar", "to sum up", "%f[%a]basically%f[%A]", "%f[%a]overview%f[%A]", "in general", "big picture", "fits? together", "in other words", "%f[%a]altogether%f[%A]", "%f[%a]essentially%f[%A]"}) then
+            chosen = "open_palms"
+        elseif any(s, {"on the other hand", "%f[%a]however%f[%A]", "%f[%a]instead%f[%A]", "%f[%a]otherwise%f[%A]", "%f[%a]alternatively%f[%A]", "compared to", "%f[%a]whereas%f[%A]", "another option", "another way", "%f[%a]versus%f[%A]", "%f[%a]vs%f[%A]"}) then
+            chosen = "right_gesture"
+        elseif any(s, {"%f[%a]honestly%f[%A]", "%f[%a]recommend", "i'?d suggest", "%f[%a]personally%f[%A]", "don'?t worry", "no worries", "i promise", "%f[%a]sorry%f[%A]", "%f[%a]apologize"}) then
+            chosen = "chest_paw"
+        elseif any(s, {"%f[%a]tips?%f[%A]", "%f[%a]trick%f[%A]", "fun fact", "%f[%a]interesting%f[%A]", "worth noting", "by the way", "keep in mind", "heads up", "%f[%a]handy%f[%A]", "watch out"}) then
+            chosen = "lean_in"
+        elseif any(s, {"speaking of", "next up", "moving on", "on top of that", "even better", "%f[%a]bonus%f[%A]", "good news", "%f[%a]notably%f[%A]", "%f[%a]also%f[%A]"}) then
+            chosen = "wing_lift"
+        elseif any(s, {"%f[%a]glad", "%f[%a]love", "%f[%a]happy", "%f[%a]lovely", "%f[%a]wonderful", "%f[%a]great", "%f[%a]thank", "%f[%a]sweet", "%f[%a]nice", "%f[%a]welcome"}) then
+            chosen = "happy"
+        else
+            local skip = avoid or last_pick
+            local pool = {}
+            for _, p in ipairs(VARIETY) do
+                if p ~= skip then pool[#pool + 1] = p end
+            end
+            chosen = pool[math.random(#pool)]
+        end
+        last_pick = chosen
+        return chosen
     end
 
     return {
@@ -309,7 +378,7 @@ return function()
             end
         end,
         sentence = function(text)
-            if talking then pending = pick(text) end
+            if talking then pending = pick(text, target) end
         end,
         mouth = function(level, viseme)
             if level < 0.08 then quiet_events = quiet_events + 1 else quiet_events = 0 end
@@ -326,6 +395,8 @@ return function()
             want("neutral")
         end,
         pose = function() return pose, target end,
+        poses = POSES,
+        route = route,
         pick = pick,
     }
 end
