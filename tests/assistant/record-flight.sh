@@ -87,7 +87,10 @@ for entry in '1 cold-warm' '1 wrap' '2 rise' '3 right' '4 sweep' '1 moved' '1 he
         hyprctl eval "hl.dispatch(hl.dsp.window.move({x=250,y=200,relative=false,window='class:$tag'}))"
         hyprctl -j activewindow | jq '{at,size,address}' >"$out/window-moved.json"
     fi
-    if [[ "$variant" == interrupted ]]; then kill "$window"; fi
+    if [[ $variant == interrupted ]]; then
+        kill "$window"; wait "$window" || :
+        window=
+    fi
     if [[ $variant == hearing ]]; then send '{"event":"hearing","on":true}'; fi
     if [[ $variant == speaking ]]; then send '{"event":"speaking","on":true,"conversation":"test"}'; fi
     "$FLIGHT_RUNTIME" --say "$tag" 'get ai_flight_trace' >"$out/selection-$variant.json"
@@ -115,5 +118,5 @@ for entry in '1 cold-warm' '1 wrap' '2 rise' '3 right' '4 sweep' '1 moved' '1 he
     "$FLIGHT_RUNTIME" --say "$tag" quit
     wait "$actor"
     pids=()
-    if [[ "$variant" != interrupted && "$variant" != reduced ]]; then pids+=("$window"); fi
+    if [[ -n $window ]]; then pids+=("$window"); fi
 done
