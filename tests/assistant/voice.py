@@ -165,7 +165,8 @@ class VoiceTests(unittest.TestCase):
         voice = make_voice(FakeRecognizer(["AND TOMORROW"], "AND TOMORROW"))
         voice.extend_conversation()
         self.speak(voice, 20, 40)
-        self.assertEqual(self.events, [{"text": "And tomorrow", "event": "turn"}])
+        self.assertEqual(self.events, [{"on": True, "event": "hearing"}, {"on": False, "event": "hearing"},
+                                       {"text": "And tomorrow", "event": "turn"}])
 
     def test_the_keyword_spotter_wakes_the_recognizer_with_the_buffered_speech(self):
         recognizer = FakeRecognizer(["TOHRU WHAT"], "TOHRU WHAT TIME IS IT")
@@ -197,7 +198,7 @@ class VoiceTests(unittest.TestCase):
         voice.extend_conversation()
         self.speak(voice, 20, 40)
         self.assertEqual(spotter.fed, 0)
-        self.assertEqual(self.events, [{"text": "And tomorrow", "event": "turn"}])
+        self.assertEqual([e["event"] for e in self.events], ["hearing", "hearing", "turn"])
 
     def test_wake_word_alone_waits_for_the_request(self):
         voice = make_voice(FakeRecognizer(["TOHRU"], "TOHRU"))
@@ -248,13 +249,53 @@ class VoiceTests(unittest.TestCase):
         for _ in range(10):
             voice.step(louder)
         self.assertEqual(voice.speaker.hushed, 1)
-        self.assertEqual([e["event"] for e in self.events], ["barge"])
+        self.assertEqual([e["event"] for e in self.events], ["barge", "hearing"])
         voice.speaker.speaking = False
         voice.speaker.quiet = True
         voice.reset_utterance()
         for _ in range(10):
             voice.step(louder)
         self.assertFalse(voice.in_speech)
+
+    def test_speech_outside_a_conversation_is_not_shown_as_heard(self):
+        voice = make_voice(FakeRecognizer(["WHAT"], "WHAT"))
+        self.speak(voice, 20, 40)
+        self.assertNotIn("hearing", [e["event"] for e in self.events])
+
+
+class VisemeTests(unittest.TestCase):
+    def test_phonemes_map_to_the_eight_mouths(self):
+        m = voice_module
+        self.assertEqual([v for v, _ in m.visemes("mˈɑːm")], [m.MBP, m.AA, m.MBP])
+        self.assertEqual([v for v, _ in m.visemes("fˈiː")], [m.FV, m.EE])
+        self.assertEqual([v for v, _ in m.visemes("hˈO, wˈW")], [m.EH, m.OH, m.REST, m.OO, m.AA])
+        self.assertEqual(m.visemes("  "), [])
+
+    def test_the_timeline_fills_the_clip_and_drops_flickers(self):
+        m = voice_module
+        sounds = [(m.AA, 1.0), (m.EE, 0.05), (m.OH, 1.0), (m.MBP, 0.05), (m.AA, 1.0)]
+        spans = m.viseme_timeline(sounds, None, 1.0)
+        self.assertAlmostEqual(spans[0][0], 0.0)
+        self.assertAlmostEqual(spans[-1][1], 1.0)
+        self.assertNotIn(m.EE, [s[2] for s in spans])
+        self.assertIn(m.MBP, [s[2] for s in spans])
+        for a, b in zip(spans, spans[1:]):
+            self.assertAlmostEqual(a[1], b[0])
+        self.assertEqual(m.viseme_at(spans, 0.1), m.AA)
+        self.assertEqual(m.viseme_at(spans, 2.0), m.REST)
+
+    def test_model_durations_place_the_mouths(self):
+        m = voice_module
+        spans = m.viseme_timeline([(m.AA, 1.0), (m.OO, 1.0)], [3.0, 1.0], 2.0)
+        self.assertEqual([(round(a, 2), round(b, 2), v) for a, b, v in spans], [(0.0, 1.5, m.AA), (1.5, 2.0, m.OO)])
+
+    @unittest.skipIf(numpy is None, "numpy is not installed")
+    def test_kokoro_durations_include_the_pads(self):
+        m = voice_module
+        audio = numpy.zeros(m.KOKORO_RATE, dtype=numpy.float32)
+        spans = m.kokoro_timeline(numpy, audio, "mɑ", [1.0, 1.0, 1.0, 1.0])
+        self.assertEqual([v for _, _, v in spans], [m.REST, m.MBP, m.AA, m.REST])
+        self.assertAlmostEqual(spans[1][0], 0.25)
 
 
 class ModelPathTests(unittest.TestCase):

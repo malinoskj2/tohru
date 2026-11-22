@@ -346,6 +346,80 @@ def sentences(text, limit=220):
     return [p for p in parts if p.strip()]
 
 
+# The dragon's mouths, in the order of shell/assistant/dragon/mouths.webp.
+REST, MBP, AA, EH, EE, OH, OO, FV = range(8)
+VISEMES = {}
+for letters, viseme in (("mbpɱ", MBP), ("fv", FV), ("aɑæʌɐaIW", AA), ("eɛəɜɚᵻᵊɘAkgŋhxɡ", EH),
+                        ("iɪjytdnlszθðɾɫʔ", EE), ("oɔɒOY", OH), ("uʊwɹrʃʒʤʧɥ", OO)):
+    for letter in letters:
+        VISEMES[letter] = viseme
+VOWELS = set("aɑæʌɐeɛəɜɚᵻᵊɘiɪyoɔɒuʊAIOWY")
+VISEME_LEAD_S = 0.04
+VISEME_MIN_S = 2 / MOUTH_FPS
+
+
+def visemes(phonemes):
+    """(mouth, weight) for each sound in an IPA or misaki phoneme string; a word gap is a short rest."""
+    out = []
+    for letter in phonemes:
+        if letter in "ːˑ" and out:
+            out[-1] = (out[-1][0], out[-1][1] + 0.5)
+        elif letter in VISEMES:
+            weight = 1.0 if letter in VOWELS else 0.8 if VISEMES[letter] == MBP else 0.6
+            out.append((VISEMES[letter], weight))
+        elif letter in ",.;:!?—…" and out:
+            out.append((REST, 1.2))
+        elif letter.isspace() and out and out[-1][0] != REST:
+            out.append((REST, 0.15))
+    while out and out[-1][0] == REST:
+        out.pop()
+    return out
+
+
+def viseme_timeline(sounds, durations, length):
+    """Spans (start, end, mouth) in seconds over `length`: by the model's own durations when it gave them, else by weight.
+    Spans shorter than two mouth frames join a neighbour, except a closed mouth, which is always seen."""
+    if not sounds or length <= 0:
+        return []
+    shares = durations if durations and len(durations) == len(sounds) and sum(durations) > 0 else [w for _, w in sounds]
+    scale = length / sum(shares)
+    spans, at = [], 0.0
+    for (mouth, _), share in zip(sounds, shares):
+        span = share * scale
+        if spans and spans[-1][2] == mouth:
+            spans[-1][1] = at + span
+        else:
+            spans.append([at, at + span, mouth])
+        at += span
+    merged = []
+    for span in spans:
+        short = span[1] - span[0] < VISEME_MIN_S and span[2] != MBP
+        if merged and (short or merged[-1][1] - merged[-1][0] < VISEME_MIN_S and merged[-1][2] != MBP):
+            keep = merged[-1] if merged[-1][1] - merged[-1][0] >= span[1] - span[0] else span
+            merged[-1] = [merged[-1][0], span[1], keep[2]]
+        else:
+            merged.append(span)
+        if len(merged) > 1 and merged[-2][2] == merged[-1][2]:
+            merged[-2:] = [[merged[-2][0], merged[-1][1], merged[-1][2]]]
+    return [tuple(s) for s in merged]
+
+
+def viseme_at(timeline, t):
+    for start, end, mouth in timeline:
+        if start <= t < end:
+            return mouth
+    return REST
+
+
+def voiced(np, audio, rate, floor=0.01):
+    """Where speech starts and ends in a clip, ignoring the synthesiser's lead-in and tail silence."""
+    step = max(1, rate // 100)
+    loud = [i for i in range(0, len(audio), step) if float(np.sqrt(np.mean(audio[i:i + step] ** 2))) > floor]
+    if not loud:
+        return 0.0, len(audio) / rate
+    return loud[0] / rate, min(len(audio), loud[-1] + step) / rate
+
+
 class Espeak:
     """The fallback voice: espeak-ng, no model, a few ms of CPU per sentence."""
 
@@ -373,7 +447,17 @@ class Espeak:
             with wave.open(BytesIO(result.stdout)) as w:
                 rate = w.getframerate()
                 frames = w.readframes(w.getnframes())
-            yield np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768, rate
+            audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768
+            yield audio, rate, part, self.timeline(part, np, audio, rate, wpm, pitch)
+
+    def timeline(self, part, np, audio, rate, wpm, pitch):
+        try:
+            ipa = subprocess.run(["espeak-ng", "-q", "--ipa", "-v", self.voice, "-s", str(wpm), "-p", str(pitch), part],
+                                 capture_output=True, timeout=10, text=True).stdout
+        except (OSError, subprocess.SubprocessError):
+            return []
+        start, end = voiced(np, audio, rate)
+        return [(a + start, b + start, m) for a, b, m in viseme_timeline(visemes(ipa), None, end - start)]
 
 
 KOKORO_RATE = 24_000
@@ -452,7 +536,25 @@ class Kokoro:
                 if not chunk:
                     raise RuntimeError("the Kokoro worker exited")
                 data += chunk
-            yield np.frombuffer(data, dtype="<f4"), KOKORO_RATE
+            audio = np.frombuffer(data, dtype="<f4")
+            yield audio, KOKORO_RATE, part, kokoro_timeline(np, audio, header.get("phonemes", ""), header.get("durations"))
+
+
+def kokoro_timeline(np, audio, phonemes, durations):
+    """Kokoro's own durations, one per token with the pad either side, place each mouth; without them the
+    misaki phonemes are spread over the voiced part of the clip."""
+    length = len(audio) / KOKORO_RATE
+    if durations and len(durations) == len(phonemes) + 2:
+        sounds, shares = [(REST, 0.0)], [durations[0]]
+        for letter, share in zip(phonemes, durations[1:-1]):
+            mouth = sounds[-1][0] if letter in "ːˑ" else VISEMES.get(letter, REST)
+            sounds.append((mouth, 1.0))
+            shares.append(share)
+        sounds.append((REST, 0.0))
+        shares.append(durations[-1])
+        return viseme_timeline(sounds, shares, length)
+    start, end = voiced(np, audio, KOKORO_RATE)
+    return [(a + start, b + start, m) for a, b, m in viseme_timeline(visemes(phonemes), None, end - start)]
 
 
 def tts_worker(model, vocab_path, pack_path):
@@ -483,15 +585,24 @@ def tts_worker(model, vocab_path, pack_path):
         try:
             request = json.loads(line)
             phonemes, _ = g2p(str(request["text"]))
-            ids = [vocab[c] for c in phonemes if c in vocab][: min(510, len(pack) - 1)]
+            kept = [c for c in phonemes if c in vocab][: min(510, len(pack) - 1)]
+            ids = [vocab[c] for c in kept]
+            durations = None
             if ids:
-                audio = session.run(None, {"input_ids": np.array([[0, *ids, 0]], dtype=np.int64),
-                                           "style": pack[len(ids)][None, :].astype(np.float32),
-                                           "speed": np.array([float(request.get("speed", 1.0))], dtype=np.float32)})[0][0]
+                outputs = session.run(None, {"input_ids": np.array([[0, *ids, 0]], dtype=np.int64),
+                                             "style": pack[len(ids)][None, :].astype(np.float32),
+                                             "speed": np.array([float(request.get("speed", 1.0))], dtype=np.float32)})
+                audio = outputs[0][0]
+                # Exports that also return the predicted durations give the mouth exact timing.
+                if len(outputs) > 1 and np.asarray(outputs[1]).size == len(ids) + 2:
+                    durations = [float(d) for d in np.asarray(outputs[1]).reshape(-1)]
             else:
                 audio = np.zeros(0, dtype=np.float32)
             audio = np.asarray(audio, dtype="<f4")
-            out.write((json.dumps({"samples": int(audio.size)}) + "\n").encode())
+            header = {"samples": int(audio.size), "phonemes": "".join(kept)}
+            if durations:
+                header["durations"] = durations
+            out.write((json.dumps(header) + "\n").encode())
             out.write(audio.tobytes())
         except Exception as error:
             out.write((json.dumps({"error": str(error)[:300]}) + "\n").encode())
@@ -503,6 +614,7 @@ ENGINES = {"kokoro": Kokoro, "espeak-ng": Espeak}
 SHIPPED_VOICES = next((p for p in (Path(__file__).resolve().parent.parent / "shell/assistant/voice",
                                    Path(__file__).resolve().parent.parent / "share/tohru/shell/assistant/voice") if p.is_dir()),
                       Path(__file__).resolve().parent.parent / "shell/assistant/voice")
+DRAGON_ART = SHIPPED_VOICES.parent / "dragon"
 
 
 def make_engine(settings, warn=None):
@@ -573,7 +685,7 @@ class Speaker:
         played = 0.0
         started = None
         rate = None
-        for audio, chunk_rate in self.engine.stream(text, np):
+        for audio, chunk_rate, part, timeline in self.engine.stream(text, np):
             if self.stop.is_set():
                 break
             if self.player is None or rate != chunk_rate:
@@ -587,6 +699,7 @@ class Speaker:
             if not self.speaking:
                 self.speaking = True
                 emit("speaking", on=True, conversation=conversation)
+            emit("sentence", text=part)
             step = rate // MOUTH_FPS
             pcm = (np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes()
             if time.monotonic() > started + played:
@@ -606,7 +719,11 @@ class Speaker:
                     self.stop.set()
                     break
                 mouth = 0.0 if rms < 1e-4 else max(0.0, min(1.0, (20 * math.log10(rms) + 42) / 30))
-                emit("mouth", level=round(mouth, 2))
+                if timeline:
+                    shape = viseme_at(timeline, index / rate + VISEME_LEAD_S) if mouth > 0.05 else REST
+                    emit("mouth", level=round(mouth, 2), viseme=shape)
+                else:
+                    emit("mouth", level=round(mouth, 2))
                 played += len(chunk) / rate
                 delay = started + played - time.monotonic()
                 if delay > 0:
@@ -722,6 +839,9 @@ class Voice:
         self.monitor = Monitor(self)
 
     def reset_utterance(self):
+        if getattr(self, "hearing", False):
+            emit("hearing", on=False)
+        self.hearing = False
         self.in_speech = False
         self.start_run = 0
         self.quiet_ms = 0.0
@@ -822,7 +942,7 @@ class Voice:
         self.reset_utterance()
 
     def run(self):
-        emit("ready", turn=self.turn is not None, warning=self.warning)
+        emit("ready", turn=self.turn is not None, warning=self.warning, dragon=str(DRAGON_ART))
         need = WINDOW * 2
         while True:
             if self.paused_reason:
@@ -879,6 +999,9 @@ class Voice:
         self.utterance = list(preroll)
         self.preroll = []
         self.spotting = self.spotter is not None and not self.in_conversation()
+        if self.in_conversation():
+            self.hearing = True
+            emit("hearing", on=True)
         if self.spotting:
             self.spotter.start()
             for w in preroll:

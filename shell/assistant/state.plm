@@ -90,10 +90,42 @@ part AssistantState {
     image ai_mascot = file "../brand/mascot.png", 68, 68
     image ai_dragon = file "../brand/dragon.png", 16, 16
     image ai_sprite = file "../brand/mascot.png", 150, 150
-    let ai_sprite_columns = 1
-    let ai_sprite_rows = 1
-    let ai_sprite_frames = ai_sprite_columns * ai_sprite_rows
     fact ai_dragon_open = false
+    // The voice dragon's sheets (dragon/README.md), loaded only once voice is on and she first shows: puppet.luau sets the paths.
+    text ai_dg_body_src = ""
+    text ai_dg_eyes_src = ""
+    text ai_dg_mouths_src = ""
+    text ai_dg_heart_src = ""
+    image ai_dg_body = from ai_dg_body_src, 1200, 3450
+    image ai_dg_eyes = from ai_dg_eyes_src, 200, 26
+    image ai_dg_mouths = from ai_dg_mouths_src, 176, 20
+    image ai_dg_heart = from ai_dg_heart_src, 24, 24
+    fact ai_dg_ready = false
+    fact ai_dg_warm = false
+    // The cell of body.webp: the idle and flutter loop, the drawn moves, then the still poses. The eye and mouth patches go over it (-1 none).
+    fact ai_dg_sheet = 0
+    fact ai_dg_cell = 0
+    fact ai_dg_frame = 0
+    fact ai_dg_eye = -1
+    fact ai_dg_ex = 0
+    fact ai_dg_ey = 0
+    fact ai_dg_mouth = -1
+    fact ai_dg_mx = 0
+    fact ai_dg_my = 0
+    fact ai_dg_tilt = 0
+    fact ai_dg_sq = 0
+    fact ai_dg_h1_x = 0
+    fact ai_dg_h1_y = 0
+    fact ai_dg_h1_s = 0
+    fact ai_dg_h1_a = 0
+    fact ai_dg_h2_x = 0
+    fact ai_dg_h2_y = 0
+    fact ai_dg_h2_s = 0
+    fact ai_dg_h2_a = 0
+    prop ai_dg_tilt_s = 0 ~spring(120, 16)
+    follow ai_dg_tilt_s = ai_dg_tilt
+    prop ai_dg_sq_s = 0 ~50ms
+    follow ai_dg_sq_s = ai_dg_sq
 
     let ai_colour = pick(ai_slot, ink_peach, ink_yellow, ink_green, ink_lavender, ink_mauve)
     let ai_stream_colour = pick(ai_stream_slot, ink_peach, ink_yellow, ink_green, ink_lavender, ink_mauve)

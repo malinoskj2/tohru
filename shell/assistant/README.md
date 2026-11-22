@@ -11,7 +11,9 @@ The AI assistant described in [docs/ai-assistant.md](../../docs/ai-assistant.md)
 | `popup.plm` | The Pocket popup (direction 01): heading, provider picker, sign-in note, empty chat, the chat column, the field and history |
 | `controller.luau` | Runs `tohru-assistant` for providers, chats and history, streams the answer, and keeps the bar's streaming and ready state. Takes `{provider, choose}` for the `assistant.provider` setting and returns `{open, close, toggle, new_chat, show_history, choose, signin, settle, ask, stop, streaming, on_answer, show, status}` |
 | `voice.luau` | Runs `tohru-voice` while `assistant.voice` is on and kills it when off; sends voice turns to the controller and its answers back to be spoken; drives the mic dot, mouth level and overlay. Restarts a crashed service after 2, 4, … s, up to five times, and never after exit 3 (missing models or tools) |
-| `dragon.plm` | The speaking dragon overlay at the bottom right; a click opens the conversation |
+| `dragon.plm` | The speaking dragon overlay at the bottom right, drawn from the sheets in `dragon/`; a click opens the conversation |
+| `puppet.luau` | The dragon's animator: idle, listening, thinking and talking poses, transitions, blinks, flourishes, viseme mouths and hearts, at 24 fps while she is shown |
+| `dragon/` | Her sheets, eye and mouth patches, heart and glass shader; layout and provenance in its README |
 | `persona.md` | Tohru's persona, sent with every chat unless `assistant.persona` is off |
 | `voice/` | `tohru-tide.bin`, Tohru's Kokoro voicepack (provenance in its README), and `wake-keywords.txt` for the keyword spotter |
 | `*.svg` | Lucide icons (ISC; see `LICENSE.LUCIDE`) |
@@ -79,7 +81,7 @@ Only `claude`, `codex` and `agy` were run for real while this was written. The G
 
 ## The voice service: `bin/tohru-voice`
 
-Python with numpy, onnxruntime and sherpa-onnx; misaki for Kokoro. It reads 16 kHz mono from the default source with `parec`, plays with `pacat`, and talks JSON lines: events on stdout (`ready`, `listening`, `conversation`, `wake`, `turn`, `barge`, `speaking`, `mouth`, `paused`, `error`), commands on stdin (`say`, `hush`, `thinking`, `end`, `tts`). Models are explicit paths: `--vad-model`, `--asr-model`, `--turn-model` (optional), `--tts-model` and, for `--wake kws`, `--kws-model`, from the matching `assistant.*_model` settings. It checks them before loading anything and exits with code 3 and one `error` naming every missing setting; `ready` carries a `warning` for a missing Kokoro or a bad Smart Turn file. Nothing is downloaded. Kokoro runs in a child process (`--tts-worker`) so freeing it returns its memory. It pauses while the session is locked or another app records.
+Python with numpy, onnxruntime and sherpa-onnx; misaki for Kokoro. It reads 16 kHz mono from the default source with `parec`, plays with `pacat`, and talks JSON lines: events on stdout (`ready` with the `dragon` sheet folder, `listening`, `conversation`, `wake`, `hearing` while follow-up speech is heard, `turn`, `barge`, `speaking`, `sentence` as each sentence starts, `mouth` with `level` and `viseme`, `paused`, `error`), commands on stdin (`say`, `hush`, `thinking`, `end`, `tts`). Models are explicit paths: `--vad-model`, `--asr-model`, `--turn-model` (optional), `--tts-model` and, for `--wake kws`, `--kws-model`, from the matching `assistant.*_model` settings. It checks them before loading anything and exits with code 3 and one `error` naming every missing setting; `ready` carries a `warning` for a missing Kokoro or a bad Smart Turn file. Nothing is downloaded. Kokoro runs in a child process (`--tts-worker`) so freeing it returns its memory. It pauses while the session is locked or another app records.
 
 ## Tests
 
@@ -88,8 +90,9 @@ python3 tests/assistant/service.py
 python3 tests/assistant/voice.py
 lua5.4 tests/assistant/controller.lua
 lua5.4 tests/assistant/voice-controller.lua
+lua5.4 tests/assistant/puppet.lua
 ```
 
 `service.py` drives the helper against fake `claude`, `codex` and `agy` scripts: discovery, probes that would prompt, streaming, session resume, provider hand-over, Stop, history search, conversation IDs that try to leave the folder, models and rejected models, the persona per CLI, memory extraction (malformed JSON rejected, the 600-token budget, nothing spawned with memory off), forgetting, migrations, and an export/import round trip. `voice.py` covers wake gating with and without the keyword spotter, follow-ups, spoken text shaping, the Kokoro load policy and the echo guard (the last needs numpy).
 
-`controller.lua` drives `controller.luau` with stand-ins for `run`, `spawn` and `kill`: provider choice, models, streaming, Stop, the ready mark, sign-in, history rows, a voice turn, the memory hand-off and the Memory view. `voice-controller.lua` drives `voice.luau`: gating, turns, spoken answers, barge-in, the overlay, settings and restarts.
+`controller.lua` drives `controller.luau` with stand-ins for `run`, `spawn` and `kill`: provider choice, models, streaming, Stop, the ready mark, sign-in, history rows, a voice turn, the memory hand-off and the Memory view. `voice-controller.lua` drives `voice.luau`: gating, turns, spoken answers, barge-in, the overlay, loading the sheets, settings and restarts. `puppet.lua` drives `puppet.luau`: poses, routes through the drawn moves, squash swaps, dips, visemes and hearts. `voice.py` also checks the phoneme-to-mouth mapping and timelines.
