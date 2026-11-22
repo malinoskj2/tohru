@@ -29,6 +29,7 @@ Usage: tohru panel toggle|open sound|calendar|network|media|bluetooth|wallpaper|
        tohru config set assistant.KEY VALUE   (voice, voice_source, reduced_motion, provider, backend, orca, orca_bot, orca_voice_chat, orca_offline,
                                                models.PROVIDER.model, models.PROVIDER.effort, persona, persona_file,
                                                memory, discord.enabled, discord.read, discord.post,
+                                               discord.desktop_first, discord.desktop_timeout_seconds,
                                                discord.token_file, discord.guild_id, discord.channels, discord.allowed_user_id, vad_model, asr_model, turn_model, voice_wake, kws_model, tts_*;
                                                see docs/configuration.md)
        tohru config set bar.preferred_output OUTPUT   ('' for every output)

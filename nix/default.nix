@@ -1,6 +1,6 @@
 { lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage
 , fontconfig, wayland, jq, socat, ffmpeg-headless, findutils, gnugrep, curl, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3, dbus
-, util-linux, systemd, procps, coreutils, espeak-ng, pulseaudio, wayland-utils, swayidle, mpvpaper, wl-clipboard, xdg-terminal-exec
+, libnotify, util-linux, systemd, procps, coreutils, espeak-ng, pulseaudio, wayland-utils, swayidle, mpvpaper, wl-clipboard, xdg-terminal-exec
   # Without the voice service nothing for speech is installed; the setting then has nothing to start.
 , withVoice ? true }:
 let
@@ -76,6 +76,7 @@ in stdenvNoCC.mkDerivation {
     cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-session-run \
       bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-wallpaper bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev bin/tohru-assistant bin/tohru-discord bin/tohru_discord.py $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}"
+    wrapProgram $out/bin/tohru-assistant --prefix PATH : ${lib.makeBinPath [ libnotify ]}
     wrapProgram $out/bin/tohru-run \
       --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \

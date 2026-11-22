@@ -363,6 +363,7 @@ for i, flag in ipairs(discord_run.args) do
 end
 assert(discord_flags.enabled == false and discord_flags.read == false and discord_flags.post == false)
 assert(discord_flags.allowed_user_id == "")
+assert(discord_flags.desktop_first == false and discord_flags.desktop_timeout_seconds == 60)
 local before_discord_change = #killed
 values["assistant.discord.enabled"] = true
 values["assistant.discord.read"] = true

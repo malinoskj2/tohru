@@ -6,6 +6,12 @@ there is no dependency on a personal Nix checkout, model mount, output name or
 wallpaper service. The release currently targets x86_64 Linux/glibc 2.35+.
 Other architectures require a source build and are unverified.
 
+The optional Discord desktop-first policy uses libnotify's `notify-send` with
+`--wait` and notification actions (`libnotify-bin` on Debian/Ubuntu). Nix bundles
+it; standalone installations should install it through their package manager.
+`tohru doctor` checks its presence when the policy is enabled. See
+[desktop acknowledgement and Discord fallback](discord.md#desktop-first-discord-fallback).
+
 ## Capabilities, not compositor names
 
 | Function | Backend | Degradation |

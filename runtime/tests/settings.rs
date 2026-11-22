@@ -823,6 +823,7 @@ fn integrated_assistant_keys_remain_distinct_and_enumerated() {
         Key::AssistantDiscordEnabled,
         Key::AssistantDiscordRead,
         Key::AssistantDiscordPost,
+        Key::AssistantDiscordDesktopFirst,
         Key::AssistantDiscordTokenFile,
         Key::AssistantDiscordGuildId,
         Key::AssistantDiscordAllowedUserId,
@@ -846,6 +847,7 @@ fn discord_defaults_validation_persistence_and_managed_controls() {
         Key::AssistantDiscordEnabled,
         Key::AssistantDiscordRead,
         Key::AssistantDiscordPost,
+        Key::AssistantDiscordDesktopFirst,
     ] {
         assert_eq!(owner.get(key).value, Value::Bool(false));
         owner.set(key, Value::Bool(true)).unwrap();
@@ -917,6 +919,31 @@ fn discord_defaults_validation_persistence_and_managed_controls() {
     assert_eq!(
         files.owner().get(Key::AssistantDiscordPost).value,
         Value::Bool(false)
+    );
+}
+
+#[test]
+fn discord_desktop_timeout_is_bounded_persisted_and_managed() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    let mut owner = files.owner();
+    let key = Key::AssistantDiscordDesktopTimeoutSeconds;
+    assert_eq!(owner.get(key).value, Value::Integer(60));
+    for invalid in [0, 9, 301] {
+        assert!(owner.set(key, Value::Integer(invalid)).is_err());
+    }
+    owner.set(key, Value::Integer(30)).unwrap();
+    assert_eq!(files.owner().get(key).value, Value::Integer(30));
+    fs::write(
+        files.managed(),
+        "[assistant.discord]\ndesktop_first = true\ndesktop_timeout_seconds = 90\n",
+    )
+    .unwrap();
+    let managed = files.owner();
+    assert_eq!(managed.get(key).value, Value::Integer(90));
+    assert_eq!(
+        managed.get(Key::AssistantDiscordDesktopFirst).value,
+        Value::Bool(true)
     );
 }
 

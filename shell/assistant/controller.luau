@@ -75,12 +75,13 @@ return function(settings)
     local function model_flags(id)
         return {"--model", setting("assistant.models." .. id .. ".model", ""), "--effort", setting("assistant.models." .. id .. ".effort", "")}
     end
-    local DISCORD_KEYS = {"enabled", "read", "post", "token_file", "guild_id", "channels", "allowed_user_id"}
+    local DISCORD_KEYS = {"enabled", "read", "post", "token_file", "guild_id", "channels", "allowed_user_id", "desktop_first", "desktop_timeout_seconds"}
     local function discord_config()
         local values = {}
         for _, key in ipairs(DISCORD_KEYS) do
             local default = ""
-            if key == "enabled" or key == "read" or key == "post" then default = false end
+            if key == "enabled" or key == "read" or key == "post" or key == "desktop_first" then default = false end
+            if key == "desktop_timeout_seconds" then default = 60 end
             values[key] = setting("assistant.discord." .. key, default)
         end
         return values

@@ -30,13 +30,15 @@ The file contains only the raw token on one line. Example configuration (IDs are
 enabled = true
 read = true
 post = false
+desktop_first = false
+desktop_timeout_seconds = 60
 allowed_user_id = "456789012345678901"
 token_file = "/home/me/.config/tohru/discord-token"
 guild_id = "123456789012345678"
 channels = "234567890123456789,345678901234567890"
 ```
 
-All three booleans default to `false`; all strings default to empty. One explicit `allowed_user_id`, a guild and 1–32 explicit channel IDs are required. Missing, blank or malformed `allowed_user_id` disables all Discord functionality, including posting and channel metadata requests, before any API access; ordinary chat and voice keep working. The native setting accepts an empty string to clear setup, or a canonical nonzero unsigned 64-bit decimal ID (ASCII digits, no whitespace or leading zeros); malformed IDs are rejected by `config set`. The REST adapter independently checks this requirement for disk configuration and effective runtime overrides. No wildcard, DM access, channel discovery or cross-server access is provided. The single-guild scope is intentional.
+All booleans default to `false`; all strings default to empty. The desktop timeout defaults to 60 seconds. One explicit `allowed_user_id`, a guild and 1–32 explicit channel IDs are required. Missing, blank or malformed `allowed_user_id` disables all Discord functionality, including posting and channel metadata requests, before any API access; ordinary chat and voice keep working. The native setting accepts an empty string to clear setup, or a canonical nonzero unsigned 64-bit decimal ID (ASCII digits, no whitespace or leading zeros); malformed IDs are rejected by `config set`. The REST adapter independently checks this requirement for disk configuration and effective runtime overrides. No wildcard, DM access, channel discovery or cross-server access is provided. The single-guild scope is intentional.
 
 With the bar running, the existing configuration commands persist these settings:
 
@@ -62,6 +64,55 @@ tohru config set assistant.discord.post false
 tohru config set assistant.discord.read false
 tohru config set assistant.discord.enabled false
 ```
+
+## Desktop first, Discord fallback
+
+To try reaching you on the desktop before using Discord, opt in:
+
+```sh
+tohru config set assistant.discord.desktop_timeout_seconds 60
+tohru config set assistant.discord.desktop_first true
+```
+
+`desktop_first` defaults to `false`. The timeout defaults to 60 seconds and accepts
+10–300 seconds. These are normal native settings, including managed TOML and live
+runtime overrides. Enabling this option does not enable Discord or authorize
+unsolicited messages; the existing user-ID, channel, read/post and user-intent
+requirements still apply.
+
+When enabled, **every bot post** first shows the proposed message in a local
+notification with **Got it**. Clicking that action (or the notification's default
+action) acknowledges the message and suppresses the Discord post entirely. The
+tool returns `sent: false`, `delivery: "desktop"`; this is successful desktop
+delivery and must not be retried as a failed Discord post. This strict policy also
+applies to explicit channel-post requests; there is no per-call bypass.
+
+A successful notification submission does not prove you saw it. Closing or
+ignoring it without acknowledging waits out the configured timeout, then permits
+one Discord post. A missing notification helper, failed notification service, or
+other reported delivery failure permits fallback immediately. The result reports
+`delivery: "discord"` and `desktop_attempt: "unavailable"` or `"unacknowledged"`.
+Neither result proves physical presence, attention, or reading the Discord message.
+DND, a covered toast, or a desktop without action support may result in timeout.
+
+Install `notify-send` from libnotify (`libnotify-bin` on Debian/Ubuntu,
+`libnotify` on distributions such as Arch/Fedora), with support for `--wait` and
+`--action`. The Nix package includes it. `tohru doctor` checks the helper when this
+policy is enabled; `tohru-discord status` reports helper availability without
+posting or checking the live notification service. The notification runs in the
+assistant process's graphical session, using that session's D-Bus environment.
+No voice/TTS call or separate provider call is needed.
+
+The wait belongs to the current assistant turn. Cancellation, disabling posting,
+or changing effective settings aborts it without falling through to Discord.
+The notification helper is terminated/reaped on cancellation or timeout; the
+notification itself requests the same expiry, although the desktop may choose
+its own expiry behavior. After waiting, configuration is revalidated and the
+existing 15-second REST deadline begins. No unattended background queue or
+automatic schedule is introduced, and a fallback cannot outlive its turn.
+Credential and broker environment variables are stripped from the notification
+child. No Discord channel metadata or message request is made if the desktop
+acknowledges first.
 
 ## Ask Tohru
 

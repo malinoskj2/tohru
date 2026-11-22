@@ -57,6 +57,8 @@ pub enum Key {
     AssistantDiscordEnabled,
     AssistantDiscordRead,
     AssistantDiscordPost,
+    AssistantDiscordDesktopFirst,
+    AssistantDiscordDesktopTimeoutSeconds,
     AssistantDiscordTokenFile,
     AssistantDiscordGuildId,
     AssistantDiscordAllowedUserId,
@@ -116,7 +118,7 @@ pub const ORCA_VOICE_CHATS: [&str; 2] = ["home", "new"];
 pub const ORCA_OFFLINE_MODES: [&str; 2] = ["error", "local"];
 
 impl Key {
-    pub const ALL: [Self; 69] = [
+    pub const ALL: [Self; 71] = [
         Self::ShortcutsMode,
         Self::ShortcutLauncher,
         Self::ShortcutSession,
@@ -163,6 +165,8 @@ impl Key {
         Self::AssistantDiscordEnabled,
         Self::AssistantDiscordRead,
         Self::AssistantDiscordPost,
+        Self::AssistantDiscordDesktopFirst,
+        Self::AssistantDiscordDesktopTimeoutSeconds,
         Self::AssistantDiscordTokenFile,
         Self::AssistantDiscordGuildId,
         Self::AssistantDiscordAllowedUserId,
@@ -237,6 +241,10 @@ impl Key {
             Self::AssistantDiscordEnabled => "assistant.discord.enabled",
             Self::AssistantDiscordRead => "assistant.discord.read",
             Self::AssistantDiscordPost => "assistant.discord.post",
+            Self::AssistantDiscordDesktopFirst => "assistant.discord.desktop_first",
+            Self::AssistantDiscordDesktopTimeoutSeconds => {
+                "assistant.discord.desktop_timeout_seconds"
+            }
             Self::AssistantDiscordTokenFile => "assistant.discord.token_file",
             Self::AssistantDiscordGuildId => "assistant.discord.guild_id",
             Self::AssistantDiscordAllowedUserId => "assistant.discord.allowed_user_id",
@@ -348,6 +356,10 @@ impl Key {
             Self::AssistantDiscordEnabled => (&["assistant", "discord"], "enabled"),
             Self::AssistantDiscordRead => (&["assistant", "discord"], "read"),
             Self::AssistantDiscordPost => (&["assistant", "discord"], "post"),
+            Self::AssistantDiscordDesktopFirst => (&["assistant", "discord"], "desktop_first"),
+            Self::AssistantDiscordDesktopTimeoutSeconds => {
+                (&["assistant", "discord"], "desktop_timeout_seconds")
+            }
             Self::AssistantDiscordTokenFile => (&["assistant", "discord"], "token_file"),
             Self::AssistantDiscordGuildId => (&["assistant", "discord"], "guild_id"),
             Self::AssistantDiscordAllowedUserId => (&["assistant", "discord"], "allowed_user_id"),
@@ -370,6 +382,7 @@ impl Key {
     pub const fn integer_bounds(self) -> Option<(i64, i64)> {
         match self {
             Self::IdleLockSeconds | Self::IdleSuspendSeconds => Some((0, 86400)),
+            Self::AssistantDiscordDesktopTimeoutSeconds => Some((10, 300)),
             Self::CornerSize => Some((1, 100)),
             Self::AssistantTtsSpeed => Some((50, 200)),
             Self::AssistantTtsPitch => Some((-12, 12)),
@@ -397,9 +410,11 @@ impl Key {
             Self::IdleSuspendSeconds => Value::Integer(0),
             Self::VoicePython => Value::Text("python3".to_owned()),
             Self::VoiceEnvironment => Value::Text("".to_owned()),
+            Self::AssistantDiscordDesktopTimeoutSeconds => Value::Integer(60),
             Self::AssistantDiscordEnabled
             | Self::AssistantDiscordRead
             | Self::AssistantDiscordPost
+            | Self::AssistantDiscordDesktopFirst
             | Self::Mooncoil
             | Self::InfoButton
             | Self::AboutButton
@@ -572,6 +587,7 @@ impl Key {
                 | Self::AssistantDiscordEnabled
                 | Self::AssistantDiscordRead
                 | Self::AssistantDiscordPost
+                | Self::AssistantDiscordDesktopFirst
                 | Self::Mooncoil
                 | Self::InfoButton
                 | Self::AboutButton

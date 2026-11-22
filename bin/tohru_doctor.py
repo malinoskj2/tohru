@@ -25,6 +25,8 @@ def required_checks(values):
         core.update(("voice.dependencies","voice.vad_model","voice.asr_model"))
         core.update("executable."+name for name in ("parec","pacat","pactl","espeak-ng"))
         if values.get("assistant.voice_wake") == "kws":core.add("voice.kws_model")
+    if values.get("assistant.discord.enabled") and values.get("assistant.discord.post") and values.get("assistant.discord.desktop_first"):
+        core.add("executable.notify-send")
     return core
 
 
@@ -78,6 +80,7 @@ def doctor(as_json=False):
            "xdg-terminal-exec":"terminal application launch","wl-copy":"assistant copy",
            "pactl":"audio diagnostics/voice","parec":"voice capture","pacat":"voice playback",
            "espeak-ng":"voice fallback TTS","ffmpeg":"wallpaper previews","ffprobe":"wallpaper metadata",
+           "notify-send":"libnotify desktop-first Discord acknowledgement (requires action support)",
            "jq":"wallpaper preview metadata","swayidle":"optional idle owner"}
     for tool,purpose in tools.items():
         add("executable."+tool,"ok" if shutil.which(tool) else "missing",purpose,"Install through your distribution package manager")

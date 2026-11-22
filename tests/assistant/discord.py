@@ -76,6 +76,114 @@ class Discord(unittest.TestCase):
     def message(self, content="hello", ident="100"):
         return {"id": ident, "content": content, "author": {"id": "9"}, "timestamp": "2026-11-22T00:00:00Z"}
 
+    def test_desktop_first_acknowledgement_makes_no_discord_requests(self):
+        self.values.update(desktop_first=True, desktop_timeout_seconds=35)
+        def notify(content, seconds, verify, cancelled):
+            self.assertEqual((content, seconds), ("Please check this", 35))
+            verify()
+            return "acknowledged"
+        self.client.notify = notify
+        result = self.execute(action="post", content="Please check this")
+        self.assertFalse(result["sent"])
+        self.assertEqual(result["delivery"], "desktop")
+        self.assertEqual(self.requests, [])
+
+    def test_desktop_first_fallback_and_disabled_policy(self):
+        for outcome in ("unavailable", "unacknowledged"):
+            with self.subTest(outcome=outcome):
+                self.values["desktop_first"] = True
+                self.client.notify = lambda *args: outcome
+                self.replies.append((200, {"id": "101"}, {}))
+                result = self.execute(action="post", content="Authorized outreach")
+                self.assertTrue(result["sent"])
+                self.assertEqual(result["desktop_attempt"], outcome)
+        self.values["desktop_first"] = False
+        self.client.notify = lambda *args: self.fail("Disabled policy must not notify")
+        self.replies.append((200, {"id": "102"}, {}))
+        self.assertTrue(self.execute(action="post", content="Explicit post")["sent"])
+
+    def test_desktop_wait_revocation_cancel_and_unknown_fail_closed(self):
+        self.values["desktop_first"] = True
+        def revoke(*args):
+            self.values["post"] = False
+            return "unacknowledged"
+        self.client.notify = revoke
+        with self.assertRaises(discord.DiscordError):
+            self.execute(action="post", content="hello")
+        self.values["post"] = True
+        self.client.notify = lambda *args: "unknown"
+        with self.assertRaisesRegex(discord.DiscordError, "outcome unknown"):
+            self.execute(action="post", content="hello")
+        def cancel(*args):
+            self.client.cancel()
+            return "unacknowledged"
+        self.client.notify = cancel
+        with self.assertRaisesRegex(discord.DiscordError, "cancelled"):
+            self.execute(action="post", content="hello")
+        self.assertEqual(self.requests, [])
+
+    def test_desktop_policy_validation_and_effective_overrides(self):
+        for update in ({"desktop_first": "true"}, {"desktop_timeout_seconds": True},
+                       {"desktop_timeout_seconds": 9}, {"desktop_timeout_seconds": 301}):
+            with self.subTest(update=update):
+                values = {**self.values, **update}
+                with self.assertRaises(discord.DiscordError):
+                    discord.scope(values)
+        with patch.object(discord, "config", return_value=self.values.copy()):
+            load = discord.effective_config('{"desktop_first":true,"desktop_timeout_seconds":20}')
+            self.assertEqual(discord.desktop_policy(load()), (True, 20))
+        self.assertEqual(self.requests, [])
+
+    def test_notification_process_ack_timeout_failure_and_credential_isolation(self):
+        executable = self.root / "notify-send"
+        def install(source):
+            executable.write_text(f"#!{sys.executable}\n" + source)
+            executable.chmod(0o700)
+        with patch.object(discord.shutil, "which", return_value=str(executable)), patch.dict(os.environ, {
+            discord.TOKEN_ENV: self.secret, "TOHRU_DISCORD_SOCKET": "/private/tool.sock"
+        }):
+            install("import os,sys\nassert 'TOHRU_DISCORD_BOT_TOKEN' not in os.environ\n"
+                    "assert 'TOHRU_DISCORD_SOCKET' not in os.environ\n"
+                    "assert '--action=ack=Got it' in sys.argv\n"
+                    "assert sys.argv[-1] == '&lt;b&gt;Hello&lt;/b&gt;'\nprint('ack')\n")
+            result = discord.desktop_attempt("<b>Hello</b>", .2, lambda: None, threading.Event())
+            self.assertEqual(result, "acknowledged")
+            install("pass\n")
+            started = time.monotonic()
+            self.assertEqual(discord.desktop_attempt("hello", .15, lambda: None, threading.Event()), "unacknowledged")
+            self.assertGreaterEqual(time.monotonic() - started, .14)
+            install("raise SystemExit(1)\n")
+            self.assertEqual(discord.desktop_attempt("hello", .2, lambda: None, threading.Event()), "unavailable")
+            install("import time\ntime.sleep(20)\n")
+            self.assertEqual(discord.desktop_attempt("hello", .15, lambda: None, threading.Event()), "unacknowledged")
+
+    def test_notification_wait_cancellation_terminates_child(self):
+        executable = self.root / "notify-send"
+        pidfile = self.root / "pid"
+        executable.write_text(f"#!{sys.executable}\nimport os,time\nopen({str(pidfile)!r},'w').write(str(os.getpid()))\ntime.sleep(20)\n")
+        executable.chmod(0o700)
+        cancelled = threading.Event()
+        def verify():
+            if pidfile.exists(): cancelled.set()
+        with patch.object(discord.shutil, "which", return_value=str(executable)):
+            with self.assertRaisesRegex(discord.DiscordError, "cancelled"):
+                discord.desktop_attempt("hello", 2, verify, cancelled)
+        self.assertTrue(pidfile.exists())
+        with self.assertRaises(ProcessLookupError): os.kill(int(pidfile.read_text()), 0)
+
+    def test_desktop_first_real_broker_cli_reports_ack_without_post(self):
+        self.values["desktop_first"] = True
+        self.client.notify = lambda *args: "acknowledged"
+        broker = discord.Broker(load=lambda: self.values.copy(), client=self.client)
+        env, note = broker.start()
+        self.addCleanup(broker.close)
+        self.assertIn("Desktop-first delivery is enabled", note)
+        result = subprocess.run([str(ROOT / "bin/tohru-discord"), "post", "2"], input="A message",
+                                env={**os.environ, **env}, capture_output=True, text=True, timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["delivery"], "desktop")
+        self.assertEqual(self.requests, [])
+
     def test_disabled_and_separate_capabilities_never_connect(self):
         for changes, action in (({"enabled": False}, "read"), ({"read": False}, "read"), ({"post": False}, "post")):
             with self.subTest(changes=changes):

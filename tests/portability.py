@@ -165,6 +165,10 @@ interface: 'zxdg_output_manager_v1', version: 3, name: 9
         self.assertIn('voice.vad_model',tohru_doctor.required_checks({"assistant.voice":True}))
         self.assertIn('service.lock',tohru_doctor.required_checks({'idle.owner':'tohru'}))
         self.assertIn('wallpaper.owner',tohru_doctor.required_checks({'wallpaper.enabled':True}))
+        self.assertNotIn('executable.notify-send',tohru_doctor.required_checks({}))
+        self.assertIn('executable.notify-send',tohru_doctor.required_checks({
+            'assistant.discord.enabled':True, 'assistant.discord.post':True,
+            'assistant.discord.desktop_first':True}))
 
     def test_doctor_malformed_and_inaccessible_config_is_exit_two(self):
         self.write_config("[broken")
