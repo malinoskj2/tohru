@@ -28,6 +28,11 @@ part AssistantState {
     fact ai_mouth = 0
     text ai_voice_error = ""
     text ai_show_request = ""
+    text ai_alert_chat = ""
+    text ai_alert_text = ""
+    fact ai_can_signin = true
+    text ai_offline_title = ""
+    text ai_offline_body = ""
     fact ai_voice_failed = false
     prop ai_glow = 0 ~400ms
     follow ai_glow = if(ai_streaming and not ai_open, 1, 0)
@@ -80,6 +85,7 @@ part AssistantState {
     event assistant_hush ->
     event assistant_dragon ->
     event assistant_show_request ->
+    event assistant_alert ->
 
     image ai_history_icon = file "history.svg", 14, 14
     image ai_plus_icon = file "plus.svg", 14, 14

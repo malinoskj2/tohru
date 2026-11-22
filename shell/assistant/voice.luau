@@ -86,8 +86,10 @@ return function(assistant, puppet)
             puppet.thinking()
             if not assistant.ask(message.text, conversation) then
                 local busy = assistant.streaming and assistant.streaming()
+                local unavailable = fact.ai_can_signin == false
                 send({cmd = "say", conversation = conversation, text = busy and "One moment, I'm still on the last thing you asked."
-                    or "I can't answer yet. Sign in to an assistant from the chat popup first."})
+                    or (unavailable and "I can't reach Orca right now. Open Orca and try again."
+                    or "I can't answer yet. Sign in to an assistant from the chat popup first.")})
             end
         elseif event == "speaking" then
             fact.ai_speaking = message.on == true
@@ -137,6 +139,14 @@ return function(assistant, puppet)
             send({cmd = "thinking", on = false})
         end
     end)
+
+    if assistant.on_alert then
+        assistant.on_alert(function(chat_id, msg, speak)
+            if not speak or not id or not msg or msg == "" then return end
+            if fact.ai_voice_paused or fact.notices_dnd or fact.ai_speaking or fact.ai_voice_conversation then return end
+            send({cmd = "say", text = msg, conversation = (chat_id and chat_id ~= "") and chat_id or conversation})
+        end)
+    end
 
     on("assistant_hush", function() send({cmd = "hush"}) end)
     on("assistant_dragon", function()

@@ -272,8 +272,39 @@ class Cli(unittest.TestCase):
         shown = ["--say", "tohru", "text ai_show_request abcd1234", "emit assistant_open", "emit assistant_show_request"]
         self.assertEqual(json.loads(self.invoke("assistant", "show", "abcd1234").stdout), shown)
         self.assertEqual(json.loads(self.invoke("assistant", "show", TOHRU_CONVERSATION="abcd1234").stdout), shown)
+        uuid = "4f71ebb6-db33-43e9-af8f-e5bc79a11077"
+        self.assertEqual(json.loads(self.invoke("assistant", "show", uuid).stdout),
+                         ["--say", "tohru", f"text ai_show_request {uuid}", "emit assistant_open", "emit assistant_show_request"])
         for args in (("open", "extra"), ("show",), ("show", "x; rm"), ("show", "abcd1234", "extra")):
             self.assertEqual(self.invoke("assistant", *args, TOHRU_CONVERSATION="").returncode, 2, args)
+
+        notify_log = Path(self.directory.name) / "notify.log"
+        notifier = Path(self.directory.name) / "fake-notify"
+        notifier.write_text(f"#!/usr/bin/env bash\nprintf '%s|%s\\n' \"$1\" \"$2\" >> '{notify_log}'\n")
+        notifier.chmod(0o755)
+        alert = self.invoke("assistant", "alert", "--chat", uuid, "--speak", "--title", "Overnight", "Build finished",
+                            TOHRU_NOTIFY_CMD=str(notifier))
+        self.assertEqual(alert.returncode, 0, alert.stderr)
+        self.assertEqual(json.loads(alert.stdout), [
+            "--say", "tohru", f"text ai_alert_chat {uuid}", "text ai_alert_text Build finished", "emit assistant_alert 1",
+        ])
+        self.assertEqual(notify_log.read_text().strip(), "Overnight|Build finished")
+        quiet = self.invoke("assistant", "alert", "Ready", TOHRU_NOTIFY_CMD=str(notifier))
+        self.assertEqual(quiet.returncode, 0, quiet.stderr)
+        self.assertEqual(json.loads(quiet.stdout), [
+            "--say", "tohru", "text ai_alert_chat ", "text ai_alert_text Ready", "emit assistant_alert 0",
+        ])
+        for bad in (("alert",), ("alert", "--chat", "../x", "hi"), ("alert", "--bogus", "hi"), ("alert", "line1\nline2")):
+            self.assertEqual(self.invoke("assistant", *bad).returncode, 2, bad)
+
+        orca_init = self.invoke("assistant", "orca", "init", "--bot", "Tohru", **env)
+        self.assertEqual((orca_init.returncode, orca_init.stdout.split()), (0, ["orca", "init", "--bot", "Tohru"]))
+        self.assertEqual(self.invoke("assistant", "orca", "bogus", **env).returncode, 2)
+        for key, val in (("assistant.backend", "orca"), ("assistant.orca_bot", "Tohru"),
+                         ("assistant.orca_voice_chat", "home"), ("assistant.orca_offline", "error")):
+            res = self.invoke("config", "set", key, val)
+            self.assertEqual(res.returncode, 0, res.stderr)
+            self.assertEqual(json.loads(res.stdout)[2:4], [f"text setting_key {key}", f"text setting_value {val}"])
 
     def test_lock_runs_the_locker_and_takes_no_arguments(self):
         seen = self.path / "locked"

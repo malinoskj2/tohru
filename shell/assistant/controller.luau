@@ -7,26 +7,53 @@ return function(settings)
     -- The one answer in flight: its process, conversation, provider and text so far.
     local live = nil
     local history, search_serial = {}, 0
-    local answer_listeners = {}
+    local answer_listeners, alert_listeners = {}, {}
     local probing, probed_at = false, -1
     local PROBE_AGAIN = 30000
+    local SYNC_EVERY = 15000
     local MEMORY_CHARS = 72
     -- A chat counts as ended, and is handed to memory, five minutes after its last answer or when it is left.
     local IDLE_ENDS = 300000
     local clock = 0
+    local synced_at, syncing = -SYNC_EVERY, false
+    local seen_chats, seen_seeded, home_chat = {}, false, nil
+    local want_new_chat = false
+    local last_backend_sig = ""
     local unremembered = {}
-    local remember
+    local remember, sync_orca
     every(1000, function()
         clock = clock + 1000
         for id, at in pairs(unremembered) do
             if clock - at >= IDLE_ENDS and not (live and live.conversation == id) then remember(id) end
         end
+        if sync_orca and not live and clock - synced_at >= SYNC_EVERY then sync_orca(false) end
     end)
 
     local function setting(key, default)
         local value = settings.value and settings.value(key)
         if value == nil then return default end
         return value
+    end
+    local function is_orca() return setting("assistant.backend", "local") == "orca" end
+    local function backend_signature()
+        return table.concat({
+            tostring(setting("assistant.backend", "local")),
+            tostring(setting("assistant.orca_bot", "Tohru")),
+            tostring(setting("assistant.orca_voice_chat", "home")),
+            tostring(setting("assistant.orca_offline", "error")),
+        }, "|")
+    end
+    local function append_backend(args)
+        if not is_orca() then return args end
+        args[#args + 1] = "--backend"
+        args[#args + 1] = "orca"
+        args[#args + 1] = "--orca-bot"
+        args[#args + 1] = tostring(setting("assistant.orca_bot", "Tohru"))
+        args[#args + 1] = "--orca-voice-chat"
+        args[#args + 1] = tostring(setting("assistant.orca_voice_chat", "home"))
+        args[#args + 1] = "--orca-offline"
+        args[#args + 1] = tostring(setting("assistant.orca_offline", "error"))
+        return args
     end
     local PROVIDER_IDS = {"claude", "codex", "gemini", "agy", "opencode"}
     local function model_flags(id)
@@ -43,7 +70,7 @@ return function(settings)
 
     function remember(id)
         unremembered[id] = nil
-        if not id or not memory_on() then return end
+        if not id or not memory_on() or is_orca() then return end
         run(helper, {"remember", id, "--memory", "on", "--models", json.encode(models_config())}, nil, {output = false})
     end
 
@@ -63,7 +90,7 @@ return function(settings)
         if fact.ai_live_here then
             text.ai_placeholder = "Answering…"
         elseif fact.ai_current >= 0 and not fact.ai_signed_in then
-            text.ai_placeholder = "Sign in to chat with " .. name
+            text.ai_placeholder = fact.ai_can_signin == false and (name .. " is unavailable") or ("Sign in to chat with " .. name)
         elseif fact.ai_current < 0 then
             text.ai_placeholder = "No AI CLIs found"
         elseif #shown_turns > 0 then
@@ -78,9 +105,16 @@ return function(settings)
         fact.ai_current = current and (current - 1) or -1
         fact.ai_slot = provider and provider.slot or 0
         fact.ai_signed_in = provider and provider.signed_in == true or false
+        fact.ai_can_signin = provider == nil or provider.can_signin ~= false
         text.ai_provider_name = provider and provider.name or "Assistant"
         text.ai_provider_model = provider and provider.model or ""
         text.ai_provider_cli = provider and provider.id or ""
+        local name = text.ai_provider_name
+        local cli = text.ai_provider_cli
+        text.ai_offline_title = (provider and provider.offline_title and provider.offline_title ~= "")
+            and provider.offline_title or (name .. " isn’t signed in")
+        text.ai_offline_body = (provider and provider.offline_body and provider.offline_body ~= "")
+            and provider.offline_body or ("Its " .. cli .. " is installed. Sign in once in a terminal; chats open here afterwards.")
         placeholder()
     end
 
@@ -107,7 +141,8 @@ return function(settings)
     local function probe(force)
         if probing or (not force and probed_at >= 0 and clock - probed_at < PROBE_AGAIN) then return end
         probing = true
-        run(helper, {"providers", "--models", json.encode(models_config())}, function(out, code)
+        local args = append_backend({"providers", "--models", json.encode(models_config())})
+        run(helper, args, function(out, code)
             probing = false
             probed_at = clock
             local list = code == 0 and decode(out) or nil
@@ -179,15 +214,53 @@ return function(settings)
     end
 
     local function load(id, done)
-        run(helper, {"show", id}, function(out, code)
+        run(helper, append_backend({"show", id}), function(out, code)
             local data = code == 0 and decode(out) or nil
             if not data then fail("That chat could not be opened"); return end
             leave(data.id)
             conversation = data.id
+            want_new_chat = false
             show_turns(data.turns or {})
             refresh_live()
             seen()
             if done then done(data) end
+        end)
+    end
+
+    sync_orca = function(force)
+        if not is_orca() or syncing then return end
+        if not force and clock - synced_at < SYNC_EVERY then return end
+        syncing = true
+        synced_at = clock
+        run(helper, append_backend({"sync"}), function(out, code)
+            syncing = false
+            local data = code == 0 and decode(out) or nil
+            if not data or not data.online then return end
+            if data.home_chat and data.home_chat ~= "" then home_chat = data.home_chat end
+            local changed_chat = nil
+            for _, chat in ipairs(data.chats or {}) do
+                local cid = chat.id
+                local upd = tonumber(chat.updated) or 0
+                if cid and cid ~= "" then
+                    local prev = seen_chats[cid]
+                    if seen_seeded and (prev == nil or upd > prev) and (chat.last_said or "") ~= "" then
+                        changed_chat = cid
+                    end
+                    seen_chats[cid] = upd
+                end
+            end
+            seen_seeded = true
+            if changed_chat then
+                if fact.ai_open and fact.ai_view == 0 and conversation == changed_chat and not live then
+                    load(changed_chat)
+                elseif not (live and live.conversation == changed_chat) then
+                    fact.ai_ready = true
+                    fact.ai_ready_slot = fact.ai_slot or 0
+                    ready_for = changed_chat
+                end
+            elseif fact.ai_open and fact.ai_view == 0 and conversation == nil and not want_new_chat and home_chat and not live then
+                load(home_chat)
+            end
         end)
     end
 
@@ -221,9 +294,12 @@ return function(settings)
         if not provider or not provider.signed_in then return false end
         fail(nil)
         local args = {"chat", "--provider", provider.id}
+        append_backend(args)
         if conversation then
             args[#args + 1] = "--conversation"
             args[#args + 1] = conversation
+        elseif is_orca() and want_new_chat and not voice then
+            args[#args + 1] = "--new-chat"
         end
         if voice then args[#args + 1] = "--voice" end
         for _, flag in ipairs(model_flags(provider.id)) do args[#args + 1] = flag end
@@ -246,12 +322,14 @@ return function(settings)
             if not event or live ~= mine then return end
             if event.event == "start" then
                 mine.conversation = event.conversation
+                want_new_chat = false
                 if conversation == nil and (not voice or fact.ai_open) then conversation = event.conversation end
                 refresh_live()
             elseif event.event == "delta" then
                 mine.text = mine.text .. (event.text or "")
                 if live_here() then text.ai_live = mine.text end
             elseif event.event == "done" or event.event == "stopped" or event.event == "error" then
+                if is_orca() and mine.conversation then seen_chats[mine.conversation] = math.floor(os.time()) end
                 finish(event)
             end
         end, function(_, code)
@@ -270,6 +348,12 @@ return function(settings)
             if conversation ~= ready_for then load(ready_for) else seen() end
         else
             seen()
+            if is_orca() then
+                if conversation == nil and not want_new_chat and home_chat and not live then
+                    load(home_chat)
+                end
+                sync_orca(true)
+            end
         end
     end
     local function close()
@@ -285,6 +369,7 @@ return function(settings)
     local function new_chat()
         leave(nil)
         conversation = nil
+        want_new_chat = true
         show_turns({})
         fact.ai_view = 0
         fact.ai_picker = false
@@ -297,7 +382,7 @@ return function(settings)
     local function list_history()
         search_serial = search_serial + 1
         local serial = search_serial
-        local args = {"history", "--limit", "30"}
+        local args = append_backend({"history", "--limit", "30"})
         fact.ai_searching = text.ai_search ~= ""
         if text.ai_search ~= "" then
             args[#args + 1] = "--query"
@@ -328,7 +413,7 @@ return function(settings)
     local function list_memory()
         fact.ai_memory_on = memory_on()
         fact.ai_forget_armed = false
-        run(helper, {"memory", "list", "--json"}, function(out, code)
+        run(helper, append_backend({"memory", "list", "--json"}), function(out, code)
             local data = code == 0 and decode(out) or {}
             memories = data.memories or {}
             local rows = {}
@@ -342,7 +427,9 @@ return function(settings)
             end
             model.ai_memories = rows
             local state = data.relationship or {}
-            if not fact.ai_memory_on then
+            if state.source == "orca" then
+                text.ai_memory_note = string.format("%d remembered in Orca (%s’s MEMORY.md).", #memories, tostring(state.bot or "Tohru"))
+            elseif not fact.ai_memory_on then
                 text.ai_memory_note = "Memory is off: chats are kept in history, nothing else is learned."
             elseif (state.conversations or 0) > 0 then
                 text.ai_memory_note = string.format("%d remembered from %d chats. Say \"forget that\" in a chat to drop it.", #memories, state.conversations)
@@ -373,13 +460,13 @@ return function(settings)
         end
         current = index + 1
         publish_current()
-        settings.choose(provider.id)
+        if provider.backend ~= "orca" and (provider.id or ""):sub(1, 5) ~= "orca:" then settings.choose(provider.id) end
         fact.ai_picker = false
     end
 
     local function signin(index)
         local provider = providers[index + 1]
-        if not provider then return end
+        if not provider or provider.can_signin == false then return end
         run(helper, {"signin", provider.id}, function(out, code)
             if code ~= 0 then fail("Could not open a terminal to sign in"); return end
             probe(true)
@@ -389,7 +476,21 @@ return function(settings)
     on("assistant_open", function() open() end)
     on("assistant_show_request", function()
         local id = text.ai_show_request or ""
-        if id:match("^%x+$") then fact.ai_view = 0; load(id) end
+        if id:match("^[0-9a-fA-F%-]+$") then fact.ai_view = 0; load(id) end
+    end)
+    on("assistant_alert", function(speak)
+        local chat_id = text.ai_alert_chat or ""
+        local msg = text.ai_alert_text or ""
+        if chat_id ~= "" and fact.ai_open and fact.ai_view == 0 and conversation == chat_id and not live then
+            load(chat_id)
+        else
+            fact.ai_ready = true
+            fact.ai_ready_slot = fact.ai_slot or 0
+            if chat_id ~= "" then ready_for = chat_id end
+        end
+        for _, listener in ipairs(alert_listeners) do
+            listener(chat_id, msg, speak == 1 or speak == true)
+        end
     end)
     on("assistant_close", function() close() end)
     on("assistant_toggle", function() if fact.ai_open then close() else open() end end)
@@ -408,7 +509,7 @@ return function(settings)
     on("assistant_memory_forget", function(index)
         local row = model.ai_memories and model.ai_memories[index + 1]
         if not row then return end
-        run(helper, {"memory", "forget", row.id}, function() list_memory() end)
+        run(helper, append_backend({"memory", "forget", row.id}), function() list_memory() end)
     end)
     on("assistant_memory_clear", function()
         if not fact.ai_forget_armed then
@@ -417,7 +518,7 @@ return function(settings)
             return
         end
         fact.ai_forget_armed = false
-        run(helper, {"memory", "clear"}, function() list_memory() end)
+        run(helper, append_backend({"memory", "clear"}), function() list_memory() end)
     end)
     on("assistant_history", function()
         fact.ai_picker = false
@@ -483,7 +584,26 @@ return function(settings)
         if fact.ai_history_sel >= 0 then pick(fact.ai_history_sel) end
     end)
 
+    last_backend_sig = backend_signature()
     probe(true)
+    if is_orca() then sync_orca(true) end
+
+    local function configure()
+        local sig = backend_signature()
+        if sig == last_backend_sig then
+            if #providers > 0 then settle() end
+            return
+        end
+        last_backend_sig = sig
+        conversation = nil
+        want_new_chat = false
+        home_chat = nil
+        seen_chats = {}
+        seen_seeded = false
+        show_turns({})
+        probe(true)
+        if is_orca() then sync_orca(true) end
+    end
 
     return {
         open = open,
@@ -501,6 +621,7 @@ return function(settings)
         choose = choose,
         signin = signin,
         settle = function() if #providers > 0 then settle() end end,
+        configure = configure,
         -- Voice: one conversation per spell of conversation mode; answers go to the provider in use.
         ask = function(prompt, voice_conversation)
             if live then return false end
@@ -513,10 +634,12 @@ return function(settings)
         stop = function() if live then kill(live.id, "int") end end,
         streaming = function() return live ~= nil end,
         on_answer = function(listener) answer_listeners[#answer_listeners + 1] = listener end,
+        on_alert = function(listener) alert_listeners[#alert_listeners + 1] = listener end,
         show = function(id) open(); fact.ai_view = 0; load(id) end,
         status = function()
             return {open = fact.ai_open, streaming = live ~= nil, ready = fact.ai_ready, conversation = conversation,
-                provider = current and providers[current] and providers[current].id or ""}
+                provider = current and providers[current] and providers[current].id or "",
+                backend = is_orca() and "orca" or "local"}
         end,
     }
 end

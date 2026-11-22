@@ -11,7 +11,8 @@ _G.on = function(name, handler)
     events[name] = list
 end
 local function emit(name, ...) for _, handler in ipairs(events[name] or {}) do handler(...) end end
-_G.every = function() end
+local every_cbs = {}
+_G.every = function(ms, f) every_cbs[#every_cbs + 1] = f end
 _G.after = function(_, f) timers[#timers + 1] = f end
 _G.kill = function(id, how) killed[#killed + 1] = {id, how} end
 local outputs = {}
@@ -192,4 +193,64 @@ emit("assistant_memory_clear")
 assert(memory_actions() == "forgetaa,clear")
 emit("assistant_history")
 assert(fact.ai_view == 0)
-print("Assistant provider choice, models, streaming, Stop, ready mark, sign-in, history, voice turn, memory hand-off and Memory view fixtures passed")
+
+-- UUID conversation IDs and proactive alerts (`tohru assistant alert`) set ready mark or reload active chat.
+local uuid = "4f71ebb6-db33-43e9-af8f-e5bc79a11077"
+outputs.show = json.encode({id = uuid, provider = "orca:Tohru", turns = {{role = "assistant", text = "Morning check done."}}})
+local alerts = {}
+assistant.on_alert(function(cid, msg, speak) alerts[#alerts + 1] = {cid, msg, speak} end)
+assistant.close()
+text.ai_alert_chat = uuid
+text.ai_alert_text = "Overnight build finished"
+emit("assistant_alert", 1)
+assert(fact.ai_ready and #alerts == 1 and alerts[1][1] == uuid and alerts[1][2] == "Overnight build finished" and alerts[1][3] == true)
+emit("assistant_open")
+assert(not fact.ai_ready and runs[#runs].args[1] == "show" and runs[#runs].args[2] == uuid)
+text.ai_show_request = uuid
+emit("assistant_show_request")
+assert(runs[#runs].args[1] == "show" and runs[#runs].args[2] == uuid)
+
+-- Opt-in Orca backend passes --backend orca, loads Home Chat, skips remember, and syncs background replies.
+values["assistant.backend"] = "orca"
+values["assistant.orca_bot"] = "Tohru"
+outputs.providers = json.encode({
+    {id = "orca:Tohru", name = "Tohru", slot = 0, signed_in = true, model = "Orca · claude", backend = "orca", can_signin = false},
+})
+outputs.sync = json.encode({
+    backend = "orca", online = true, bot = "Tohru", home_chat = uuid,
+    chats = {{id = uuid, title = "Home", updated = 100, last_said = "Initial", home = true}},
+})
+assistant.configure()
+assert(text.ai_provider_name == "Tohru" and fact.ai_signed_in and not fact.ai_can_signin)
+local chosen_before = #chosen
+emit("assistant_choose", 0)
+assert(#chosen == chosen_before)
+local runs_before_signin = #runs
+emit("assistant_signin", 0)
+assert(#runs == runs_before_signin)
+assert(has(runs_of("providers")[#runs_of("providers")].args, "--backend", "orca"))
+assert(has(runs_of("sync")[#runs_of("sync")].args, "--orca-bot", "Tohru"))
+-- Clicking + sets --new-chat on the next send.
+emit("assistant_new")
+text.ai_prompt = "Start a fresh thread"
+emit("assistant_send")
+local orca_send = spawned[#spawned]
+assert(has(orca_send.args, "--backend", "orca"))
+local has_new_chat = false
+for _, a in ipairs(orca_send.args) do has_new_chat = has_new_chat or a == "--new-chat" end
+assert(has_new_chat)
+local rem_before = #runs_of("remember")
+orca_send.line(json.encode({event = "start", conversation = uuid}))
+orca_send.line(json.encode({event = "done", conversation = uuid}))
+assistant.close()
+assert(#runs_of("remember") == rem_before)
+-- Background sync detects a newer Orca reply while closed and lights up ai_ready.
+fact.ai_ready = false
+outputs.sync = json.encode({
+    backend = "orca", online = true, bot = "Tohru", home_chat = uuid,
+    chats = {{id = uuid, title = "Home", updated = 9999999999, last_said = "Overnight update", home = true}},
+})
+for _ = 1, 16 do every_cbs[1]() end
+assert(fact.ai_ready)
+
+print("Assistant provider choice, models, streaming, Stop, ready mark, sign-in, history, voice turn, memory hand-off, alerts and Orca backend fixtures passed")

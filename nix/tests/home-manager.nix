@@ -47,6 +47,18 @@ let
     };
   } ]).config;
   quietManaged = builtins.readFile quiet.home.sessionVariables.TOHRU_MANAGED_CONFIG;
+  orcaBot = (home tohru.homeManagerModules.tohru [ {
+    programs.tohru = {
+      enable = true;
+      assistant.orca = {
+        enable = true;
+        bot = "Tohru";
+        voiceChat = "home";
+        offline = "error";
+      };
+    };
+  } ]).config;
+  orcaManaged = builtins.readFile orcaBot.home.sessionVariables.TOHRU_MANAGED_CONFIG;
   servicesOnly = (home tohru.homeManagerModules.tohru [ { programs.tohru.systemd.enable = true; } ]).config;
   roles = {
     tohru-bar = "tohru-run";
@@ -96,6 +108,8 @@ assert pkgs.lib.hasInfix "[assistant]\nasr_model = \"/asr\"\nkws_model = \"/k\"\
 assert !(pkgs.lib.hasInfix "voice_models" quietManaged);
 assert pkgs.lib.hasInfix "[assistant.models.codex]\neffort = \"high\"\nmodel = \"gpt-6.2-sol\"" quietManaged;
 assert pkgs.lib.hasInfix "[assistant.models.claude]\neffort = \"low\"" quietManaged;
+assert pkgs.lib.hasInfix "[assistant]\nbackend = \"orca\"\norca_bot = \"Tohru\"\norca_offline = \"error\"\norca_voice_chat = \"home\"" orcaManaged;
+assert !(pkgs.lib.hasInfix "orca" quietManaged);
 assert serviced.systemd.user.services.tohru-launcher.Service.KillMode == "process";
 assert builtins.all (name: !(serviced.systemd.user.services.${name}.Service ? KillMode))
   [ "tohru-bar" "tohru-session" "tohru-notifications" ];

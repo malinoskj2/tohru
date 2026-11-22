@@ -24,12 +24,14 @@ Usage: tohru panel toggle|open sound|calendar|network|media|bluetooth|wallpaper|
        tohru config set appearance.corner_size 1..100
        tohru config set lock.style STYLE   (still-glass, ribbon-key, flooded-monolith, drifting-frost-veil, unfolding-glass-capsule, edge-glass-drawer, horizon-meniscus, refractive-typographic-lens, corner-anchor, bar-drop-curtain)
        tohru config set notifications.position top-right|bottom-right
-       tohru config set assistant.KEY VALUE   (voice, provider, models.PROVIDER.model, models.PROVIDER.effort,
-                                               persona, persona_file, memory, vad_model, asr_model, turn_model,
-                                               voice_wake, kws_model, tts_*;
+       tohru config set assistant.KEY VALUE   (voice, provider, backend, orca_bot, orca_voice_chat, orca_offline,
+                                               models.PROVIDER.model, models.PROVIDER.effort, persona, persona_file,
+                                               memory, vad_model, asr_model, turn_model, voice_wake, kws_model, tts_*;
                                                see docs/configuration.md)
        tohru config set bar.preferred_output OUTPUT   ('' for every output)
        tohru assistant open|close|toggle | show [ID]   (show opens a chat; ID defaults to $TOHRU_CONVERSATION)
+       tohru assistant alert [--chat ID] [--speak] [--title TITLE] MESSAGE
+       tohru assistant orca init [--bot NAME] [--no-migrate] [--force-soul]
        tohru assistant memory list [--json] | memory forget ID | memory clear
        tohru assistant export [FILE]   (the whole assistant state as versioned JSON; stdout without FILE; files are 0600)
        tohru assistant import FILE [--merge | --replace --yes] [--only history|memory|relationship]...
@@ -276,6 +278,9 @@ case ${1:-help} in
         ;;
     assistant)
         helper=${TOHRU_ASSISTANT:-$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/tohru-assistant}
+        conv_id_ok() {
+            [[ $1 =~ ^([0-9a-fA-F]{4,32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$ ]]
+        }
         case ${2:-} in
             open|close|toggle)
                 [[ $# == 2 ]] || fail "Usage: tohru assistant $2"
@@ -283,8 +288,61 @@ case ${1:-help} in
                 ;;
             show)
                 id=${3:-${TOHRU_CONVERSATION:-}}
-                [[ $# -le 3 && $id =~ ^[0-9a-f]{4,32}$ ]] || fail 'Usage: tohru assistant show [ID]   (ID defaults to $TOHRU_CONVERSATION)'
+                [[ $# -le 3 ]] && conv_id_ok "$id" || fail 'Usage: tohru assistant show [ID]   (ID defaults to $TOHRU_CONVERSATION)'
                 exec "$pleamar" --say tohru "text ai_show_request $id" 'emit assistant_open' 'emit assistant_show_request'
+                ;;
+            alert)
+                shift 2
+                chat_id=
+                speak=0
+                title=Tohru
+                while [[ $# -gt 0 ]]; do
+                    case $1 in
+                        --chat)
+                            [[ $# -ge 2 ]] || fail 'Usage: tohru assistant alert [--chat ID] [--speak] [--title TITLE] MESSAGE'
+                            conv_id_ok "$2" || fail 'Invalid conversation ID'
+                            chat_id=$2
+                            shift 2
+                            ;;
+                        --speak)
+                            speak=1
+                            shift
+                            ;;
+                        --title)
+                            [[ $# -ge 2 ]] || fail 'Usage: tohru assistant alert [--chat ID] [--speak] [--title TITLE] MESSAGE'
+                            title=$2
+                            shift 2
+                            ;;
+                        --)
+                            shift
+                            break
+                            ;;
+                        --*)
+                            fail 'Usage: tohru assistant alert [--chat ID] [--speak] [--title TITLE] MESSAGE'
+                            ;;
+                        *)
+                            break
+                            ;;
+                    esac
+                done
+                [[ $# == 1 && -n $1 ]] || fail 'Usage: tohru assistant alert [--chat ID] [--speak] [--title TITLE] MESSAGE'
+                msg=$1
+                [[ $title != *[[:cntrl:]]* && ${#title} -le 128 ]] || fail 'Invalid alert title'
+                [[ $msg != *[[:cntrl:]]* && ${#msg} -le 1024 ]] || fail 'Invalid alert message'
+                if [[ -n ${TOHRU_NOTIFY_CMD:-} ]]; then
+                    "$TOHRU_NOTIFY_CMD" "$title" "$msg" >/dev/null 2>&1 || true
+                elif command -v notify-send >/dev/null 2>&1; then
+                    notify-send --app-name=Tohru "$title" "$msg" >/dev/null 2>&1 || true
+                elif command -v busctl >/dev/null 2>&1; then
+                    busctl --user call org.freedesktop.Notifications /org/freedesktop/Notifications \
+                        org.freedesktop.Notifications Notify 'susssasa{sv}i' \
+                        Tohru 0 "" "$title" "$msg" 0 0 6000 >/dev/null 2>&1 || true
+                fi
+                exec "$pleamar" --say tohru "text ai_alert_chat $chat_id" "text ai_alert_text $msg" "emit assistant_alert $speak"
+                ;;
+            orca)
+                [[ ${3:-} == init ]] || fail 'Usage: tohru assistant orca init [--bot NAME] [--no-migrate] [--force-soul]'
+                exec "$helper" "${@:2}"
                 ;;
             memory)
                 case ${3:-} in
@@ -303,7 +361,7 @@ case ${1:-help} in
                 [[ $# -ge 3 ]] || fail 'Usage: tohru assistant import FILE [--merge|--replace --yes] [--only history|memory|relationship]...'
                 exec "$helper" "${@:2}"
                 ;;
-            *) fail 'Usage: tohru assistant open|close|toggle | show [ID] | memory list|forget ID|clear | export [FILE] | import FILE [--merge|--replace --yes] [--only SECTION]' ;;
+            *) fail 'Usage: tohru assistant open|close|toggle | show [ID] | alert [--chat ID] [--speak] [--title TITLE] MESSAGE | orca init [--bot NAME] | memory list|forget ID|clear | export [FILE] | import FILE [--merge|--replace --yes] [--only SECTION]' ;;
         esac
         ;;
     settings-error)

@@ -649,3 +649,80 @@ fn assistant_models_nest_under_each_provider() {
         Key::AssistantEffort(Cli::Opencode)
     );
 }
+
+#[test]
+fn assistant_backend_defaults_to_local_and_validates_opt_in_orca_settings() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    let mut owner = files.owner();
+    assert_eq!(
+        owner.get(Key::AssistantBackend).value,
+        Value::Text("local".into())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantOrcaBot).value,
+        Value::Text("Tohru".into())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantOrcaVoiceChat).value,
+        Value::Text("home".into())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantOrcaOffline).value,
+        Value::Text("error".into())
+    );
+    owner
+        .set(Key::AssistantBackend, Value::Text("orca".into()))
+        .unwrap();
+    owner
+        .set(Key::AssistantOrcaBot, Value::Text("Tohru Prime".into()))
+        .unwrap();
+    owner
+        .set(Key::AssistantOrcaVoiceChat, Value::Text("new".into()))
+        .unwrap();
+    owner
+        .set(Key::AssistantOrcaOffline, Value::Text("local".into()))
+        .unwrap();
+    let restarted = files.owner();
+    assert_eq!(
+        restarted.get(Key::AssistantBackend).value,
+        Value::Text("orca".into())
+    );
+    assert_eq!(
+        restarted.get(Key::AssistantOrcaBot).value,
+        Value::Text("Tohru Prime".into())
+    );
+    assert_eq!(
+        restarted.get(Key::AssistantOrcaVoiceChat).value,
+        Value::Text("new".into())
+    );
+    assert_eq!(
+        restarted.get(Key::AssistantOrcaOffline).value,
+        Value::Text("local".into())
+    );
+    for (key, bad) in [
+        (Key::AssistantBackend, Value::Text("auto".into())),
+        (Key::AssistantBackend, Value::Text("Orca".into())),
+        (Key::AssistantOrcaBot, Value::Text(String::new())),
+        (Key::AssistantOrcaBot, Value::Text("   ".into())),
+        (Key::AssistantOrcaBot, Value::Text("../etc".into())),
+        (Key::AssistantOrcaBot, Value::Text("Tohru;rm".into())),
+        (Key::AssistantOrcaVoiceChat, Value::Text("thread".into())),
+        (Key::AssistantOrcaOffline, Value::Text("fallback".into())),
+    ] {
+        let before = fs::read(files.user()).unwrap();
+        assert!(owner.set(key, bad).is_err(), "{key:?}");
+        assert_eq!(fs::read(files.user()).unwrap(), before);
+    }
+    fs::write(
+        files.managed(),
+        "[assistant]\nbackend = \"orca\"\norca_bot = \"Tohru\"\n",
+    )
+    .unwrap();
+    let managed = files.owner();
+    assert_eq!(
+        managed.get(Key::AssistantBackend).value,
+        Value::Text("orca".into())
+    );
+    assert_eq!(managed.get(Key::AssistantBackend).origin, Origin::Nix);
+}

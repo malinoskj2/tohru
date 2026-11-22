@@ -87,19 +87,22 @@ part AssistantPopup {
             text if(ai_providers.count == 0, "No AI CLIs found on PATH", "Installed AI CLIs on this machine") { at: ai_ox + 14, ai_picker_h - 18; anchor: left center; size: 10.5; family: "SF Pro Text"; color: ink_white; opacity: 42% }
         }
 
-        // Signed out: the note with Sign in… and another provider to use instead.
+        // Signed out (or Orca bot offline): status note, plus Sign in… for local CLIs.
         group {
             show: not ai_picker and ai_view == 0 and ai_needs_signin
-            box { from: ai_ox + 10, 46; size: ai_w - 20, 122; corner: 11; color: ink_white; opacity: 6% }
-            box { from: ai_ox + 10.5, 46.5; size: ai_w - 21, 121; corner: 10.5; stroke: 1; color: ink_white; opacity: 12% }
+            box { from: ai_ox + 10, 46; size: ai_w - 20, if(ai_can_signin, 122, 92); corner: 11; color: ink_white; opacity: 6% }
+            box { from: ai_ox + 10.5, 46.5; size: ai_w - 21, if(ai_can_signin, 121, 91); corner: 10.5; stroke: 1; color: ink_white; opacity: 12% }
             ellipse { at: ai_ox + 26, 64; radius: 2.4; stroke: 1.2; color: ai_colour }
-            text "{ai_provider_name} isn’t signed in" { at: ai_ox + 36, 64; anchor: left center; width: ai_w - 60; lines: 1; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
-            text "Its {ai_provider_cli} is installed. Sign in once in a terminal; chats open here afterwards." { at: ai_ox + 36, 78; width: ai_w - 60; lines: 2; size: 10.5; family: "SF Pro Text"; color: ink_white; opacity: 62% }
-            zone box ai_signin_hit { from: ai_ox + 34, 112; size: 80, 22; corner: 6; cursor: pointer; active: ai_needs_signin and not ai_picker and ai_view == 0; label: "Sign in to {ai_provider_name}" }
-            box { from: ai_ox + 34, 112; size: 80, 22; corner: 6; color: ink_white; opacity: 16% + max(ai_signin_hit.hover * 6%, ai_signin_hit.pressed * 12%) }
-            image ai_terminal_icon { at: ai_ox + 42, 117; size: 12, 12; tint: ink_white; opacity: 85% }
-            text "Sign in…" { at: ai_ox + 59, 123; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
-            text "runs {ai_provider_cli}" { at: ai_ox + 36, 151; anchor: left center; size: 10.5; family: "SF Pro Text"; color: ink_white; opacity: 42% }
+            text ai_offline_title { at: ai_ox + 36, 64; anchor: left center; width: ai_w - 60; lines: 1; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+            text ai_offline_body { at: ai_ox + 36, 78; width: ai_w - 60; lines: 3; size: 10.5; family: "SF Pro Text"; color: ink_white; opacity: 62% }
+            zone box ai_signin_hit { from: ai_ox + 34, 112; size: 80, 22; corner: 6; cursor: pointer; active: ai_can_signin and ai_needs_signin and not ai_picker and ai_view == 0; label: "Sign in to {ai_provider_name}" }
+            group {
+                show: ai_can_signin
+                box { from: ai_ox + 34, 112; size: 80, 22; corner: 6; color: ink_white; opacity: 16% + max(ai_signin_hit.hover * 6%, ai_signin_hit.pressed * 12%) }
+                image ai_terminal_icon { at: ai_ox + 42, 117; size: 12, 12; tint: ink_white; opacity: 85% }
+                text "Sign in…" { at: ai_ox + 59, 123; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+                text "runs {ai_provider_cli}" { at: ai_ox + 36, 151; anchor: left center; size: 10.5; family: "SF Pro Text"; color: ink_white; opacity: 42% }
+            }
             on press ai_signin_hit { emit assistant_signin(ai_current) }
         }
 
