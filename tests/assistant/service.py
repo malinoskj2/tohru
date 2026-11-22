@@ -101,8 +101,14 @@ class Assistant(unittest.TestCase):
         self.fake("codex", FAKE_CODEX)
         self.persona = root / "persona.md"
         self.persona.write_text("You are Tohru, an ancient dragon.")
+        system = root / "system-bin"
+        system.mkdir()
+        for directory in ("/usr/bin", "/bin"):
+            for entry in Path(directory).iterdir() if Path(directory).is_dir() else ():
+                if entry.name != "orca-ide" and not (system / entry.name).exists():
+                    (system / entry.name).symlink_to(entry)
         self.env = {
-            "PATH": f"{self.bin}:/usr/bin:/bin:" + os.path.dirname(os.path.realpath(subprocess.check_output(["sh", "-c", "command -v python3"], text=True).strip())),
+            "PATH": f"{self.bin}:{system}:" + os.path.dirname(os.path.realpath(subprocess.check_output(["sh", "-c", "command -v python3"], text=True).strip())),
             "HOME": str(self.home),
             "XDG_DATA_HOME": str(root / "xdg-data"),
             "XDG_CONFIG_HOME": str(root / "xdg-config"),
