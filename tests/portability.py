@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -31,6 +32,7 @@ def script_module(name, path):
 
 class Portability(unittest.TestCase):
     def setUp(self):
+        (ROOT/".tmp").mkdir(exist_ok=True)
         self.temp=tempfile.TemporaryDirectory(dir=ROOT/'.tmp',prefix='portability-test-')
         self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name)
@@ -96,6 +98,16 @@ interface: 'zxdg_output_manager_v1', version: 3, name: 9
         with contextlib.redirect_stdout(io.StringIO()):p.generate_units(args)
         self.assertEqual(len(list((self.root/'units').glob('*.service'))),3)
         with self.assertRaises(FileExistsError):p.generate_units(args)
+
+    def test_relocated_release_layout_finds_helpers_and_shared_spec(self):
+        bundle=self.root/'bundle with spaces';bundle.mkdir()
+        shutil.copytree(ROOT/'bin',bundle/'bin',ignore=shutil.ignore_patterns('__pycache__'))
+        shutil.copytree(ROOT/'share',bundle/'share')
+        result=subprocess.run([str(bundle/'bin/tohru'),'session-units','--output',str(bundle/'units'),'--components','bar,shortcuts'],
+            env={**os.environ,'TOHRU_BIN_DIR':''},capture_output=True,text=True,timeout=3)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertTrue((bundle/'units/tohru-shortcuts.service').is_file())
+        self.assertIn(str(bundle/'bin/tohru-shortcuts'),(bundle/'units/tohru-shortcuts.service').read_text())
 
     def test_echo_config_does_not_change_default_routes_or_overwrite(self):
         content=(p.DATA/'pipewire/60-tohru-echo-cancel.conf').read_text()
@@ -217,6 +229,38 @@ interface: 'zxdg_output_manager_v1', version: 3, name: 9
         with self.assertRaises(ValueError):wall.valid_file(directory,str(other))
         state=self.root/'state.json';wall.save(state,{'eDP-1':str(file)});self.assertEqual(wall.assignment_data(state),{'eDP-1':str(file)})
         with self.assertRaises(ValueError):wall.seconds('nan')
+
+    def test_wallpaper_supervisor_control_socket_shutdown_and_disabled_restart(self):
+        # End-to-end supervisor with protocol-output and player fixtures, no compositor.
+        import hashlib
+        with tempfile.TemporaryDirectory(prefix='tws-') as runtime:
+            directory=self.root/'pictures';directory.mkdir();image=directory/'one.png';image.write_bytes(b'fixture')
+            tools=self.root/'tools';tools.mkdir()
+            discovery=tools/'wayland-info';discovery.write_text('#!'+sys.executable+'\nprint("interface: \'wl_output\', version: 4, name: 1\\n\\tname: eDP-1")\n');discovery.chmod(0o755)
+            backend=tools/'mpv-fixture'
+            backend.write_text('#!'+sys.executable+"\nimport socket,sys,re,json\npath=re.search(r'--input-ipc-server=([^ ]+)',sys.argv[2])[1]\ns=socket.socket(socket.AF_UNIX);s.bind(path);s.listen(2)\nwhile True:\n c,_=s.accept()\n with c:\n  request=json.loads(c.recv(65536));c.sendall(json.dumps({'request_id':1,'error':'success','data':None}).encode()+b'\\n')\n")
+            backend.chmod(0o755)
+            self.write_config(f'[wallpaper]\nenabled=true\ndirectory="{directory}"\nexecutable="{backend}"\n')
+            env={**os.environ,'XDG_RUNTIME_DIR':runtime,'PATH':str(tools)+os.pathsep+os.environ.get('PATH','')}
+            with patch.dict(os.environ,env):
+                values,_=p.config();_,state,endpoint=wall.paths(values)
+            log=(ROOT/'.tmp/wallpaper-supervisor-fixture.log').open('w')
+            daemon=subprocess.Popen([sys.executable,str(ROOT/'bin/tohru_wallpaper.py'),'serve'],env=env,stdout=log,stderr=log)
+            try:
+                deadline=time.monotonic()+2
+                while not (endpoint/'control.sock').exists() and daemon.poll() is None and time.monotonic()<deadline:time.sleep(.01)
+                self.assertTrue((endpoint/'control.sock').exists())
+                wall.request(endpoint,['apply','eDP-1',str(image)])
+                self.assertEqual(wall.assignment_data(state),{'eDP-1':str(image)})
+                self.assertGreater(len(list(endpoint.glob('*.sock'))),1)
+            finally:
+                daemon.terminate();daemon.wait(timeout=5);log.close()
+            self.assertEqual(list(endpoint.glob('*.sock')),[])
+            self.write_config('[wallpaper]\nenabled=false\n')
+            result=subprocess.run([sys.executable,str(ROOT/'bin/tohru_wallpaper.py'),'serve'],env=env,capture_output=True,text=True,timeout=2)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertFalse((endpoint/'control.sock').exists())
+            self.assertEqual(wall.assignment_data(state),{'eDP-1':str(image)})
 
     def test_owned_wallpaper_process_socket_cleanup_and_hotplug(self):
         # A real child/socket fixture validates ownership, not compositor rendering.

@@ -1,0 +1,10 @@
+{
+  "package": "dbus-fast",
+  "version": "5.2.0",
+  "source": "https://pypi.org/pypi/dbus-fast/5.2.0/json",
+  "artifact": "dbus_fast-5.2.0.tar.gz",
+  "url": "https://files.pythonhosted.org/packages/4c/5b/ce64b8788c10a8bd313c8638b28be5dccdd5c2daf14839f23aff37e0b39d/dbus_fast-5.2.0.tar.gz",
+  "sha256": "a4a5dddc04b1ade5eb7650d791e2f6fb7c1334595593473914e78a2526ecddda",
+  "requires_python": ">=3.11",
+  "note": "Source inspected and pure-Python path used only in private-bus development tests; not vendored or installed by Tohru."
+}
