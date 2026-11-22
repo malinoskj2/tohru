@@ -135,6 +135,17 @@ in {
           left to the user's config (on unless they turn it off).
         '';
       };
+      voice.echoCancel = lib.mkOption {
+        type = lib.types.bool;
+        default = assistant.voice.enable;
+        defaultText = lib.literalExpression "config.programs.tohru.assistant.voice.enable";
+        description = ''
+          Install a PipeWire `libpipewire-module-echo-cancel` drop-in
+          (`~/.config/pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf`) creating a
+          WebRTC echo-cancelling source and sink for Tohru without changing the
+          session's default audio devices.
+        '';
+      };
       voice.wake = lib.mkOption {
         type = lib.types.nullOr (lib.types.enum [ "kws" "asr" ]);
         default = null;
@@ -227,6 +238,46 @@ in {
       programs.tohru.settings.lock.style = cfg.lock.style;
     })
     (lib.mkIf (assistantSettings != { }) { programs.tohru.settings.assistant = assistantSettings; })
+    (lib.mkIf (assistant.voice.enable && assistant.voice.echoCancel) {
+      xdg.configFile."pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf".text = ''
+        context.modules = [
+          {
+            name = libpipewire-module-echo-cancel
+            flags = [ ifexists nofail ]
+            args = {
+              library.name = aec/libspa-aec-webrtc
+              aec.args = {
+                webrtc.gain_control = true
+                webrtc.noise_suppression = true
+                webrtc.high_pass_filter = true
+              }
+              capture.props = {
+                node.name = "tohru-echo-cancel-capture"
+                node.description = "Tohru Echo-Cancel Capture"
+                node.passive = true
+              }
+              source.props = {
+                node.name = "tohru-echo-cancel-source"
+                node.description = "Tohru Echo-Cancel Source"
+                priority.session = 0
+                priority.driver = 0
+              }
+              sink.props = {
+                node.name = "tohru-echo-cancel-sink"
+                node.description = "Tohru Echo-Cancel Sink"
+                priority.session = 0
+                priority.driver = 0
+              }
+              playback.props = {
+                node.name = "tohru-echo-cancel-playback"
+                node.description = "Tohru Echo-Cancel Playback"
+                node.passive = true
+              }
+            }
+          }
+        ]
+      '';
+    })
     {
       assertions = [{
         assertion = builtins.all (name: builtins.elem name providers) (builtins.attrNames assistant.models);
