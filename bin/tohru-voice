@@ -745,17 +745,14 @@ class Speaker:
 
 
 class Monitor:
-    """Pauses listening while another app records or the session is locked."""
+    """Pauses listening while the session is locked."""
 
     def __init__(self, voice):
         self.voice = voice
-        self.recording = False
         self.locked = False
         runtime = os.environ.get("XDG_RUNTIME_DIR", "")
         self.lock_file = os.environ.get("TOHRU_VOICE_LOCK_FILE") or (os.path.join(runtime, "tohru-lock.lock") if runtime else "")
         threading.Thread(target=self.watch_locks, daemon=True).start()
-        if shutil.which("pactl"):
-            threading.Thread(target=self.watch_recordings, daemon=True).start()
 
     def is_locked(self):
         if not self.lock_file or not os.path.exists(self.lock_file):
@@ -780,44 +777,6 @@ class Monitor:
                 self.locked = locked
                 self.voice.paused_changed()
             time.sleep(2)
-
-    def others_recording(self):
-        try:
-            out = subprocess.run(["pactl", "-f", "json", "list", "source-outputs"], capture_output=True, text=True, timeout=5).stdout
-            outputs = json.loads(out or "[]")
-        except (OSError, ValueError, subprocess.TimeoutExpired):
-            return False
-        own = self.voice.capture_pid()
-        for item in outputs:
-            props = item.get("properties", {})
-            if props.get("application.name") == "tohru-voice":
-                continue
-            if own and str(props.get("application.process.id")) == str(own):
-                continue
-            if str(props.get("media.class", "")).startswith("Stream/Input/Audio") or "source" in item:
-                if props.get("stream.monitor") == "true" or str(item.get("source", "")).endswith(".monitor"):
-                    continue
-                return True
-        return False
-
-    def watch_recordings(self):
-        while True:
-            try:
-                events = subprocess.Popen(["pactl", "subscribe"], stdout=subprocess.PIPE, text=True)
-            except OSError:
-                return
-            self.update_recording()
-            for line in events.stdout:
-                if "source-output" in line:
-                    self.update_recording()
-            events.wait()
-            time.sleep(5)
-
-    def update_recording(self):
-        recording = self.others_recording()
-        if recording != self.recording:
-            self.recording = recording
-            self.voice.paused_changed()
 
 
 class Voice:
@@ -879,9 +838,6 @@ class Voice:
         except Exception as error:
             emit("error", message=f"speech: {error}")
 
-    def capture_pid(self):
-        return self.capture.pid if self.capture else None
-
     def in_conversation(self):
         return time.monotonic() < self.conversation_until
 
@@ -893,7 +849,7 @@ class Voice:
             self.extend_conversation()
 
     def paused_changed(self):
-        reason = "locked" if self.monitor.locked else "recording" if self.monitor.recording else None
+        reason = "locked" if self.monitor.locked else None
         if reason == self.paused_reason:
             return
         self.paused_reason = reason

@@ -262,6 +262,32 @@ class VoiceTests(unittest.TestCase):
         self.speak(voice, 20, 40)
         self.assertNotIn("hearing", [e["event"] for e in self.events])
 
+    def test_pause_follows_the_session_lock_file(self):
+        import fcntl
+        voice = make_voice(FakeRecognizer([""], ""))
+        voice.silero = type("S", (), {"reset": lambda self: None})()
+        voice.capture = None
+        monitor = object.__new__(voice_module.Monitor)
+        monitor.voice = voice
+        monitor.locked = False
+        voice.monitor = monitor
+        with tempfile.NamedTemporaryFile() as lock:
+            monitor.lock_file = lock.name
+            self.assertFalse(monitor.is_locked())
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.assertTrue(monitor.is_locked())
+            monitor.locked = True
+            voice.paused_changed()
+            self.assertEqual(voice.paused_reason, "locked")
+            self.assertEqual(voice.speaker.hushed, 1)
+            self.assertEqual(self.events[-1], {"event": "paused", "reason": "locked"})
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+            self.assertFalse(monitor.is_locked())
+            monitor.locked = False
+            voice.paused_changed()
+            self.assertIsNone(voice.paused_reason)
+            self.assertEqual(self.events[-1], {"event": "paused", "reason": ""})
+
 
 class VisemeTests(unittest.TestCase):
     def test_phonemes_map_to_the_eight_mouths(self):

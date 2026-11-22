@@ -56,7 +56,7 @@ Always on, using the default PipeWire source, and following changes of the defau
 - **End of turn:** Smart Turn v3.2 (`assistant.turn_model`, optional, CPU, `intra_op_num_threads=2`, `OPENBLAS_NUM_THREADS=1`) at a 200 ms pause, plus an 800 ms silence fallback, which is all that ends a turn when `turn_model` is unset. No LLM end-of-turn check: too slow and too costly through the CLIs.
 - **Conversation mode:** after the wake word, follow-ups need no wake word until about a minute without speech. Barge-in interrupts the dragon.
 - **Echo:** the dragon must not hear itself. As built there is no echo-cancelling source: barge-in speech must be 1.6× louder than the dragon's own recent playback, and the microphone is ignored for 0.4 s after she stops. Without it, an end-to-end test over the null sink had her answer her own last words.
-- **Pausing:** pause while another app is recording (calls) and while the session is locked.
+- **Pausing:** pause while the session is locked.
 - **Reference:** n33tc0de-voices `master`: commits `24f54a6`, `521f324`, `bb5cfac` and `docs/voice-turn-detection-2026-11-10.md` (thresholds, timings and benchmarks). Its Qwen3-TTS GPU voice is not reused.
 - **Answers:** go to the provider selected in the popup. Voice conversations are saved in the same history, marked as voice, and open in the popup.
 
