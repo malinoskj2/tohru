@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""Packaged shell tool for Tohru's turn-scoped Discord broker; no credentials in argv."""
+import argparse
+import json
+import os
+import socket
+import sys
+from tohru_discord import status
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="action", required=True)
+    commands.add_parser("status", help="Validate local setup without contacting Discord")
+    for action in ("read", "post"):
+        command = commands.add_parser(action)
+        command.add_argument("channel")
+        if action == "read":
+            command.add_argument("--limit", type=int, default=20)
+            cursor = command.add_mutually_exclusive_group()
+            cursor.add_argument("--before")
+            cursor.add_argument("--after")
+    args = parser.parse_args()
+    if args.action == "status":
+        print(json.dumps(status()))
+        return 0
+    request = vars(args)
+    if args.action == "post":
+        request["content"] = sys.stdin.read(2001)
+    path = os.environ.get("TOHRU_DISCORD_SOCKET")
+    if not path:
+        print(json.dumps({"error": "Discord tools require an active Tohru assistant turn. Run tohru-discord status for setup feedback."}))
+        return 1
+    try:
+        with socket.socket(socket.AF_UNIX) as connection:
+            connection.settimeout(20)
+            connection.connect(path)
+            connection.sendall((json.dumps(request, ensure_ascii=False) + "\n").encode())
+            with connection.makefile("rb") as stream:
+                raw = stream.readline(65537)
+            if len(raw) > 65536:
+                raise ValueError()
+            result = json.loads(raw)
+        print(json.dumps(result))
+        return int("error" in result)
+    except (OSError, ValueError):
+        print(json.dumps({"error": "Discord tool unavailable or cancelled; a post may have been sent, check before retrying."}))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

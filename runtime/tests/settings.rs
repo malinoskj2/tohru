@@ -650,10 +650,7 @@ fn assistant_models_nest_under_each_provider() {
         Key::parse("assistant.models.opencode.effort").unwrap(),
         Key::AssistantEffort(Cli::Opencode)
     );
-    assert_eq!(
-        Key::parse("assistant.orca").unwrap(),
-        Key::AssistantOrca
-    );
+    assert_eq!(Key::parse("assistant.orca").unwrap(), Key::AssistantOrca);
     assert_eq!(
         restarted.get(Key::AssistantOrca).value,
         Value::Text("auto".into())
@@ -673,4 +670,55 @@ fn assistant_models_nest_under_each_provider() {
         Value::Text("true".into())
     );
     assert_eq!(bool_managed.get(Key::AssistantOrca).origin, Origin::Nix);
+}
+
+#[test]
+fn discord_defaults_validation_persistence_and_managed_controls() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    let mut owner = files.owner();
+    for key in [
+        Key::AssistantDiscordEnabled,
+        Key::AssistantDiscordRead,
+        Key::AssistantDiscordPost,
+    ] {
+        assert_eq!(owner.get(key).value, Value::Bool(false));
+        owner.set(key, Value::Bool(true)).unwrap();
+    }
+    for (key, valid, invalid) in [
+        (Key::AssistantDiscordGuildId, "123456789", "../guild"),
+        (Key::AssistantDiscordChannels, "123, 456", "123,,456"),
+        (
+            Key::AssistantDiscordTokenFile,
+            "/home/me/.config/tohru/discord-token",
+            "raw-token",
+        ),
+    ] {
+        assert_eq!(Key::parse(key.name()).unwrap(), key);
+        assert!(owner.set(key, Value::Text(invalid.into())).is_err());
+        owner.set(key, Value::Text(valid.into())).unwrap();
+        assert_eq!(files.owner().get(key).value, Value::Text(valid.into()));
+    }
+    assert!(
+        owner
+            .set(
+                Key::AssistantDiscordChannels,
+                Value::Text(vec!["123"; 33].join(","))
+            )
+            .is_err()
+    );
+    fs::write(files.managed(), "[assistant.discord]\npost = false\n").unwrap();
+    let mut managed = files.owner();
+    assert_eq!(
+        managed.get(Key::AssistantDiscordPost).value,
+        Value::Bool(false)
+    );
+    managed
+        .set(Key::AssistantDiscordPost, Value::Bool(true))
+        .unwrap();
+    assert!(managed.get(Key::AssistantDiscordPost).runtime_override);
+    assert_eq!(
+        files.owner().get(Key::AssistantDiscordPost).value,
+        Value::Bool(false)
+    );
 }

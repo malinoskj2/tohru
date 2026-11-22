@@ -70,7 +70,7 @@ in stdenvNoCC.mkDerivation {
     cp -r shell $out/share/tohru/
     cp LICENSE $out/share/tohru/LICENSE
     cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-session-run \
-      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-wallpaper bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev bin/tohru-assistant $out/bin/
+      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-wallpaper bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev bin/tohru-assistant bin/tohru-discord bin/tohru_discord.py $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar
     wrapProgram $out/bin/tohru-run \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \

@@ -16,6 +16,8 @@ import tomllib
 import uuid
 from pathlib import Path
 
+from tohru_discord import Broker as DiscordBroker, TOKEN_ENV as DISCORD_TOKEN_ENV, effective_config as discord_config
+
 HOME = Path.home()
 
 
@@ -42,7 +44,8 @@ def read_json(path):
 def quiet(command, timeout=PROBE_SECONDS):
     try:
         return subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                              timeout=timeout, cwd=str(HOME), start_new_session=True)
+                              timeout=timeout, cwd=str(HOME), start_new_session=True,
+                              env={k: v for k, v in os.environ.items() if k not in (DISCORD_TOKEN_ENV, "TOHRU_DISCORD_SOCKET")})
     except (OSError, subprocess.TimeoutExpired):
         return None
 
@@ -212,7 +215,7 @@ def signin(ident):
     if command is None:
         raise SystemExit("tohru-assistant: no terminal found; set TOHRU_TERMINAL")
     subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                   cwd=str(HOME))
+                   cwd=str(HOME), env={k: v for k, v in os.environ.items() if k not in (DISCORD_TOKEN_ENV, "TOHRU_DISCORD_SOCKET")})
     emit(next((p for p in discover() if p["id"] == ident), {"id": ident, "signed_in": False}))
 
 
@@ -640,6 +643,8 @@ def orca_running(cli, user_data):
             and 0 <= now - cached["checked"] < ORCA_STATUS_TTL):
         return cached["running"]
     env = clean_orca_env(os.environ)
+    env.pop(DISCORD_TOKEN_ENV, None)
+    env.pop("TOHRU_DISCORD_SOCKET", None)
     if user_data:
         env["ORCA_USER_DATA_PATH"] = user_data
     try:
@@ -1065,9 +1070,12 @@ class Run:
     def __init__(self):
         self.child = None
         self.stopped = False
+        self.cancel_tools = None
 
     def stop(self, *_):
         self.stopped = True
+        if self.cancel_tools:
+            self.cancel_tools()
         child = self.child
         if child and child.poll() is None:
             try:
@@ -1082,6 +1090,8 @@ def run_provider(provider, argv, stdin_text, on_delta=None, run=None, timeout=No
     scratch = private_dir(SCRATCH)
     parser = StreamParser(provider.id)
     env = clean_orca_env(os.environ)
+    env.pop(DISCORD_TOKEN_ENV, None)
+    env.pop("TOHRU_DISCORD_SOCKET", None)
     env["NO_COLOR"] = "1"
     env.update(extra_env or {})
     # Tohru keeps her own memory; Claude Code's would be a second one she never sees in other providers.
@@ -1110,6 +1120,9 @@ def run_provider(provider, argv, stdin_text, on_delta=None, run=None, timeout=No
     if timer:
         timer.cancel()
     drain.join(1)
+    run.child.stdout.close()
+    if not drain.is_alive():
+        run.child.stderr.close()
     rest = "" if run.stopped else parser.finish()
     if rest and on_delta:
         on_delta(rest)
@@ -1202,6 +1215,13 @@ def chat(args):
     if note:
         sent = f"{note}\n\n{sent}"
     allow_tools = not args.draft
+    discord = DiscordBroker(load=discord_config(args.discord_settings))
+    discord_env, discord_note = discord.start() if allow_tools else ({}, "")
+    if discord_note:
+        if provider.id in SYSTEM_FLAG:
+            system = f"{system}\n\n{discord_note}"
+        else:
+            sent = f"{discord_note}\n\n{sent}"
     if provider.id in SYSTEM_FLAG:
         argv = provider_argv(provider.id, session, model, effort, system, tools=allow_tools)
     else:
@@ -1210,15 +1230,18 @@ def chat(args):
             sent = f"{system}\n\n---\n\n{sent}"
 
     run = Run()
+    run.cancel_tools = discord.cancel
     signal.signal(signal.SIGINT, run.stop)
     signal.signal(signal.SIGTERM, run.stop)
     stdin_text = place_prompt(provider, argv, sent)
     try:
         parser, code, errors, stopped = run_provider(provider, argv, stdin_text, lambda d: emit({"event": "delta", "text": d}), run,
-                                                      extra_env={"TOHRU_CONVERSATION": conversation["id"], **orca_env})
+                                                      extra_env={"TOHRU_CONVERSATION": conversation["id"], **orca_env, **discord_env})
     except OSError as error:
         emit({"event": "error", "message": str(error)})
         return 3
+    finally:
+        discord.close()
     next_session = parser.session or (session["id"] if session["id"] and provider.id == "claude" and parser.text else None)
     answer = parser.text.strip()
     failed = not stopped and (parser.error or (code != 0 and not answer))
@@ -1419,6 +1442,8 @@ def assistant_settings():
 
         def walk(prefix, node):
             for key, value in node.items():
+                if prefix.startswith("discord.") and (prefix != "discord." or key not in ("enabled", "read", "post", "guild_id", "channels", "token_file")):
+                    continue
                 if isinstance(value, dict):
                     walk(f"{prefix}{key}.", value)
                 elif isinstance(value, (str, bool, int)):
@@ -1609,6 +1634,7 @@ def main(argv=None):
             p.add_argument("--interrupted", default="")
             p.add_argument("--persona", choices=("on", "off"), default="on")
             p.add_argument("--persona-file", default="")
+            p.add_argument("--discord-settings", default="", help="Nonsecret effective settings from the shell")
             p.add_argument("--orca", choices=("auto", "true", "false"), default="auto")
         else:
             p.add_argument("conversation")

@@ -285,4 +285,22 @@ assert(not assistant.draft("What is the weather in Tokyo", "v1"))
 assert(#spawned == sp_agy)
 emit("assistant_choose", 0)
 
+-- Effective Discord settings reach normal turns; changes cancel the current turn.
+assistant.configure_discord()
+assert(assistant.ask("Read Discord", "v1"))
+local discord_run = spawned[#spawned]
+local discord_flags
+for i, flag in ipairs(discord_run.args) do
+    if flag == "--discord-settings" then discord_flags = discord_run.args[i + 1] end
+end
+assert(discord_flags.enabled == false and discord_flags.read == false and discord_flags.post == false)
+local before_discord_change = #killed
+values["assistant.discord.enabled"] = true
+values["assistant.discord.read"] = true
+assistant.configure_discord()
+assert(#killed == before_discord_change + 1 and killed[#killed][2] == "int")
+assistant.configure_discord()
+assert(#killed == before_discord_change + 1, "unchanged configuration must not interrupt a turn")
+discord_run.line(json.encode({event = "stopped", conversation = "v1"}))
+
 print("Assistant provider choice, models, streaming, Stop, ready mark, sign-in, history, voice turn, memory hand-off and Memory view fixtures passed")
