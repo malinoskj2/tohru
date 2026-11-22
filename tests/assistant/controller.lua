@@ -123,6 +123,8 @@ assert(fact.ai_view == 0 and runs[#runs].args[1] == "show" and runs[#runs].args[
 emit("assistant_new")
 assert(#model.ai_turns == 0 and not fact.ai_actions)
 local answers = {}
+local speech_events = {}
+assistant.on_speech(function(kind, conv, text, voice, generation) speech_events[#speech_events + 1] = {kind, text, generation} end)
 assistant.on_answer(function(kind, conversation, answer, voice) answers[#answers + 1] = {kind, conversation, answer, voice} end)
 assistant.close()
 emit("assistant_choose", 0)
@@ -133,6 +135,7 @@ for _, a in ipairs(voice.args) do voiced = voiced or a == "--voice" end
 assert(voiced)
 voice.line(json.encode({event = "start", conversation = "v1"}))
 voice.line(json.encode({event = "delta", text = "Why?"}))
+assert(speech_events[#speech_events][1] == "delta" and speech_events[#speech_events][2] == "Why?")
 voice.line(json.encode({event = "done", conversation = "v1"}))
 assert(answers[1][1] == "done" and answers[1][2] == "v1" and answers[1][3] == "Why?" and answers[1][4] == true)
 -- The mark's menu: right-click opens it over a closed popup; opening the popup closes it.
@@ -206,6 +209,7 @@ outputs.commit = json.encode({event = "committed", conversation = "v1"})
 outputs.rollback = json.encode({event = "rolled_back", conversation = "v1", deleted = false})
 emit("assistant_choose", 0) -- claude
 local sp_before = #spawned
+local speech_before = #speech_events
 assert(assistant.draft("What is the weather in Tokyo?", "v1"))
 assert(#spawned == sp_before + 1)
 local d1 = spawned[#spawned]
@@ -217,6 +221,7 @@ d1.line(json.encode({event = "start", conversation = "v1", draft = true}))
 d1.line(json.encode({event = "delta", text = "Clear and 20C."}))
 d1.line(json.encode({event = "done", conversation = "v1", session = "fork-1"}))
 local ans_before = #answers
+assert(#speech_events == speech_before)
 assert(assistant.ask("what is the weather in tokyo", "v1"))
 assert(#spawned == sp_before + 1) -- reused finished draft, no second provider call
 assert(#answers == ans_before + 1 and answers[#answers][3] == "Clear and 20C.")
@@ -278,6 +283,43 @@ local rolled = false
 assistant.cancel(function() rolled = true end)
 live_frag.line(json.encode({event = "stopped", conversation = "v1"}))
 assert(rolled and #answers == ans_c and #runs_of("rollback") >= 1)
+
+-- A finished draft stays silent if its database commit fails or is cancelled.
+local real_run = run
+local commit_callback
+_G.run = function(command, args, done, how)
+    if args[1] == "commit" then commit_callback = done else real_run(command, args, done, how) end
+end
+local function finished_draft(prompt)
+    assert(assistant.draft(prompt, "v1"))
+    local d = spawned[#spawned]
+    d.line(json.encode({event="start", conversation="v1", draft=true}))
+    d.line(json.encode({event="delta", text="A safe answer."}))
+    d.line(json.encode({event="done", conversation="v1"}))
+    assert(assistant.ask(prompt, "v1", {voice_generation=77}))
+    assert(assistant.streaming())
+end
+finished_draft("A speculative question")
+local count = #answers
+commit_callback({}, 1)
+assert(not assistant.streaming() and #answers == count+1 and answers[#answers][1]=="error")
+finished_draft("Another speculative question")
+local cancelled_commit = false
+assistant.cancel(function() cancelled_commit = true end)
+count = #answers
+commit_callback(json.encode({event="committed",conversation="v1"}),0)
+assert(cancelled_commit and not assistant.streaming() and #answers==count)
+-- Cancelling a local commit during a backend transition cleans only its local
+-- history, without treating an Orca conversation as a SQLite conversation.
+finished_draft("A local draft crossing a backend change")
+assistant.stop()
+values["assistant.backend"] = "orca"
+local rollback_before_transition = #runs_of("rollback")
+commit_callback(json.encode({event="committed",conversation="v1"}),0)
+assert(#runs_of("rollback") == rollback_before_transition+1)
+assert(not assistant.streaming())
+values["assistant.backend"] = "local"
+_G.run = real_run
 
 -- Drafts are disabled for providers without session forking (agy).
 emit("assistant_choose", 2)

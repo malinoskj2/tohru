@@ -23,6 +23,7 @@ pub enum Key {
     NotificationsPosition,
     AssistantVoice,
     AssistantReducedMotion,
+    AssistantVoiceSource,
     AssistantProvider,
     AssistantVadModel,
     AssistantAsrModel,
@@ -86,7 +87,7 @@ pub const ORCA_VOICE_CHATS: [&str; 2] = ["home", "new"];
 pub const ORCA_OFFLINE_MODES: [&str; 2] = ["error", "local"];
 
 impl Key {
-    pub const ALL: [Self; 43] = [
+    pub const ALL: [Self; 44] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::InfoButton,
@@ -99,6 +100,7 @@ impl Key {
         Self::NotificationsPosition,
         Self::AssistantVoice,
         Self::AssistantReducedMotion,
+        Self::AssistantVoiceSource,
         Self::AssistantProvider,
         Self::AssistantVadModel,
         Self::AssistantAsrModel,
@@ -147,6 +149,7 @@ impl Key {
             Self::NotificationsPosition => "notifications.position",
             Self::AssistantVoice => "assistant.voice",
             Self::AssistantReducedMotion => "assistant.reduced_motion",
+            Self::AssistantVoiceSource => "assistant.voice_source",
             Self::AssistantProvider => "assistant.provider",
             Self::AssistantVadModel => "assistant.vad_model",
             Self::AssistantAsrModel => "assistant.asr_model",
@@ -232,6 +235,7 @@ impl Key {
             Self::NotificationsPosition => (&["notifications"], "position"),
             Self::AssistantVoice => (&["assistant"], "voice"),
             Self::AssistantReducedMotion => (&["assistant"], "reduced_motion"),
+            Self::AssistantVoiceSource => (&["assistant"], "voice_source"),
             Self::AssistantProvider => (&["assistant"], "provider"),
             Self::AssistantVadModel => (&["assistant"], "vad_model"),
             Self::AssistantAsrModel => (&["assistant"], "asr_model"),
@@ -280,7 +284,8 @@ impl Key {
             | Self::AssistantVoice
             | Self::AssistantPersona
             | Self::AssistantMemory => Value::Bool(true),
-            Self::PreferredOutput
+            Self::AssistantVoiceSource
+            | Self::PreferredOutput
             | Self::AssistantProvider
             | Self::AssistantVadModel
             | Self::AssistantAsrModel
@@ -399,6 +404,11 @@ impl Key {
             ) if text.len() <= 4096
                 && !text.chars().any(char::is_control)
                 && (text.is_empty() || text.starts_with('/')) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantVoiceSource, Value::Text(text))
+                if text.len() <= 256 && !text.chars().any(char::is_control) =>
             {
                 Ok(())
             }

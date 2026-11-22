@@ -7,6 +7,7 @@ return function(settings)
     -- The one answer in flight: its process, conversation, provider and text so far.
     local live = nil
     local draft = nil
+    local pending_commit = nil
     local DRAFT_PROVIDERS = {claude = true, codex = true}
     local DRAFT_NEEDS_TOOLS = "<<needs-tools>>"
     local function has_needs_tools(value)
@@ -22,6 +23,7 @@ return function(settings)
     end
     local history, search_serial = {}, 0
     local answer_listeners, alert_listeners = {}, {}
+    local speech_listeners = {}
     local probing, probed_at = false, -1
     local PROBE_AGAIN = 30000
     local SYNC_EVERY = 15000
@@ -249,15 +251,16 @@ return function(settings)
         end
     end
 
-    local function rollback_conversation(cid, done)
-        if not cid or is_orca() then
+    local function rollback_conversation(cid, done, origin_backend)
+        local backend = is_orca() and "orca" or "local"
+        if not cid or (origin_backend or backend) == "orca" then
             if done then done(false) end
             return
         end
         run(helper, {"rollback", cid}, function(out, code)
             local res = code == 0 and decode(out) or nil
             local deleted = res and res.deleted == true
-            if conversation == cid then
+            if conversation == cid and (not origin_backend or origin_backend == backend) then
                 if deleted then
                     conversation = nil
                     show_turns({})
@@ -281,7 +284,7 @@ return function(settings)
         end
         run(helper, args, function(out, code)
             local res = code == 0 and decode(out) or nil
-            done(res and res.conversation or info.conversation)
+            done(res and res.conversation, res ~= nil)
         end, {input = json.encode({prompt = info.prompt, answer = info.text})})
     end
 
@@ -352,7 +355,7 @@ return function(settings)
             ready_for = finished.conversation
         end
         for _, listener in ipairs(answer_listeners) do
-            listener(event.event, finished.conversation, finished.text, finished.voice)
+            listener(event.event, finished.conversation, finished.text, finished.voice, finished.voice_generation)
         end
     end
 
@@ -394,7 +397,7 @@ return function(settings)
         discard_draft()
         fail(nil)
         local args = chat_args(provider.id, conversation, voice, opts)
-        live = {conversation = conversation, slot = provider.slot, text = "", voice = voice == true, provider = provider.id}
+        live = {conversation = conversation, slot = provider.slot, text = "", voice = voice == true, provider = provider.id, voice_generation = opts and opts.voice_generation}
         local turns = {}
         for _, turn in ipairs(shown_turns) do turns[#turns + 1] = turn end
         turns[#turns + 1] = {role = "user", text = prompt, voice = voice}
@@ -408,10 +411,16 @@ return function(settings)
             if event.event == "start" then
                 mine.conversation = event.conversation
                 want_new_chat = false
+                for _, listener in ipairs(speech_listeners) do
+                    listener("start", mine.conversation, "", mine.voice, mine.voice_generation)
+                end
                 if conversation == nil and (not voice or fact.ai_open) then conversation = event.conversation end
                 refresh_live()
             elseif event.event == "delta" then
                 mine.text = mine.text .. (event.text or "")
+                for _, listener in ipairs(speech_listeners) do
+                    listener("delta", mine.conversation, event.text or "", mine.voice, mine.voice_generation)
+                end
                 if live_here() then text.ai_live = mine.text end
             elseif event.event == "done" or event.event == "stopped" or event.event == "error" then
                 if is_orca() and mine.conversation then seen_chats[mine.conversation] = math.floor(os.time()) end
@@ -444,7 +453,7 @@ return function(settings)
             refresh_live()
             if not send(active.prompt, true, active.opts) then
                 for _, listener in ipairs(answer_listeners) do
-                    listener("error", active.base_conversation, "", true)
+                    listener("error", active.base_conversation, "", true, active.voice_generation)
                 end
             end
         end
@@ -477,7 +486,12 @@ return function(settings)
                         commit_draft({
                             provider = active.provider, conversation = active.conversation,
                             session = mine.session, prompt = active.prompt, text = active.text,
-                        }, function(cid)
+                        }, function(cid, committed)
+                            if not committed then
+                                if live == active then finish({event = "error", message = "Could not save the speculative answer"}) end
+                                return
+                            end
+                            active.draft = nil
                             active.conversation = cid or active.conversation
                             if live == active then finish(event) end
                         end)
@@ -811,12 +825,12 @@ return function(settings)
         configure = configure,
         -- Voice: one conversation per spell of conversation mode; answers go to the provider in use.
         ask = function(prompt, voice_conversation, opts)
-            if live then return false end
+            if live or pending_commit then return false end
             prompt = (prompt or ""):gsub("^%s+", ""):gsub("%s+$", "")
             if prompt == "" then return false end
             local provider = current and providers[current]
             local interrupted = opts and opts.interrupted or ""
-            if draft and provider and draft.provider == provider.id
+            if not is_orca() and draft and provider and draft.provider == provider.id
                 and draft.conversation == voice_conversation
                 and draft.interrupted == interrupted
                 and draft.norm == normalize(prompt) and not draft.failed and not has_needs_tools(draft.text) then
@@ -824,12 +838,32 @@ return function(settings)
                 draft = nil
                 fail(nil)
                 if taken.done then
+                    local pending = {backend = "local"}
+                    pending_commit = pending
                     local cid = taken.target_conversation or voice_conversation
                     commit_draft({
                         provider = taken.provider, conversation = cid,
                         session = taken.session, prompt = prompt, text = taken.text,
-                    }, function(saved)
-                        saved = saved or cid
+                    }, function(saved, committed)
+                        if pending_commit == pending then pending_commit = nil end
+                        if pending.cancelled then
+                            local function cancelled(deleted)
+                                if pending.on_done then pending.on_done(deleted and nil or saved, deleted)
+                                else
+                                    for _, listener in ipairs(answer_listeners) do
+                                        listener("stopped", saved, "", true, opts and opts.voice_generation)
+                                    end
+                                end
+                            end
+                            if committed and saved then rollback_conversation(saved, cancelled, pending.backend) else cancelled(false) end
+                            return
+                        end
+                        if not committed then
+                            for _, listener in ipairs(answer_listeners) do
+                                listener("error", cid, "", true, opts and opts.voice_generation)
+                            end
+                            return
+                        end
                         if saved then
                             unremembered[saved] = clock
                             if conversation == saved then load(saved) end
@@ -840,14 +874,14 @@ return function(settings)
                             ready_for = saved
                         end
                         for _, listener in ipairs(answer_listeners) do
-                            listener("done", saved, taken.text, true)
+                            listener("done", saved, taken.text, true, opts and opts.voice_generation)
                         end
                     end)
                     return true
                 end
                 conversation = taken.target_conversation or voice_conversation
                 live = {
-                    id = taken.id, draft = taken, prompt = prompt, opts = opts,
+                    id = taken.id, draft = taken, prompt = prompt, opts = opts, voice_generation = opts and opts.voice_generation,
                     base_conversation = voice_conversation,
                     conversation = taken.target_conversation or voice_conversation,
                     slot = taken.slot, text = taken.text, voice = true, provider = taken.provider,
@@ -871,10 +905,16 @@ return function(settings)
         draft = start_draft,
         discard_draft = discard_draft,
         stop = function()
+            if pending_commit then pending_commit.cancelled = true end
             discard_draft()
             if live then kill(live.id, "int") end
         end,
         cancel = function(on_done)
+            if pending_commit then
+                pending_commit.cancelled = true
+                pending_commit.on_done = on_done
+                return
+            end
             discard_draft()
             if live then
                 live.discard = true
@@ -885,7 +925,8 @@ return function(settings)
             end
         end,
         rollback = rollback_conversation,
-        streaming = function() return live ~= nil end,
+        streaming = function() return live ~= nil or pending_commit ~= nil end,
+        on_speech = function(listener) speech_listeners[#speech_listeners + 1] = listener end,
         on_answer = function(listener) answer_listeners[#answer_listeners + 1] = listener end,
         on_alert = function(listener) alert_listeners[#alert_listeners + 1] = listener end,
         show = function(id) open(); fact.ai_view = 0; load(id) end,

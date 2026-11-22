@@ -43,6 +43,7 @@ part AssistantDragon {
                 image ai_dg_heart { at: ai_dg_h1_x - 12 * ai_dg_h1_s, ai_dg_h1_y - 12 * ai_dg_h1_s; size: 24 * max(ai_dg_h1_s, 0.05), 24 * max(ai_dg_h1_s, 0.05); opacity: max(ai_dg_h1_a, 0.001) }
                 image ai_dg_heart { at: ai_dg_h2_x - 12 * ai_dg_h2_s, ai_dg_h2_y - 12 * ai_dg_h2_s; size: 24 * max(ai_dg_h2_s, 0.05), 24 * max(ai_dg_h2_s, 0.05); opacity: max(ai_dg_h2_a, 0.001) }
             }
+            text ai_transcript { at: 105, 8; anchor: center top; width: 198; lines: 2; align: center; size: 11; family: "SF Pro Text"; color: #cdd6f4 }
             zone box ai_dragon_hit { from: 30, 30; size: 150, 170; corner: 40; cursor: pointer; active: ai_dragon_open; label: "Open this conversation" }
         }
         on press ai_dragon_hit { emit assistant_dragon }

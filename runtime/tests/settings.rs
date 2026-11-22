@@ -777,3 +777,51 @@ fn assistant_backend_defaults_to_local_and_validates_opt_in_orca_settings() {
     );
     assert_eq!(managed.get(Key::AssistantBackend).origin, Origin::Nix);
 }
+
+#[test]
+fn voice_source_is_persisted_and_rejects_control_characters() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    let mut owner = files.owner();
+    assert_eq!(
+        Key::parse("assistant.voice_source").unwrap(),
+        Key::AssistantVoiceSource
+    );
+    assert_eq!(
+        owner.get(Key::AssistantVoiceSource).value,
+        Value::Text(String::new())
+    );
+    assert!(
+        owner
+            .set(Key::AssistantVoiceSource, Value::Text("bad\nsource".into()))
+            .is_err()
+    );
+    owner
+        .set(
+            Key::AssistantVoiceSource,
+            Value::Text("alsa_input.usb-mic".into()),
+        )
+        .unwrap();
+    assert_eq!(
+        files.owner().get(Key::AssistantVoiceSource).value,
+        Value::Text("alsa_input.usb-mic".into())
+    );
+}
+
+#[test]
+fn integrated_assistant_keys_remain_distinct_and_enumerated() {
+    let names: std::collections::BTreeSet<_> = Key::ALL.iter().map(|key| key.name()).collect();
+    assert_eq!(names.len(), Key::ALL.len());
+    for key in [
+        Key::AssistantVoiceSource,
+        Key::AssistantReducedMotion,
+        Key::AssistantBackend,
+        Key::AssistantOrcaBot,
+        Key::AssistantOrcaVoiceChat,
+        Key::AssistantOrcaOffline,
+        Key::AssistantOrca,
+    ] {
+        assert!(Key::ALL.contains(&key));
+        assert_eq!(Key::parse(key.name()).unwrap(), key);
+    }
+}

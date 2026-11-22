@@ -26,6 +26,9 @@ part AssistantState {
     fact ai_voice_paused = false
     fact ai_speaking = false
     fact ai_mouth = 0
+    text ai_transcript = ""
+    text ai_voice_source = "default"
+    text ai_voice_aec = "unknown"
     text ai_voice_error = ""
     text ai_show_request = ""
     text ai_alert_chat = ""

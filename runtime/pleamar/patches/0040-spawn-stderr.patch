@@ -1,0 +1,12 @@
+--- a/src/logic_luau.rs
++++ b/src/logic_luau.rs
+@@ -1138,7 +1138,8 @@
+             let mut launch = std::process::Command::new(&command);
+             crate::child_env(&mut launch);
+             launch.args(args.unwrap_or_default()).envs(vars).stdout(std::process::Stdio::piped());
+-            launch.stderr(if errors { std::process::Stdio::piped() } else { std::process::Stdio::null() });
++            let inherit_stderr = how.as_ref().and_then(|t| t.get::<Option<String>>("stderr").ok().flatten()).is_some_and(|v| v == "inherit");
++            launch.stderr(if inherit_stderr { std::process::Stdio::inherit() } else if errors { std::process::Stdio::piped() } else { std::process::Stdio::null() });
+             // No input unless it is given one, as with `run`.
+             launch.stdin(std::process::Stdio::null());
+             if text.is_some() || open {

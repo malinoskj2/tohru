@@ -14,7 +14,8 @@ fn actual_settings_search_history_and_managed_edits_share_the_owner() {
                 ['appearance.corners']={value=true,managed=false,runtime_override=false},
                 ['appearance.corner_size']={value=32,managed=false,runtime_override=false}, ['appearance.palette']={value='mocha',managed=false,runtime_override=false},
                 ['lock.style']={value='flooded-monolith',managed=false,runtime_override=false},
-                ['notifications.position']={value='top-right',managed=false,runtime_override=false}}
+                ['notifications.position']={value='top-right',managed=false,runtime_override=false},
+                ['assistant.reduced_motion']={value=false,managed=false,runtime_override=false}}
         tohru_settings={snapshot=function() return config end,
           set=function(key,value)
             if denied then error('write refused') end
@@ -69,8 +70,54 @@ fn actual_settings_search_history_and_managed_edits_share_the_owner() {
         denied=false; config['bar.mooncoil'].managed=false
         handlers.settings_row(0); assert(saves==6)
         handlers.settings_close(); assert(not fact.settings_open)
+        handlers.settings_category(2)
+        assert(model.settings_rows[6].key=='assistant.reduced_motion')
+        handlers.settings_row(5)
+        assert(config['assistant.reduced_motion'].value and saves==7)
     "#,
     )
     .exec()
     .unwrap();
+}
+
+#[test]
+fn microphone_choices_and_metadata_refresh_follow_the_selected_source() {
+    let lua = Lua::new();
+    lua.load(r#"
+        fact={settings_selected=0}; text={settings_search=''}; model={}; handlers={}
+        function on(n,f) handlers[n]=f end
+        config={}
+        for _,key in ipairs({'bar.mooncoil','bar.info_button','bar.about_button','appearance.corners','assistant.reduced_motion'}) do config[key]={value=false} end
+        for _,key in ipairs({'bar.preferred_output','assistant.voice_source'}) do config[key]={value=''} end
+        config['appearance.corner_size']={value=32}; config['appearance.palette']={value='mocha'}
+        config['lock.style']={value='still-glass'}; config['notifications.position']={value='top-right'}
+        tohru_settings={snapshot=function() return config end, set=function(k,v) config[k].value=v; return config end}
+        json={decode=function(out) return {sources={'usb-microphone','echo-cancel-by-name'},selected='usb-microphone',aec='unknown'} end}
+        queries=0
+        function run(command,args,callback)
+            assert(command=='tohru-voice' and args[1]=='--devices')
+            queries=queries+1; callback('{}',0)
+        end
+        function applied() end
+    "#).exec().unwrap();
+    let callback: mlua::Function = lua.globals().get("applied").unwrap();
+    lua.load(include_str!("../../shell/settings/controller.luau"))
+        .eval::<mlua::Function>().unwrap().call::<mlua::Function>(callback).unwrap();
+    lua.load(r#"
+        handlers.settings_category(3)
+        local microphone, aec
+        for i,row in ipairs(model.settings_rows) do
+            if row.title=='Microphone' then microphone=i end
+            if row.title=='Echo cancellation' then aec=i end
+        end
+        assert(microphone and model.settings_rows[microphone].choice)
+        assert(string.find(model.settings_rows[aec].detail,'unknown'))
+        handlers.settings_row(microphone-1)
+        assert(config['assistant.voice_source'].value=='usb-microphone' and queries==2)
+        handlers.settings_row(microphone-1)
+        assert(config['assistant.voice_source'].value=='echo-cancel-by-name')
+        assert(string.find(model.settings_rows[aec].detail,'unknown'))
+        handlers.settings_row(microphone-1)
+        assert(config['assistant.voice_source'].value=='')
+    "#).exec().unwrap();
 }

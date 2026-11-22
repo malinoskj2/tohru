@@ -22,6 +22,12 @@ local function applied(settings, warning)
     text.settings_error = warning or ""
     corner_size.publish(settings)
     refresh(settings)
+    local source = settings["assistant.voice_source"]
+    if source and source.runtime_override then
+        tell_bar("text setting_key assistant.voice_source")
+        tell_bar("text setting_value " .. source.value)
+        tell_bar("emit setting_assistant")
+    end
     tell_bar("emit config_reload")
     for key, command in pairs(overrides) do
         local setting = settings[key]

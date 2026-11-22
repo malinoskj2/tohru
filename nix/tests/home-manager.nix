@@ -55,6 +55,8 @@ let
   orcaBot = (home tohru.homeManagerModules.tohru [ {
     programs.tohru = {
       enable = true;
+      assistant.voice.source = "usb-integration-mic";
+      assistant.orca = "auto";
       assistant.orcaBot = {
         enable = true;
         bot = "Tohru";
@@ -125,7 +127,7 @@ assert pkgs.lib.hasInfix "[assistant]\nasr_model = \"/asr\"\nkws_model = \"/k\"\
 assert !(pkgs.lib.hasInfix "voice_models" quietManaged);
 assert pkgs.lib.hasInfix "[assistant.models.codex]\neffort = \"high\"\nmodel = \"gpt-6.2-sol\"" quietManaged;
 assert pkgs.lib.hasInfix "[assistant.models.claude]\neffort = \"low\"" quietManaged;
-assert pkgs.lib.hasInfix "[assistant]\nbackend = \"orca\"\norca_bot = \"Tohru\"\norca_offline = \"error\"\norca_voice_chat = \"home\"" orcaManaged;
+assert pkgs.lib.hasInfix "[assistant]\nbackend = \"orca\"\norca = \"auto\"\norca_bot = \"Tohru\"\norca_offline = \"error\"\norca_voice_chat = \"home\"\nvoice_source = \"usb-integration-mic\"" orcaManaged;
 assert !(pkgs.lib.hasInfix "orca_bot" quietManaged) && !(pkgs.lib.hasInfix "backend =" quietManaged);
 assert serviced.systemd.user.services.tohru-launcher.Service.KillMode == "process";
 assert builtins.all (name: !(serviced.systemd.user.services.${name}.Service ? KillMode))

@@ -5,6 +5,9 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+import threading
+import time
+import json
 
 try:
     import numpy
@@ -142,8 +145,9 @@ def make_voice(recognizer, spotter=None):
 class VoiceTests(unittest.TestCase):
     def setUp(self):
         self.events = []
+        self.transcripts = []
         self.real_emit = voice_module.emit
-        voice_module.emit = lambda event, **fields: self.events.append(dict(fields, event=event))
+        voice_module.emit = lambda event, **fields: (self.transcripts if event == "transcript" else self.events).append(dict({k:v for k,v in fields.items() if k != "turn_id"}, event=event))
 
     def tearDown(self):
         voice_module.emit = self.real_emit
@@ -236,7 +240,7 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(len(voice.speaker.said), 1)
         long = voice_module.speakable("A sentence here. " * 80)
         self.assertLessEqual(len(long), voice_module.SPOKEN_CHARS + 30)
-        self.assertTrue(long.endswith("The rest is in the chat."))
+        self.assertEqual(long, ("A sentence here. " * 80).strip())
 
     def test_tts_stays_loaded_by_default_or_follows_the_conversation(self):
         import threading
@@ -565,7 +569,7 @@ class VoiceTests(unittest.TestCase):
             "sinks": "1\talsa_output.pci\tPipeWire\ts32le\tRUNNING\n2\ttohru-echo-cancel-sink\tPipeWire\tfloat32le\tIDLE\n",
             "sources": "1\talsa_input.usb\tPipeWire\ts32le\tIDLE\n2\ttohru-echo-cancel-sink.monitor\tPipeWire\tfloat32le\tIDLE\n3\ttohru-echo-cancel-source\tPipeWire\tfloat32le\tIDLE\n",
         }
-        voice_module.subprocess.run = lambda argv, **kw: subprocess.CompletedProcess(argv, 0, outputs[argv[-1]], "")
+        voice_module.subprocess.run = lambda argv, **kw: subprocess.CompletedProcess(argv, 0, json.dumps([{"name": row.split("\t")[1]} for row in outputs[argv[-1]].splitlines()]), "")
         try:
             os.environ.pop("TOHRU_VOICE_SINK", None)
             os.environ.pop("TOHRU_VOICE_SOURCE", None)
@@ -756,6 +760,124 @@ class ModelPathTests(unittest.TestCase):
         self.assertIsInstance(engine, voice_module.Espeak)
         self.assertIn("assistant.tts_model is not set", notes[0])
         self.assertIn("using espeak-ng", notes[0])
+
+
+class StreamingTests(unittest.TestCase):
+    def test_every_chunk_boundary_preserves_text_without_duplicates(self):
+        answer = "First sentence. Second sentence! Last fragment"
+        for cut in range(len(answer)+1):
+            stream = voice_module.SpeechStream()
+            stream.feed(answer[:cut]); stream.feed(answer[cut:], final=True)
+            self.assertEqual(" ".join(stream.parts(threading.Event())), answer)
+
+    def test_incomplete_sentence_waits_then_flushes(self):
+        stream = voice_module.SpeechStream()
+        stream.feed("Hello")
+        out = []
+        worker = threading.Thread(target=lambda: out.extend(stream.parts(threading.Event())))
+        worker.start(); time.sleep(.02)
+        self.assertEqual(out, [])
+        stream.feed(" there. Next", final=True); worker.join(1)
+        self.assertEqual(out, ["Hello there.", "Next"])
+
+    def test_markdown_code_and_links_across_chunks(self):
+        stream = voice_module.SpeechStream()
+        for text in ["See [the ", "guide](https://host/path). ", "```py\nprint('bad. ')", "\n``` Final words"]:
+            stream.feed(text)
+        stream.feed("", final=True)
+        spoken = " ".join(stream.parts(threading.Event()))
+        self.assertIn("See the guide.", spoken)
+        self.assertNotIn("print", spoken)
+        self.assertNotIn("https", spoken)
+        self.assertTrue(spoken.endswith("Final words"))
+
+    def test_unfinished_code_never_speaks_and_overflow_is_bounded(self):
+        stream = voice_module.SpeechStream(); stream.feed("```secret code", final=True)
+        self.assertNotIn("secret", " ".join(stream.parts(threading.Event())))
+        stream = voice_module.SpeechStream(); stream.feed("x" * (voice_module.SPOKEN_CHARS+1))
+        self.assertLess(len(stream.pending), 100)
+        self.assertIn("chat", " ".join(stream.parts(threading.Event())))
+
+    def test_tilde_fences_and_later_unclosed_code_preserve_intervening_words(self):
+        stream = voice_module.SpeechStream()
+        stream.feed("~~~py\nsecret one\n~~~ Useful final words. ```secret two", final=True)
+        spoken = " ".join(stream.parts(threading.Event()))
+        self.assertNotIn("secret", spoken)
+        self.assertIn("Useful final words.", spoken)
+        self.assertNotIn("https", voice_module.speakable("See https://example.com/long/path"))
+
+    def test_one_next_sentence_bound_and_cancel_during_synthesis(self):
+        started = []
+        class Engine:
+            def stream(self, text, np):
+                started.append(text)
+                yield [0], 1, text, []
+        stop = threading.Event()
+        stream = voice_module.SpeechStream(); stream.feed("One. Two. Three. Four.", final=True)
+        clips = voice_module.synthesized(Engine(), stream, None, stop)
+        self.assertEqual(next(clips)[2], "One.")
+        time.sleep(.03)
+        self.assertEqual(started, ["One.", "Two."])
+        stop.set(); clips.close()
+        self.assertEqual(started, ["One.", "Two."])
+
+    def test_cancel_waiting_for_provider_exits_worker(self):
+        stop = threading.Event(); stream = voice_module.SpeechStream()
+        clips = voice_module.synthesized(object(), stream, None, stop)
+        thread = threading.Thread(target=lambda: list(clips)); thread.start()
+        time.sleep(.02); stop.set(); thread.join(1)
+        self.assertFalse(thread.is_alive())
+
+    def test_synthesis_error_propagates_and_success_does_not_cancel(self):
+        class Engine:
+            def stream(self, text, np):
+                raise RuntimeError("synth failed")
+                yield
+        stop = threading.Event()
+        with self.assertRaisesRegex(RuntimeError, "synth failed"):
+            list(voice_module.synthesized(Engine(), "Hello.", None, stop))
+
+    @unittest.skipIf(numpy is None, "numpy unavailable")
+    def test_padding_trim_preserves_quiet_sounds_and_viseme_alignment(self):
+        audio = numpy.zeros(2000, dtype=numpy.float32)
+        audio[600:1000] = .0002
+        clipped, rate, part, timeline = voice_module.trim_padding(numpy, (audio, 1000, "Words", [(0.6,1.0,2)]))
+        self.assertEqual(len(clipped), 560)
+        self.assertEqual((rate,part), (1000,"Words"))
+        self.assertAlmostEqual(timeline[0][0], .08)
+        self.assertAlmostEqual(timeline[0][1], .48)
+        self.assertEqual(numpy.count_nonzero(clipped), 400)
+
+    def test_stream_commands_reject_stale_generation(self):
+        voice = make_voice(FakeRecognizer([""], ""))
+        voice.command({"cmd":"speech_start", "generation":1, "conversation":"a"})
+        first = voice.speaker.said[-1][0]
+        voice.command({"cmd":"hush"})
+        voice.command({"cmd":"speech_delta", "generation":1, "text":"Stale."})
+        self.assertEqual(first.pending, "")
+        voice.command({"cmd":"speech_start", "generation":2, "conversation":"b"})
+        current = voice.speaker.said[-1][0]
+        voice.command({"cmd":"speech_end", "generation":1, "text":"Wrong conversation."})
+        voice.command({"cmd":"speech_end", "generation":2, "text":"Current."})
+        self.assertEqual(list(current.parts(threading.Event())), ["Current."])
+
+    def test_aec_name_is_not_verification(self):
+        self.assertEqual(voice_module.aec_status({"name":"echo-cancel-source"}), "unknown")
+        self.assertTrue(voice_module.aec_status({"driver":"module-echo-cancel.c"}).startswith("module-reported"))
+
+    def test_transcript_only_after_wake_and_followups(self):
+        captured = []
+        real = voice_module.emit
+        voice_module.emit = lambda event, **kw: captured.append((event, kw))
+        try:
+            voice = make_voice(FakeRecognizer(["PRIVATE WORDS"], "PRIVATE WORDS"))
+            voice.begin([]); voice.hear(b"", True)
+            self.assertFalse(any(e == "transcript" and kw["text"] for e, kw in captured))
+            voice = make_voice(FakeRecognizer(["TOHRU WHAT TIME"], "TOHRU WHAT TIME"))
+            voice.begin([]); voice.hear(b"", True)
+            self.assertTrue(any(e == "transcript" and kw["text"] == "What time" for e, kw in captured))
+        finally:
+            voice_module.emit = real
 
 
 if __name__ == "__main__":

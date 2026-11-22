@@ -35,6 +35,8 @@ local assistant = {
     on_answer = function(listener) listeners[#listeners + 1] = listener end,
     on_alert = function(listener) alert_listeners[#alert_listeners + 1] = listener end,
 }
+local speech_listener
+assistant.on_speech = function(listener) speech_listener = listener end
 local puppet = assert(loadfile("shell/assistant/puppet.luau"))()()
 local voice = assert(loadfile("shell/assistant/voice.luau"))()(assistant, puppet)
 local function settings(values)
@@ -118,10 +120,10 @@ local asked_before, written_before = #asked, #written
 service.line({event = "barge", continuation = true})
 assert(cancelled == 1)
 service.line({event = "turn", text = "Tell me about the history of Rome"})
-assert(#asked == asked_before and #written == written_before)
+assert(#asked == asked_before and #written == written_before + 1 and written[#written].message.cmd == "hush")
 streaming_now = false
 cancel_cb("v1", false)
-assert(#written == written_before)
+assert(#written == written_before + 1)
 assert(#asked == asked_before + 1 and asked[#asked][1] == "Tell me about the history of Rome")
 listeners[1]("done", "v1", "Rome started in 753 BC.", true)
 assert(written[#written].message.cmd == "say" and written[#written].message.text == "Rome started in 753 BC.")
@@ -161,6 +163,26 @@ assert(#written == w_count)
 refusing = false
 listeners[1]("done", "c9", "Typed answer", false)
 assert(asked[#asked][1] == "Are you there")
+
+-- Completed committed sentences stream, final does not repeat the full answer.
+service.line({event = "turn", text = "Stream this answer"})
+local turn = asked[#asked][3].voice_generation
+speech_listener("start", "v1", "", true, turn)
+assert(written[#written].message.cmd == "speech_start")
+speech_listener("delta", "v1", "First sentence. ", true, turn)
+assert(written[#written].message.cmd == "speech_delta")
+listeners[1]("done", "v1", "First sentence. ", true, turn)
+assert(written[#written].message.cmd == "speech_end")
+local count = #written
+speech_listener("delta", "v1", "Typed", false, turn)
+assert(#written == count)
+service.line({event = "barge"})
+count = #written
+speech_listener("delta", "v1", "Obsolete.", true, turn)
+listeners[1]("done", "v1", "Obsolete.", true, turn)
+assert(#written == count)
+service.line({event = "transcript", text = "Recognized words", final = false})
+assert(text.ai_transcript == "Recognized words")
 
 -- The end of a voice conversation hands it to memory; she lingers after her last word, then goes.
 service.line({event = "speaking", on = true, conversation = "v1"})
@@ -228,9 +250,11 @@ alert_listeners[1]("4f71ebb6-db33-43e9-af8f-e5bc79a11077", "Suppressed while loc
 assert(#written == before_alert)
 fact.ai_voice_paused = false
 alert_listeners[1]("4f71ebb6-db33-43e9-af8f-e5bc79a11077", "Your overnight task finished.", true)
-assert(#written == before_alert + 1 and written[#written].message.cmd == "say"
+assert(#written == before_alert + 2 and written[#written].message.cmd == "speech_end"
     and written[#written].message.text == "Your overnight task finished."
-    and written[#written].message.conversation == "4f71ebb6-db33-43e9-af8f-e5bc79a11077")
+    and written[#written-1].message.cmd == "speech_start"
+    and written[#written].message.generation == written[#written-1].message.generation
+    and written[#written-1].message.conversation == "4f71ebb6-db33-43e9-af8f-e5bc79a11077")
 
 -- When Orca backend is unavailable (ai_can_signin == false), ask_turn speaks Orca-unavailable instead of Sign in.
 refusing = true
@@ -241,3 +265,58 @@ refusing = false
 fact.ai_can_signin = true
 
 print("Voice service gating, turns, spoken answers, barge-in, memory hand-off, proactive alerts, reduced motion, settings and restarts passed")
+-- Repeated identical transcript text gets its own linger lifetime.
+local current_service = spawned[#spawned]
+current_service.line({event="transcript", text="Repeat this", final=true})
+local old_caption_timer = timers[#timers]
+current_service.line({event="transcript", text="Repeat this", final=true})
+old_caption_timer()
+assert(text.ai_transcript == "Repeat this")
+timers[#timers]()
+assert(text.ai_transcript == "")
+-- Retired process callbacks cannot restore captions after a restart.
+service.line({event="transcript",text="Old process",final=false})
+assert(text.ai_transcript == "")
+-- A stale terminal callback still releases the queued replacement turn.
+local real_stream = assistant.streaming
+assistant.streaming = function() return false end
+current_service.line({event="turn",text="Start old answer"})
+local old_generation = asked[#asked][3].voice_generation
+assistant.streaming = function() return true end
+current_service.line({event="barge"})
+current_service.line({event="turn",text="Replacement answer"})
+local count_asked = #asked
+assistant.streaming = function() return false end
+listeners[1]("stopped","v1","obsolete",true,old_generation)
+assert(#asked == count_asked+1 and asked[#asked][1] == "Replacement answer")
+assistant.streaming = real_stream
+
+print("Voice service gating, turns, spoken answers, barge-in, memory hand-off, settings and restarts passed")
+
+-- A backend without deltas still delivers its full final answer exactly once.
+current_service.line({event="turn",text="Ask Orca"})
+local final_generation = asked[#asked][3].voice_generation
+speech_listener("start","orca-chat","",true,final_generation)
+listeners[1]("done","orca-chat","The bot finished successfully.",true,final_generation)
+assert(written[#written].message.cmd=="speech_end" and written[#written].message.text=="The bot finished successfully.")
+local final_count = #written
+events.assistant_hush()
+speech_listener("delta","orca-chat","Obsolete.",true,final_generation)
+assert(#written==final_count+1 and written[#written].message.cmd=="hush")
+-- Busy turns suppress proactive speech rather than invalidating their generation.
+assistant.streaming=function() return true end
+final_count=#written
+alert_listeners[1]("orca-chat","Wait for the current answer",true)
+assert(#written==final_count)
+assistant.streaming=real_stream
+print("Cross-feature final-only replies, alert generations and busy suppression passed")
+
+-- Switching backends invalidates old audio and never reuses a local conversation ID.
+local before_switch = #spawned
+voice.configure(settings({["assistant.voice"]=true, ["assistant.backend"]="orca"}))
+assert(#spawned==before_switch and written[#written].message.cmd=="end")
+current_service.line({event="turn",text="A fresh Orca conversation"})
+assert(asked[#asked][2]==nil)
+final_count=#written
+listeners[1]("done","local-old","Old local reply.",true,final_generation)
+assert(#written==final_count)
