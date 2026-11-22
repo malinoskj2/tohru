@@ -1,5 +1,20 @@
 # Tohru Discord avatar concepts
 
+## Selected asset and closeout
+
+The user selected **#3, Delighted**. The unmodified original is committed at
+[`shell/brand/discord-avatar.png`](../../shell/brand/discord-avatar.png), beside
+the existing mascot assets, with prompt/hash provenance in
+[`discord-avatar.json`](../../shell/brand/discord-avatar.json).
+The live Discord account has not been updated.
+
+All exploration originals, comparison HTML, metadata and captures are preserved
+under `/home/jesse/projects/tohru/.tmp/discord-avatars/`; the original child manifest
+and `parent-preservation.json` record their hashes and preserved location. The
+selected asset is available in a fresh clone; the ignored exploration evidence
+is local only. Child URLs and instructions below are historical handoff notes,
+not active services after child closeout.
+
 Ten individual original raster generations, created 2026-11-22 with the built-in image_gen.imagegen tool in ten calls (one per variant), with no retries or post-generation image edits. All are 1254 × 1254 PNG RGB, opaque, approximately 1.4–1.8 MiB each; exact bytes, dimensions, SHA-256, prompts and original tool output paths are in metadata.json. The request aimed at 1024 square; the built-in tool returned 1254 square. Model revision and seed are not exposed by the tool.
 
 ## Review

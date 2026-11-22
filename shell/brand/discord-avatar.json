@@ -1,0 +1,23 @@
+{
+  "number": 3,
+  "name": "Delighted",
+  "dimensions": [
+    1254,
+    1254
+  ],
+  "format": "PNG",
+  "mode": "RGB",
+  "alpha": false,
+  "bytes": 1540600,
+  "sha256": "dc5e7ae328bdc6cecacc13e304ce31e5d50086267cbc246a8ad8e560d8a69200",
+  "prompt": "Use case: stylized-concept. Create ONE polished 1024x1024 square Discord bot avatar illustration of Tohru, strictly the same little pearlescent dragon as the provided reference image. Reference is identity/style source, not layout to copy. Preserve soft rounded head, short rounded snout, dark plum dot eyes and tiny warm smile, two swept leaf-like horns/frills, small scalloped cheek frills, little lavender dragon wings, luminous pearl peach/mint/cyan/lavender body gradients and delicate lavender contours. Hand-painted luminous illustrated finish with clean confident silhouette, not 3D clay, not anime human. Very readable at 32px circular crop. Keep entire head, horns, face and key silhouette within centered circular safe area with generous margin; face large and dominant. Simple contrasting background, subtle soft vignette. No text, letters, logos, watermark, props, clothing, extra limbs or unrelated anatomy. Variant 03 \u2014 Delighted smile. Close face-and-shoulders portrait, bright open plum eyes and small open joyful mouth, lifted cheeks, horns sweeping back, wings only peeking below. Face dominates. Rich dark indigo background. IMPORTANT composition is a close bust portrait, do not reproduce reference's full body. Horn tips remain well inside the central circle, no closer than 14% to square edge.",
+  "file": "discord-avatar.png",
+  "generator": "image_gen.imagegen",
+  "generation_date": "2026-11-22",
+  "model_revision": null,
+  "seed": null,
+  "reference": "Original voice dragon cell 165",
+  "reference_sha256": "48176c5c207c45cf99032fde1dd6a1e488cb5db615d3479b2b868ea0df6dbf22",
+  "postprocessing": "None; byte-identical to generated original",
+  "selection": "Chosen by user as Discord bot avatar"
+}
