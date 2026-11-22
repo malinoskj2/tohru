@@ -34,6 +34,8 @@ local assistant = {
     show = function(id) shown = id end,
     on_answer = function(listener) listeners[#listeners + 1] = listener end,
 }
+local speech_listener
+assistant.on_speech = function(listener) speech_listener = listener end
 local puppet = assert(loadfile("shell/assistant/puppet.luau"))()()
 local voice = assert(loadfile("shell/assistant/voice.luau"))()(assistant, puppet)
 local function settings(values)
@@ -117,10 +119,10 @@ local asked_before, written_before = #asked, #written
 service.line({event = "barge", continuation = true})
 assert(cancelled == 1)
 service.line({event = "turn", text = "Tell me about the history of Rome"})
-assert(#asked == asked_before and #written == written_before)
+assert(#asked == asked_before and #written == written_before + 1 and written[#written].message.cmd == "hush")
 streaming_now = false
 cancel_cb("v1", false)
-assert(#written == written_before)
+assert(#written == written_before + 1)
 assert(#asked == asked_before + 1 and asked[#asked][1] == "Tell me about the history of Rome")
 listeners[1]("done", "v1", "Rome started in 753 BC.", true)
 assert(written[#written].message.cmd == "say" and written[#written].message.text == "Rome started in 753 BC.")
@@ -160,6 +162,26 @@ assert(#written == w_count)
 refusing = false
 listeners[1]("done", "c9", "Typed answer", false)
 assert(asked[#asked][1] == "Are you there")
+
+-- Completed committed sentences stream, final does not repeat the full answer.
+service.line({event = "turn", text = "Stream this answer"})
+local turn = asked[#asked][3].voice_generation
+speech_listener("start", "v1", "", true, turn)
+assert(written[#written].message.cmd == "speech_start")
+speech_listener("delta", "v1", "First sentence. ", true, turn)
+assert(written[#written].message.cmd == "speech_delta")
+listeners[1]("done", "v1", "First sentence. ", true, turn)
+assert(written[#written].message.cmd == "speech_end")
+local count = #written
+speech_listener("delta", "v1", "Typed", false, turn)
+assert(#written == count)
+service.line({event = "barge"})
+count = #written
+speech_listener("delta", "v1", "Obsolete.", true, turn)
+listeners[1]("done", "v1", "Obsolete.", true, turn)
+assert(#written == count)
+service.line({event = "transcript", text = "Recognized words", final = false})
+assert(text.ai_transcript == "Recognized words")
 
 -- The end of a voice conversation hands it to memory; she lingers after her last word, then goes.
 service.line({event = "speaking", on = true, conversation = "v1"})
@@ -207,4 +229,30 @@ assert(#spawned == 4 and has(spawned[4].args, "--wake", "kws") and has(spawned[4
 local kills = #killed
 voice.configure(settings({["assistant.voice"] = true, ["assistant.voice_wake"] = "asr"}))
 assert(#killed == kills + 1 and #spawned == 5 and has(spawned[5].args, "--wake", "asr"))
+-- Repeated identical transcript text gets its own linger lifetime.
+local current_service = spawned[#spawned]
+current_service.line({event="transcript", text="Repeat this", final=true})
+local old_caption_timer = timers[#timers]
+current_service.line({event="transcript", text="Repeat this", final=true})
+old_caption_timer()
+assert(text.ai_transcript == "Repeat this")
+timers[#timers]()
+assert(text.ai_transcript == "")
+-- Retired process callbacks cannot restore captions after a restart.
+service.line({event="transcript",text="Old process",final=false})
+assert(text.ai_transcript == "")
+-- A stale terminal callback still releases the queued replacement turn.
+local real_stream = assistant.streaming
+assistant.streaming = function() return false end
+current_service.line({event="turn",text="Start old answer"})
+local old_generation = asked[#asked][3].voice_generation
+assistant.streaming = function() return true end
+current_service.line({event="barge"})
+current_service.line({event="turn",text="Replacement answer"})
+local count_asked = #asked
+assistant.streaming = function() return false end
+listeners[1]("stopped","v1","obsolete",true,old_generation)
+assert(#asked == count_asked+1 and asked[#asked][1] == "Replacement answer")
+assistant.streaming = real_stream
+
 print("Voice service gating, turns, spoken answers, barge-in, memory hand-off, settings and restarts passed")

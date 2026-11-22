@@ -19,6 +19,7 @@ let
     // lib.optionalAttrs (assistant.orca != null) {
       orca = if builtins.isBool assistant.orca then (if assistant.orca then "true" else "false") else assistant.orca;
     }
+    // lib.optionalAttrs (assistant.voice.source != null) { voice_source = assistant.voice.source; }
     // lib.optionalAttrs (assistant.voice.wake != null) { voice_wake = assistant.voice.wake; }
     // lib.optionalAttrs (assistant.voice.vadModel != null) { vad_model = assistant.voice.vadModel; }
     // lib.optionalAttrs (assistant.voice.asrModel != null) { asr_model = assistant.voice.asrModel; }
@@ -148,6 +149,11 @@ in {
           WebRTC echo-cancelling source and sink for Tohru without changing the
           session's default audio devices.
         '';
+      };
+      voice.source = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Pulse/PipeWire source name; empty chooses automatically. Module metadata reports AEC, never its acoustic effectiveness.";
       };
       voice.wake = lib.mkOption {
         type = lib.types.nullOr (lib.types.enum [ "kws" "asr" ]);

@@ -22,6 +22,7 @@ pub enum Key {
     PolkitAgent,
     NotificationsPosition,
     AssistantVoice,
+    AssistantVoiceSource,
     AssistantProvider,
     AssistantVadModel,
     AssistantAsrModel,
@@ -72,7 +73,7 @@ pub const VOICE_WAKE: [&str; 2] = ["kws", "asr"];
 pub const ASSISTANT_ORCA: [&str; 3] = ["auto", "true", "false"];
 
 impl Key {
-    pub const ALL: [Self; 38] = [
+    pub const ALL: [Self; 39] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::InfoButton,
@@ -84,6 +85,7 @@ impl Key {
         Self::PolkitAgent,
         Self::NotificationsPosition,
         Self::AssistantVoice,
+        Self::AssistantVoiceSource,
         Self::AssistantProvider,
         Self::AssistantVadModel,
         Self::AssistantAsrModel,
@@ -127,6 +129,7 @@ impl Key {
             Self::PolkitAgent => "polkit.agent",
             Self::NotificationsPosition => "notifications.position",
             Self::AssistantVoice => "assistant.voice",
+            Self::AssistantVoiceSource => "assistant.voice_source",
             Self::AssistantProvider => "assistant.provider",
             Self::AssistantVadModel => "assistant.vad_model",
             Self::AssistantAsrModel => "assistant.asr_model",
@@ -207,6 +210,7 @@ impl Key {
             Self::PolkitAgent => (&["polkit"], "agent"),
             Self::NotificationsPosition => (&["notifications"], "position"),
             Self::AssistantVoice => (&["assistant"], "voice"),
+            Self::AssistantVoiceSource => (&["assistant"], "voice_source"),
             Self::AssistantProvider => (&["assistant"], "provider"),
             Self::AssistantVadModel => (&["assistant"], "vad_model"),
             Self::AssistantAsrModel => (&["assistant"], "asr_model"),
@@ -250,7 +254,8 @@ impl Key {
             | Self::AssistantVoice
             | Self::AssistantPersona
             | Self::AssistantMemory => Value::Bool(true),
-            Self::PreferredOutput
+            Self::AssistantVoiceSource
+            | Self::PreferredOutput
             | Self::AssistantProvider
             | Self::AssistantVadModel
             | Self::AssistantAsrModel
@@ -314,9 +319,7 @@ impl Key {
             {
                 Ok(())
             }
-            (Self::AssistantOrca, Value::Text(text))
-                if ASSISTANT_ORCA.contains(&text.as_str()) =>
-            {
+            (Self::AssistantOrca, Value::Text(text)) if ASSISTANT_ORCA.contains(&text.as_str()) => {
                 Ok(())
             }
             (Self::AssistantTtsVoicepack, Value::Text(text))
@@ -342,6 +345,11 @@ impl Key {
             ) if text.len() <= 4096
                 && !text.chars().any(char::is_control)
                 && (text.is_empty() || text.starts_with('/')) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantVoiceSource, Value::Text(text))
+                if text.len() <= 256 && !text.chars().any(char::is_control) =>
             {
                 Ok(())
             }

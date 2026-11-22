@@ -3,7 +3,10 @@ return function(applied)
     local pages = {"Bar", "Appearance", "System"}
     local history, position, rows = {1}, 1, {}
     local snapshot = tohru_settings.snapshot()
+    local devices, device_generation = nil, 0
+    local source_status = "Unknown · effectiveness unmeasured"
     local choices = {
+        ["assistant.voice_source"]={""},
         ["appearance.palette"]={"mocha","macchiato","rose_pine","nord","gruvbox","tokyo_night","dracula","everforest"},
         ["lock.style"]={"still-glass","ribbon-key","flooded-monolith","drifting-frost-veil","unfolding-glass-capsule",
             "edge-glass-drawer","horizon-meniscus","refractive-typographic-lens","corner-anchor","bar-drop-curtain"},
@@ -59,6 +62,9 @@ return function(applied)
             {page=2, key="notifications.position", title="Notification position", choice=true,
              detail=choice_detail(snapshot["notifications.position"]), editable=true,
              managed=snapshot["notifications.position"].managed, temporary=snapshot["notifications.position"].runtime_override},
+            {page=3, title="Microphone", key="assistant.voice_source", choice=true, editable=true,
+             detail=(snapshot["assistant.voice_source"] and snapshot["assistant.voice_source"].value ~= "" and snapshot["assistant.voice_source"].value or "Automatic") .. " · Activate to cycle sources"},
+            {page=3, title="Echo cancellation", detail=source_status, editable=false},
             {page=3, title="Shell", detail="Tohru · pinned native Pleamar 0.7.27", editable=false},
         }
         rows = {}
@@ -99,10 +105,12 @@ return function(applied)
             text.settings_ui_error=warning or ""
             refresh(settings)
             applied(settings,warning)
+            if row.key == "assistant.voice_source" and devices then devices() end
         else text.settings_ui_error=tostring(settings) end
     end
     on("settings_open_request",function()
         refresh(tohru_settings.snapshot())
+        if devices then devices() end
         fact.settings_open=true
     end)
     on("settings_close",function() fact.settings_open=false end)
@@ -117,6 +125,27 @@ return function(applied)
         else fact.settings_selected=math.clamp(fact.settings_selected+delta,0,math.max(#rows-1,0)) end
     end)
     on("settings_activate",function() if not fact.settings_sidebar then activate(fact.settings_selected) end end)
+    devices = function()
+        device_generation = device_generation + 1
+        local mine = device_generation
+        if not run then return end
+        local selected = snapshot["assistant.voice_source"] and snapshot["assistant.voice_source"].value or ""
+        run("tohru-voice", {"--devices", "--source", selected}, function(out, code)
+            local ok, info = pcall(json.decode, out)
+            if mine ~= device_generation or code ~= 0 or not ok or type(info) ~= "table" then return end
+            local sources = {""}
+            for _, name in ipairs(info.sources or {}) do sources[#sources + 1] = name end
+            if selected ~= "" then
+                local found = false
+                for _, name in ipairs(sources) do if name == selected then found = true end end
+                if not found then sources[#sources + 1] = selected end
+            end
+            choices["assistant.voice_source"] = sources
+            source_status = tostring(info.aec or "unknown") .. " · " .. tostring(info.selected or "unavailable")
+            refresh()
+        end)
+    end
+    devices()
     refresh()
     return refresh
 end

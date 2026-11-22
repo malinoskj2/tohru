@@ -99,3 +99,12 @@ lua5.4 tests/assistant/puppet.lua
 `service.py` drives the helper against fake `claude`, `codex`, `agy`, `gemini` and `opencode` scripts: discovery, probes that would prompt, streaming, session resume, provider hand-over, Stop, history search, conversation IDs that try to leave the folder, models and rejected models, the persona per CLI, Orca CLI detection/caching/env isolation/prompt injection per CLI (including never resolving bare `orca`, Orca not running, and `--orca false`), memory extraction (malformed JSON rejected, the 600-token budget, nothing spawned with memory off), forgetting, migrations, and an export/import round trip. `voice.py` covers wake gating with and without the keyword spotter, follow-ups, spoken text shaping, the Kokoro load policy, sink/source selection, AEC flat barge threshold, adaptive echo coupling, pause-then-resume/barge, cancel-while-thinking and the echo guard (the audio-window tests need numpy).
 
 `controller.lua` drives `controller.luau` with stand-ins for `run`, `spawn` and `kill`: provider choice, models, streaming, Stop, the ready mark, sign-in, history rows, a voice turn, the memory hand-off and the Memory view. `voice-controller.lua` drives `voice.luau`: gating, turns, the spoken greeting for the wake word alone, spoken refusals, spoken answers, paused/interrupted speaking, barge-in and cancel-while-thinking, the overlay, loading the sheets, settings and restarts. `puppet.lua` drives `puppet.luau`: poses, routes through the drawn moves, squash swaps, dips, visemes, paused/interrupted speech and hearts. `voice.py` also checks the phoneme-to-mouth mapping and timelines.
+
+## Streaming voice diagnostics
+
+See [voice-pipeline.md](../../docs/voice-pipeline.md) for protocol/lifecycle details,
+source selection, AEC provenance, journal commands and reproducible benchmarks.
+`controller.on_speech` publishes ordinary committed start/delta events separately
+from terminal `on_answer` notifications; speculative drafts never publish deltas to
+speech. The voice service inherits stderr into the bar's existing journal stream.
+Live wake-accepted transcript text is transient UI state above the dragon.

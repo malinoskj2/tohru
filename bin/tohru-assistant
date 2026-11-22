@@ -501,7 +501,9 @@ def search(db, query, limit, provider=None, since=None):
 
 VOICE_RULE = ("This answer will be spoken aloud. Reply in one to three short sentences of plain speech: "
               "no markdown, lists, code, links or URLs. If the full answer would be long, give the gist "
-              "and offer to show the rest in the chat popup.")
+              "and offer to show the rest in the chat popup. Preserve essential qualifications, uncertainty and "
+              "tool outcomes; never claim an action succeeded before its tool result. Lead with the answer, "
+              "use natural spoken wording and avoid reading out paths or technical markup.")
 TYPED_RULE = "This chat is typed: keep the persona to a light touch and use markdown when it helps."
 MEMORY_TOKENS = 600
 FORGET = re.compile(r"^\s*(?:(?:please|ok(?:ay)?|hey|tohru)[\s,]+)*forget\s+(?:that|this|what\s+i\s+(?:just\s+)?said|about\s+(?P<about>.+?)|(?P<thing>.+?))\s*[.!]*\s*$", re.I)

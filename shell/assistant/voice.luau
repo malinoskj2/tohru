@@ -6,6 +6,9 @@ return function(assistant, puppet)
     local conversation = nil
     local failures = 0
     local generation = 0
+    local capture_id = nil
+    local transcript_serial = 0
+    local turn_generation, streaming_speech = 0, false
     -- The overlay stays a moment after she stops talking, and a click opens what she said.
     local DRAGON_LINGER = 5000
     local spoken, hide_serial = nil, 0
@@ -35,6 +38,10 @@ return function(assistant, puppet)
 
     local function quiet()
         barged, cancelling, queued, interrupted_spoken = false, false, nil, nil
+        turn_generation = turn_generation + 1
+        streaming_speech = false
+        text.ai_transcript = ""
+        transcript_serial = transcript_serial + 1
         if assistant.discard_draft then assistant.discard_draft() end
         assistant.listening(false)
         fact.ai_speaking = false
@@ -45,6 +52,12 @@ return function(assistant, puppet)
     end
 
     local function ask_turn(prompt, opts)
+        turn_generation = turn_generation + 1
+        streaming_speech = false
+        barged = false
+        opts = opts or {}
+        opts.voice_generation = turn_generation
+        capture_id = opts.capture_id
         puppet.thinking()
         if not assistant.ask(prompt, conversation, opts) then
             if assistant.streaming and assistant.streaming() then
@@ -84,7 +97,16 @@ return function(assistant, puppet)
                 puppet.load(art)
             end
             voice_error(tostring(message.warning or ""))
+        elseif event == "transcript" then
+            transcript_serial = transcript_serial + 1
+            local mine = transcript_serial
+            text.ai_transcript = tostring(message.text or "")
+            if message.final then
+                after(5000, function() if transcript_serial == mine then text.ai_transcript = "" end end)
+            end
         elseif event == "listening" then
+            text.ai_voice_source = tostring(message.source or "default")
+            text.ai_voice_aec = tostring(message.aec or "unknown")
             assistant.listening(message.on == true)
         elseif event == "conversation" then
             fact.ai_voice_conversation = message.on == true
@@ -95,10 +117,17 @@ return function(assistant, puppet)
                 interrupted_spoken = nil
                 if conversation then assistant.remember(conversation) end
                 conversation = nil
+                text.ai_transcript = ""
+                turn_generation = turn_generation + 1
+                send({cmd = "hush"})
                 puppet.calm()
                 if fact.ai_dragon_open and not fact.ai_speaking then linger() end
             end
         elseif event == "hearing" then
+            if not message.on then
+                local mine = transcript_serial
+                after(500, function() if transcript_serial == mine then text.ai_transcript = "" end end)
+            end
             puppet.hearing(message.on == true)
         elseif event == "sentence" then
             puppet.sentence(tostring(message.text or ""))
@@ -120,7 +149,8 @@ return function(assistant, puppet)
             send({cmd = "say", text = GREETINGS[greeted], conversation = conversation})
         elseif event == "turn" then
             puppet.thinking()
-            local opts = interrupted_spoken and {interrupted = interrupted_spoken} or nil
+            local opts = interrupted_spoken and {interrupted = interrupted_spoken} or {}
+            opts.capture_id = message.turn_id
             interrupted_spoken = nil
             if cancelling or (assistant.streaming and assistant.streaming()) then
                 queued = {text = message.text, opts = opts}
@@ -143,6 +173,9 @@ return function(assistant, puppet)
             fact.ai_mouth = tonumber(message.level) or 0
             puppet.mouth(fact.ai_mouth, tonumber(message.viseme))
         elseif event == "barge" then
+            turn_generation = turn_generation + 1
+            streaming_speech = false
+            send({cmd = "hush"})
             if assistant.discard_draft then assistant.discard_draft() end
             if type(message.spoken) == "string" and message.spoken ~= "" then
                 interrupted_spoken = message.spoken
@@ -182,7 +215,7 @@ return function(assistant, puppet)
     function start()
         generation = generation + 1
         local mine = generation
-        id = spawn("tohru-voice", args, line, function(_, code)
+        id = spawn("tohru-voice", args, function(raw) if mine == generation then line(raw) end end, function(_, code)
             if mine ~= generation then return end
             id = nil
             quiet()
@@ -191,13 +224,17 @@ return function(assistant, puppet)
             if failures <= 5 then
                 after(2000 * failures, function() if wanted and not id and mine == generation then start() end end)
             end
-        end, {stdin = "open"})
+        end, {stdin = "open", stderr = "inherit"})
     end
 
-    assistant.on_answer(function(kind, conv, answer, voice)
+    local function answer_event(kind, conv, answer, voice, turn)
         if not id then return end
         if not voice then
             if queued then flush_queued() end
+            return
+        end
+        if turn and turn ~= turn_generation then
+            if kind ~= "start" and kind ~= "delta" and queued then flush_queued() end
             return
         end
         conversation = conv or conversation
@@ -206,17 +243,31 @@ return function(assistant, puppet)
             flush_queued()
             return
         end
-        if kind == "done" then
-            send({cmd = "say", text = answer or "", conversation = conversation})
+        if kind == "start" then
+            streaming_speech = true
+            send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id})
+            return
+        elseif kind == "delta" then
+            if streaming_speech then send({cmd = "speech_delta", generation = turn_generation, text = answer or ""}) end
+            return
+        elseif kind == "done" then
+            if streaming_speech then
+                send({cmd = "speech_end", generation = turn_generation})
+            else
+                send({cmd = "say", text = answer or "", conversation = conversation, generation = turn_generation, turn_id = capture_id})
+            end
         elseif kind == "error" then
             send({cmd = "say", text = "Hmm, that didn't work. The details are in the chat.", conversation = conversation})
         else
+            send({cmd = "hush"})
             send({cmd = "thinking", on = false})
         end
         flush_queued()
-    end)
+    end
+    assistant.on_answer(answer_event)
+    if assistant.on_speech then assistant.on_speech(answer_event) end
 
-    on("assistant_hush", function() send({cmd = "hush"}) end)
+    on("assistant_hush", function() turn_generation = turn_generation + 1; send({cmd = "hush"}) end)
     on("assistant_dragon", function()
         show_dragon(false)
         if spoken then assistant.show(spoken) end
@@ -244,12 +295,15 @@ return function(assistant, puppet)
             "--tts-engine", tts.engine, "--tts-model", tts.model, "--tts-voicepack", tts.voicepack,
             "--tts-voice", tts.voice, "--tts-speed", tostring(tts.speed), "--tts-pitch", tostring(tts.pitch),
         }
+        next[#next + 1] = "--source"
+        next[#next + 1] = value("assistant.voice_source", "")
         if tts.load_on_conversation then next[#next + 1] = "--tts-load-on-conversation" end
         local on = value("assistant.voice", false) == true
         local models_changed = false
         for i = 1, 10 do if next[i] ~= args[i] then models_changed = true end end
         local tts_changed = #next ~= #args
         for i = 11, #next do if next[i] ~= args[i] then tts_changed = true end end
+        if next[24] ~= args[24] then models_changed = true end
         args = next
         fact.ai_voice_enabled = on
         if not on then

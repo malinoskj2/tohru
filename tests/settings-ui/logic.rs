@@ -74,3 +74,40 @@ fn actual_settings_search_history_and_managed_edits_share_the_owner() {
     .exec()
     .unwrap();
 }
+
+#[test]
+fn microphone_choices_and_metadata_refresh_follow_the_selected_source() {
+    let lua = Lua::new();
+    lua.load(r#"
+        fact={settings_selected=0}; text={settings_search=''}; model={}; handlers={}
+        function on(n,f) handlers[n]=f end
+        config={}
+        for _,key in ipairs({'bar.mooncoil','bar.info_button','bar.about_button','appearance.corners'}) do config[key]={value=false} end
+        for _,key in ipairs({'bar.preferred_output','assistant.voice_source'}) do config[key]={value=''} end
+        config['appearance.corner_size']={value=32}; config['appearance.palette']={value='mocha'}
+        config['lock.style']={value='still-glass'}; config['notifications.position']={value='top-right'}
+        tohru_settings={snapshot=function() return config end, set=function(k,v) config[k].value=v; return config end}
+        json={decode=function(out) return {sources={'usb-microphone','echo-cancel-by-name'},selected='usb-microphone',aec='unknown'} end}
+        queries=0
+        function run(command,args,callback)
+            assert(command=='tohru-voice' and args[1]=='--devices')
+            queries=queries+1; callback('{}',0)
+        end
+        function applied() end
+    "#).exec().unwrap();
+    let callback: mlua::Function = lua.globals().get("applied").unwrap();
+    lua.load(include_str!("../../shell/settings/controller.luau"))
+        .eval::<mlua::Function>().unwrap().call::<mlua::Function>(callback).unwrap();
+    lua.load(r#"
+        handlers.settings_category(3)
+        assert(model.settings_rows[1].title=='Microphone' and model.settings_rows[1].choice)
+        assert(string.find(model.settings_rows[2].detail,'unknown'))
+        handlers.settings_row(0)
+        assert(config['assistant.voice_source'].value=='usb-microphone' and queries==2)
+        handlers.settings_row(0)
+        assert(config['assistant.voice_source'].value=='echo-cancel-by-name')
+        assert(string.find(model.settings_rows[2].detail,'unknown'))
+        handlers.settings_row(0)
+        assert(config['assistant.voice_source'].value=='')
+    "#).exec().unwrap();
+}

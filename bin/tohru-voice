@@ -8,6 +8,7 @@ import queue
 import re
 import shutil
 import signal
+import select
 import subprocess
 import sys
 import threading
@@ -16,6 +17,7 @@ import wave
 from io import BytesIO
 from pathlib import Path
 
+SESSION = f"{os.getpid()}-{time.monotonic_ns()}"
 SAMPLE_RATE = 16_000
 WINDOW = 512
 WINDOW_MS = WINDOW * 1000 / SAMPLE_RATE
@@ -52,7 +54,7 @@ TURN_WINDOW = SAMPLE_RATE * 8
 CONVERSATION_SECONDS = 60
 WAKE_DECIDE_MS = 1600
 MOUTH_FPS = 30
-SPOKEN_CHARS = 600
+SPOKEN_CHARS = 16384
 
 KWS_SCORE = 2.0
 KWS_THRESHOLD = 0.05
@@ -75,6 +77,8 @@ UNFINISHED_TAIL = {
 
 def emit(event, **fields):
     fields["event"] = event
+    if event in ("turn", "barge", "draft", "draft_cancel", "error", "paused"):
+        diagnostic(event, turn_id=fields.get("turn_id"))
     try:
         sys.stdout.write(json.dumps(fields, ensure_ascii=False) + "\n")
         sys.stdout.flush()
@@ -84,6 +88,164 @@ def emit(event, **fields):
 
 def log(message):
     print(f"tohru-voice: {message}", file=sys.stderr, flush=True)
+
+
+def diagnostic(stage, **fields):
+    # Metadata only; never include prompt, answer, transcript or audio.
+    if os.environ.get("TOHRU_VOICE_LOG", "info") == "off":
+        return
+    log(json.dumps(dict(stage=stage, session=SESSION, mono_ns=time.monotonic_ns(), **fields), separators=(",", ":")))
+
+
+class SpeechStream:
+    """Bounded committed text, incremental Markdown-safe sentence extraction.
+
+    Never release an incomplete fence/link. Overflow ends speech with an explicit
+    chat cue rather than blocking the microphone command reader.
+    """
+    def __init__(self):
+        self.cond = threading.Condition()
+        self.pending = ""
+        self.closed = False
+        self.total = 0
+
+    def feed(self, text, final=False):
+        with self.cond:
+            if self.closed:
+                return
+            room = SPOKEN_CHARS - self.total
+            if len(text) > room:
+                self.pending += " The rest is in the chat."
+                final = True
+            else:
+                self.pending += text
+                self.total += len(text)
+            self.closed = final
+            self.cond.notify_all()
+
+    def parts(self, stop):
+        emitted = False
+        while not stop.is_set():
+            with self.cond:
+                # A final unpunctuated fragment belongs with the last sentence
+                # when both arrived before lookahead synthesis started.
+                tail = self.pending if (self.closed and emitted and len(self.pending) <= 180
+                    and not re.search(r"[.!?…]$", self.pending.rstrip())
+                    and len(re.findall(r"[.!?…]\s+", self.pending)) <= 1) else None
+                if tail is not None:
+                    self.pending = ""
+            if tail is not None:
+                cleaned = speakable(tail)
+                if cleaned:
+                    yield cleaned
+                return
+            with self.cond:
+                match = re.search(r"[.!?…](?:[\"')]*)(?:\s+|$)", self.pending)
+                # A terminal punctuation at the chunk boundary may be a decimal,
+                # URL or abbreviation: require following whitespace until final.
+                if match and (self.closed or match.end() < len(self.pending) or self.pending[-1:].isspace()):
+                    end = match.end()
+                    prefix = self.pending[:end]
+                    if prefix.count("```") % 2 or prefix.count("~~~") % 2 or prefix.count("`") % 2 or prefix.count("[") != prefix.count("]") or prefix.count("(") != prefix.count(")"):
+                        match = None
+                    else:
+                        self.pending = self.pending[end:]
+                if not match:
+                    if self.closed:
+                        prefix, self.pending = self.pending, ""
+                        # Never read an unfinished code fence aloud.
+                        if not prefix:
+                            return
+                    else:
+                        self.cond.wait(.05)
+                        continue
+            cleaned = speakable(prefix)
+            if cleaned:
+                emitted = True
+                yield cleaned
+
+
+def trim_padding(np, clip):
+    """Remove near-silent model padding, keeping 80 ms around every sound.
+
+    Sample threshold is -80 dBFS; the guard retains quiet consonants and gives
+    adjacent phrases a natural pause. This is waveform padding, not a measured
+    device/acoustic onset. Visemes stay aligned to the retained samples.
+    """
+    audio, rate, part, timeline = clip
+    audible = np.flatnonzero(np.abs(audio) >= .0001)
+    if not len(audible):
+        return clip
+    guard = round(rate * .08)
+    start = max(0, int(audible[0]) - guard)
+    end = min(len(audio), int(audible[-1]) + guard + 1)
+    offset, duration = start / rate, (end-start) / rate
+    timeline = [(max(0, a-offset), min(duration, b-offset), m)
+                for a, b, m in timeline if b > offset and a < end/rate]
+    return audio[start:end], rate, part, timeline
+
+
+def synthesized(engine, text, np, stop):
+    """One next sentence, queued OR in synthesis, beside the playing sentence."""
+    ready = queue.Queue(maxsize=1)
+    slot = threading.Semaphore(1)
+    finished = threading.Event()
+    def acquire():
+        while not stop.is_set():
+            if slot.acquire(timeout=.05):
+                return True
+        return False
+    def produce():
+        try:
+            parts = text.parts(stop) if isinstance(text, SpeechStream) else iter(sentences(text))
+            for part in parts:
+                if not acquire():
+                    break
+                diagnostic("synthesis_start", generation=getattr(stop, "turn", None))
+                clips = (engine.synthesize if hasattr(engine, "synthesize") else engine.stream)(part, np)
+                for clip in clips:
+                    if stop.is_set():
+                        break
+                    if hasattr(np, "flatnonzero"):
+                        clip = trim_padding(np, clip)
+                    diagnostic("synthesis_ready", generation=getattr(stop, "turn", None), samples=len(clip[0]))
+                    ready.put(clip)
+                    # Engines normally emit one clip per bounded sentence.
+                    if not acquire():
+                        break
+                slot.release()
+        except Exception as error:
+            if not stop.is_set():
+                diagnostic("synthesis_error", generation=getattr(stop, "turn", None), error_type=type(error).__name__)
+                ready.put(error)
+        finally:
+            finished.set()
+    worker = threading.Thread(target=produce, daemon=True)
+    worker.start()
+    completed = False
+    try:
+        while not stop.is_set():
+            try:
+                item = ready.get(timeout=.05)
+            except queue.Empty:
+                if finished.is_set():
+                    completed = True
+                    return
+                continue
+            slot.release()
+            if isinstance(item, Exception):
+                raise item
+            yield item
+    finally:
+        if not completed:
+            stop.set()
+        # Do not let the next job share a model protocol with obsolete inference.
+        while worker.is_alive():
+            try:
+                ready.get_nowait()
+            except queue.Empty:
+                pass
+            worker.join(.05)
 
 
 def words(text):
@@ -128,15 +290,30 @@ def is_backchannel(text):
     return not tokens or all(token in BACKCHANNEL_WORDS for token in tokens)
 
 
-def find_echo_cancel(kind):
+def audio_devices(kind):
     try:
-        names = subprocess.run(["pactl", "list", "short", kind], capture_output=True, text=True, timeout=5).stdout
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    for line in names.splitlines():
-        parts = line.split("\t")
-        if len(parts) > 1 and "echo-cancel" in parts[1] and not parts[1].endswith(".monitor"):
-            return parts[1]
+        result = subprocess.run(["pactl", "--format=json", "list", kind], capture_output=True, text=True, timeout=5)
+        return json.loads(result.stdout) if result.returncode == 0 else []
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return []
+
+
+def aec_status(device):
+    props = device.get("properties", {})
+    # A name is not evidence. PipeWire exports the underlying factory via
+    # node properties; Pulse's native module exposes its driver instead.
+    if props.get("factory.name") == "support.null-audio-sink":
+        return "unknown"
+    if device.get("driver") == "module-echo-cancel.c" or props.get("aec.method") == "webrtc":
+        return "module-reported (effectiveness unmeasured)"
+    return "unknown"
+
+
+def find_echo_cancel(kind):
+    for device in audio_devices(kind):
+        name = device.get("name", "")
+        if "echo-cancel" in name and not name.endswith(".monitor"):
+            return name
     return None
 
 
@@ -175,18 +352,16 @@ def sentence(text):
 
 
 def speakable(text):
-    text = re.sub(r"```.*?```", " (code in the popup) ", text, flags=re.S)
+    text = re.sub(r"(```|~~~).*?\1", " (code in the popup) ", text, flags=re.S)
+    text = re.sub(r"(?:```|~~~).*", " (code in the popup) ", text, flags=re.S)
     text = re.sub(r"`([^`]*)`", r"\1", text)
     text = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"https?://\S+", " (link in the chat) ", text)
     text = re.sub(r"[*_#>]+", "", text)
     text = re.sub(r"^\s*[-•]\s+", "", text, flags=re.M)
     text = " ".join(text.split())
-    if len(text) <= SPOKEN_CHARS:
-        return text
-    cut = text[:SPOKEN_CHARS]
-    end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
-    cut = cut[: end + 1] if end > SPOKEN_CHARS // 3 else cut.rsplit(" ", 1)[0] + "…"
-    return cut + " The rest is in the chat."
+    return text
+
 
 
 TRANSDUCER_FILES = "tokens.txt, encoder*.onnx, decoder*.onnx, joiner*.onnx"
@@ -511,9 +686,15 @@ class Espeak:
         pass
 
     def stream(self, text, np):
+        yield from self._stream(text, np, split=True)
+
+    def synthesize(self, text, np):
+        yield from self._stream(text, np, split=False)
+
+    def _stream(self, text, np, split):
         wpm = round(175 * self.speed / 100)
         pitch = max(0, min(99, 50 + 4 * self.pitch))
-        for part in sentences(text):
+        for part in sentences(text) if split else [text]:
             result = subprocess.run(["espeak-ng", "--stdout", "-v", self.voice, "-s", str(wpm), "-p", str(pitch), part],
                                     capture_output=True, timeout=30)
             if result.returncode != 0 or not result.stdout:
@@ -557,6 +738,26 @@ def kokoro_files(settings):
     return model, vocab, pack_path
 
 
+def worker_read(worker, size=None):
+    """Bound worker protocol waits, including partial headers and dead children."""
+    deadline = time.monotonic() + 60
+    data = bytearray()
+    while size is None or len(data) < size:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not select.select([worker.stdout], [], [], remaining)[0]:
+            raise RuntimeError("Kokoro worker timed out")
+        chunk = os.read(worker.stdout.fileno(), 1 if size is None else min(65536, size-len(data)))
+        if not chunk:
+            raise RuntimeError("Kokoro worker exited")
+        data.extend(chunk)
+        if size is None:
+            if chunk == b"\n":
+                return bytes(data)
+            if len(data) > 65536:
+                raise RuntimeError("Kokoro worker header too large")
+    return bytes(data)
+
+
 class Kokoro:
     """Kokoro-82M in a child process, so unloading frees every byte; misaki for phonemes."""
 
@@ -566,18 +767,28 @@ class Kokoro:
         self.files = kokoro_files(settings)
         self.speed = max(0.5, min(2.0, int(settings.get("speed", 100)) / 100))
         self.worker = None
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
+        self.retired = False
 
     def load(self):
         with self.lock:
+            if self.retired:
+                raise RuntimeError("speech engine retired")
             if self.worker is None or self.worker.poll() is not None:
                 model, vocab, pack = self.files
                 self.worker = subprocess.Popen(
                     [sys.executable, os.path.realpath(__file__), "--tts-worker", str(model), str(vocab), str(pack)],
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
-                header = self.worker.stdout.readline()
+                try:
+                    header = worker_read(self.worker)
+                except Exception:
+                    self.worker.kill()
+                    self.worker.wait()
+                    self.worker = None
+                    raise
                 if not header.startswith(b'{"ready"'):
                     self.worker.kill()
+                    self.worker.wait()
                     self.worker = None
                     raise RuntimeError("the Kokoro worker failed to start")
             return self.worker
@@ -591,25 +802,42 @@ class Kokoro:
                 worker.wait(3)
             except subprocess.TimeoutExpired:
                 worker.kill()
+                worker.wait()
 
     def loaded(self):
         return self.worker is not None and self.worker.poll() is None
 
     def stream(self, text, np):
+        yield from self.locked_stream(text, np, split=True)
+
+    def locked_stream(self, text, np, split):
+        with self.lock:
+            try:
+                yield from self._stream(text, np, split)
+            except Exception:
+                self.unload()
+                raise
+
+    def retire(self):
+        with self.lock:
+            self.retired = True
+            self.unload()
+
+    def synthesize(self, text, np):
+        yield from self.locked_stream(text, np, split=False)
+
+    def _stream(self, text, np, split=True):
         worker = self.load()
-        for part in sentences(text):
+        for part in sentences(text) if split else [text]:
             worker.stdin.write((json.dumps({"text": part, "speed": self.speed}) + "\n").encode())
             worker.stdin.flush()
-            header = json.loads(worker.stdout.readline() or b'{"error": "the Kokoro worker exited"}')
+            header = json.loads(worker_read(worker))
             if "error" in header:
                 raise RuntimeError(header["error"])
-            size = int(header["samples"]) * 4
-            data = b""
-            while len(data) < size:
-                chunk = worker.stdout.read(size - len(data))
-                if not chunk:
-                    raise RuntimeError("the Kokoro worker exited")
-                data += chunk
+            samples = int(header["samples"])
+            if not 0 <= samples <= KOKORO_RATE * 60:
+                raise RuntimeError("Kokoro returned an invalid clip size")
+            data = worker_read(worker, samples * 4)
             audio = np.frombuffer(data, dtype="<f4")
             yield audio, KOKORO_RATE, part, kokoro_timeline(np, audio, header.get("phonemes", ""), header.get("durations"))
 
@@ -710,7 +938,7 @@ class Speaker:
         self.np = np
         self.voice = voice
         self.engine = Espeak({})
-        self.jobs = queue.Queue()
+        self.jobs = queue.Queue(maxsize=1)
         self.stop = threading.Event()
         self.cond = threading.Condition()
         self.paused = False
@@ -758,13 +986,21 @@ class Speaker:
         stop = threading.Event()
         with self.cond:
             self.stop = stop
-        self.jobs.put((text, conversation, stop))
+        stop.turn = getattr(self.voice, "speech_generation", None)
+        with self.cond:
+            try:
+                self.jobs.get_nowait()
+            except queue.Empty:
+                pass
+            self.jobs.put_nowait((text, conversation, stop))
+        diagnostic("speech_enqueue", generation=stop.turn)
 
     def pause(self):
         with self.cond:
             if not self.speaking or self.paused:
                 return
             self.paused = True
+            diagnostic("playback_pause_requested", generation=getattr(self.stop, "turn", None))
             self.level = 0.0
             self.recent = []
             conversation = self.conversation
@@ -782,6 +1018,7 @@ class Speaker:
             self.cond.notify_all()
 
     def hush(self):
+        diagnostic("audio_cancel_requested", generation=getattr(self.stop, "turn", None))
         with self.cond:
             self.stop.set()
             self.paused = False
@@ -789,6 +1026,7 @@ class Speaker:
         player = self.player
         if player and player.poll() is None:
             player.kill()
+        diagnostic("player_stop_requested", generation=getattr(self.stop, "turn", None))
 
     def loop(self):
         while True:
@@ -799,8 +1037,10 @@ class Speaker:
             try:
                 self.play(text, conversation, stop)
             except Exception as error:
-                emit("error", message=f"speech failed: {error}")
+                if not stop.is_set():
+                    emit("error", message=f"speech failed: {error}")
             finally:
+                self.close_player(stop)
                 with self.cond:
                     interrupted = stop.is_set()
                     self.speaking = False
@@ -819,16 +1059,17 @@ class Speaker:
     def play(self, text, conversation, stop):
         np = self.np
         played = 0.0
+        previous_end = None
         started = None
         rate = None
         with self.cond:
             self.spoken_parts = []
             self.current_part = ""
             self.current_fraction = 0.0
-        for audio, chunk_rate, part, timeline in self.engine.stream(text, np):
+        for audio, chunk_rate, part, timeline in synthesized(self.engine, text, np, stop):
             if stop.is_set():
                 break
-            if self.player is None or rate != chunk_rate:
+            if self.player is None or self.player.poll() is not None or rate != chunk_rate:
                 self.close_player(stop)
                 rate = chunk_rate
                 argv = ["pacat", "--playback", "--raw", "--format=s16le", f"--rate={rate}", "--channels=1",
@@ -836,17 +1077,23 @@ class Speaker:
                 sink = self.sink()
                 if sink:
                     argv.append(f"--device={sink}")
-                self.player = subprocess.Popen(
-                    argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                with self.cond:
+                    if stop.is_set():
+                        break
+                    self.player = subprocess.Popen(
+                        argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 started, played = time.monotonic(), 0.0
             if not self.speaking:
                 with self.cond:
                     self.speaking = True
+                    self.voice.thinking = False
                     self.conversation = conversation
                     emit("speaking", on=True, conversation=conversation)
             with self.cond:
                 self.current_part = part
                 self.current_fraction = 0.0
+            if previous_end is not None:
+                diagnostic("inter_sentence_application_gap", generation=getattr(stop, "turn", None), gap_ms=round((time.monotonic()-previous_end)*1000, 3))
             emit("sentence", text=part)
             step = rate // MOUTH_FPS
             pcm = (np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes()
@@ -862,6 +1109,7 @@ class Speaker:
                         try:
                             self.player.stdin.write(tail)
                             self.player.stdin.flush()
+                            diagnostic("pause_fade_write", generation=getattr(stop, "turn", None))
                         except (BrokenPipeError, ValueError):
                             stop.set()
                 with self.cond:
@@ -886,11 +1134,16 @@ class Speaker:
                 else:
                     chunk_bytes = pcm[index * 2:(index + step) * 2]
                 try:
-                    self.player.stdin.write(chunk_bytes)
-                    self.player.stdin.flush()
+                    with self.cond:
+                        if stop.is_set():
+                            break
+                        self.player.stdin.write(chunk_bytes)
+                        self.player.stdin.flush()
                 except (BrokenPipeError, ValueError):
                     stop.set()
                     break
+                if index == 0:
+                    diagnostic("sentence_first_write", generation=getattr(stop, "turn", None), requested_latency_ms=60)
                 if len(audio) > 0:
                     with self.cond:
                         self.current_fraction = min(1.0, (index + len(chunk)) / len(audio))
@@ -910,6 +1163,7 @@ class Speaker:
                             self.cond.wait(delay)
             if not stop.is_set():
                 with self.cond:
+                    previous_end = time.monotonic()
                     self.spoken_parts.append(part)
                     self.current_part = ""
                     self.current_fraction = 0.0
@@ -987,6 +1241,14 @@ class Voice:
         self.reset_utterance()
         self.monitor = Monitor(self)
 
+    def shutdown(self):
+        self.closing = True
+        self.speech_generation = None
+        self.speaker.hush()
+        capture = self.capture
+        if capture and capture.poll() is None:
+            capture.terminate()
+
     def reset_utterance(self):
         if getattr(self, "hearing", False):
             emit("hearing", on=False)
@@ -1022,7 +1284,10 @@ class Voice:
         engine = make_engine(settings, warn)
         self.speaker.hush()
         self.speaker.engine = engine
-        old.unload()
+        if hasattr(old, "retire"):
+            old.retire()
+        else:
+            old.unload()
         if not self.load_on_conversation or self.in_conversation():
             threading.Thread(target=self.load_engine, args=(engine,), daemon=True).start()
 
@@ -1059,17 +1324,27 @@ class Voice:
         configured = os.environ.get("TOHRU_VOICE_SOURCE")
         if configured:
             return configured
-        return find_echo_cancel("sources")
+        return getattr(self, "configured_source", "") or find_echo_cancel("sources")
+
+    def default_source(self):
+        try:
+            return subprocess.run(["pactl", "get-default-source"], capture_output=True, text=True, timeout=5).stdout.strip() or None
+        except (OSError, subprocess.TimeoutExpired):
+            return None
 
     def start_capture(self):
         argv = ["parec", "--raw", "--format=s16le", f"--rate={SAMPLE_RATE}", "--channels=1", "--latency-msec=32",
                 "--client-name=tohru-voice", "--stream-name=Wake word"]
-        source = self.source()
-        self.echo_cancelled = bool(source and "echo-cancel" in source)
+        source = self.source() or self.default_source()
+        devices = audio_devices("sources")
+        selected = next((d for d in devices if d.get("name") == source), {})
+        status = aec_status(selected)
+        self.echo_cancelled = status.startswith("module-reported")
         if source:
             argv.append(f"--device={source}")
         self.capture = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
-        emit("listening", on=True, source=source or "default")
+        emit("listening", on=True, source=source or "default", aec=status)
+        diagnostic("capture_start", aec=status)
 
     def stop_capture(self):
         capture = self.capture
@@ -1088,7 +1363,7 @@ class Voice:
     def run(self):
         emit("ready", turn=self.turn is not None, warning=self.warning, dragon=str(DRAGON_ART))
         need = WINDOW * 2
-        while True:
+        while not getattr(self, "closing", False):
             if self.paused_reason:
                 time.sleep(0.25)
                 continue
@@ -1135,6 +1410,8 @@ class Voice:
         self.hear(window, probability >= SPEECH_CONTINUE)
 
     def begin(self, preroll):
+        self.turn_id = str(time.monotonic_ns())
+        diagnostic("utterance_start", turn_id=self.turn_id)
         self.in_speech = True
         self.quiet_ms = 0.0
         self.speech_ms = 0.0
@@ -1190,6 +1467,7 @@ class Voice:
         self.utterance.append(window)
         self.speech_ms += WINDOW_MS
         if speech:
+            self.last_speech_ns = time.monotonic_ns()
             self.discard_draft()
             self.quiet_ms = 0.0
             self.turn_checked = False
@@ -1201,6 +1479,10 @@ class Voice:
         elif not self.rejected and (speech or self.quiet_ms <= TAIL_MS):
             self.recognizer.feed(window)
         partial = "" if (self.rejected or self.spotting) else self.recognizer.partial()
+        visible = self.draft_candidate(partial) if not self.rejected and not self.spotting else ""
+        if visible != getattr(self, "display_transcript", ""):
+            self.display_transcript = visible
+            emit("transcript", text=visible[:240], final=False)
         if self.barge_pending:
             self.barge_decide_ms += WINDOW_MS
             if not is_backchannel(partial):
@@ -1259,6 +1541,7 @@ class Voice:
         self.barge_pending = False
         self.barge_decide_ms = 0.0
         spoken = self.speaker.spoken_so_far() if hasattr(self.speaker, "spoken_so_far") else ""
+        self.speech_generation = None
         self.speaker.hush()
         self.last_turn_text = ""
         self.pending_continuation = ""
@@ -1275,6 +1558,8 @@ class Voice:
         self.speaker.resume()
 
     def cancel_thinking(self):
+        self.speech_generation = None
+        self.speaker.hush()
         self.thinking = False
         self.cancelled_thinking = True
         if self.last_turn_text:
@@ -1288,7 +1573,9 @@ class Voice:
     def end_turn(self):
         pending = self.barge_pending
         active_draft = self.draft_text
+        diagnostic("asr_finalize_start", turn_id=getattr(self, "turn_id", None), last_speech_ns=getattr(self, "last_speech_ns", None))
         transcript = "" if self.rejected else self.recognizer.finish()
+        diagnostic("asr_finalize_end", turn_id=getattr(self, "turn_id", None))
         if pending:
             if is_backchannel(transcript):
                 self.resume_barge()
@@ -1322,7 +1609,8 @@ class Voice:
                 self.cancelled_thinking = False
                 self.last_turn_text = request
                 self.thinking = True
-                emit("turn", text=request)
+                emit("transcript", text=request[:240], final=True)
+                emit("turn", text=request, turn_id=getattr(self, "turn_id", None))
             elif active_draft:
                 emit("draft_cancel")
             return
@@ -1339,7 +1627,8 @@ class Voice:
             self.cancelled_thinking = False
             self.last_turn_text = request
             self.thinking = True
-            emit("turn", text=request)
+            emit("transcript", text=request[:240], final=True)
+            emit("turn", text=request, turn_id=getattr(self, "turn_id", None))
         else:
             if active_draft:
                 emit("draft_cancel")
@@ -1362,6 +1651,7 @@ class Voice:
         self.preroll.append(window)
         self.preroll = self.preroll[-max(1, round(BARGE_PREROLL_MS / WINDOW_MS)):]
         if self.barge_ms >= BARGE_MS:
+            diagnostic("interruption_detected")
             self.barge_ms = 0.0
             self.barge_pending = True
             self.barge_decide_ms = 0.0
@@ -1371,11 +1661,33 @@ class Voice:
 
     def command(self, message):
         cmd = message.get("cmd")
-        if cmd == "say":
+        if cmd == "speech_start":
+            if self.paused_reason:
+                return
+            self.speech_generation = message.get("generation")
+            self.speech_stream = SpeechStream()
+            self.thinking = True
+            self.cancelled_thinking = False
+            self.speaker.say(self.speech_stream, message.get("conversation"))
+            self.first_model_text = True
+            diagnostic("speech_stream_start", generation=self.speech_generation, turn_id=message.get("turn_id"))
+        elif cmd in ("speech_delta", "speech_end"):
+            if message.get("generation") != getattr(self, "speech_generation", None) or self.paused_reason:
+                return
+            stream = getattr(self, "speech_stream", None)
+            if stream:
+                stream.feed(str(message.get("text", "")), final=cmd == "speech_end")
+                if cmd == "speech_end" or getattr(self, "first_model_text", False):
+                    diagnostic("first_provider_text" if cmd == "speech_delta" else "provider_done", generation=self.speech_generation)
+                    self.first_model_text = False
+        elif cmd == "say":
             if self.cancelled_thinking:
                 self.cancelled_thinking = False
                 return
-            text = speakable(str(message.get("text", "")))
+            self.speech_generation = message.get("generation")
+            diagnostic("committed_answer_ready", generation=self.speech_generation, turn_id=message.get("turn_id"))
+            raw = str(message.get("text", ""))
+            text = speakable(raw) if len(raw) <= SPOKEN_CHARS else "That answer is long. Please read the details in the chat."
             self.thinking = False
             self.last_turn_text = ""
             self.pending_continuation = ""
@@ -1387,6 +1699,7 @@ class Voice:
             else:
                 self.spoke()
         elif cmd == "hush":
+            self.speech_generation = None
             self.barge_pending = False
             self.barge_decide_ms = 0.0
             self.speaker.hush()
@@ -1407,6 +1720,8 @@ class Voice:
             except Exception as error:
                 emit("error", message=f"speech settings: {error}")
         elif cmd == "end":
+            self.speech_generation = None
+            self.speaker.hush()
             self.discard_draft()
             self.cancelled_thinking = False
             self.last_turn_text = ""
@@ -1428,17 +1743,17 @@ def read_commands(voice):
         if isinstance(message, dict):
             with voice.lock:
                 voice.command(message)
-    os._exit(0)
+    voice.shutdown()
 
 
 def main():
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
     os.environ.setdefault("OMP_NUM_THREADS", "1")
-    signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
-    signal.signal(signal.SIGINT, lambda *_: os._exit(0))
     if len(sys.argv) == 5 and sys.argv[1] == "--tts-worker":
         return tts_worker(*sys.argv[2:])
     parser = argparse.ArgumentParser(prog="tohru-voice")
+    parser.add_argument("--devices", action="store_true")
+    parser.add_argument("--source", default="")
     parser.add_argument("--vad-model", default="")
     parser.add_argument("--asr-model", default="")
     parser.add_argument("--turn-model", default="")
@@ -1452,6 +1767,17 @@ def main():
     parser.add_argument("--wake", choices=("kws", "asr"), default="asr")
     parser.add_argument("--kws-model", default="")
     args = parser.parse_args()
+    if args.devices:
+        devices = audio_devices("sources")
+        selected = os.environ.get("TOHRU_VOICE_SOURCE") or args.source or find_echo_cancel("sources")
+        if not selected:
+            try:
+                selected = subprocess.run(["pactl", "get-default-source"], capture_output=True, text=True, timeout=5).stdout.strip()
+            except (OSError, subprocess.TimeoutExpired):
+                selected = ""
+        emit("devices", sources=[d.get("name", "") for d in devices], selected=selected,
+             aec=aec_status(next((d for d in devices if d.get("name") == selected), {})))
+        return 0
     errors, warnings = check_models(args.vad_model, args.asr_model, args.turn_model, args.wake, args.kws_model)
     if errors:
         emit("error", message=f"Voice is off until its models are set. {'; '.join(errors)}")
@@ -1467,6 +1793,7 @@ def main():
     turn = Path(args.turn_model).expanduser() if args.turn_model and not warnings else None
     voice = Voice(np, ort, sherpa, Path(args.vad_model).expanduser(), Path(args.asr_model).expanduser(), turn,
                   Path(args.kws_model).expanduser() if args.wake == "kws" else None)
+    voice.configured_source = args.source
     try:
         voice.set_engine({"engine": args.tts_engine, "model": args.tts_model, "voicepack": args.tts_voicepack,
                           "voice": args.tts_voice, "speed": args.tts_speed, "pitch": args.tts_pitch,
@@ -1475,7 +1802,18 @@ def main():
         warnings.append(f"speech settings: {error}")
     voice.warning = "; ".join(warnings)
     threading.Thread(target=read_commands, args=(voice,), daemon=True).start()
-    voice.run()
+    signal.signal(signal.SIGTERM, lambda *_: voice.shutdown())
+    signal.signal(signal.SIGINT, lambda *_: voice.shutdown())
+    try:
+        voice.run()
+    finally:
+        voice.shutdown()
+        voice.stop_capture()
+        engine = voice.speaker.engine
+        if hasattr(engine, "retire"):
+            engine.retire()
+        else:
+            engine.unload()
     return 0
 
 

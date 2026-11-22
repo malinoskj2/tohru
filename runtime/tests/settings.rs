@@ -650,10 +650,7 @@ fn assistant_models_nest_under_each_provider() {
         Key::parse("assistant.models.opencode.effort").unwrap(),
         Key::AssistantEffort(Cli::Opencode)
     );
-    assert_eq!(
-        Key::parse("assistant.orca").unwrap(),
-        Key::AssistantOrca
-    );
+    assert_eq!(Key::parse("assistant.orca").unwrap(), Key::AssistantOrca);
     assert_eq!(
         restarted.get(Key::AssistantOrca).value,
         Value::Text("auto".into())
@@ -673,4 +670,34 @@ fn assistant_models_nest_under_each_provider() {
         Value::Text("true".into())
     );
     assert_eq!(bool_managed.get(Key::AssistantOrca).origin, Origin::Nix);
+}
+
+#[test]
+fn voice_source_is_persisted_and_rejects_control_characters() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    let mut owner = files.owner();
+    assert_eq!(
+        Key::parse("assistant.voice_source").unwrap(),
+        Key::AssistantVoiceSource
+    );
+    assert_eq!(
+        owner.get(Key::AssistantVoiceSource).value,
+        Value::Text(String::new())
+    );
+    assert!(
+        owner
+            .set(Key::AssistantVoiceSource, Value::Text("bad\nsource".into()))
+            .is_err()
+    );
+    owner
+        .set(
+            Key::AssistantVoiceSource,
+            Value::Text("alsa_input.usb-mic".into()),
+        )
+        .unwrap();
+    assert_eq!(
+        files.owner().get(Key::AssistantVoiceSource).value,
+        Value::Text("alsa_input.usb-mic".into())
+    );
 }
