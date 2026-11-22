@@ -14,15 +14,24 @@ model=setmetatable({},{__newindex=function(_,name,value)
     end end
 end})
 on=function(name,callback)handlers[name]=callback end
+local media_listeners = {}
 local failure
 sys={call=function(...)if failure then error(failure)end;calls[#calls+1]=table.pack(...)end,
-     watch=function()error('the media popup must not add a second watch')end}
+     watch=function(name, handler)
+         if name == 'media' then table.insert(media_listeners, handler) end
+         return true
+     end}
 local next_timer=0
 after=function(ms,callback)next_timer=next_timer+1;timers[next_timer]={ms=ms,callback=callback};return next_timer end
 cancel=function(id)timers[id]=nil end
 local function run(ms)for id,t in pairs(timers)do if t.ms==ms then timers[id]=nil;t.callback()end end end
 function require(name)assert(name=='bar/rail');return assert(loadfile('shell/bar/rail.luau'))()end
 local media=assert(loadfile('shell/media/controller.luau'))()()
+assert(loadfile('shell/bar/controller.luau'))()()
+assert(#media_listeners == 2)
+local function deliver(value)
+    for _, observe in ipairs(media_listeners) do observe(value) end
+end
 local function last()return calls[#calls]end
 local function player(id,name,title,artist,playing,extra)
     local p={id=id,name=name,title=title,artist=artist,playing=playing,chosen=false,art=''}
@@ -42,7 +51,7 @@ local function report(extra)
 end
 
 -- No players: nothing to show, nothing to command.
-media.observe({playing=false,title='',artist='',length=0,position=0,rate=1,can_seek=false,art='',volume=-1,player='',players={}})
+deliver({playing=false,title='',artist='',length=0,position=0,rate=1,can_seek=false,art='',volume=-1,player='',players={}})
 assert(not fact.media_has and not fact.media_playing and fact['media_players.count']==0 and fact.media_volume==-1)
 media.open(); assert(fact.media_open and not fact.media_unfolded)
 handlers.media_play();handlers.media_next();handlers.media_previous();handlers.media_step(5);handlers.media_fold_toggle()
@@ -50,7 +59,8 @@ assert(#calls==0 and not fact.media_unfolded,'nothing is commanded with no playe
 media.close(); assert(not fact.media_open)
 
 -- Players appear: the reported one heads the rows, the rest keep the bus's order.
-media.observe(report())
+deliver(report())
+assert(text.bar_media=='Midnight City - M83' and fact.bar_playing)
 assert(fact.media_has and fact.media_playing and fact.media_can_seek and fact.media_length==243)
 assert(text.media_title=='Midnight City' and text.media_name=='Spotify' and text.media_art=='/art/m83.png' and fact.media_has_art)
 assert(fact.media_volume==0.72 and fact['media_players.count']==3)
@@ -70,23 +80,23 @@ handlers.media_previous(); assert(last()[1]=='media.previous')
 handlers.media_step(-5); assert(last()[1]=='media.step' and last()[2]==-5)
 
 -- A pause is shown from the report, not from the command.
-media.observe(report({playing=false,position=144}))
+deliver(report({playing=false,position=144}))
 assert(not fact.media_playing and fact.media_seed==144)
 now=200; media.close(); media.open(); assert(fact.media_seed==144,'paused, the clock does not move')
 
 -- Seeking: the drag shows the requested place and seeks once, on release.
-media.observe(report({position=144}))
+deliver(report({position=144}))
 local before=#calls
 handlers.media_seek_press(0.5); assert(fact.media_seeking and fact.media_requested==121.5)
 handlers.media_seek_drag(160/243); assert(math.abs(fact.media_requested-160)<1e-9 and #calls==before)
-media.observe(report({position=150})); assert(fact.media_seed==144,'a report mid-drag does not move the clock')
+deliver(report({position=150})); assert(fact.media_seed==144,'a report mid-drag does not move the clock')
 handlers.media_seek_release()
 assert(not fact.media_seeking and last()[1]=='media.seek' and math.abs(last()[2]-160)<1e-9 and math.abs(fact.media_seed-160)<1e-9)
 -- A player that cannot seek is not dragged.
-media.observe(report({can_seek=false})); before=#calls
+deliver(report({can_seek=false})); before=#calls
 handlers.media_seek_press(0.3); assert(not fact.media_seeking); handlers.media_seek_release(); assert(#calls==before)
 -- A failed seek is reported and the clock goes back to the player's place.
-media.observe(report({position=10})); failure='Spotify cannot seek'
+deliver(report({position=10})); failure='Spotify cannot seek'
 handlers.media_seek_press(0.9); handlers.media_seek_release()
 assert(fact.media_failed and text.media_error:find('cannot seek') and fact.media_seed==10 and not fact.media_seeking)
 failure=nil
@@ -97,17 +107,17 @@ handlers.media_row_play(2); assert(calls[#calls-1][2]=='mpv' and last()[1]=='med
 before=#calls; handlers.media_choose(7); handlers.media_choose(-1); handlers.media_choose(0.5); assert(#calls==before)
 local chosen={}
 for i,p in ipairs(three)do chosen[i]=player(p.id,p.name,p.title,p.artist,p.playing,{art=p.art,chosen=p.id=='firefox.instance_1'})end
-media.observe(report({player='firefox',title='Says',artist='Nils Frahm',art='/art/frahm.png',volume=-1,playing=false,players=chosen}))
+deliver(report({player='firefox',title='Says',artist='Nils Frahm',art='/art/frahm.png',volume=-1,playing=false,players=chosen}))
 assert(text.media_name=='Firefox' and text['media_players.0.id']=='firefox.instance_1' and fact['media_players.0.active'])
 assert(fact.media_volume==-1 and not fact.media_playing)
 
 -- Volume: a player without its own volume is left alone; one with it gets at most one write per 50 ms.
 before=#calls; handlers.media_volume_press(0.4); handlers.media_volume_step(1); assert(#calls==before and not fact.media_vol_dragging)
-media.observe(report())
+deliver(report())
 handlers.media_volume_press(0.4); handlers.media_volume_drag(0.5); assert(#calls==before and fact.media_vol_requested==0.5)
 run(50); assert(last()[1]=='media.volume' and last()[2]==0.5 and #calls==before+1)
 handlers.media_volume_drag(0.6); handlers.media_volume_release(); assert(last()[2]==0.6 and fact.media_vol_dragging)
-media.observe(report({volume=0.6})); assert(not fact.media_vol_dragging)
+deliver(report({volume=0.6})); assert(not fact.media_vol_dragging)
 handlers.media_volume_step(-1); assert(math.abs(last()[2]-0.55)<1e-9)
 
 -- Folding and the keyboard's rows: header, three players, volume.
@@ -119,14 +129,14 @@ handlers.media_focus_step(1); assert(last()[1]=='media.volume')
 handlers.media_focus_move(-9); handlers.media_activate(); assert(last()[1]=='media.toggle')
 
 -- A player vanishes while unfolded on the last row: focus stays on a row that exists.
-media.observe(report({players={three[3]}}))
+deliver(report({players={three[3]}}))
 assert(fact['media_players.count']==1 and fact.media_focus<=2)
 -- All vanish: the popup folds and shows nothing playing.
 fact.media_focus=2
-media.observe({playing=false,title='',artist='',length=0,position=0,rate=1,can_seek=false,art='',volume=-1,player='',players={}})
+deliver({playing=false,title='',artist='',length=0,position=0,rate=1,can_seek=false,art='',volume=-1,player='',players={}})
 assert(not fact.media_has and not fact.media_unfolded and fact['media_players.count']==0 and fact.media_focus==1)
 -- And come back.
-media.observe(report()); assert(fact.media_has and fact['media_players.count']==3)
+deliver(report()); assert(fact.media_has and fact['media_players.count']==3)
 
 -- A close from the native popup (an outside click) closes the controller too.
 fact.media_open=true; fact.media_unfolded=true; handlers['fact:media_open'](false)
@@ -143,24 +153,24 @@ local remote_players={
     player('spotify','Spotify','Midnight City','M83',true,{art=remote_url}),
     player('mpv','mpv','Space Song','Beach House',false,{art='https://example.org/c.jpg'}),
 }
-media.observe(report({art=remote_url,players=remote_players}))
+deliver(report({art=remote_url,players=remote_players}))
 assert(text.media_art=='' and not fact.media_has_art,'pending remote art stays empty until downloaded')
 assert(#fetches==2 and fetches[1].url==remote_url and fetches[2].url=='https://example.org/c.jpg')
 -- Observing again while pending does not start duplicate downloads.
-media.observe(report({art=remote_url,players=remote_players}))
+deliver(report({art=remote_url,players=remote_players}))
 assert(#fetches==2,'pending remote art is deduplicated')
 -- Completing the download updates both the active lens and the player row without restarting the download.
 fetches[1].cb('/cache/cover.jpg\n',0)
 assert(text.media_art=='/cache/cover.jpg' and fact.media_has_art)
 assert(text['media_players.0.art']=='/cache/cover.jpg' and fact['media_players.0.has_art'])
-media.observe(report({art=remote_url,players=remote_players}))
+deliver(report({art=remote_url,players=remote_players}))
 assert(#fetches==2 and text.media_art=='/cache/cover.jpg','cached remote art is reused')
 -- A failed download backs off until the retry window elapses.
 fetches[2].cb('',1)
-media.observe(report({art=remote_url,players=remote_players}))
+deliver(report({art=remote_url,players=remote_players}))
 assert(#fetches==2,'failed download does not immediately retry')
 now=now+61
-media.observe(report({art=remote_url,players=remote_players}))
+deliver(report({art=remote_url,players=remote_players}))
 assert(#fetches==3 and fetches[3].url=='https://example.org/c.jpg','failed download retries after backoff')
 _G.run=nil
 print('Media controller: players, switching, seek, play/pause, volume, remote art, keyboard and vanishing players passed')

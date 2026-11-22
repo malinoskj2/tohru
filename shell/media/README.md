@@ -16,7 +16,7 @@ The play, speaker and muted icons come from `shell/service-assets/`. The label a
 
 ## How it is wired
 
-`shell/bar.plm` includes `media/state.plm` and `media/popup.plm`, with the `media` and `media.*` permissions. The bar keeps its one `media` watch in `bar/controller.luau`, which passes each report on to `media.observe`; `shell/bar.luau` closes the other popups when this one opens, so one popup is open at a time. The popup is centred under the label, kept 8 px from the output's edges, and takes the keyboard while open.
+`shell/bar.plm` includes `media/state.plm` and `media/popup.plm`, with the `media` and `media.*` permissions. The headline and popup register separate callbacks on the same native `media` subscription. `shell/bar.luau` closes the other popups when this one opens, so one popup is open at a time. The popup is centred under the label, kept 8 px from the output's edges, and takes the keyboard while open.
 
 The progress bead is rail 5 of `bar/rail-state.plm`, drawn by the workspace ribbon's `rail_shader`: a jump (a seek, another song or player) glides it with the ribbon's wave and a drag stretches it as the ribbon's bead does. The elapsed time is a scene clock that runs while the popup is open and the player plays; each report reseeds it.
 

@@ -1,4 +1,4 @@
--- The bar's one `media` watch feeds `observe`; commands only report errors, the next report shows the result.
+-- The player report is authoritative after each command.
 return function()
     local rail = require("bar/rail")(5)
     local clock = os.clock
@@ -280,5 +280,6 @@ return function()
     on("media_focus_step", focus_step)
     on("media_activate", activate)
     on("fact:media_open", function(value) if not value then close() end end)
-    return {observe = observe, open = open, close = close, toggle = toggle}
+    sys.watch("media", observe)
+    return {open = open, close = close, toggle = toggle}
 end

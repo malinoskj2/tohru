@@ -1,6 +1,5 @@
 -- Native subscriptions only. Caller owns output placement and settings lifecycle.
--- `media` is the process's one media watch: each report is also handed to the media popup.
-return function(media)
+return function()
     local icons, window = {}, {}
     local function app_icon()
         local class = window.class or ""
@@ -51,7 +50,6 @@ return function(media)
         end
         text.bar_media = label
         fact.bar_playing = value.playing == true
-        if media then media(value) end
     end)
     sys.watch("clock", function(value)
         local days = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
