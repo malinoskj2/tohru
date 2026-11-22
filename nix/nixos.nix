@@ -77,20 +77,36 @@ let
     fi
   '';
 
+  statusSetup = ''
+    : "''${XDG_RUNTIME_DIR:?greetd must provide a private runtime directory}"
+    TOHRU_GREETER_EXIT_FILE=$(${pkgs.coreutils}/bin/mktemp "$XDG_RUNTIME_DIR/tohru-greeter-status.XXXXXX") || exit 1
+    export TOHRU_GREETER_EXIT_FILE
+    printf '1\n' >"$TOHRU_GREETER_EXIT_FILE"
+    trap 'rm -f "$TOHRU_GREETER_EXIT_FILE"' EXIT
+  '';
+  statusRead = ''
+    read -r greeter_status <"$TOHRU_GREETER_EXIT_FILE" || greeter_status=1
+    if [ "$greeter_status" != 0 ]; then status=1; fi
+    rm -f "$TOHRU_GREETER_EXIT_FILE"
+  '';
   compositorCmd =
     if cfg.compositor == "hyprland" then
       pkgs.writeShellScript "tohru-greeter-session" ''
+        ${statusSetup}
         export XDG_CONFIG_HOME="''${XDG_RUNTIME_DIR:-/tmp}/tohru-greeter-xdg"
         mkdir -p "$XDG_CONFIG_HOME"
         ${lib.getExe cfg.hyprlandPackage} -c ${hyprlandConf}
         status=$?
+        ${statusRead}
         ${tuiFallback}
         exit "$status"
       ''
     else
       pkgs.writeShellScript "tohru-greeter-session" ''
+        ${statusSetup}
         ${lib.getExe cfg.swayPackage} ${lib.optionalString cfg.swayUnsupportedGpu "--unsupported-gpu"} --config ${swayConf}
         status=$?
+        ${statusRead}
         ${tuiFallback}
         exit "$status"
       '';
@@ -257,6 +273,7 @@ in {
       message = "services.tohru-greeter writes a Lua Hyprland config, which needs Hyprland 0.57 or later.";
     }];
 
+    fonts.packages = [ pkgs.noto-fonts ];
     services.greetd = {
       enable = true;
       restart = lib.mkDefault true;

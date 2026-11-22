@@ -21,6 +21,8 @@ Usage: tohru panel toggle|open sound|calendar|network|media|bluetooth|wallpaper|
        tohru config reload
        tohru config set appearance.palette mocha|macchiato|rose_pine|nord|gruvbox|tokyo_night|dracula|everforest
        tohru config set bar.mooncoil|bar.info_button|bar.about_button|appearance.corners|polkit.agent true|false
+       tohru config set appearance.font_text|appearance.font_display|appearance.font_mono FAMILY
+       tohru config set wallpaper.KEY|idle.KEY VALUE   (see docs/standalone.md)
        tohru config set appearance.corner_size 1..100
        tohru config set lock.style STYLE   (still-glass, ribbon-key, flooded-monolith, drifting-frost-veil, unfolding-glass-capsule, edge-glass-drawer, horizon-meniscus, refractive-typographic-lens, corner-anchor, bar-drop-curtain)
        tohru config set notifications.position top-right|bottom-right
@@ -37,6 +39,11 @@ Usage: tohru panel toggle|open sound|calendar|network|media|bluetooth|wallpaper|
        tohru assistant export [FILE]   (the whole assistant state as versioned JSON; stdout without FILE; files are 0600)
        tohru assistant import FILE [--merge | --replace --yes] [--only history|memory|relationship]...
        tohru settings-error
+       tohru doctor [--json]
+       tohru session-units --output DIR [--components bar,session,launcher]
+       tohru echo-cancel [--output FILE]
+       tohru shortcuts [status|setup|configure]
+       tohru greeter-check [--config FILE] [--settings FILE] [--json]
        tohru help
 
 Commands report native request acceptance, not completion.
@@ -53,6 +60,9 @@ case ${1:-help} in
     help|--help|-h)
         [[ $# -le 1 ]] || fail 'help takes no arguments'
         usage
+        ;;
+    doctor|session-units|echo-cancel|shortcuts|greeter-check)
+        exec python3 "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/tohru_portability.py" "$@"
         ;;
     dev)
         shift
@@ -267,8 +277,8 @@ case ${1:-help} in
                         case $4 in top-right) number=0 ;; bottom-right) number=1 ;; *) fail 'Choose a notification position: top-right, bottom-right' ;; esac
                         exec "$pleamar" --say tohru "emit setting_notifications_position $number"
                         ;;
-                    assistant.*)
-                        [[ $3 =~ ^assistant\.[a-z_.]+$ && $4 != *[[:cntrl:]]* && ${#4} -le 4096 ]] || fail 'Invalid assistant setting'
+                    appearance.font_text|appearance.font_display|appearance.font_mono|shortcuts.*|wallpaper.*|idle.*|assistant.*)
+                        [[ $3 =~ ^(assistant|appearance|wallpaper|idle|shortcuts)\.[a-z_.]+$ && $4 != *[[:cntrl:]]* && ${#4} -le 4096 ]] || fail 'Invalid assistant setting'
                         exec "$pleamar" --say tohru "text setting_key $3" "text setting_value $4" 'emit setting_assistant'
                         ;;
                     *) fail 'Unknown setting key' ;;

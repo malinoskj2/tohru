@@ -22,8 +22,8 @@ return function(publish)
                 previous = size.value
             end
             text.settings_corner_size_notice = size.managed
-                and (size.runtime_override and "Nix managed · temporary runtime override is active."
-                    or "Nix managed · edits last until the shell exits.")
+                and (size.runtime_override and "Managed · temporary runtime override is active."
+                    or "Managed · edits last until the shell exits.")
                 or "Edits are saved in config.toml."
         end,
     }

@@ -11,6 +11,24 @@ const MAX_CONFIG_BYTES: u64 = 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Key {
+    ShortcutsMode,
+    ShortcutLauncher,
+    ShortcutSession,
+    ShortcutAssistant,
+    FontText,
+    FontDisplay,
+    FontMono,
+    WallpaperEnabled,
+    WallpaperBackend,
+    WallpaperDirectory,
+    WallpaperAssignments,
+    WallpaperExecutable,
+    WallpaperOptions,
+    IdleOwner,
+    IdleLockSeconds,
+    IdleSuspendSeconds,
+    VoicePython,
+    VoiceEnvironment,
     PreferredOutput,
     Mooncoil,
     InfoButton,
@@ -98,7 +116,25 @@ pub const ORCA_VOICE_CHATS: [&str; 2] = ["home", "new"];
 pub const ORCA_OFFLINE_MODES: [&str; 2] = ["error", "local"];
 
 impl Key {
-    pub const ALL: [Self; 51] = [
+    pub const ALL: [Self; 69] = [
+        Self::ShortcutsMode,
+        Self::ShortcutLauncher,
+        Self::ShortcutSession,
+        Self::ShortcutAssistant,
+        Self::FontText,
+        Self::FontDisplay,
+        Self::FontMono,
+        Self::WallpaperEnabled,
+        Self::WallpaperBackend,
+        Self::WallpaperDirectory,
+        Self::WallpaperAssignments,
+        Self::WallpaperExecutable,
+        Self::WallpaperOptions,
+        Self::IdleOwner,
+        Self::IdleLockSeconds,
+        Self::IdleSuspendSeconds,
+        Self::VoicePython,
+        Self::VoiceEnvironment,
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::InfoButton,
@@ -155,6 +191,24 @@ impl Key {
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
+            Self::ShortcutsMode => "shortcuts.mode",
+            Self::ShortcutLauncher => "shortcuts.launcher_trigger",
+            Self::ShortcutSession => "shortcuts.session_trigger",
+            Self::ShortcutAssistant => "shortcuts.assistant_trigger",
+            Self::FontText => "appearance.font_text",
+            Self::FontDisplay => "appearance.font_display",
+            Self::FontMono => "appearance.font_mono",
+            Self::WallpaperEnabled => "wallpaper.enabled",
+            Self::WallpaperBackend => "wallpaper.backend",
+            Self::WallpaperDirectory => "wallpaper.directory",
+            Self::WallpaperAssignments => "wallpaper.assignments",
+            Self::WallpaperExecutable => "wallpaper.executable",
+            Self::WallpaperOptions => "wallpaper.options",
+            Self::IdleOwner => "idle.owner",
+            Self::IdleLockSeconds => "idle.lock_seconds",
+            Self::IdleSuspendSeconds => "idle.suspend_seconds",
+            Self::VoicePython => "assistant.voice_python",
+            Self::VoiceEnvironment => "assistant.voice_environment",
             Self::PreferredOutput => "bar.preferred_output",
             Self::Mooncoil => "bar.mooncoil",
             Self::InfoButton => "bar.info_button",
@@ -248,6 +302,24 @@ impl Key {
     /// The tables leading to the setting and its field.
     const fn location(self) -> (&'static [&'static str], &'static str) {
         match self {
+            Self::ShortcutsMode => (&["shortcuts"], "mode"),
+            Self::ShortcutLauncher => (&["shortcuts"], "launcher_trigger"),
+            Self::ShortcutSession => (&["shortcuts"], "session_trigger"),
+            Self::ShortcutAssistant => (&["shortcuts"], "assistant_trigger"),
+            Self::FontText => (&["appearance"], "font_text"),
+            Self::FontDisplay => (&["appearance"], "font_display"),
+            Self::FontMono => (&["appearance"], "font_mono"),
+            Self::WallpaperEnabled => (&["wallpaper"], "enabled"),
+            Self::WallpaperBackend => (&["wallpaper"], "backend"),
+            Self::WallpaperDirectory => (&["wallpaper"], "directory"),
+            Self::WallpaperAssignments => (&["wallpaper"], "assignments"),
+            Self::WallpaperExecutable => (&["wallpaper"], "executable"),
+            Self::WallpaperOptions => (&["wallpaper"], "options"),
+            Self::IdleOwner => (&["idle"], "owner"),
+            Self::IdleLockSeconds => (&["idle"], "lock_seconds"),
+            Self::IdleSuspendSeconds => (&["idle"], "suspend_seconds"),
+            Self::VoicePython => (&["assistant"], "voice_python"),
+            Self::VoiceEnvironment => (&["assistant"], "voice_environment"),
             Self::PreferredOutput => (&["bar"], "preferred_output"),
             Self::Mooncoil => (&["bar"], "mooncoil"),
             Self::InfoButton => (&["bar"], "info_button"),
@@ -297,6 +369,7 @@ impl Key {
     #[must_use]
     pub const fn integer_bounds(self) -> Option<(i64, i64)> {
         match self {
+            Self::IdleLockSeconds | Self::IdleSuspendSeconds => Some((0, 86400)),
             Self::CornerSize => Some((1, 100)),
             Self::AssistantTtsSpeed => Some((50, 200)),
             Self::AssistantTtsPitch => Some((-12, 12)),
@@ -306,6 +379,24 @@ impl Key {
 
     fn default_value(self) -> Value {
         match self {
+            Self::ShortcutsMode => Value::Text("compositor".to_owned()),
+            Self::ShortcutLauncher | Self::ShortcutSession | Self::ShortcutAssistant => {
+                Value::Text(String::new())
+            }
+            Self::FontText => Value::Text("Noto Sans".to_owned()),
+            Self::FontDisplay => Value::Text("Noto Sans".to_owned()),
+            Self::FontMono => Value::Text("DejaVu Sans Mono".to_owned()),
+            Self::WallpaperEnabled => Value::Bool(false),
+            Self::WallpaperBackend => Value::Text("mpvpaper".to_owned()),
+            Self::WallpaperDirectory => Value::Text("".to_owned()),
+            Self::WallpaperAssignments => Value::Text("".to_owned()),
+            Self::WallpaperExecutable => Value::Text("mpvpaper".to_owned()),
+            Self::WallpaperOptions => Value::Text("no-audio loop-file=inf".to_owned()),
+            Self::IdleOwner => Value::Text("external".to_owned()),
+            Self::IdleLockSeconds => Value::Integer(300),
+            Self::IdleSuspendSeconds => Value::Integer(0),
+            Self::VoicePython => Value::Text("python3".to_owned()),
+            Self::VoiceEnvironment => Value::Text("".to_owned()),
             Self::AssistantDiscordEnabled
             | Self::AssistantDiscordRead
             | Self::AssistantDiscordPost
@@ -354,6 +445,36 @@ impl Key {
 
     fn valid_text(self, text: &str) -> bool {
         match self {
+            Self::ShortcutsMode if ["compositor", "portal", "disabled"].contains(&text) => true,
+            Self::ShortcutLauncher | Self::ShortcutSession | Self::ShortcutAssistant
+                if text.len() <= 256 && !text.chars().any(char::is_control) =>
+            {
+                true
+            }
+            Self::FontText | Self::FontDisplay | Self::FontMono
+                if !text.trim().is_empty()
+                    && text.len() <= 256
+                    && !text.chars().any(char::is_control)
+                    && !text.contains(':') =>
+            {
+                true
+            }
+            Self::WallpaperBackend if text == "mpvpaper" => true,
+            Self::IdleOwner if ["external", "tohru", "disabled"].contains(&text) => true,
+            Self::WallpaperDirectory | Self::WallpaperAssignments | Self::VoiceEnvironment
+                if text.len() <= 4096
+                    && !text.chars().any(char::is_control)
+                    && (text.is_empty() || text.starts_with('/')) =>
+            {
+                true
+            }
+            Self::WallpaperExecutable | Self::VoicePython | Self::WallpaperOptions
+                if text.len() <= 4096
+                    && !text.is_empty()
+                    && !text.chars().any(char::is_control) =>
+            {
+                true
+            }
             Self::PreferredOutput if text.len() <= 256 && !text.chars().any(char::is_control) => {
                 true
             }
@@ -447,7 +568,8 @@ impl Key {
         match (self, candidate) {
             (_, Value::Text(text)) if self.valid_text(text) => Ok(()),
             (
-                Self::AssistantDiscordEnabled
+                Self::WallpaperEnabled
+                | Self::AssistantDiscordEnabled
                 | Self::AssistantDiscordRead
                 | Self::AssistantDiscordPost
                 | Self::Mooncoil

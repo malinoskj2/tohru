@@ -42,21 +42,32 @@ let
   locker = pkgs.writeShellScript "tohru-lock" ''
     TOHRU_MANAGED_CONFIG=${managed} exec ${cfg.package}/bin/tohru-lock "$@"
   '';
-  service = description: program: extra: lib.recursiveUpdate {
+  serviceSpecs = builtins.fromJSON (builtins.readFile ../share/tohru/session/services.json);
+  service = spec: {
     Unit = {
-      Description = description;
+      Description = spec.description;
       PartOf = [ cfg.systemd.target ];
       After = [ cfg.systemd.target ];
       ConditionEnvironment = "WAYLAND_DISPLAY";
     };
     Service = {
-      ExecStart = "${cfg.package}/bin/${program}";
+      ExecStart = "${cfg.package}/bin/${spec.program}";
       Environment = [ "TOHRU_MANAGED_CONFIG=${managed}" ];
+      Type = spec.type or "simple";
       Restart = "on-failure";
       RestartSec = 2;
+      KillMode = spec.kill_mode or "control-group";
+      StandardOutput = "journal";
+      StandardError = "journal";
+    } // lib.optionalAttrs ((spec.type or "") == "notify") {
+      NotifyAccess = "all";
+      TimeoutStartSec = spec.timeout;
+      RestartPreventExitStatus = spec.restart_prevent_exit_status;
     };
+  } // lib.optionalAttrs (spec.install or true) {
     Install.WantedBy = [ cfg.systemd.target ];
-  } extra;
+  };
+
 in {
   options.programs.tohru = {
     enable = lib.mkEnableOption "the Tohru shell package and its managed settings";
@@ -108,6 +119,11 @@ in {
         `security.pam.services.tohru-lock = { };` on NixOS.
       '';
     };
+    systemd.components = lib.mkOption {
+      type = lib.types.listOf (lib.types.enum (builtins.attrNames serviceSpecs));
+      default = [ "bar" "session" "launcher" "notifications" ];
+      description = "Owned components. Add idle/wallpaper only after explicitly enabling them in settings. Locker is always available on demand.";
+    };
     systemd.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -146,8 +162,7 @@ in {
       };
       voice.echoCancel = lib.mkOption {
         type = lib.types.bool;
-        default = assistant.voice.enable;
-        defaultText = lib.literalExpression "config.programs.tohru.assistant.voice.enable";
+        default = false;
         description = ''
           Install a PipeWire `libpipewire-module-echo-cancel` drop-in
           (`~/.config/pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf`) creating a
@@ -291,44 +306,8 @@ in {
     })
     (lib.mkIf (assistantSettings != { }) { programs.tohru.settings.assistant = assistantSettings; })
     (lib.mkIf (assistant.voice.enable && assistant.voice.echoCancel) {
-      xdg.configFile."pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf".text = ''
-        context.modules = [
-          {
-            name = libpipewire-module-echo-cancel
-            flags = [ ifexists nofail ]
-            args = {
-              library.name = aec/libspa-aec-webrtc
-              aec.args = {
-                webrtc.gain_control = true
-                webrtc.noise_suppression = true
-                webrtc.high_pass_filter = true
-              }
-              capture.props = {
-                node.name = "tohru-echo-cancel-capture"
-                node.description = "Tohru Echo-Cancel Capture"
-                node.passive = true
-              }
-              source.props = {
-                node.name = "tohru-echo-cancel-source"
-                node.description = "Tohru Echo-Cancel Source"
-                priority.session = 0
-                priority.driver = 0
-              }
-              sink.props = {
-                node.name = "tohru-echo-cancel-sink"
-                node.description = "Tohru Echo-Cancel Sink"
-                priority.session = 0
-                priority.driver = 0
-              }
-              playback.props = {
-                node.name = "tohru-echo-cancel-playback"
-                node.description = "Tohru Echo-Cancel Playback"
-                node.passive = true
-              }
-            }
-          }
-        ]
-      '';
+      xdg.configFile."pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf".source =
+        ../share/tohru/pipewire/60-tohru-echo-cancel.conf;
     })
     {
       assertions = [{
@@ -340,17 +319,10 @@ in {
       programs.tohru.settings.notifications.position = cfg.notifications.position;
     })
     (lib.mkIf cfg.systemd.enable {
-      systemd.user.services = {
-        tohru-bar = service "Tohru bar" "tohru-run" { };
-        tohru-session = service "Tohru session menu" "tohru-session-run" { };
-        # Launched applications stay in this unit's cgroup; restarting the launcher must not kill them.
-        tohru-launcher = service "Tohru application launcher" "tohru-launcher-run" {
-          Service.KillMode = "process";
-        };
-        tohru-notifications = service "Tohru notification daemon" "tohru-notifications-run" { };
-      } // lib.optionalAttrs cfg.polkit.enable {
-        tohru-polkit = service "Tohru polkit authentication agent" "tohru-polkit-run" { };
-      };
+      systemd.user.services = lib.mapAttrs' (name: spec:
+        lib.nameValuePair "tohru-${name}" (service spec))
+        (lib.filterAttrs (name: _: builtins.elem name cfg.systemd.components || name == "lock"
+          || (name == "polkit" && cfg.polkit.enable)) serviceSpecs);
     })
   ]);
 }

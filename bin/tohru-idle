@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Opt-in swayidle owner; logind and protocol inhibition remain swayidle's responsibility."""
+import fcntl
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+from tohru_portability import BIN, config, session_directory
+
+
+def conflicting_owners():
+    names=[]
+    for proc in Path('/proc').iterdir():
+        if not proc.name.isdigit():continue
+        try:
+            if proc.stat().st_uid!=os.getuid():continue
+            name=(proc/'comm').read_text().strip()
+            if name in ('hypridle','swayidle','wayidle','xidlehook'):
+                names.append(name)
+        except OSError:pass
+    return sorted(set(names))
+
+
+def command(values):
+    lock=shlex.quote(str(BIN/'tohru-session-action'))+' lock'
+    sleep=shlex.quote(str(BIN/'tohru-session-action'))+' sleep'
+    args=['swayidle','-w','lock',lock,'before-sleep',lock]
+    if values['idle.lock_seconds']:
+        args+=['timeout',str(values['idle.lock_seconds']),lock]
+    if values['idle.suspend_seconds']:
+        if values['idle.lock_seconds'] and values['idle.suspend_seconds']<=values['idle.lock_seconds']:
+            raise ValueError('idle.suspend_seconds must exceed idle.lock_seconds')
+        args+=['timeout',str(values['idle.suspend_seconds']),sleep]
+    return args
+
+
+def main():
+    values,_=config()
+    if values['idle.owner']!='tohru':
+        print('tohru-idle: idle ownership is '+values['idle.owner']);return 0
+    directory=session_directory();directory.mkdir(parents=True,exist_ok=True,mode=0o700)
+    with (directory/'idle.lock').open('w') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        owners=conflicting_owners()
+        if owners:raise ValueError('another idle manager is running: '+', '.join(owners)+'; stop it or keep idle.owner=external')
+        # The foreground swayidle owns the logind delay inhibitor. -w waits for the
+        # confirmed-lock helper before releasing it (bounded by logind's delay limit).
+        os.set_inheritable(lock.fileno(), True)
+        args=command(values)
+        os.execvp(args[0],args)
+
+
+if __name__=='__main__':
+    try:sys.exit(main())
+    except (OSError,ValueError) as error:
+        print(f'tohru-idle: {error}',file=sys.stderr);sys.exit(1)

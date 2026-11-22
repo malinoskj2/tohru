@@ -17,20 +17,31 @@ if ! "$runtime" --check "$styled" >/dev/null 2>&1; then
     scene=$plain
 fi
 
-if [[ $scene == "$plain" ]]; then
-    exec "$runtime" --scene "$plain" --no-hud --stall 0 --answer-as tohru-greeter "$@"
-fi
-
+# The hosting compositor may exit successfully after a failed greeter. Record
+# the child result for its TUI fallback, only in the host's private runtime file.
+record_status() {
+    local status=$?
+    local marker=${TOHRU_GREETER_EXIT_FILE:-}
+    if [[ -n ${XDG_RUNTIME_DIR:-} && $marker == "$XDG_RUNTIME_DIR"/tohru-greeter-status.* && -f $marker && ! -L $marker && -O $marker ]]; then
+        printf '%s\n' "$status" >"$marker"
+    fi
+}
+trap record_status EXIT
 child=
 trap 'if [[ -n $child ]]; then kill -TERM "$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; fi; exit 143' TERM INT
-"$runtime" --scene "$scene" --no-hud --stall 0 --answer-as tohru-greeter "$@" &
-child=$!
-wait "$child"
+run_scene() {
+    "$runtime" --scene "$1" --no-hud --stall 0 --answer-as tohru-greeter "${@:2}" &
+    child=$!
+    wait "$child"
+    local result=$?
+    child=
+    return "$result"
+}
+run_scene "$scene" "$@"
 status=$?
-child=
-trap - TERM INT
-if [[ $status -ne 0 ]]; then
+if [[ $status -ne 0 && $scene != "$plain" ]]; then
     printf 'tohru-greeter: styled greeter ended with status %s; retrying with plain style\n' "$status" >&2
-    exec "$runtime" --scene "$plain" --no-hud --stall 0 --answer-as tohru-greeter "$@"
+    run_scene "$plain" "$@"
+    status=$?
 fi
 exit "$status"

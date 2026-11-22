@@ -8,7 +8,7 @@ part InformationOverview {
         text "System Overview" { at: info_ox + 35, 21; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
         text "7 pages" { at: info_ox + 298, 21; anchor: right center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_fc < 0.02 and not info_partial }
         text "Partial facts" { at: info_ox + 298, 21; anchor: right center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_peach; opacity: 80%; show: info_fc < 0.02 and info_partial }
-        text pick(info_page, "Unfolding System…", "Unfolding Displays…", "Unfolding Date & Time…", "Unfolding Users…", "Unfolding Storage…", "Unfolding Generations…", "Unfolding Power…") { at: info_ox + 298, 21; anchor: right center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_fc >= 0.02 }
+        text pick(info_page, "Unfolding System…", "Unfolding Displays…", "Unfolding Date & Time…", "Unfolding Users…", "Unfolding Storage…", info_platform_opening, "Unfolding Power…") { at: info_ox + 298, 21; anchor: right center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60%; show: info_fc >= 0.02 }
     }
     repeat t in 0..3 { measure info_tile_measure.$t }
     measure info_power_measure
@@ -22,10 +22,10 @@ part InformationOverview {
             opacity: info_ok * (1 - 0.3 * info_recede)
             pivot: info_ox + tx + 69, ty + 55
             scale: 1 - 0.05 * info_recede
-            zone box info_tile.$t { from: info_ox + tx, ty; size: 138, 110; corner: 11; cursor: pointer; active: info_visible and not info_unfolded; label: pick(t, "System", "Storage", "Generations", "Power"); role: tab; selected: info_page == tp }
+            zone box info_tile.$t { from: info_ox + tx, ty; size: 138, 110; corner: 11; cursor: pointer; active: info_visible and not info_unfolded; label: pick(t, "System", "Storage", info_platform_title, "Power"); role: tab; selected: info_page == tp }
             box { from: info_ox + tx, ty; size: 138, 110; corner: 11; color: ink_white; opacity: if(info_page == tp, 10%, 6%) - 1.5% * pk + max(info_tile.$t.hover * 4%, info_tile.$t.pressed * 8%) }
             box { from: info_ox + tx + 0.5, ty + 0.5; size: 137, 109; corner: 10.5; stroke: 1; color: ink_white; opacity: 0.6 * (14% + if(info_page == tp, 8%, 0%)) }
-            text pick(t, "System", "Storage", "Generations", "Power") { at: info_ox + tx + 12, ty + 15; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60% }
+            text pick(t, "System", "Storage", info_platform_title, "Power") { at: info_ox + tx + 12, ty + 15; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 60% }
         }
         on press info_tile.$t { emit info_page(tp) }
     }

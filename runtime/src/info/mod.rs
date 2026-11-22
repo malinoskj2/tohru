@@ -98,7 +98,11 @@ fn collect(root: &Path) -> Snapshot {
     let accounts = system::accounts(&mut reader);
     let disks = storage::disks(&mut reader);
     let mounts = storage::mounts(&mut reader);
-    let generations = storage::generations(&mut reader, system.system_target.as_deref());
+    let generations = if system.system_target.is_some() {
+        storage::generations(&mut reader, system.system_target.as_deref())
+    } else {
+        Vec::new()
+    };
     system.current_generation = generations
         .iter()
         .find(|generation| generation.current)

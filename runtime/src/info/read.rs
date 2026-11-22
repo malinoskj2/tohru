@@ -58,6 +58,10 @@ impl<'a> Reader<'a> {
         self.root.join(source)
     }
 
+    pub(super) fn exists(&self, source: &str) -> bool {
+        self.path(source).symlink_metadata().is_ok()
+    }
+
     pub(super) fn text(&mut self, source: &str, max: usize) -> Option<String> {
         if !self.permit(source) {
             return None;

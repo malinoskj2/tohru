@@ -54,6 +54,7 @@ pub fn engaged() -> u64 {
     HELD.store(0, SeqCst);
     CYCLE.store(cycle, SeqCst);
     *PERMIT_AT.lock().unwrap() = None;
+    start_status(cycle);
     cycle
 }
 
@@ -83,7 +84,82 @@ fn clear() {
     HELD.store(0, SeqCst);
     PERMIT.store(0, SeqCst);
     *PERMIT_AT.lock().unwrap() = None;
+    stop_status();
 }
+
+/// A fresh observation of the compositor-confirmed current cycle. A previous
+/// systemd READY notification is not evidence for a later/recovering cycle.
+fn confirmed_cycle() -> u64 {
+    let cycle = CYCLE.load(SeqCst);
+    if cycle != 0 && HELD.load(SeqCst) == cycle {
+        cycle
+    } else {
+        0
+    }
+}
+
+#[cfg(target_os = "linux")]
+static STATUS_WORKER: Mutex<Option<std::thread::JoinHandle<()>>> = Mutex::new(None);
+
+#[cfg(target_os = "linux")]
+fn stop_status() {
+    if let Ok(mut worker) = STATUS_WORKER.lock() {
+        if let Some(worker) = worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn stop_status() {}
+
+#[cfg(target_os = "linux")]
+fn start_status(cycle: u64) {
+    use std::os::unix::net::UnixDatagram;
+    if !locker() {
+        return;
+    }
+    stop_status();
+    let Some(path) = std::env::var_os("TOHRU_LOCK_STATUS_SOCKET").map(std::path::PathBuf::from)
+    else {
+        return;
+    };
+    let Ok(socket) = UnixDatagram::bind(&path) else {
+        return;
+    };
+    if socket
+        .set_read_timeout(Some(Duration::from_millis(100)))
+        .is_err()
+        || socket
+            .set_write_timeout(Some(Duration::from_millis(100)))
+            .is_err()
+    {
+        let _ = std::fs::remove_file(&path);
+        return;
+    }
+    let Ok(mut owner) = STATUS_WORKER.lock() else {
+        return;
+    };
+    *owner = std::thread::Builder::new().name("tohru-lock-status".into()).spawn(move || {
+        // The cycle owns this read-only listener. clear/re-engage ends it, and
+        // joins the bounded receive loop. It accepts no control/authentication.
+        let mut bytes = [0_u8; 64];
+        while CYCLE.load(SeqCst) == cycle {
+            let Ok((size, peer)) = socket.recv_from(&mut bytes) else { continue; };
+            let Some(reply) = peer.as_pathname() else { continue; };
+            let Ok(nonce) = std::str::from_utf8(&bytes[..size]) else { continue; };
+            if nonce.len() != 32 || !nonce.bytes().all(|b| b.is_ascii_hexdigit()) { continue; }
+            let confirmed = confirmed_cycle();
+            let response = serde_json::json!({"schema": 1, "nonce": nonce, "cycle": confirmed, "held": confirmed != 0});
+            let _ = socket.send_to(response.to_string().as_bytes(), reply);
+        }
+        drop(socket);
+        let _ = std::fs::remove_file(path);
+    }).ok();
+}
+
+#[cfg(not(target_os = "linux"))]
+fn start_status(_: u64) {}
 
 /// Whether a lock is engaged in this process.
 pub fn active() -> bool {
@@ -98,7 +174,11 @@ pub fn may_release() -> bool {
 
 /// A permit has waited past `RELEASE_GRACE` for the scene to release the lock.
 pub fn release_overdue() -> bool {
-    may_release() && PERMIT_AT.lock().unwrap().is_some_and(|at| at.elapsed() >= RELEASE_GRACE)
+    may_release()
+        && PERMIT_AT
+            .lock()
+            .unwrap()
+            .is_some_and(|at| at.elapsed() >= RELEASE_GRACE)
 }
 
 /// Whether the last lock ended through a permit, so the locker may leave.
@@ -120,7 +200,9 @@ pub fn exit_code(normal: i32) -> i32 {
 /// Overwrites a buffer that held a password before it is freed.
 pub fn zero(text: &mut String) {
     // SAFETY: zero bytes are valid UTF-8.
-    unsafe { text.as_bytes_mut() }.iter_mut().for_each(|b| unsafe { std::ptr::write_volatile(b, 0) });
+    unsafe { text.as_bytes_mut() }
+        .iter_mut()
+        .for_each(|b| unsafe { std::ptr::write_volatile(b, 0) });
     text.clear();
 }
 
@@ -135,10 +217,17 @@ pub fn masked(text: &str) -> String {
 /// submitted, and zeroed afterwards whatever the outcome.
 pub fn submit(mut password: String, to_render: Sender<ToRender>) {
     let report = |tx: &Sender<ToRender>, state: u8| {
-        let _ = tx.send(ToRender::ExternalFact(crate::scene::intern("lock_auth"), state.to_string()));
+        let _ = tx.send(ToRender::ExternalFact(
+            crate::scene::intern("lock_auth"),
+            state.to_string(),
+        ));
     };
     let cycle = HELD.load(SeqCst);
-    if cycle == 0 || cycle != CYCLE.load(SeqCst) || password.is_empty() || CHECKING_NOW.swap(true, SeqCst) {
+    if cycle == 0
+        || cycle != CYCLE.load(SeqCst)
+        || password.is_empty()
+        || CHECKING_NOW.swap(true, SeqCst)
+    {
         zero(&mut password);
         report(&to_render, IDLE);
         return;
@@ -153,7 +242,10 @@ pub fn submit(mut password: String, to_render: Sender<ToRender>) {
             report(&to_render, outcome);
             if outcome == ACCEPTED {
                 std::thread::sleep(RELEASE_GRACE);
-                let _ = to_render.send(ToRender::ExternalFact(crate::scene::intern("lock_overdue"), "1".into()));
+                let _ = to_render.send(ToRender::ExternalFact(
+                    crate::scene::intern("lock_overdue"),
+                    "1".into(),
+                ));
             }
         })
         .expect("start the lock authentication thread");
@@ -192,12 +284,38 @@ mod tests {
     }
 
     #[test]
+    fn tohru_lock_readiness_cannot_survive_release_or_reengage() {
+        let _guard = fresh();
+        assert_eq!(confirmed_cycle(), 0);
+        let first = engaged();
+        assert_eq!(confirmed_cycle(), 0);
+        held();
+        assert_eq!(confirmed_cycle(), first);
+        released();
+        assert_eq!(confirmed_cycle(), 0);
+        let second = engaged();
+        assert_ne!(first, second);
+        assert_eq!(confirmed_cycle(), 0);
+        held();
+        assert_eq!(confirmed_cycle(), second);
+        finished();
+        assert_eq!(confirmed_cycle(), 0);
+    }
+
+    #[test]
     fn tohru_lock_needs_a_permit_for_the_held_cycle() {
         let _g = fresh();
         assert!(!may_release());
         let cycle = engaged();
-        assert!(!may_release(), "an engaged lock is not releasable without PAM");
-        assert_eq!(check("x", cycle, |_| Ok(true)), IDLE, "a password before `locked` grants nothing");
+        assert!(
+            !may_release(),
+            "an engaged lock is not releasable without PAM"
+        );
+        assert_eq!(
+            check("x", cycle, |_| Ok(true)),
+            IDLE,
+            "a password before `locked` grants nothing"
+        );
         assert!(!may_release());
         held();
         assert_eq!(check("wrong", cycle, |_| Ok(false)), REJECTED);
@@ -236,7 +354,11 @@ mod tests {
         let _g = fresh();
         assert_eq!(exit_code(0), 0);
         engaged();
-        assert_eq!(exit_code(0), EXIT_STILL_LOCKED, "quitting while locked must be restarted");
+        assert_eq!(
+            exit_code(0),
+            EXIT_STILL_LOCKED,
+            "quitting while locked must be restarted"
+        );
         finished();
         assert_eq!(exit_code(0), EXIT_REFUSED, "refused before `locked`");
         RELEASED.store(false, SeqCst);
@@ -252,7 +374,9 @@ mod tests {
         let _g = fresh();
         let (tx, rx) = std::sync::mpsc::channel();
         submit("secret".into(), tx.clone());
-        assert!(matches!(rx.try_recv(), Ok(ToRender::ExternalFact(n, v)) if n == "lock_auth" && v == "0"));
+        assert!(
+            matches!(rx.try_recv(), Ok(ToRender::ExternalFact(n, v)) if n == "lock_auth" && v == "0")
+        );
         engaged();
         submit("secret".into(), tx);
         assert!(matches!(rx.try_recv(), Ok(ToRender::ExternalFact(_, v)) if v == "0"));
@@ -278,7 +402,11 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("tohru-pam-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let script = dir.join("check");
-        std::fs::write(&script, "#!/bin/sh\nIFS= read -r pw\n[ \"$pw\" = 'correct horse' ]\n").unwrap();
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nIFS= read -r pw\n[ \"$pw\" = 'correct horse' ]\n",
+        )
+        .unwrap();
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
         std::fs::write(

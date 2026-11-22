@@ -45,9 +45,14 @@ return function(snapshot, outputs, rail)
         local devices = disks.." block device"..(disks == 1 and "" or "s").." · "..mounts.." mount"..(mounts == 1 and "" or "s")
         hero(4,shown[1],shown[2],devices)
         text.info_storage_caption = disks.." disk"..(disks == 1 and "" or "s").." · "..mounts.." mount"..(mounts == 1 and "" or "s")
+        local nix = system.system_target ~= nil
+        text.info_platform_title = nix and "Generations" or "Platform"
+        text.info_platform_short = nix and "Gen" or "OS"
+        text.info_platform_opening = nix and "Unfolding Generations…" or "Unfolding Platform…"
         local generations = #(data.generations or {})
         hero(5,system.current_generation and value(system.current_generation) or nil,nil,generations.." generation"..(generations == 1 and "" or "s")..(system.current_generation and " · active" or ""))
-        text.info_generation_caption = generations.." generation"..(generations == 1 and "" or "s")
+        text.info_generation_caption = nix and generations.." generation"..(generations == 1 and "" or "s") or value(system.os_name)
+        if not nix then hero(5, system.os_name or "Linux", nil, system.os_version or "System information") end
     end
     local function add(label,item) if #rows < 256 then rows[#rows + 1] = {label=label,value=value(item)} end end
     local function visible()
@@ -121,6 +126,9 @@ return function(snapshot, outputs, rail)
                 end
                 if #(data.disks or {}) == 0 and #(data.mounts or {}) == 0 then add("Storage",nil) end
                 add("Filesystem free space",nil)
+            elseif page == 5 and not system.system_target then
+                add("Operating system", system.os_name); add("Version", system.os_version)
+                add("Kernel", system.kernel)
             elseif page == 5 then
                 text.info_generation = value(system.current_generation)
                 for _,generation in ipairs(data.generations or {}) do

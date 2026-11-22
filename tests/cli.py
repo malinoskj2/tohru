@@ -37,6 +37,12 @@ class Cli(unittest.TestCase):
             self.assertEqual(result.returncode,2)
             self.assertEqual(result.stdout,'')
 
+    def test_portable_config_keys_route_to_native_schema(self):
+        for key,value in [('appearance.font_text','Noto Sans'),('appearance.font_mono','DejaVu Sans Mono'),('wallpaper.enabled','true'),('idle.lock_seconds','600'),('assistant.voice_python','/opt/voice/bin/python')]:
+            result=self.invoke('config','set',key,value)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(json.loads(result.stdout),['--say','tohru','text setting_key '+key,'text setting_value '+value,'emit setting_assistant'])
+
     def test_session_menu_routes_never_start_a_role(self):
         for action in ['open','close','toggle']:
             result=self.invoke('session',action)
@@ -368,6 +374,12 @@ class GreeterWrapper(unittest.TestCase):
         result = subprocess.run([str(ROOT / "bin/tohru-greeter")], env={**self.env, **env}, text=True, capture_output=True, timeout=30)
         return result, self.runs.read_text().split("\n")[:-1] if self.runs.exists() else []
 
+    def test_host_observes_native_greeter_failure_even_if_compositor_exits_cleanly(self):
+        marker=self.path/'tohru-greeter-status.test';marker.write_text('1\n')
+        result,_=self.run_greeter(EXITS="1,7", XDG_RUNTIME_DIR=str(self.path), TOHRU_GREETER_EXIT_FILE=str(marker))
+        self.assertEqual(result.returncode,7)
+        self.assertEqual(marker.read_text(),'7\n')
+
     def test_styled_greeter_runs_with_authority_env(self):
         result, runs = self.run_greeter(EXITS="0")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -394,7 +406,7 @@ class LockWrapper(unittest.TestCase):
         tools = self.path / "bin"
         tools.mkdir()
         # No busctl: the test never touches logind's LockedHint.
-        for tool in ("bash", "flock", "sleep", "dirname", "readlink", "python3", "env", "cat", "pgrep", "id"):
+        for tool in ("bash", "flock", "sleep", "dirname", "readlink", "python3", "env", "cat", "pgrep", "id", "sha256sum", "cut", "rm"):
             found = shutil.which(tool)
             if found:
                 (tools / tool).symlink_to(found)
@@ -447,7 +459,7 @@ class LockWrapper(unittest.TestCase):
     def test_one_locker_at_a_time(self):
         if not (self.path / "bin" / "flock").exists():
             self.skipTest("flock (util-linux) is not on PATH")
-        with open(self.path / "xdg" / "tohru-lock.lock", "w") as held:
+        with open(self.path / "xdg" / ("tohru-lock-"+__import__("hashlib").sha256(b"\0").hexdigest()[:16]+".lock"), "w") as held:
             fcntl.flock(held, fcntl.LOCK_EX)
             result, runs = self.lock(EXITS="0")
         self.assertEqual(result.returncode, 0)
@@ -466,11 +478,12 @@ class LockWrapper(unittest.TestCase):
         self.assertEqual(running(), 1)
         self.assertFalse(self.runs.exists())
 
-    def test_without_flock_it_locks_anyway(self):
+    def test_without_required_flock_it_reports_failure_before_lock_start(self):
         (self.path / "bin" / "flock").unlink(missing_ok=True)
         result, runs = self.lock(EXITS="0")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(runs, ["styled.plm 1"])
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(runs, [])
+        self.assertIn("flock", result.stderr)
 
 if __name__ == "__main__":
     unittest.main()

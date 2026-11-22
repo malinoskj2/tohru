@@ -27,6 +27,11 @@ let
   agent = (home tohru.homeManagerModules.tohru [ {
     programs.tohru = { enable = true; inherit settings; systemd.enable = true; polkit.enable = true; notifications.position = "bottom-right"; };
   } ]).config;
+  portal = (home tohru.homeManagerModules.tohru [ {
+    programs.tohru = { enable = true; systemd.enable = true; systemd.components = [ "shortcuts" ];
+      settings.shortcuts = { mode = "portal"; launcher_trigger = "<Super>space"; };
+    };
+  } ]).config;
   agentManaged = builtins.readFile agent.home.sessionVariables.TOHRU_MANAGED_CONFIG;
   quiet = (home tohru.homeManagerModules.tohru [ {
     programs.tohru = {
@@ -51,7 +56,10 @@ let
   noEchoCancel = (home tohru.homeManagerModules.tohru [ {
     programs.tohru = { enable = true; assistant.voice.echoCancel = false; };
   } ]).config;
-  echoCancelConf = config.xdg.configFile."pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf".text;
+  echoEnabled = (home tohru.homeManagerModules.tohru [ {
+    programs.tohru = { enable = true; assistant.voice.echoCancel = true; };
+  } ]).config;
+  echoCancelConf = builtins.readFile echoEnabled.xdg.configFile."pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf".source;
   orcaBot = (home tohru.homeManagerModules.tohru [ {
     programs.tohru = {
       enable = true;
@@ -72,12 +80,13 @@ let
     tohru-session = "tohru-session-run";
     tohru-launcher = "tohru-launcher-run";
     tohru-notifications = "tohru-notifications-run";
+    tohru-lock = "tohru-lock";
   };
   managed = serviced.home.sessionVariables.TOHRU_MANAGED_CONFIG;
   targets = cfg: target: builtins.all (name:
     let unit = cfg.systemd.user.services.${name}; in
     unit.Unit.PartOf == [ target ] && unit.Unit.After == [ target ]
-    && unit.Install.WantedBy == [ target ]) (builtins.attrNames roles);
+    && (name == "tohru-lock" || unit.Install.WantedBy == [ target ])) (builtins.attrNames roles);
   units = builtins.mapAttrs (name: _: builtins.readFile serviced.xdg.configFile."systemd/user/${name}.service".source) roles;
 in
 assert builtins.all (entry: entry.assertion) config.assertions;
@@ -109,10 +118,14 @@ assert agent.systemd.user.services.tohru-polkit.Unit.PartOf == [ "graphical-sess
 assert pkgs.lib.hasInfix "[polkit]\nagent = true" agentManaged;
 assert pkgs.lib.hasInfix "preferred_output = \"DP-CHECK\"" agentManaged;
 assert !(pkgs.lib.hasInfix "assistant" (builtins.readFile managed));
+assert portal.systemd.user.services.tohru-shortcuts.Service.ExecStart == [ "${portal.programs.tohru.package}/bin/tohru-shortcuts" ];
+assert portal.programs.tohru.settings.shortcuts.mode == "portal";
 assert config.programs.tohru.package.passthru.withVoice;
 assert !quiet.programs.tohru.package.passthru.withVoice;
-assert config.programs.tohru.assistant.voice.echoCancel;
-assert config.xdg.configFile ? "pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf";
+assert !config.programs.tohru.assistant.voice.echoCancel;
+assert echoEnabled.programs.tohru.assistant.voice.echoCancel;
+assert !(config.xdg.configFile ? "pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf");
+assert echoEnabled.xdg.configFile ? "pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf";
 assert pkgs.lib.hasInfix "libpipewire-module-echo-cancel" echoCancelConf;
 assert pkgs.lib.hasInfix "aec/libspa-aec-webrtc" echoCancelConf;
 assert pkgs.lib.hasInfix "tohru-echo-cancel-source" echoCancelConf;
@@ -130,7 +143,8 @@ assert pkgs.lib.hasInfix "[assistant.models.claude]\neffort = \"low\"" quietMana
 assert pkgs.lib.hasInfix "[assistant]\nbackend = \"orca\"\norca = \"auto\"\norca_bot = \"Tohru\"\norca_offline = \"error\"\norca_voice_chat = \"home\"\nvoice_source = \"usb-integration-mic\"" orcaManaged;
 assert !(pkgs.lib.hasInfix "orca_bot" quietManaged) && !(pkgs.lib.hasInfix "backend =" quietManaged);
 assert serviced.systemd.user.services.tohru-launcher.Service.KillMode == "process";
-assert builtins.all (name: !(serviced.systemd.user.services.${name}.Service ? KillMode))
+assert serviced.systemd.user.services.tohru-lock.Service.Type == "notify";
+assert builtins.all (name: serviced.systemd.user.services.${name}.Service.KillMode == "control-group")
   [ "tohru-bar" "tohru-session" "tohru-notifications" ];
 {
   activation = enabled.activationPackage.drvPath;

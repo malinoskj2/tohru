@@ -4,6 +4,10 @@ function on(name,callback)handlers[name]=callback end
 local config={['bar.mooncoil']={value=false},['bar.info_button']={value=false},['bar.about_button']={value=false},['bar.preferred_output']={value=''},['appearance.corners']={value=true},['appearance.corner_size']={value=32},
     ['appearance.palette']={value='mocha',managed=true},['lock.style']={value='flooded-monolith'},
     ['notifications.position']={value='top-right',managed=true}}
+config['assistant.reduced_motion']={value=false}
+config['assistant.voice_source']={value=''}
+config['appearance.font_text']={value='Noto Sans'}
+config['appearance.font_display']={value='Noto Sans',managed=true}
 local reloads=0
 tohru_settings={snapshot=function()return config end,
     reload=function()reloads=reloads+1;return config end,
@@ -36,3 +40,37 @@ said={};search('notifications.position');handlers.settings_row(0)
 local forwarded=false;for _,command in ipairs(said)do forwarded=forwarded or command=='emit setting_notifications_position 1' end
 assert(config['notifications.position'].value=='bottom-right' and said[1]=='emit config_reload' and forwarded)
 print('PASS Settings process writes through its owner, reloads the bar and forwards runtime overrides')
+
+local font=search('appearance.font_text'); assert(font.editable)
+handlers.settings_row(0); assert(config['appearance.font_text'].value=='DejaVu Sans')
+local managedfont=search('appearance.font_display'); assert(not managedfont.editable)
+handlers.settings_row(0); assert(config['appearance.font_display'].value=='Noto Sans')
+local bindings=search('read-only'); assert(not bindings.editable and bindings.detail:find('read%-only'))
+print('PASS native fonts, managed read-only font and unavailable shortcut ownership UI')
+
+-- Portal ownership is distinct from compositor-managed rows and uses real owner state.
+config['shortcuts.mode']={value='portal'}
+local operations={}
+local portal={owner='Tohru actions via desktop portal',state='not-configured',registration='portal-session',portal_version=2,
+ bindings={},setup_available=true,configure_available=false}
+json={decode=function(value)return value end}
+run=function(program,args,callback)
+ if program=='tohru-voice' then callback({sources={}},0);return end
+ assert(program=='tohru' and args[1]=='shortcuts')
+ operations[#operations+1]=args[2];callback(portal,0)
+end
+search('Refresh shortcut snapshot');handlers.settings_row(0)
+local setup=search('Set up Tohru action shortcuts');assert(setup.editable)
+handlers.settings_row(0);assert(operations[#operations]=='setup')
+portal.state='granted';portal.configure_available=true
+portal.bindings={{shortcut='Backend granted key',action='launcher',arguments='',submap='',flags='portal grant'}}
+search('Refresh shortcut snapshot');handlers.settings_row(0)
+local granted=search('Backend granted key');assert(not granted.editable)
+local count=#operations;handlers.settings_row(0);assert(#operations==count)
+local configure=search('Configure granted shortcuts');assert(configure.editable)
+handlers.settings_row(0);assert(operations[#operations]=='configure')
+portal.portal_version=1;portal.configure_available=false;search('Refresh shortcut snapshot');handlers.settings_row(0)
+assert(not search('Configure granted shortcuts').editable)
+config['shortcuts.mode'].managed=true
+assert(not search('Shortcut ownership mode').editable)
+print('PASS portal setup/configure actions, backend-confirmed read-only triggers, v1 limitations and managed mode')

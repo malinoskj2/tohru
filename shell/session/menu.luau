@@ -16,25 +16,31 @@ end
 local function execute(action)
     clear()
     text.error = ""
+    local asynchronous = false
     local ok, err = pcall(function()
-        if action == "lock" then
-            run("loginctl", { "lock-session" })
-        elseif action == "sleep" then
-            run("loginctl", { "lock-session" }, function(_, code)
-                if code == 0 then
-                    run("systemctl", { "suspend" })
+        if action == "lock" or action == "sleep" then
+            asynchronous = true
+            fact.open = false
+            text.status = "Waiting for compositor-confirmed lock"
+            run("tohru-session-action", { action }, function(out, code)
+                if code ~= 0 then
+                    text.error = out ~= "" and out or "Lock/sleep failed; inspect the session journal"
+                    fact.open = true
+                    text.status = "Lock/sleep failed"
                 else
-                    text.error = "Lock request failed; not suspending"
+                    text.status = action == "lock" and "Lock confirmed" or "Suspend request completed after confirmed lock"
                 end
-            end)
+            end, {errors = true})
         else
             sys.call("session." .. action)
         end
     end)
+    if ok and asynchronous then return end
     if ok then
         text.status = "Request accepted; completion is not reported"
         fact.open = false
     else
+        fact.open = true
         text.status = "Request rejected"
         text.error = tostring(err)
     end
@@ -58,7 +64,7 @@ end
 clear()
 -- Opens under the bar: on its preferred output, or else the focused one. The surface moves only
 -- while the menu is closed, and is placed at start so the first open has one to draw on.
-local focused, preferred = "", ""
+local focused, preferred, outputs = "", "", {}
 local PALETTE_INDEX = {mocha=0, macchiato=1, rose_pine=2, nord=3, gruvbox=4, tokyo_night=5, dracula=6, everforest=7}
 local function refresh()
     if not tohru_settings then return end
@@ -70,9 +76,20 @@ local function refresh()
     if palette and PALETTE_INDEX[palette.value] ~= nil then fact.palette_id = PALETTE_INDEX[palette.value] end
 end
 local function settle()
-    local output = preferred ~= "" and preferred or focused
-    if output ~= "" and output ~= text.session_output then text.session_output = output end
+    local present = {}
+    for _, output in ipairs(outputs) do present[output.name] = true end
+    local output = present[preferred] and preferred or present[focused] and focused or (outputs[1] and outputs[1].name or "")
+    text.session_output = output
 end
+sys.watch("outputs", function(value)
+    outputs = value.list or {}
+    if not fact.open then settle()
+    else
+        local present = false
+        for _, output in ipairs(outputs) do if output.name == text.session_output then present = true end end
+        if not present then settle() end
+    end
+end)
 sys.watch("window", function(value)
     focused = value.monitor or ""
     if not fact.open then settle() end

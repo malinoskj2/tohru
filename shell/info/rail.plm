@@ -18,8 +18,8 @@ part InformationRail {
     }
     repeat i in 0..7 {
         let stop = info_rail_left + 8 + i * (info_rail_len - 16) / 6
-        text pick(i, "Sys", "Disp", "Time", "Users", "Disk", "Gen", "Pwr") { at: stop, info_rail_y + 23; anchor: center; size: 9.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: info_ok * if(info_page == i, 92%, 60%); show: info_ok > 0.001 }
-        zone box info_stop.$i { from: stop - (info_rail_len - 16) / 12, info_rail_y - 11; size: (info_rail_len - 16) / 6, if(info_unfolded, 22, 44); cursor: pointer; active: info_visible; label: pick(i, "System", "Displays", "Date & Time", "Users", "Storage", "Generations", "Power"); role: tab; selected: info_page == i }
+        text pick(i, "Sys", "Disp", "Time", "Users", "Disk", info_platform_short, "Pwr") { at: stop, info_rail_y + 23; anchor: center; size: 9.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: info_ok * if(info_page == i, 92%, 60%); show: info_ok > 0.001 }
+        zone box info_stop.$i { from: stop - (info_rail_len - 16) / 12, info_rail_y - 11; size: (info_rail_len - 16) / 6, if(info_unfolded, 22, 44); cursor: pointer; active: info_visible; label: pick(i, "System", "Displays", "Date & Time", "Users", "Storage", info_platform_title, "Power"); role: tab; selected: info_page == i }
         on press info_stop.$i { emit info_page(i) }
     }
 }

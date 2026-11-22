@@ -110,7 +110,7 @@ voice.configure(tohru_settings.snapshot())
 on("setting_assistant", function()
     local key, raw = text.setting_key or "", text.setting_value or ""
     local current = tohru_settings.snapshot()[key]
-    if key:sub(1, 10) ~= "assistant." or not current then
+    if not current then
         text.settings_error = "Unknown setting key " .. key
         return
     end

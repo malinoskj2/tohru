@@ -443,7 +443,8 @@ fn greetd_argv(launch: &super::discovery::SessionLaunch, dump: &Path) -> Vec<Str
 #[test]
 fn session_launch_survives_greetd_space_join_and_sh_c() {
     let dir = TempDir::new("launch-quote");
-    let script = b"#!/bin/sh\nfor a in \"$0\" \"$@\"; do printf '%s\\0' \"$a\"; done > \"$ARGDUMP_OUT\"\n";
+    let script =
+        b"#!/bin/sh\nfor a in \"$0\" \"$@\"; do printf '%s\\0' \"$a\"; done > \"$ARGDUMP_OUT\"\n";
     let bin_dir = dir.path().join("my bin");
     let dump = bin_dir.join("argdump");
     let uwsm = bin_dir.join("uwsm");
@@ -498,5 +499,32 @@ fn session_entry_smoke() {
             .env
             .iter()
             .any(|v| v == "XDG_SESSION_DESKTOP=Hyprland")
+    );
+}
+
+#[test]
+fn discover_users_honors_distro_uid_min_and_accepts_enterprise_uids() {
+    let dir = TempDir::new("portable-uids");
+    write_file(
+        &dir.path().join("etc/login.defs"),
+        b"# distro policy\nUID_MIN 500\n",
+    );
+    write_file(
+        &dir.path().join("etc/passwd"),
+        concat!(
+            "legacy:x:500:500:Legacy:/home/legacy:/bin/sh\n",
+            "enterprise:x:100001:100001:Enterprise:/home/enterprise:/bin/bash\n",
+            "nixbld1:x:30001:30000:Build:/var/empty:/bin/sh\n",
+            "nobody:x:65534:65534:Nobody:/var/empty:/bin/sh\n",
+        )
+        .as_bytes(),
+    );
+    let users = discover_users(dir.path(), &[], &BTreeMap::new());
+    assert_eq!(
+        users
+            .iter()
+            .map(|user| user.name.as_str())
+            .collect::<Vec<_>>(),
+        ["legacy", "enterprise"]
     );
 }

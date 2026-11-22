@@ -17,6 +17,19 @@ import wave
 from io import BytesIO
 from pathlib import Path
 
+# Explicit interpreter/environment configuration; no installer and no downloads.
+if __name__ == "__main__" and not os.environ.get("TOHRU_VOICE_ENV_READY"):
+    from tohru_portability import voice_environment
+    try:
+        interpreter, environment = voice_environment()
+    except (OSError, ValueError) as error:
+        print(f"tohru-voice: invalid environment: {error}", file=sys.stderr)
+        sys.exit(2)
+    environment["TOHRU_VOICE_ENV_READY"] = "1"
+    # Retain the Nix-provided interpreter unless a different one is configured.
+    executable = sys.executable if interpreter == "python3" else interpreter
+    os.execvpe(executable, [executable, __file__, *sys.argv[1:]], environment)
+
 SESSION = f"{os.getpid()}-{time.monotonic_ns()}"
 SAMPLE_RATE = 16_000
 WINDOW = 512
@@ -765,6 +778,9 @@ class Kokoro:
 
     def __init__(self, settings):
         self.files = kokoro_files(settings)
+        import importlib.util
+        if importlib.util.find_spec("en_core_web_sm") is None:
+            raise ValueError("en_core_web_sm 3.8.0 missing; install explicitly for Kokoro; no downloads attempted")
         self.speed = max(0.5, min(2.0, int(settings.get("speed", 100)) / 100))
         self.worker = None
         self.lock = threading.RLock()
@@ -869,6 +885,10 @@ def tts_worker(model, vocab_path, pack_path):
     sys.modules.setdefault("transformers", shim)
     import numpy as np
     import onnxruntime as ort
+    # misaki may otherwise invoke spaCy's downloader. Fail explicitly offline.
+    import importlib.util
+    if importlib.util.find_spec("en_core_web_sm") is None:
+        raise SystemExit("en_core_web_sm 3.8.0 is missing; install it explicitly (docs/standalone.md)")
     from misaki import en, espeak
     g2p = en.G2P(trf=False, british=False, fallback=espeak.EspeakFallback(british=False))
     vocab = json.loads(Path(vocab_path).read_text(encoding="utf-8"))["model"]["vocab"]

@@ -1,0 +1,19 @@
+#!/bin/sh
+# Administrator-adapted paths; no system setup is performed here.
+set -u
+if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+    exec /usr/bin/tuigreet --cmd /usr/bin/sway
+fi
+TOHRU_GREETER_EXIT_FILE=$(mktemp "$XDG_RUNTIME_DIR/tohru-greeter-status.XXXXXX") || exit 1
+export TOHRU_GREETER_EXIT_FILE
+trap 'rm -f "$TOHRU_GREETER_EXIT_FILE"' EXIT
+printf '1\n' >"$TOHRU_GREETER_EXIT_FILE"
+/usr/bin/sway --config /etc/greetd/tohru-sway.conf
+status=$?
+read -r greeter_status <"$TOHRU_GREETER_EXIT_FILE" || greeter_status=1
+case "$greeter_status" in 0) ;; *) status=1 ;; esac
+rm -f "$TOHRU_GREETER_EXIT_FILE"
+if [ "$status" -ne 0 ]; then
+    exec /usr/bin/tuigreet --cmd /usr/bin/sway
+fi
+exit "$status"

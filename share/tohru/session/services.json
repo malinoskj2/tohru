@@ -1,0 +1,43 @@
+{
+  "bar": {
+    "program": "tohru-run",
+    "description": "Tohru bar"
+  },
+  "session": {
+    "program": "tohru-session-run",
+    "description": "Tohru session menu"
+  },
+  "launcher": {
+    "program": "tohru-launcher-run",
+    "description": "Tohru application launcher",
+    "kill_mode": "process"
+  },
+  "notifications": {
+    "program": "tohru-notifications-run",
+    "description": "Tohru notification daemon"
+  },
+  "polkit": {
+    "program": "tohru-polkit-run",
+    "description": "Tohru polkit agent"
+  },
+  "wallpaper": {
+    "program": "tohru-wallpaper serve",
+    "description": "Tohru wallpaper owner"
+  },
+  "idle": {
+    "program": "tohru-idle",
+    "description": "Tohru idle owner"
+  },
+  "lock": {
+    "program": "tohru-lock",
+    "description": "Tohru session locker",
+    "type": "notify",
+    "timeout": 30,
+    "install": false,
+    "restart_prevent_exit_status": 3
+  },
+  "shortcuts": {
+    "program": "tohru-shortcuts",
+    "description": "Tohru portal shortcut owner"
+  }
+}

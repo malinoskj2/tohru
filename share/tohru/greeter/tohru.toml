@@ -1,0 +1,12 @@
+[appearance]
+font_text = "Noto Sans"
+font_display = "Noto Sans"
+font_mono = "DejaVu Sans Mono"
+[greeter]
+style = "flooded-monolith"
+# Leave unset for discovered users/sessions; no workstation-specific defaults.
+allow_power_actions = false
+hidden_users = ["greeter"]
+# wallpaper = "/usr/local/share/backgrounds/login.png"
+# [greeter.avatars]
+# alice = "/var/lib/AccountsService/icons/alice"
