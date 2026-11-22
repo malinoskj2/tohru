@@ -17,10 +17,12 @@ _G.spawn = function(command, args, line, exit, how)
 end
 
 local asked, remembered, stopped, listeners = {}, {}, 0, {}
+local refusing = false
 local shown = nil
 local assistant = {
     listening = function(on) fact.ai_listening = on end,
-    ask = function(prompt, conversation) asked[#asked + 1] = {prompt, conversation}; return true end,
+    ask = function(prompt, conversation) asked[#asked + 1] = {prompt, conversation}; return not refusing end,
+    streaming = function() return refusing == "busy" end,
     stop = function() stopped = stopped + 1 end,
     remember = function(id) remembered[#remembered + 1] = id end,
     show = function(id) shown = id end,
@@ -79,6 +81,23 @@ events.assistant_dragon()
 assert(shown == "v1" and not fact.ai_dragon_open and next(ticking) == nil)
 service.line({event = "barge"})
 assert(stopped == 1)
+
+-- The wake word alone gets a short spoken reply, never the same one twice running.
+local greetings = {}
+for i = 1, 12 do
+    service.line({event = "wake"})
+    local said = written[#written].message
+    assert(said.cmd == "say" and said.text ~= "" and said.text ~= greetings[i - 1])
+    greetings[i] = said.text
+end
+-- A turn the assistant cannot take is answered aloud rather than with silence.
+refusing = true
+service.line({event = "turn", text = "Are you there"})
+assert(written[#written].message.cmd == "say" and written[#written].message.text:find("Sign in"))
+refusing = "busy"
+service.line({event = "turn", text = "Are you there"})
+assert(written[#written].message.text:find("still on the last"))
+refusing = false
 
 -- The end of a voice conversation hands it to memory; she lingers after her last word, then goes.
 service.line({event = "speaking", on = true, conversation = "v1"})

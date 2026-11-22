@@ -10,6 +10,8 @@ return function(assistant, puppet)
     local DRAGON_LINGER = 5000
     local spoken, hide_serial = nil, 0
     local loaded = false
+    local GREETINGS = {"Yes?", "I'm here.", "Mm? What is it?", "You called?", "Here I am. What do you need?", "Hello again."}
+    local greeted = 0
 
     local function show_dragon(on)
         hide_serial = hide_serial + 1
@@ -75,9 +77,18 @@ return function(assistant, puppet)
             puppet.hearing(message.on == true)
         elseif event == "sentence" then
             puppet.sentence(tostring(message.text or ""))
+        elseif event == "wake" then
+            local pick = math.random(#GREETINGS - (greeted > 0 and 1 or 0))
+            if greeted > 0 and pick >= greeted then pick = pick + 1 end
+            greeted = pick
+            send({cmd = "say", text = GREETINGS[greeted], conversation = conversation})
         elseif event == "turn" then
             puppet.thinking()
-            if not assistant.ask(message.text, conversation) then send({cmd = "thinking", on = false}) end
+            if not assistant.ask(message.text, conversation) then
+                local busy = assistant.streaming and assistant.streaming()
+                send({cmd = "say", conversation = conversation, text = busy and "One moment, I'm still on the last thing you asked."
+                    or "I can't answer yet. Sign in to an assistant from the chat popup first."})
+            end
         elseif event == "speaking" then
             fact.ai_speaking = message.on == true
             puppet.speaking(message.on == true)

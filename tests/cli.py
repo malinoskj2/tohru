@@ -267,6 +267,13 @@ class Cli(unittest.TestCase):
             self.assertEqual((result.returncode, result.stdout.split()), (0, expected), args)
         for args in (("memory", "forget", "../x"), ("memory", "wipe"), ("import",), ("chat",)):
             self.assertEqual(self.invoke("assistant", *args, **env).returncode, 2, args)
+        for action in ("open", "close", "toggle"):
+            self.assertEqual(json.loads(self.invoke("assistant", action).stdout), ["--say", "tohru", f"emit assistant_{action}"])
+        shown = ["--say", "tohru", "text ai_show_request abcd1234", "emit assistant_open", "emit assistant_show_request"]
+        self.assertEqual(json.loads(self.invoke("assistant", "show", "abcd1234").stdout), shown)
+        self.assertEqual(json.loads(self.invoke("assistant", "show", TOHRU_CONVERSATION="abcd1234").stdout), shown)
+        for args in (("open", "extra"), ("show",), ("show", "x; rm"), ("show", "abcd1234", "extra")):
+            self.assertEqual(self.invoke("assistant", *args, TOHRU_CONVERSATION="").returncode, 2, args)
 
     def test_lock_runs_the_locker_and_takes_no_arguments(self):
         seen = self.path / "locked"

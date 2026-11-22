@@ -4,7 +4,7 @@ Status: implemented. Mockups (not in Git): `.tmp/ai-widget-ideas/` in this workt
 
 ## Chat popup: direction 01, Pocket
 
-- A 280 px popup, the size of the sound and Bluetooth popups, opened from the bar.
+- A 380 px panel docked down the right edge of the screen, opened from the bar or with `tohru assistant open|toggle|show [ID]`.
 - Header: the current provider's name with the fold chevron, like Bluetooth's device name. Unfolding it lists the installed CLIs (`claude`, `codex`, `gemini`, `agy`, `opencode`) with their model, or **Sign in…** for a signed-out one, which opens its CLI login in a terminal. Missing binaries never appear. Each provider keeps a fixed palette colour by position.
 - Clock and + buttons: history (with search) and new chat. The field is always at the foot. Answers stream with a caret in the provider's colour, with Stop.
 

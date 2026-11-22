@@ -935,13 +935,14 @@ class Run:
                 pass
 
 
-def run_provider(provider, argv, stdin_text, on_delta=None, run=None, timeout=None):
+def run_provider(provider, argv, stdin_text, on_delta=None, run=None, timeout=None, extra_env=None):
     """Runs one headless CLI turn in the scratch folder; returns (parser, exit code, stderr lines, stopped)."""
     run = run or Run()
     scratch = private_dir(SCRATCH)
     parser = StreamParser(provider.id)
     env = dict(os.environ)
     env["NO_COLOR"] = "1"
+    env.update(extra_env or {})
     # Tohru keeps her own memory; Claude Code's would be a second one she never sees in other providers.
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
     run.child = subprocess.Popen(argv, cwd=scratch, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -1056,7 +1057,8 @@ def chat(args):
     signal.signal(signal.SIGTERM, run.stop)
     stdin_text = place_prompt(provider, argv, sent)
     try:
-        parser, code, errors, stopped = run_provider(provider, argv, stdin_text, lambda d: emit({"event": "delta", "text": d}), run)
+        parser, code, errors, stopped = run_provider(provider, argv, stdin_text, lambda d: emit({"event": "delta", "text": d}), run,
+                                                      extra_env={"TOHRU_CONVERSATION": conversation["id"]})
     except OSError as error:
         emit({"event": "error", "message": str(error)})
         return 3

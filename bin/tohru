@@ -29,6 +29,7 @@ Usage: tohru panel toggle|open sound|calendar|network|media|bluetooth|wallpaper|
                                                voice_wake, kws_model, tts_*;
                                                see docs/configuration.md)
        tohru config set bar.preferred_output OUTPUT   ('' for every output)
+       tohru assistant open|close|toggle | show [ID]   (show opens a chat; ID defaults to $TOHRU_CONVERSATION)
        tohru assistant memory list [--json] | memory forget ID | memory clear
        tohru assistant export [FILE]   (the whole assistant state as versioned JSON; stdout without FILE; files are 0600)
        tohru assistant import FILE [--merge | --replace --yes] [--only history|memory|relationship]...
@@ -276,6 +277,15 @@ case ${1:-help} in
     assistant)
         helper=${TOHRU_ASSISTANT:-$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/tohru-assistant}
         case ${2:-} in
+            open|close|toggle)
+                [[ $# == 2 ]] || fail "Usage: tohru assistant $2"
+                exec "$pleamar" --say tohru "emit assistant_$2"
+                ;;
+            show)
+                id=${3:-${TOHRU_CONVERSATION:-}}
+                [[ $# -le 3 && $id =~ ^[0-9a-f]{4,32}$ ]] || fail 'Usage: tohru assistant show [ID]   (ID defaults to $TOHRU_CONVERSATION)'
+                exec "$pleamar" --say tohru "text ai_show_request $id" 'emit assistant_open' 'emit assistant_show_request'
+                ;;
             memory)
                 case ${3:-} in
                     list) [[ $# == 3 || ( $# == 4 && $4 == --json ) ]] || fail 'Usage: tohru assistant memory list [--json]' ;;
@@ -293,7 +303,7 @@ case ${1:-help} in
                 [[ $# -ge 3 ]] || fail 'Usage: tohru assistant import FILE [--merge|--replace --yes] [--only history|memory|relationship]...'
                 exec "$helper" "${@:2}"
                 ;;
-            *) fail 'Usage: tohru assistant memory list|forget ID|clear | export [FILE] | import FILE [--merge|--replace --yes] [--only SECTION]' ;;
+            *) fail 'Usage: tohru assistant open|close|toggle | show [ID] | memory list|forget ID|clear | export [FILE] | import FILE [--merge|--replace --yes] [--only SECTION]' ;;
         esac
         ;;
     settings-error)

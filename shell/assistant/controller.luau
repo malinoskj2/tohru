@@ -387,6 +387,10 @@ return function(settings)
     end
 
     on("assistant_open", function() open() end)
+    on("assistant_show_request", function()
+        local id = text.ai_show_request or ""
+        if id:match("^%x+$") then fact.ai_view = 0; load(id) end
+    end)
     on("assistant_close", function() close() end)
     on("assistant_toggle", function() if fact.ai_open then close() else open() end end)
     on("assistant_picker", function()

@@ -27,6 +27,7 @@ part AssistantState {
     fact ai_speaking = false
     fact ai_mouth = 0
     text ai_voice_error = ""
+    text ai_show_request = ""
     fact ai_voice_failed = false
     prop ai_glow = 0 ~400ms
     follow ai_glow = if(ai_streaming and not ai_open, 1, 0)
@@ -78,6 +79,7 @@ part AssistantState {
     event assistant_memory_clear ->
     event assistant_hush ->
     event assistant_dragon ->
+    event assistant_show_request ->
 
     image ai_history_icon = file "history.svg", 14, 14
     image ai_plus_icon = file "plus.svg", 14, 14
@@ -132,11 +134,13 @@ part AssistantState {
     let ai_ready_colour = pick(ai_ready_slot, ink_peach, ink_yellow, ink_green, ink_lavender, ink_mauve)
     let ai_has_chat = ai_turns.count > 0 or ai_live_here
     let ai_needs_signin = ai_current >= 0 and not ai_signed_in
-    // The popup's heights: the picker's rows, history, the sign-in note, the empty chat, or as tall as the chat.
+    // The popup is docked: as wide as ai_w and as tall as the screen under the bar, 12 px clear at the foot.
+    // screen.height is the bar's own 42 px, so an empty 1 px strip on the bar's monitor measures it.
+    surface ai_screen_probe {
+        size: 1, full; anchor: right; level: background; reserve: -1; keyboard: none; screens: bar_outputs
+        layer_namespace: "tohru-measure"
+    }
     let ai_picker_h = 44 + 30 * max(1, ai_providers.count) + 36
-    let ai_chat_h = clamp(44 + ai_chat.content + 52, 230, 440)
-    let ai_open_h = if(ai_picker, ai_picker_h, if(ai_view >= 1, 380, if(ai_needs_signin, 262, if(ai_has_chat, ai_chat_h, if(ai_voice_failed, 326, 230)))))
-    prop ai_h = 230 ~spring(196, 21.84)
-    follow ai_h = ai_open_h
-    on change ai_open { ai_h: ai_open_h ~0ms }
+    let ai_w = 380
+    let ai_h = max(400, ai_screen_probe.height - 49)
 }

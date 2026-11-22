@@ -1,12 +1,12 @@
 part AssistantPopup {
     let ai_anchor_x = if(ai_button_x < 0, screen.width - 357, ai_button_x)
+    // Docked down the right edge, under the bar, 12 px clear of the screen's edges.
     popup assistant {
-        at: clamp(ai_anchor_x - 140, 8, max(8, screen.width - 288)) - 12, 37
-        size: 304, 458
+        at: screen.width - ai_w - 24, 37
+        size: ai_w + 24, ai_h + 12
         open: ai_open
         bright: panel_bright
         let ai_ox = 12
-        let ai_w = 280
         let ai_right = ai_ox + ai_w - 8
         let ai_field_y = ai_h - 42
         let ai_chat_shown = not ai_picker and ai_view == 0 and not ai_needs_signin
@@ -93,8 +93,8 @@ part AssistantPopup {
             box { from: ai_ox + 10, 46; size: ai_w - 20, 122; corner: 11; color: ink_white; opacity: 6% }
             box { from: ai_ox + 10.5, 46.5; size: ai_w - 21, 121; corner: 10.5; stroke: 1; color: ink_white; opacity: 12% }
             ellipse { at: ai_ox + 26, 64; radius: 2.4; stroke: 1.2; color: ai_colour }
-            text "{ai_provider_name} isn’t signed in" { at: ai_ox + 36, 64; anchor: left center; width: 220; lines: 1; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
-            text "Its {ai_provider_cli} is installed. Sign in once in a terminal; chats open here afterwards." { at: ai_ox + 36, 78; width: 220; lines: 2; size: 10.5; family: "SF Pro Text"; color: ink_white; opacity: 62% }
+            text "{ai_provider_name} isn’t signed in" { at: ai_ox + 36, 64; anchor: left center; width: ai_w - 60; lines: 1; size: 12.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+            text "Its {ai_provider_cli} is installed. Sign in once in a terminal; chats open here afterwards." { at: ai_ox + 36, 78; width: ai_w - 60; lines: 2; size: 10.5; family: "SF Pro Text"; color: ink_white; opacity: 62% }
             zone box ai_signin_hit { from: ai_ox + 34, 112; size: 80, 22; corner: 6; cursor: pointer; active: ai_needs_signin and not ai_picker and ai_view == 0; label: "Sign in to {ai_provider_name}" }
             box { from: ai_ox + 34, 112; size: 80, 22; corner: 6; color: ink_white; opacity: 16% + max(ai_signin_hit.hover * 6%, ai_signin_hit.pressed * 12%) }
             image ai_terminal_icon { at: ai_ox + 42, 117; size: 12, 12; tint: ink_white; opacity: 85% }
@@ -106,10 +106,10 @@ part AssistantPopup {
         // The empty chat: the mascot and what is ready to answer.
         group {
             show: ai_chat_shown and not ai_has_chat
-            image ai_mascot { at: ai_ox + 106, 50; size: 68, 68; opacity: 95% }
-            text if(ai_current < 0, "No AI CLIs found", "Ask anything") { at: ai_ox + 140, 136; anchor: center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
-            text if(ai_current < 0, "Install claude, codex, gemini, agy or opencode", "{ai_provider_name}{? · {ai_provider_model}} · signed in") { at: ai_ox + 140, 155; anchor: center; width: 250; lines: 1; align: center; size: 11; family: "SF Pro Text"; color: ink_white; opacity: 55% }
-            text ai_voice_error { at: ai_ox + 15, 170; anchor: left top; width: 250; lines: 8; align: center; size: 10; family: "SF Pro Text"; color: ink_red; show: ai_voice_failed }
+            image ai_mascot { at: ai_ox + ai_w / 2 - 34, ai_h / 2 - 90; size: 68, 68; opacity: 95% }
+            text if(ai_current < 0, "No AI CLIs found", "Ask anything") { at: ai_ox + ai_w / 2, ai_h / 2 - 4; anchor: center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+            text if(ai_current < 0, "Install claude, codex, gemini, agy or opencode", "{ai_provider_name}{? · {ai_provider_model}} · signed in") { at: ai_ox + ai_w / 2, ai_h / 2 + 15; anchor: center; width: ai_w - 30; lines: 1; align: center; size: 11; family: "SF Pro Text"; color: ink_white; opacity: 55% }
+            text ai_voice_error { at: ai_ox + 15, ai_h / 2 + 30; anchor: left top; width: ai_w - 30; lines: 8; align: center; size: 10; family: "SF Pro Text"; color: ink_red; show: ai_voice_failed }
         }
 
         // The chat: questions on plates at the right, answers as plain text, the live answer with its caret.
@@ -122,15 +122,15 @@ part AssistantPopup {
             show: ai_chat_shown and ai_has_chat
             for t in ai_turns {
                 row { padding: 8; corner: 10; fill: mix(#3a3346, #e6e2ee, pk); place: 1; show: t.mine
-                    text t.text { width: 196; tight: true; lines: 0; size: 13; family: "SF Pro Text"; color: ink_white; opacity: 92%; selectable: true }
+                    text t.text { width: ai_w - 84; tight: true; lines: 0; size: 13; family: "SF Pro Text"; color: ink_white; opacity: 92%; selectable: true }
                 }
                 row { padding: 2; show: not t.mine
-                    text t.text { width: 246; lines: 0; size: 13; line_height: 1.35; family: "SF Pro Text"; color: if(t.failed, ink_red, ink_white); opacity: 92%; markdown: true; selectable: true }
+                    text t.text { width: ai_w - 34; lines: 0; size: 13; line_height: 1.35; family: "SF Pro Text"; color: if(t.failed, ink_red, ink_white); opacity: 92%; markdown: true; selectable: true }
                 }
             }
             group { size: ai_w - 20, max(18, ai_live_box.height); show: ai_live_here
-                text "{ai_live}▍" { at: 4, 0; width: 246; lines: 0; size: 13; line_height: 1.35; family: "SF Pro Text"; color: ink_white; opacity: 92%; markdown: true; measure: ai_live_box; letter_opacity: if(letter >= letters - 1, 0, 1) }
-                text "{ai_live}▍" { at: 4, 0; width: 246; lines: 0; size: 13; line_height: 1.35; family: "SF Pro Text"; color: ai_stream_colour; markdown: true; letter_opacity: if(letter >= letters - 1, 0.5 + 0.5 * sin(time * 360), 0) }
+                text "{ai_live}▍" { at: 4, 0; width: ai_w - 34; lines: 0; size: 13; line_height: 1.35; family: "SF Pro Text"; color: ink_white; opacity: 92%; markdown: true; measure: ai_live_box; letter_opacity: if(letter >= letters - 1, 0, 1) }
+                text "{ai_live}▍" { at: 4, 0; width: ai_w - 34; lines: 0; size: 13; line_height: 1.35; family: "SF Pro Text"; color: ai_stream_colour; markdown: true; letter_opacity: if(letter >= letters - 1, 0.5 + 0.5 * sin(time * 360), 0) }
             }
             group { size: ai_w - 20, 24; show: ai_actions
                 zone box ai_copy_hit { from: 0, 2; size: 24, 22; corner: 7; cursor: pointer; active: ai_actions; label: "Copy answer" }
@@ -175,7 +175,7 @@ part AssistantPopup {
             input ai_search { at: ai_ox + 38, 48; width: ai_w - 128; size: 12.5; family: "SF Pro Text"; color: ink_white; placeholder: "Search chats"; label: "Search chats" }
             column ai_hist {
                 at: ai_ox + 6, 76
-                view: ai_w - 12, 292
+                view: ai_w - 12, ai_h - 88
                 gap: 0
                 for h in ai_history {
                     group { size: ai_w - 12, if(h.header, 20, 28)
@@ -185,8 +185,8 @@ part AssistantPopup {
                             show: not h.header
                             box { from: 0, 0; size: ai_w - 12, 28; corner: 7; color: ink_white; opacity: max(if(h.index == ai_history_sel, 12%, 0%), max(ai_hrow.$h.index.hover * 10%, ai_hrow.$h.index.pressed * 16%)) }
                             ellipse { at: 14, 14; radius: 3; color: pick(h.slot, ink_peach, ink_yellow, ink_green, ink_lavender, ink_mauve) }
-                            text h.title { at: 25, if(h.matched, 9, 14); anchor: left center; width: 170; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
-                            text h.match { at: 25, 21; anchor: left center; width: 200; lines: 1; size: 10; family: "SF Pro Text"; color: ink_white; opacity: 50%; show: h.matched }
+                            text h.title { at: 25, if(h.matched, 9, 14); anchor: left center; width: ai_w - 110; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
+                            text h.match { at: 25, 21; anchor: left center; width: ai_w - 80; lines: 1; size: 10; family: "SF Pro Text"; color: ink_white; opacity: 50%; show: h.matched }
                             text "voice" { at: ai_w - 22, 22; anchor: right center; size: 9; family: "SF Pro Text"; color: ink_white; opacity: 42%; show: h.voice }
                             text h.when { at: ai_w - 22, if(h.voice, 10, 14); anchor: right center; size: 10.5; family: "SF Pro Text:tnum"; color: ink_white; opacity: 55% }
                         }
@@ -194,7 +194,7 @@ part AssistantPopup {
                     }
                 }
             }
-            text if(ai_searching, "No chats match", "No chats yet") { at: ai_ox + 140, 120; anchor: center; size: 12; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: ai_history.count == 0 }
+            text if(ai_searching, "No chats match", "No chats yet") { at: ai_ox + ai_w / 2, 120; anchor: center; size: 12; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: ai_history.count == 0 }
         }
 
         // Memory: what Tohru remembers, each with a forget button, and forget everything.
@@ -203,7 +203,7 @@ part AssistantPopup {
             text ai_memory_note { at: ai_ox + 16, 50; anchor: left center; width: ai_w - 32; lines: 0; size: 11; family: "SF Pro Text"; color: ink_white; opacity: 60% }
             column ai_mem {
                 at: ai_ox + 6, 70
-                view: ai_w - 12, 262
+                view: ai_w - 12, ai_h - 126
                 gap: 0
                 for m in ai_memories {
                     group { size: ai_w - 12, 40
@@ -216,12 +216,12 @@ part AssistantPopup {
                     }
                 }
             }
-            text if(ai_memory_on, "Nothing remembered yet", "Memory is off") { at: ai_ox + 140, 140; anchor: center; size: 12; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: ai_memories.count == 0 }
-            zone box ai_forget_all { from: ai_ox + 10, 340; size: ai_w - 20, 28; corner: 8; cursor: pointer; active: ai_view == 2 and ai_memories.count > 0; label: "Forget everything" }
+            text if(ai_memory_on, "Nothing remembered yet", "Memory is off") { at: ai_ox + ai_w / 2, 140; anchor: center; size: 12; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: ai_memories.count == 0 }
+            zone box ai_forget_all { from: ai_ox + 10, ai_h - 40; size: ai_w - 20, 28; corner: 8; cursor: pointer; active: ai_view == 2 and ai_memories.count > 0; label: "Forget everything" }
             group {
                 show: ai_memories.count > 0
-                box { from: ai_ox + 10, 340; size: ai_w - 20, 28; corner: 8; color: if(ai_forget_armed, ink_red, ink_white); opacity: if(ai_forget_armed, 30%, 7%) + max(ai_forget_all.hover * 6%, ai_forget_all.pressed * 12%) }
-                text if(ai_forget_armed, "Press again to forget everything", "Forget everything") { at: ai_ox + 140, 354; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 88% }
+                box { from: ai_ox + 10, ai_h - 40; size: ai_w - 20, 28; corner: 8; color: if(ai_forget_armed, ink_red, ink_white); opacity: if(ai_forget_armed, 30%, 7%) + max(ai_forget_all.hover * 6%, ai_forget_all.pressed * 12%) }
+                text if(ai_forget_armed, "Press again to forget everything", "Forget everything") { at: ai_ox + ai_w / 2, ai_h - 26; anchor: center; size: 12; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 88% }
             }
             on press ai_forget_all { emit assistant_memory_clear }
         }
