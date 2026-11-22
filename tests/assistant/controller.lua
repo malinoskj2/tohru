@@ -221,6 +221,45 @@ local d2 = spawned[#spawned]
 assistant.discard_draft()
 assert(#killed == k_before + 1 and killed[#killed][2] == "int")
 
+-- Draft replying <<needs-tools>> (both pre-commit and while promoted) falls back to a fresh full-tools run; marker is never committed or spoken.
+local commits_before = #runs_of("commit")
+local ans_nt = #answers
+assert(assistant.draft("Open the sound panel please", "v1"))
+local d_nt = spawned[#spawned]
+d_nt.line(json.encode({event = "start", conversation = "v1", draft = true}))
+d_nt.line(json.encode({event = "delta", text = "<<needs-tools>>"}))
+d_nt.line(json.encode({event = "needs_tools", conversation = "v1"}))
+local sp_nt = #spawned
+assert(assistant.ask("Open the sound panel please", "v1"))
+assert(#spawned == sp_nt + 1)
+local full_run = spawned[#spawned]
+for _, a in ipairs(full_run.args) do assert(a ~= "--draft") end
+full_run.line(json.encode({event = "start", conversation = "v1"}))
+full_run.line(json.encode({event = "delta", text = "Opened the sound panel."}))
+full_run.line(json.encode({event = "done", conversation = "v1"}))
+assert(#runs_of("commit") == commits_before)
+assert(#answers == ans_nt + 1 and answers[#answers][3] == "Opened the sound panel.")
+
+-- Still-streaming draft promoted to live that hits needs_tools falls back cleanly without showing or speaking the marker.
+local commits_p = #runs_of("commit")
+local ans_p = #answers
+assert(assistant.draft("Turn up the desktop volume", "v1"))
+local d_live = spawned[#spawned]
+d_live.line(json.encode({event = "start", conversation = "v1", draft = true}))
+assert(assistant.ask("Turn up the desktop volume", "v1"))
+local sp_promoted = #spawned
+d_live.line(json.encode({event = "delta", text = "<<needs-tools>>"}))
+assert(not text.ai_live:find("needs-tools", 1, true))
+d_live.line(json.encode({event = "needs_tools", conversation = "v1"}))
+assert(#spawned == sp_promoted + 1)
+local fallback_run = spawned[#spawned]
+for _, a in ipairs(fallback_run.args) do assert(a ~= "--draft") end
+fallback_run.line(json.encode({event = "start", conversation = "v1"}))
+fallback_run.line(json.encode({event = "delta", text = "Turned it up."}))
+fallback_run.line(json.encode({event = "done", conversation = "v1"}))
+assert(#runs_of("commit") == commits_p)
+assert(#answers == ans_p + 1 and answers[#answers][3] == "Turned it up.")
+
 -- Cancel rolls back a non-draft live voice turn cleanly without firing answer listeners.
 local ans_c = #answers
 assert(assistant.ask("Tell me about the history", "v1"))

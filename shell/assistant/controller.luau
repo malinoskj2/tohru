@@ -8,6 +8,15 @@ return function(settings)
     local live = nil
     local draft = nil
     local DRAFT_PROVIDERS = {claude = true, codex = true}
+    local DRAFT_NEEDS_TOOLS = "<<needs-tools>>"
+    local function has_needs_tools(value)
+        return tostring(value or ""):find(DRAFT_NEEDS_TOOLS, 1, true) ~= nil
+    end
+    local function marker_prefix(value)
+        local trimmed = tostring(value or ""):gsub("^%s+", "")
+        if trimmed == "" then return false end
+        return has_needs_tools(trimmed) or DRAFT_NEEDS_TOOLS:sub(1, #trimmed) == trimmed
+    end
     local function normalize(value)
         return (tostring(value or ""):lower():gsub("[^a-z0-9]+", " "):gsub("^%s+", ""):gsub("%s+$", ""))
     end
@@ -346,6 +355,16 @@ return function(settings)
             text = "", done = false, failed = false, interrupted = interrupted,
         }
         draft = mine
+        local function fallback_from_draft(active)
+            live = nil
+            conversation = active.base_conversation
+            refresh_live()
+            if not send(active.prompt, true, active.opts) then
+                for _, listener in ipairs(answer_listeners) do
+                    listener("error", active.base_conversation, "", true)
+                end
+            end
+        end
         mine.id = spawn(helper, args, function(line)
             local event = decode(line)
             if not event then return end
@@ -357,11 +376,19 @@ return function(settings)
                     refresh_live()
                 elseif event.event == "delta" then
                     live.text = live.text .. (event.text or "")
-                    if live_here() then text.ai_live = live.text end
+                    if live_here() and not marker_prefix(live.text) then text.ai_live = live.text end
+                elseif event.event == "needs_tools" or event.event == "error" or event.event == "draft_unsupported" then
+                    if live.discard then
+                        finish({event = "stopped"})
+                    else
+                        fallback_from_draft(live)
+                    end
                 elseif event.event == "done" then
                     mine.session = event.session or mine.session
                     if live.discard then
                         finish({event = "stopped"})
+                    elseif has_needs_tools(live.text) then
+                        fallback_from_draft(live)
                     else
                         local active = live
                         commit_draft({
@@ -372,29 +399,39 @@ return function(settings)
                             if live == active then finish(event) end
                         end)
                     end
-                elseif event.event == "stopped" or event.event == "error" then
+                elseif event.event == "stopped" then
                     finish(event)
                 end
                 return
             end
             if draft ~= mine then return end
-            if event.event == "draft_unsupported" then
+            if event.event == "draft_unsupported" or event.event == "needs_tools" then
+                mine.failed = true
                 draft = nil
             elseif event.event == "start" then
                 mine.target_conversation = event.conversation or mine.target_conversation
             elseif event.event == "delta" then
                 mine.text = mine.text .. (event.text or "")
             elseif event.event == "done" then
-                mine.done = true
-                mine.session = event.session or ""
-                mine.target_conversation = event.conversation or mine.target_conversation
+                if has_needs_tools(mine.text) then
+                    mine.failed = true
+                    draft = nil
+                else
+                    mine.done = true
+                    mine.session = event.session or ""
+                    mine.target_conversation = event.conversation or mine.target_conversation
+                end
             elseif event.event == "stopped" or event.event == "error" then
                 mine.failed = true
                 if draft == mine then draft = nil end
             end
         end, function(_, code)
             if live and live.draft == mine then
-                finish({event = "error", message = "tohru-assistant exited with " .. tostring(code)})
+                if live.discard then
+                    finish({event = "stopped"})
+                else
+                    fallback_from_draft(live)
+                end
             elseif draft == mine and not mine.done then
                 draft = nil
             end
@@ -655,7 +692,7 @@ return function(settings)
             if draft and provider and draft.provider == provider.id
                 and draft.conversation == voice_conversation
                 and draft.interrupted == interrupted
-                and draft.norm == normalize(prompt) and not draft.failed then
+                and draft.norm == normalize(prompt) and not draft.failed and not has_needs_tools(draft.text) then
                 local taken = draft
                 draft = nil
                 fail(nil)
@@ -683,7 +720,8 @@ return function(settings)
                 end
                 conversation = taken.target_conversation or voice_conversation
                 live = {
-                    id = taken.id, draft = taken, prompt = prompt,
+                    id = taken.id, draft = taken, prompt = prompt, opts = opts,
+                    base_conversation = voice_conversation,
                     conversation = taken.target_conversation or voice_conversation,
                     slot = taken.slot, text = taken.text, voice = true, provider = taken.provider,
                 }
@@ -693,6 +731,7 @@ return function(settings)
                 if conversation or fact.ai_open then show_turns(turns) end
                 fact.ai_actions = false
                 refresh_live()
+                if live_here() and marker_prefix(live.text) then text.ai_live = "" end
                 return true, live
             end
             discard_draft()

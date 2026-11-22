@@ -407,7 +407,7 @@ class Assistant(unittest.TestCase):
         first = self.chat("--provider", "claude", "--voice", stdin="How many ounces in a cup?")
         cid = first[0]["conversation"]
         orig_session = self.calls("claude")[0]["argv"][self.calls("claude")[0]["argv"].index("--session-id") + 1]
-        # A discarded draft on that conversation uses --resume + --fork-session and writes nothing to SQLite.
+        # A discarded draft on that conversation uses --resume + --fork-session, tools disabled, and writes nothing to SQLite.
         draft = self.events(self.invoke("chat", "--provider", "claude", "--conversation", cid, "--voice", "--draft",
                                         stdin="What is the weather in Tokyo?", FAKE_ANSWER="Sunny."))
         self.assertEqual(draft[-1]["event"], "done")
@@ -415,7 +415,18 @@ class Assistant(unittest.TestCase):
         draft_argv = self.calls("claude")[-1]["argv"]
         self.assertEqual(draft_argv[draft_argv.index("--resume") + 1], orig_session)
         self.assertIn("--fork-session", draft_argv)
-        # History and saved provider session are untouched by the discarded draft.
+        self.assertEqual(draft_argv[draft_argv.index("--tools") + 1], "")
+        self.assertIn("--strict-mcp-config", draft_argv)
+        self.assertNotIn("--permission-mode", draft_argv)
+        self.assertNotIn("bypassPermissions", draft_argv)
+        self.assertIn("<<needs-tools>>", draft_argv[draft_argv.index("--append-system-prompt") + 1])
+        # A draft that replies with <<needs-tools>> emits needs_tools and leaves history and session untouched.
+        marker = self.events(self.invoke("chat", "--provider", "claude", "--conversation", cid, "--voice", "--draft",
+                                         stdin="Open the sound panel", FAKE_ANSWER="<<needs-tools>>"))
+        self.assertEqual(marker[-1], {"event": "needs_tools", "conversation": cid})
+        self.assertNotEqual(self.invoke("commit", "--provider", "claude", "--conversation", cid, "--voice",
+                                        stdin=json.dumps({"prompt": "Open the sound panel", "answer": "<<needs-tools>>"})).returncode, 0)
+        # History and saved provider session are untouched by discarded and needs_tools drafts.
         self.assertEqual(len(self.show(cid)["turns"]), 2)
         self.chat("--provider", "claude", "--conversation", cid, "--voice", stdin="And a pint?")
         self.assertEqual(self.calls("claude")[-1]["argv"][self.calls("claude")[-1]["argv"].index("--resume") + 1], orig_session)
@@ -429,11 +440,22 @@ class Assistant(unittest.TestCase):
         self.assertEqual((turns[-2]["text"], turns[-1]["text"]), ("What is the weather in Tokyo?", "Sunny."))
         self.chat("--provider", "claude", "--conversation", cid, "--voice", stdin="Thanks")
         self.assertEqual(self.calls("claude")[-1]["argv"][self.calls("claude")[-1]["argv"].index("--resume") + 1], "fork-99")
-        # Codex draft forks an existing thread with `codex exec fork`.
+        # Fresh and forked Codex drafts run read-only with MCP disabled and no bypass flag.
+        self.invoke("chat", "--provider", "codex", "--voice", "--draft", stdin="Fresh codex draft")
+        codex_fresh = self.calls("codex")[-1]["argv"]
+        self.assertEqual(codex_fresh[0], "exec")
+        self.assertIn("--sandbox", codex_fresh)
+        self.assertIn("read-only", codex_fresh)
+        self.assertIn("mcp_servers={}", codex_fresh)
+        self.assertIn('sandbox_mode="read-only"', codex_fresh)
+        self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", codex_fresh)
         cid2 = self.chat("--provider", "codex", "--voice", stdin="First codex turn")[0]["conversation"]
         self.invoke("chat", "--provider", "codex", "--conversation", cid2, "--voice", "--draft", stdin="Draft codex turn")
         codex_draft = self.calls("codex")[-1]["argv"]
         self.assertEqual(codex_draft[:2], ["exec", "fork"])
+        self.assertIn("mcp_servers={}", codex_draft)
+        self.assertIn('sandbox_mode="read-only"', codex_draft)
+        self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", codex_draft)
         self.assertEqual(len(self.show(cid2)["turns"]), 2)
         # Unsupported provider (agy) declines drafts without spawning the CLI.
         self.fake("agy", FAKE_AGY)

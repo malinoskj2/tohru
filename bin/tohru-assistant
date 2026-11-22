@@ -747,6 +747,10 @@ def transcript_prompt(turns, prompt):
 SYSTEM_FLAG = {"claude", "codex"}
 # Only providers that can fork a resumed session cleanly support speculative drafts without polluting history.
 DRAFT_PROVIDERS = {"claude", "codex"}
+DRAFT_NEEDS_TOOLS = "<<needs-tools>>"
+DRAFT_RULE = (f"This is a speculative draft with tools disabled. If answering accurately requires any tool, "
+              f"command, file access, screen check, web lookup or desktop action, reply with ONLY "
+              f"{DRAFT_NEEDS_TOOLS} and nothing else.")
 
 
 def interrupted_note(spoken):
@@ -790,7 +794,7 @@ def provider_argv(ident, session, model="", effort="", system="", scratch=None, 
         return argv
     if ident == "codex":
         common = ["--json", "--skip-git-repo-check"]
-        common += ["--dangerously-bypass-approvals-and-sandbox"] if tools else ["-c", "mcp_servers={}"]
+        common += ["--dangerously-bypass-approvals-and-sandbox"] if tools else ["-c", "mcp_servers={}", "-c", 'sandbox_mode="read-only"']
         if model:
             common += ["-m", model]
         if effort:
@@ -1065,15 +1069,18 @@ def chat(args):
     persona = persona_text(flag(args.persona), args.persona_file)
     block = memory_block(db, prompt) if flag(args.memory) and not conversation.get("forgotten") else ""
     system = instructions(persona, block, args.voice)
+    if args.draft:
+        system = f"{system}\n\n{DRAFT_RULE}" if system else DRAFT_RULE
     model, effort = resolve_model(provider.id, args.model, args.effort)
     sent = prompt if session["resume"] or not earlier else transcript_prompt(earlier, prompt)
     note = interrupted_note(args.interrupted)
     if note:
         sent = f"{note}\n\n{sent}"
+    allow_tools = not args.draft
     if provider.id in SYSTEM_FLAG:
-        argv = provider_argv(provider.id, session, model, effort, system, tools=True)
+        argv = provider_argv(provider.id, session, model, effort, system, tools=allow_tools)
     else:
-        argv = provider_argv(provider.id, session, model, effort, tools=True)
+        argv = provider_argv(provider.id, session, model, effort, tools=allow_tools)
         if system and not session["resume"]:
             sent = f"{system}\n\n---\n\n{sent}"
 
@@ -1098,6 +1105,9 @@ def chat(args):
             message = parser.error or (errors[-1].strip() if errors else f"{provider.id} exited with {code}")
             emit({"event": "error", "conversation": conversation["id"], "message": message[:500]})
             return 1
+        if DRAFT_NEEDS_TOOLS in answer:
+            emit({"event": "needs_tools", "conversation": conversation["id"]})
+            return 0
         emit({"event": "done", "conversation": conversation["id"], "session": next_session or ""})
         return 0
     if next_session:
@@ -1129,6 +1139,8 @@ def commit_draft(args):
     answer = str(data.get("answer") or "").strip()
     if not prompt:
         raise SystemExit("tohru-assistant: empty draft prompt")
+    if DRAFT_NEEDS_TOOLS in answer:
+        raise SystemExit("tohru-assistant: draft requires tools and cannot be committed")
     db = connect()
     now = int(time.time())
     conversation = load(db, args.conversation) if args.conversation else None
