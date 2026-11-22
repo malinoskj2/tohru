@@ -296,7 +296,7 @@ return function(settings)
         run(helper, args, function(out, code)
             local res = code == 0 and decode(out) or nil
             done(res and res.conversation, res ~= nil)
-        end, {input = json.encode({prompt = info.prompt, answer = info.text})})
+        end, {input = json.encode({prompt = info.prompt, answer = info.text, interrupted = info.interrupted})})
     end
 
     sync_orca = function(force)
@@ -382,6 +382,7 @@ return function(settings)
         end
         if voice then args[#args + 1] = "--voice" end
         if opts and opts.draft then args[#args + 1] = "--draft" end
+        if opts and opts.semantic then args[#args + 1] = "--semantic" end
         if opts and opts.interrupted and opts.interrupted ~= "" then
             args[#args + 1] = "--interrupted"
             args[#args + 1] = opts.interrupted
@@ -453,7 +454,7 @@ return function(settings)
         if not provider or not provider.signed_in or not DRAFT_PROVIDERS[provider.id] then return false end
         discard_draft()
         local interrupted = opts and opts.interrupted or ""
-        local args = chat_args(provider.id, voice_conversation, true, {draft = true, interrupted = interrupted})
+        local args = chat_args(provider.id, voice_conversation, true, {draft = true, interrupted = interrupted, semantic = opts and opts.semantic})
         local mine = {
             prompt = prompt, norm = normalize(prompt), provider = provider.id, slot = provider.slot,
             conversation = voice_conversation, target_conversation = voice_conversation, session = "",
@@ -498,7 +499,7 @@ return function(settings)
                         local active = live
                         commit_draft({
                             provider = active.provider, conversation = active.conversation,
-                            session = mine.session, prompt = active.prompt, text = active.text,
+                            session = mine.session, prompt = active.prompt, text = active.text, interrupted = mine.interrupted,
                         }, function(cid, committed)
                             if not committed then
                                 if live == active then finish({event = "error", message = "Could not save the speculative answer"}) end
@@ -515,7 +516,10 @@ return function(settings)
                 return
             end
             if draft ~= mine then return end
-            if event.event == "draft_unsupported" or event.event == "needs_tools" then
+            if event.event == "semantic" then
+                mine.decision = event.decision
+                if opts and opts.on_semantic then opts.on_semantic(event.decision) end
+            elseif event.event == "draft_unsupported" or event.event == "needs_tools" then
                 mine.failed = true
                 draft = nil
             elseif event.event == "start" then
@@ -532,6 +536,7 @@ return function(settings)
                     mine.target_conversation = event.conversation or mine.target_conversation
                 end
             elseif event.event == "stopped" or event.event == "error" then
+                if opts and opts.on_semantic then opts.on_semantic("error") end
                 mine.failed = true
                 if draft == mine then draft = nil end
             end
@@ -871,7 +876,7 @@ return function(settings)
                     local cid = taken.target_conversation or voice_conversation
                     commit_draft({
                         provider = taken.provider, conversation = cid,
-                        session = taken.session, prompt = prompt, text = taken.text,
+                        session = taken.session, prompt = prompt, text = taken.text, interrupted = taken.interrupted,
                     }, function(saved, committed)
                         if pending_commit == pending then pending_commit = nil end
                         if pending.cancelled then

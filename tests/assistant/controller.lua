@@ -236,6 +236,19 @@ assistant.discard_draft()
 assert(#killed == k_before + 1 and killed[#killed][2] == "int")
 
 -- Draft replying <<needs-tools>> (both pre-commit and while promoted) falls back to a fresh full-tools run; marker is never committed or spoken.
+local early_answers, early_commits = #answers, #runs_of('commit')
+local decision = nil
+assert(assistant.draft('Explain the index please', 'v1', {semantic=true, on_semantic=function(value) decision=value end}))
+local early = spawned[#spawned]
+early.line(json.encode({event='start', conversation='v1', draft=true}))
+early.line(json.encode({event='semantic', decision='respond'}))
+assert(decision == 'respond' and #answers == early_answers and #runs_of('commit') == early_commits)
+assert(assistant.ask('Explain the index please', 'v1'))
+early.line(json.encode({event='delta', text='A validated answer.'}))
+assert(#answers == early_answers and #runs_of('commit') == early_commits)
+early.line(json.encode({event='done', conversation='v1'}))
+assert(#runs_of('commit') == early_commits+1 and #answers == early_answers+1)
+
 local commits_before = #runs_of("commit")
 local ans_nt = #answers
 assert(assistant.draft("Open the sound panel please", "v1"))

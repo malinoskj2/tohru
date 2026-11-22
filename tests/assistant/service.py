@@ -263,6 +263,26 @@ class Assistant(unittest.TestCase):
         self.assertIn("selected model (bogus)", events[-1]["message"])
         self.assertEqual(len(self.calls("claude")), 1)
 
+    def test_voice_fast_default_preserves_typed_and_explicit_choices(self):
+        for flags, model, effort in (
+            ([], 'gpt-6.2-sol', 'medium'),
+            (['--voice'], 'gpt-6.2-sol', 'medium'),
+            (['--voice', '--draft'], 'gpt-6-luna', 'low'),
+            (['--voice', '--draft', '--semantic'], 'gpt-6.2-sol', 'low'),
+            (['--voice', '--draft', '--model', 'gpt-6.2-sol'], 'gpt-6.2-sol', 'medium'),
+            (['--voice', '--draft', '--effort', 'high'], 'gpt-6.2-sol', 'high'),
+            (['--voice', '--draft', '--semantic', '--model', 'gpt-6.2-sol', '--effort', 'high'], 'gpt-6.2-sol', 'high'),
+        ):
+            events = self.events(self.invoke('chat', '--provider', 'codex', *flags, stdin='Hello'))
+            argv = self.calls('codex')[-1]['argv']
+            self.assertEqual(argv[argv.index('-m')+1], model)
+            self.assertIn('model_reasoning_effort="'+effort+'"', argv)
+            self.assertEqual((events[0]['model'], events[0]['effort']), (model, effort))
+        providers = json.loads(self.invoke('providers').stdout)
+        codex = next(p for p in providers if p['id']=='codex')
+        self.assertEqual((codex['voice_draft_model_id'],codex['voice_draft_effort']), ('gpt-6-luna','low'))
+        self.assertEqual((codex['semantic_model_id'],codex['semantic_effort']), ('gpt-6.2-sol','low'))
+
     def test_persona_goes_through_each_clis_own_mechanism(self):
         self.chat("--provider", "claude", "--persona-file", str(self.persona), "--voice")
         argv = self.calls("claude")[0]["argv"]
@@ -540,6 +560,46 @@ class Assistant(unittest.TestCase):
         self.assertNotIn("--append-system-prompt", call["argv"])
 
 
+    def test_semantic_protocol_is_explicit_and_tool_free(self):
+        for answer, decision in (("WAIT", "wait"), ("RESPOND\nA short answer.", "respond"),
+                                 ("Ordinary prose says WAIT", "error"), ("RESPOND: answer", "error")):
+            events = self.events(self.invoke("chat", "--provider", "claude", "--voice", "--draft", "--semantic",
+                                             stdin="Maybe a map", FAKE_ANSWER=answer))
+            self.assertEqual(next(e['decision'] for e in events if e['event'] == 'semantic'), decision)
+            if decision != 'respond':
+                self.assertFalse(any(e['event'] in ('delta', 'done') for e in events))
+            argv = self.calls('claude')[-1]['argv']
+            self.assertEqual(argv[argv.index('--tools') + 1], '')
+        ordinary = self.events(self.invoke("chat", "--provider", "claude", "--voice", "--draft",
+                                           stdin="Quote a label", FAKE_ANSWER="WAIT"))
+        self.assertFalse(any(e['event'] == 'semantic' for e in ordinary))
+
+    def test_decision_precedes_answer_without_streaming_unvalidated_text(self):
+        env = {**self.env, 'FAKE_ANSWER': 'RESPOND\nFirst second third fourth.', 'FAKE_DELAY': '0.08'}
+        process = subprocess.Popen([str(HELPER), 'chat', '--provider', 'claude', '--voice', '--draft', '--semantic'],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, env=env)
+        process.stdin.write('Explain this please')
+        process.stdin.close()
+        events = [(json.loads(line), time.monotonic()) for line in process.stdout]
+        process.stdout.close()
+        self.assertEqual(process.wait(), 0)
+        intent = next(t for e,t in events if e['event'] == 'semantic')
+        delta = next(t for e,t in events if e['event'] == 'delta')
+        self.assertGreater(delta-intent, .15)
+        self.assertEqual(events[-1][0]['event'], 'done')
+
+    def test_optional_delivery_column_keeps_schema_one_compatible(self):
+        result = self.chat('--provider', 'claude', stdin='Hello')
+        cid = result[0]['conversation']
+        db = sqlite3.connect(self.data / 'assistant.sqlite')
+        self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 1)
+        # The old helper inserts explicit columns and ignores delivery on read.
+        db.execute("INSERT INTO turns(id,conversation_id,seq,role,text,time) VALUES(?,?,?,?,?,?)",
+                   ('a'*32,cid,2,'user','Old writer',1))
+        db.commit()
+        self.assertEqual(db.execute('SELECT delivery FROM turns WHERE id=?', ('a'*32,)).fetchone()[0], '')
+        db.close()
+
     def test_draft_forks_session_without_writing_history_until_committed(self):
         # First turn establishes a Claude session.
         first = self.chat("--provider", "claude", "--voice", stdin="How many ounces in a cup?")
@@ -615,7 +675,11 @@ class Assistant(unittest.TestCase):
         self.chat("--provider", "claude", "--conversation", cid_m, "--voice",
                   "--interrupted", "Rome was founded in…", stdin="Wait, what about Athens?")
         sent = self.calls("claude")[-1]["stdin"]
-        self.assertIn('You had already said: "Rome was founded in…"', sent)
+        self.assertIn('Application playback evidence: Rome was founded in…', sent)
+        self.assertIn('not proof it was heard', sent)
+        previous = self.show(cid_m)["turns"][-3]
+        self.assertIn('not proof it was heard', previous['delivery'])
+        self.assertEqual(previous['text'], 'Eight fluid ounces.')
         self.assertIn("Wait, what about Athens?", sent)
         self.assertEqual(self.show(cid_m)["turns"][-2]["text"], "Wait, what about Athens?")
 
