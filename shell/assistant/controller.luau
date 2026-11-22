@@ -6,6 +6,20 @@ return function(settings)
     local conversation, shown_turns = nil, {}
     -- The one answer in flight: its process, conversation, provider and text so far.
     local live = nil
+    local draft = nil
+    local DRAFT_PROVIDERS = {claude = true, codex = true}
+    local DRAFT_NEEDS_TOOLS = "<<needs-tools>>"
+    local function has_needs_tools(value)
+        return tostring(value or ""):find(DRAFT_NEEDS_TOOLS, 1, true) ~= nil
+    end
+    local function marker_prefix(value)
+        local trimmed = tostring(value or ""):gsub("^%s+", "")
+        if trimmed == "" then return false end
+        return has_needs_tools(trimmed) or DRAFT_NEEDS_TOOLS:sub(1, #trimmed) == trimmed
+    end
+    local function normalize(value)
+        return (tostring(value or ""):lower():gsub("[^a-z0-9]+", " "):gsub("^%s+", ""):gsub("%s+$", ""))
+    end
     local history, search_serial = {}, 0
     local answer_listeners = {}
     local probing, probed_at = false, -1
@@ -191,11 +205,67 @@ return function(settings)
         end)
     end
 
+    local function discard_draft()
+        local old = draft
+        draft = nil
+        if old and not old.done and not old.failed and old.id then
+            kill(old.id, "int")
+        end
+    end
+
+    local function rollback_conversation(cid, done)
+        if not cid then
+            if done then done(false) end
+            return
+        end
+        run(helper, {"rollback", cid}, function(out, code)
+            local res = code == 0 and decode(out) or nil
+            local deleted = res and res.deleted == true
+            if conversation == cid then
+                if deleted then
+                    conversation = nil
+                    show_turns({})
+                else
+                    load(cid)
+                end
+            end
+            if done then done(deleted) end
+        end)
+    end
+
+    local function commit_draft(info, done)
+        local args = {"commit", "--provider", info.provider, "--voice"}
+        if info.conversation then
+            args[#args + 1] = "--conversation"
+            args[#args + 1] = info.conversation
+        end
+        if info.session and info.session ~= "" then
+            args[#args + 1] = "--session"
+            args[#args + 1] = info.session
+        end
+        run(helper, args, function(out, code)
+            local res = code == 0 and decode(out) or nil
+            done(res and res.conversation or info.conversation)
+        end, {input = json.encode({prompt = info.prompt, answer = info.text})})
+    end
+
     local function finish(event)
         local finished = live
         live = nil
         refresh_live()
         if not finished then return end
+        if finished.discard then
+            if finished.draft or not finished.conversation then
+                if finished.on_discard then finished.on_discard(finished.conversation, false) end
+            else
+                rollback_conversation(finished.conversation, function(deleted)
+                    if finished.on_discard then
+                        finished.on_discard(deleted and nil or finished.conversation, deleted)
+                    end
+                end)
+            end
+            return
+        end
         if event.event == "error" then fail(event.message or "The answer failed") end
         if finished.conversation and (event.event == "done" or event.event == "stopped") then
             unremembered[finished.conversation] = clock
@@ -214,19 +284,19 @@ return function(settings)
         end
     end
 
-    local function send(prompt, voice)
-        prompt = (prompt or ""):gsub("^%s+", ""):gsub("%s+$", "")
-        if prompt == "" or live then return false end
-        local provider = current and providers[current]
-        if not provider or not provider.signed_in then return false end
-        fail(nil)
-        local args = {"chat", "--provider", provider.id}
-        if conversation then
+    local function chat_args(provider_id, cid, voice, opts)
+        local args = {"chat", "--provider", provider_id}
+        if cid then
             args[#args + 1] = "--conversation"
-            args[#args + 1] = conversation
+            args[#args + 1] = cid
         end
         if voice then args[#args + 1] = "--voice" end
-        for _, flag in ipairs(model_flags(provider.id)) do args[#args + 1] = flag end
+        if opts and opts.draft then args[#args + 1] = "--draft" end
+        if opts and opts.interrupted and opts.interrupted ~= "" then
+            args[#args + 1] = "--interrupted"
+            args[#args + 1] = opts.interrupted
+        end
+        for _, flag in ipairs(model_flags(provider_id)) do args[#args + 1] = flag end
         args[#args + 1] = "--persona"
         args[#args + 1] = setting("assistant.persona", true) == true and "on" or "off"
         args[#args + 1] = "--persona-file"
@@ -237,6 +307,17 @@ return function(settings)
         if orca == true then orca = "true" elseif orca == false then orca = "false" end
         args[#args + 1] = "--orca"
         args[#args + 1] = (orca == "true" or orca == "false") and orca or "auto"
+        return args
+    end
+
+    local function send(prompt, voice, opts)
+        prompt = (prompt or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if prompt == "" or live then return false end
+        local provider = current and providers[current]
+        if not provider or not provider.signed_in then return false end
+        discard_draft()
+        fail(nil)
+        local args = chat_args(provider.id, conversation, voice, opts)
         live = {conversation = conversation, slot = provider.slot, text = "", voice = voice == true, provider = provider.id}
         local turns = {}
         for _, turn in ipairs(shown_turns) do turns[#turns + 1] = turn end
@@ -264,6 +345,104 @@ return function(settings)
         return true
     end
 
+    local function start_draft(prompt, voice_conversation, opts)
+        prompt = (prompt or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if prompt == "" or live then return false end
+        local provider = current and providers[current]
+        if not provider or not provider.signed_in or not DRAFT_PROVIDERS[provider.id] then return false end
+        discard_draft()
+        local interrupted = opts and opts.interrupted or ""
+        local args = chat_args(provider.id, voice_conversation, true, {draft = true, interrupted = interrupted})
+        local mine = {
+            prompt = prompt, norm = normalize(prompt), provider = provider.id, slot = provider.slot,
+            conversation = voice_conversation, target_conversation = voice_conversation, session = "",
+            text = "", done = false, failed = false, interrupted = interrupted,
+        }
+        draft = mine
+        local function fallback_from_draft(active)
+            live = nil
+            conversation = active.base_conversation
+            refresh_live()
+            if not send(active.prompt, true, active.opts) then
+                for _, listener in ipairs(answer_listeners) do
+                    listener("error", active.base_conversation, "", true)
+                end
+            end
+        end
+        mine.id = spawn(helper, args, function(line)
+            local event = decode(line)
+            if not event then return end
+            if live and live.draft == mine then
+                if event.event == "start" then
+                    mine.target_conversation = event.conversation or mine.target_conversation
+                    live.conversation = mine.target_conversation
+                    if conversation == nil and fact.ai_open then conversation = live.conversation end
+                    refresh_live()
+                elseif event.event == "delta" then
+                    live.text = live.text .. (event.text or "")
+                    if live_here() and not marker_prefix(live.text) then text.ai_live = live.text end
+                elseif event.event == "needs_tools" or event.event == "error" or event.event == "draft_unsupported" then
+                    if live.discard then
+                        finish({event = "stopped"})
+                    else
+                        fallback_from_draft(live)
+                    end
+                elseif event.event == "done" then
+                    mine.session = event.session or mine.session
+                    if live.discard then
+                        finish({event = "stopped"})
+                    elseif has_needs_tools(live.text) then
+                        fallback_from_draft(live)
+                    else
+                        local active = live
+                        commit_draft({
+                            provider = active.provider, conversation = active.conversation,
+                            session = mine.session, prompt = active.prompt, text = active.text,
+                        }, function(cid)
+                            active.conversation = cid or active.conversation
+                            if live == active then finish(event) end
+                        end)
+                    end
+                elseif event.event == "stopped" then
+                    finish(event)
+                end
+                return
+            end
+            if draft ~= mine then return end
+            if event.event == "draft_unsupported" or event.event == "needs_tools" then
+                mine.failed = true
+                draft = nil
+            elseif event.event == "start" then
+                mine.target_conversation = event.conversation or mine.target_conversation
+            elseif event.event == "delta" then
+                mine.text = mine.text .. (event.text or "")
+            elseif event.event == "done" then
+                if has_needs_tools(mine.text) then
+                    mine.failed = true
+                    draft = nil
+                else
+                    mine.done = true
+                    mine.session = event.session or ""
+                    mine.target_conversation = event.conversation or mine.target_conversation
+                end
+            elseif event.event == "stopped" or event.event == "error" then
+                mine.failed = true
+                if draft == mine then draft = nil end
+            end
+        end, function(_, code)
+            if live and live.draft == mine then
+                if live.discard then
+                    finish({event = "stopped"})
+                else
+                    fallback_from_draft(live)
+                end
+            elseif draft == mine and not mine.done then
+                draft = nil
+            end
+        end, {input = prompt})
+        return true
+    end
+
     local function open()
         fact.ai_picker = false
         fact.ai_menu_open = false
@@ -287,6 +466,7 @@ return function(settings)
     end
 
     local function new_chat()
+        discard_draft()
         leave(nil)
         conversation = nil
         show_turns({})
@@ -375,6 +555,7 @@ return function(settings)
             fact.ai_picker = false
             return
         end
+        discard_draft()
         current = index + 1
         publish_current()
         settings.choose(provider.id)
@@ -506,15 +687,81 @@ return function(settings)
         signin = signin,
         settle = function() if #providers > 0 then settle() end end,
         -- Voice: one conversation per spell of conversation mode; answers go to the provider in use.
-        ask = function(prompt, voice_conversation)
+        ask = function(prompt, voice_conversation, opts)
             if live then return false end
+            prompt = (prompt or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            if prompt == "" then return false end
+            local provider = current and providers[current]
+            local interrupted = opts and opts.interrupted or ""
+            if draft and provider and draft.provider == provider.id
+                and draft.conversation == voice_conversation
+                and draft.interrupted == interrupted
+                and draft.norm == normalize(prompt) and not draft.failed and not has_needs_tools(draft.text) then
+                local taken = draft
+                draft = nil
+                fail(nil)
+                if taken.done then
+                    local cid = taken.target_conversation or voice_conversation
+                    commit_draft({
+                        provider = taken.provider, conversation = cid,
+                        session = taken.session, prompt = prompt, text = taken.text,
+                    }, function(saved)
+                        saved = saved or cid
+                        if saved then
+                            unremembered[saved] = clock
+                            if conversation == saved then load(saved) end
+                        end
+                        if not fact.ai_open or conversation ~= saved or fact.ai_view ~= 0 then
+                            fact.ai_ready = true
+                            fact.ai_ready_slot = taken.slot
+                            ready_for = saved
+                        end
+                        for _, listener in ipairs(answer_listeners) do
+                            listener("done", saved, taken.text, true)
+                        end
+                    end)
+                    return true
+                end
+                conversation = taken.target_conversation or voice_conversation
+                live = {
+                    id = taken.id, draft = taken, prompt = prompt, opts = opts,
+                    base_conversation = voice_conversation,
+                    conversation = taken.target_conversation or voice_conversation,
+                    slot = taken.slot, text = taken.text, voice = true, provider = taken.provider,
+                }
+                local turns = {}
+                for _, turn in ipairs(shown_turns) do turns[#turns + 1] = turn end
+                turns[#turns + 1] = {role = "user", text = prompt, voice = true}
+                if conversation or fact.ai_open then show_turns(turns) end
+                fact.ai_actions = false
+                refresh_live()
+                if live_here() and marker_prefix(live.text) then text.ai_live = "" end
+                return true, live
+            end
+            discard_draft()
             local keep = conversation
             conversation = voice_conversation
-            local ok = send(prompt, true)
+            local ok = send(prompt, true, opts)
             if not ok then conversation = keep end
             return ok, live
         end,
-        stop = function() if live then kill(live.id, "int") end end,
+        draft = start_draft,
+        discard_draft = discard_draft,
+        stop = function()
+            discard_draft()
+            if live then kill(live.id, "int") end
+        end,
+        cancel = function(on_done)
+            discard_draft()
+            if live then
+                live.discard = true
+                live.on_discard = on_done
+                kill(live.id, "int")
+            elseif on_done then
+                on_done(conversation, false)
+            end
+        end,
+        rollback = rollback_conversation,
         streaming = function() return live ~= nil end,
         on_answer = function(listener) answer_listeners[#answer_listeners + 1] = listener end,
         show = function(id) open(); fact.ai_view = 0; load(id) end,

@@ -48,6 +48,10 @@ let
     };
   } ]).config;
   quietManaged = builtins.readFile quiet.home.sessionVariables.TOHRU_MANAGED_CONFIG;
+  noEchoCancel = (home tohru.homeManagerModules.tohru [ {
+    programs.tohru = { enable = true; assistant.voice.echoCancel = false; };
+  } ]).config;
+  echoCancelConf = config.xdg.configFile."pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf".text;
   servicesOnly = (home tohru.homeManagerModules.tohru [ { programs.tohru.systemd.enable = true; } ]).config;
   roles = {
     tohru-bar = "tohru-run";
@@ -93,6 +97,18 @@ assert pkgs.lib.hasInfix "preferred_output = \"DP-CHECK\"" agentManaged;
 assert !(pkgs.lib.hasInfix "assistant" (builtins.readFile managed));
 assert config.programs.tohru.package.passthru.withVoice;
 assert !quiet.programs.tohru.package.passthru.withVoice;
+assert config.programs.tohru.assistant.voice.echoCancel;
+assert config.xdg.configFile ? "pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf";
+assert pkgs.lib.hasInfix "libpipewire-module-echo-cancel" echoCancelConf;
+assert pkgs.lib.hasInfix "aec/libspa-aec-webrtc" echoCancelConf;
+assert pkgs.lib.hasInfix "tohru-echo-cancel-source" echoCancelConf;
+assert pkgs.lib.hasInfix "tohru-echo-cancel-sink" echoCancelConf;
+assert pkgs.lib.hasInfix "priority.session = 0" echoCancelConf;
+assert !noEchoCancel.programs.tohru.assistant.voice.echoCancel;
+assert !(noEchoCancel.xdg.configFile ? "pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf");
+assert !quiet.programs.tohru.assistant.voice.echoCancel;
+assert !(quiet.xdg.configFile ? "pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf");
+assert !(disabled.xdg.configFile ? "pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf");
 assert pkgs.lib.hasInfix "[assistant]\nasr_model = \"/asr\"\nkws_model = \"/k\"\nmemory = false\norca = \"false\"\nprovider = \"codex\"\ntts_model = \"/kokoro\"\nturn_model = \"/turn.onnx\"\nvad_model = \"/vad.onnx\"\nvoice = false\nvoice_wake = \"kws\"" quietManaged;
 assert !(pkgs.lib.hasInfix "voice_models" quietManaged);
 assert pkgs.lib.hasInfix "[assistant.models.codex]\neffort = \"high\"\nmodel = \"gpt-6.2-sol\"" quietManaged;

@@ -106,6 +106,8 @@ tts_model = "/home/me/models/kokoro-82m"
 
 `/home/me/models/kokoro-82m` holds `model.onnx`, `tokenizer.json` and, optionally, `voices/`. The same paths with `tohru config set assistant.vad_model /home/me/models/silero-vad/silero_vad.onnx` and so on, or in [Home Manager](nix.md#voice-models).
 
+Echo cancellation is configured at the PipeWire level via the Home Manager option `programs.tohru.assistant.voice.echoCancel` (enabled by default whenever `programs.tohru.assistant.voice.enable` is true), which installs `~/.config/pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf` without changing the default audio devices. `TOHRU_VOICE_SOURCE` and `TOHRU_VOICE_SINK` override the PipeWire capture source and TTS playback sink that `tohru-voice` selects.
+
 ## Precedence
 
 From lowest to highest: built-in defaults, the writable file, the managed file, runtime overrides.

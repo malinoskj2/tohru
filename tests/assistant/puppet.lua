@@ -57,6 +57,25 @@ local hearts = false
 for _ = 1, 40 do tick(); hearts = hearts or (fact.ai_dg_h1_a or 0) > 0 end
 assert(puppet.pose() == "cheer" and hearts and fact.ai_dg_cell == 16)
 
+-- Pausing speech drops the mouth and switches to listening; resuming returns to explaining.
+puppet.mouth(0.6, 5)
+tick()
+assert(fact.ai_dg_mouth == 5)
+puppet.speaking(false, "paused")
+assert(settle() == "listening" and fact.ai_dg_mouth == -1)
+puppet.speaking(true)
+assert(settle() == "explain")
+-- An interrupted speech end does not overwrite listening or thinking with pleased.
+puppet.speaking(false, "paused")
+assert(settle() == "listening")
+puppet.speaking(false, "interrupted")
+assert(select(2, puppet.pose()) == "listening")
+puppet.thinking()
+puppet.speaking(false, "interrupted")
+assert(select(2, puppet.pose()) == "thinking")
+puppet.speaking(true)
+assert(settle() == "explain")
+
 -- Done: pleased for a moment, then neutral and the idle breath again.
 puppet.speaking(false)
 assert(settle() == "pleased")

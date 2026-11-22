@@ -10,6 +10,7 @@ return function(assistant, puppet)
     local DRAGON_LINGER = 5000
     local spoken, hide_serial = nil, 0
     local loaded = false
+    local barged, cancelling, queued, interrupted_spoken = false, false, nil, nil
     local GREETINGS = {"Yes?", "I'm here.", "Mm? What is it?", "You called?", "Here I am. What do you need?", "Hello again."}
     local greeted = 0
 
@@ -33,12 +34,34 @@ return function(assistant, puppet)
     end
 
     local function quiet()
+        barged, cancelling, queued, interrupted_spoken = false, false, nil, nil
+        if assistant.discard_draft then assistant.discard_draft() end
         assistant.listening(false)
         fact.ai_speaking = false
         fact.ai_mouth = 0
         fact.ai_voice_conversation = false
         puppet.calm()
         show_dragon(false)
+    end
+
+    local function ask_turn(prompt, opts)
+        puppet.thinking()
+        if not assistant.ask(prompt, conversation, opts) then
+            if assistant.streaming and assistant.streaming() then
+                queued = {text = prompt, opts = opts}
+            else
+                send({cmd = "say", conversation = conversation,
+                    text = "I can't answer yet. Sign in to an assistant from the chat popup first."})
+            end
+        end
+    end
+
+    local function flush_queued()
+        if queued then
+            local next_turn = queued
+            queued = nil
+            ask_turn(next_turn.text, next_turn.opts)
+        end
     end
 
     local start
@@ -68,6 +91,8 @@ return function(assistant, puppet)
             if message.on then
                 show_dragon(true)
             else
+                if assistant.discard_draft then assistant.discard_draft() end
+                interrupted_spoken = nil
                 if conversation then assistant.remember(conversation) end
                 conversation = nil
                 puppet.calm()
@@ -77,6 +102,17 @@ return function(assistant, puppet)
             puppet.hearing(message.on == true)
         elseif event == "sentence" then
             puppet.sentence(tostring(message.text or ""))
+        elseif event == "draft" then
+            if assistant.draft and not cancelling then
+                local opts = interrupted_spoken and {interrupted = interrupted_spoken} or nil
+                if not assistant.draft(message.text, conversation, opts) then
+                    send({cmd = "draft", ok = false})
+                end
+            else
+                send({cmd = "draft", ok = false})
+            end
+        elseif event == "draft_cancel" then
+            if assistant.discard_draft then assistant.discard_draft() end
         elseif event == "wake" then
             local pick = math.random(#GREETINGS - (greeted > 0 and 1 or 0))
             if greeted > 0 and pick >= greeted then pick = pick + 1 end
@@ -84,26 +120,58 @@ return function(assistant, puppet)
             send({cmd = "say", text = GREETINGS[greeted], conversation = conversation})
         elseif event == "turn" then
             puppet.thinking()
-            if not assistant.ask(message.text, conversation) then
-                local busy = assistant.streaming and assistant.streaming()
-                send({cmd = "say", conversation = conversation, text = busy and "One moment, I'm still on the last thing you asked."
-                    or "I can't answer yet. Sign in to an assistant from the chat popup first."})
+            local opts = interrupted_spoken and {interrupted = interrupted_spoken} or nil
+            interrupted_spoken = nil
+            if cancelling or (assistant.streaming and assistant.streaming()) then
+                queued = {text = message.text, opts = opts}
+            else
+                queued = nil
+                ask_turn(message.text, opts)
             end
         elseif event == "speaking" then
-            fact.ai_speaking = message.on == true
-            puppet.speaking(message.on == true)
-            if message.on then
+            local state = message.paused and "paused" or (message.interrupted and "interrupted" or nil)
+            fact.ai_speaking = message.on == true and not message.paused
+            puppet.speaking(fact.ai_speaking, state)
+            if fact.ai_speaking then
                 spoken = message.conversation or conversation
                 show_dragon(true)
             else
                 fact.ai_mouth = 0
-                if not fact.ai_voice_conversation then linger() end
+                if state ~= "paused" and not fact.ai_voice_conversation then linger() end
             end
         elseif event == "mouth" then
             fact.ai_mouth = tonumber(message.level) or 0
             puppet.mouth(fact.ai_mouth, tonumber(message.viseme))
         elseif event == "barge" then
-            assistant.stop()
+            if assistant.discard_draft then assistant.discard_draft() end
+            if type(message.spoken) == "string" and message.spoken ~= "" then
+                interrupted_spoken = message.spoken
+            end
+            if message.continuation then
+                if assistant.streaming and assistant.streaming() then
+                    if assistant.cancel then
+                        cancelling = true
+                        assistant.cancel(function(next_conv)
+                            cancelling = false
+                            conversation = next_conv
+                            flush_queued()
+                        end)
+                    else
+                        barged = true
+                        assistant.stop()
+                    end
+                elseif conversation and assistant.rollback then
+                    cancelling = true
+                    assistant.rollback(conversation, function(deleted)
+                        cancelling = false
+                        if deleted then conversation = nil end
+                        flush_queued()
+                    end)
+                end
+            else
+                if assistant.streaming and assistant.streaming() then barged = true end
+                assistant.stop()
+            end
         elseif event == "paused" then
             fact.ai_voice_paused = (message.reason or "") ~= ""
         elseif event == "error" then
@@ -127,8 +195,17 @@ return function(assistant, puppet)
     end
 
     assistant.on_answer(function(kind, conv, answer, voice)
-        if not voice or not id then return end
+        if not id then return end
+        if not voice then
+            if queued then flush_queued() end
+            return
+        end
         conversation = conv or conversation
+        if barged then
+            barged = false
+            flush_queued()
+            return
+        end
         if kind == "done" then
             send({cmd = "say", text = answer or "", conversation = conversation})
         elseif kind == "error" then
@@ -136,6 +213,7 @@ return function(assistant, puppet)
         else
             send({cmd = "thinking", on = false})
         end
+        flush_queued()
     end)
 
     on("assistant_hush", function() send({cmd = "hush"}) end)

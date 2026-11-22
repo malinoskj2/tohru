@@ -25,15 +25,27 @@ SPEECH_START_WINDOWS = 2
 SPEECH_CONTINUE = 0.35
 PREROLL_MS = 128
 TAIL_MS = 160
-PAUSE_MS = 200
-INCOMPLETE_HOLD_MS = 1000
-SILENCE_FALLBACK_MS = 800
+PAUSE_MS = 220
+DRAFT_PAUSE_MS = 220
+DRAFT_MIN_WORDS = 4
+MAX_DRAFTS = 2
+DRAFT_HOLD_MS = 480
+COMPLETE_HOLD_MS = 650
+INCOMPLETE_HOLD_MS = 1050
 MAX_UTTERANCE_MS = 30_000
 BARGE_MS = 200
 BARGE_FLOOR = 0.025
-# Without echo cancellation the microphone hears the dragon too: barge-in must beat its playback by
-# this factor, and speech is ignored for a moment after it stops.
+BARGE_AEC_FLOOR = 0.065
+BARGE_PREROLL_MS = 1000
+BARGE_DECIDE_MS = 1000
+BARGE_FADE_MS = 100
+RESUME_FADE_MS = 25
 ECHO_MARGIN = 1.6
+ECHO_COUPLING_INIT = 1.0
+ECHO_COUPLING_MIN = 0.05
+ECHO_COUPLING_MAX = 2.0
+ECHO_COUPLING_ALPHA = 0.12
+ECHO_PLAYBACK_MIN = 0.02
 ECHO_TAIL_S = 0.4
 TURN_COMPLETE = 0.5
 TURN_WINDOW = SAMPLE_RATE * 8
@@ -47,6 +59,18 @@ KWS_THRESHOLD = 0.05
 WAKE_FORMS = {"tohru", "toru", "taro", "tarou", "taru", "tauru", "teru", "tooru", "tohro", "toro", "toroo", "torou", "torru", "torue", "toeru"}
 WAKE_SPLIT_FIRST = {"to", "too", "two", "toe", "tow", "toh"}
 WAKE_SPLIT_SECOND = {"ru", "rue", "roo", "rew", "ro", "row", "who"}
+BACKCHANNEL_WORDS = {
+    "mm", "mmm", "mhm", "mhmm", "hm", "hmm", "hmmm", "m",
+    "uh", "um", "umm", "ah", "oh", "eh", "er", "huh", "uhuh", "aha",
+    "yeah", "yep", "yup", "ya", "ok", "okay", "right", "sure", "alright",
+}
+UNFINISHED_TAIL = {
+    "a", "an", "and", "are", "as", "at", "be", "because", "but", "by", "er",
+    "for", "from", "have", "hm", "hmm", "if", "in", "into", "is", "like", "my",
+    "of", "on", "or", "our", "so", "that", "the", "their", "then", "this", "to",
+    "uh", "um", "umm", "was", "were", "what", "when", "where", "which", "while",
+    "who", "will", "with", "would", "your",
+}
 
 
 def emit(event, **fields):
@@ -64,6 +88,56 @@ def log(message):
 
 def words(text):
     return re.findall(r"[a-z0-9']+", text.lower())
+
+
+def normalize_transcript(text):
+    return " ".join(re.findall(r"[a-z0-9]+", (text or "").lower()))
+
+
+def is_unfinished(text):
+    stripped = (text or "").strip()
+    if stripped.endswith((",", ";", ":", "—", "-")):
+        return True
+    tokens = normalize_transcript(text).split()
+    return bool(tokens) and tokens[-1] in UNFINISHED_TAIL
+
+
+def join_continuation(first, second):
+    first = (first or "").strip().rstrip(".…")
+    second = (second or "").strip()
+    if not first:
+        return second
+    if not second:
+        return first
+    if len(second) > 1 and second[0].isupper() and not second.startswith(("I ", "I'")):
+        second = second[0].lower() + second[1:]
+    return f"{first} {second}"
+
+
+def fade_samples(np, audio, start, count, fade_in=False):
+    end = min(len(audio), start + count)
+    if end <= start:
+        return b""
+    ramp = np.linspace(0.0, 1.0, end - start, dtype=np.float32) if fade_in else np.linspace(1.0, 0.0, end - start, dtype=np.float32)
+    faded = audio[start:end] * ramp
+    return (np.clip(faded, -1, 1) * 32767).astype(np.int16).tobytes()
+
+
+def is_backchannel(text):
+    tokens = words(text)
+    return not tokens or all(token in BACKCHANNEL_WORDS for token in tokens)
+
+
+def find_echo_cancel(kind):
+    try:
+        names = subprocess.run(["pactl", "list", "short", kind], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    for line in names.splitlines():
+        parts = line.split("\t")
+        if len(parts) > 1 and "echo-cancel" in parts[1] and not parts[1].endswith(".monitor"):
+            return parts[1]
+    return None
 
 
 def wake_split(transcript):
@@ -630,7 +704,7 @@ def make_engine(settings, warn=None):
 
 
 class Speaker:
-    """Plays one answer at a time and reports the mouth envelope; hush() stops it at once."""
+    """Plays one answer at a time and reports the mouth envelope; pause() holds it and hush() stops it."""
 
     def __init__(self, np, voice):
         self.np = np
@@ -638,12 +712,38 @@ class Speaker:
         self.engine = Espeak({})
         self.jobs = queue.Queue()
         self.stop = threading.Event()
+        self.cond = threading.Condition()
+        self.paused = False
         self.speaking = False
+        self.conversation = None
+        self.spoken_parts = []
+        self.current_part = ""
+        self.current_fraction = 0.0
         self.level = 0.0
         self.recent = []
+        self.last_audio = 0.0
         self.quiet_after = 0.0
         self.player = None
         threading.Thread(target=self.loop, daemon=True).start()
+
+    def spoken_so_far(self):
+        with self.cond:
+            parts = list(self.spoken_parts)
+            if self.current_part and self.current_fraction > 0.05:
+                tokens = self.current_part.split()
+                if tokens:
+                    count = max(1, min(len(tokens), round(len(tokens) * self.current_fraction)))
+                    prefix = " ".join(tokens[:count])
+                    if count < len(tokens):
+                        prefix += "…"
+                    parts.append(prefix)
+            return " ".join(parts).strip()
+
+    def sink(self):
+        configured = os.environ.get("TOHRU_VOICE_SINK")
+        if configured:
+            return configured
+        return find_echo_cancel("sinks")
 
     def echo_level(self):
         """The loudest playback in the last moments: what the microphone may still be hearing of it."""
@@ -655,83 +755,168 @@ class Speaker:
 
     def say(self, text, conversation):
         self.hush()
-        self.stop.clear()
-        self.jobs.put((text, conversation))
+        stop = threading.Event()
+        with self.cond:
+            self.stop = stop
+        self.jobs.put((text, conversation, stop))
+
+    def pause(self):
+        with self.cond:
+            if not self.speaking or self.paused:
+                return
+            self.paused = True
+            self.level = 0.0
+            self.recent = []
+            conversation = self.conversation
+            self.cond.notify_all()
+            emit("mouth", level=0, viseme=REST)
+            emit("speaking", on=False, paused=True, conversation=conversation)
+
+    def resume(self):
+        with self.cond:
+            if not self.paused or self.stop.is_set():
+                return
+            self.paused = False
+            conversation = self.conversation
+            emit("speaking", on=True, conversation=conversation)
+            self.cond.notify_all()
 
     def hush(self):
-        self.stop.set()
+        with self.cond:
+            self.stop.set()
+            self.paused = False
+            self.cond.notify_all()
         player = self.player
         if player and player.poll() is None:
             player.kill()
 
     def loop(self):
         while True:
-            text, conversation = self.jobs.get()
-            if self.stop.is_set():
+            text, conversation, stop = self.jobs.get()
+            if stop.is_set():
                 continue
+            self.last_audio = 0.0
             try:
-                self.play(text, conversation)
+                self.play(text, conversation, stop)
             except Exception as error:
                 emit("error", message=f"speech failed: {error}")
             finally:
-                self.speaking = False
-                self.level = 0.0
-                self.quiet_after = time.monotonic() + ECHO_TAIL_S
-                emit("speaking", on=False, conversation=conversation)
+                with self.cond:
+                    interrupted = stop.is_set()
+                    self.speaking = False
+                    self.paused = False
+                    self.conversation = None
+                    self.level = 0.0
+                    self.recent = []
+                    self.quiet_after = self.last_audio + ECHO_TAIL_S if self.last_audio else 0.0
+                    self.cond.notify_all()
+                fields = {"on": False, "conversation": conversation}
+                if interrupted:
+                    fields["interrupted"] = True
+                emit("speaking", **fields)
                 self.voice.spoke()
 
-    def play(self, text, conversation):
+    def play(self, text, conversation, stop):
         np = self.np
         played = 0.0
         started = None
         rate = None
+        with self.cond:
+            self.spoken_parts = []
+            self.current_part = ""
+            self.current_fraction = 0.0
         for audio, chunk_rate, part, timeline in self.engine.stream(text, np):
-            if self.stop.is_set():
+            if stop.is_set():
                 break
             if self.player is None or rate != chunk_rate:
-                self.close_player()
+                self.close_player(stop)
                 rate = chunk_rate
+                argv = ["pacat", "--playback", "--raw", "--format=s16le", f"--rate={rate}", "--channels=1",
+                        "--client-name=tohru-voice", "--stream-name=Dragon", "--latency-msec=60"]
+                sink = self.sink()
+                if sink:
+                    argv.append(f"--device={sink}")
                 self.player = subprocess.Popen(
-                    ["pacat", "--playback", "--raw", "--format=s16le", f"--rate={rate}", "--channels=1",
-                     "--client-name=tohru-voice", "--stream-name=Dragon", "--latency-msec=60"],
-                    stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 started, played = time.monotonic(), 0.0
             if not self.speaking:
-                self.speaking = True
-                emit("speaking", on=True, conversation=conversation)
+                with self.cond:
+                    self.speaking = True
+                    self.conversation = conversation
+                    emit("speaking", on=True, conversation=conversation)
+            with self.cond:
+                self.current_part = part
+                self.current_fraction = 0.0
             emit("sentence", text=part)
             step = rate // MOUTH_FPS
             pcm = (np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes()
             if time.monotonic() > started + played:
                 started, played = time.monotonic(), 0.0
             for index in range(0, len(audio), step):
-                if self.stop.is_set():
-                    break
+                resumed = False
+                with self.cond:
+                    need_fade = self.paused and not stop.is_set()
+                if need_fade and self.player and index > 0:
+                    tail = fade_samples(np, audio, index, max(1, int(rate * BARGE_FADE_MS / 1000)), fade_in=False)
+                    if tail:
+                        try:
+                            self.player.stdin.write(tail)
+                            self.player.stdin.flush()
+                        except (BrokenPipeError, ValueError):
+                            stop.set()
+                with self.cond:
+                    while self.paused and not stop.is_set():
+                        resumed = True
+                        self.cond.wait()
+                    if stop.is_set():
+                        break
+                if resumed:
+                    started, played = time.monotonic(), 0.0
                 chunk = audio[index:index + step]
                 rms = float(np.sqrt(np.mean(chunk * chunk))) if len(chunk) else 0.0
                 self.level = rms
                 now = time.monotonic()
+                self.last_audio = now
                 self.recent = [(t, v) for t, v in self.recent if now - t < ECHO_TAIL_S] + [(now, rms)]
+                if resumed and len(chunk) > 0:
+                    ramp_n = min(len(chunk), max(1, int(rate * RESUME_FADE_MS / 1000)))
+                    raw = chunk.copy()
+                    raw[:ramp_n] *= np.linspace(0.0, 1.0, ramp_n, dtype=np.float32)
+                    chunk_bytes = (np.clip(raw, -1, 1) * 32767).astype(np.int16).tobytes()
+                else:
+                    chunk_bytes = pcm[index * 2:(index + step) * 2]
                 try:
-                    self.player.stdin.write(pcm[index * 2:(index + step) * 2])
+                    self.player.stdin.write(chunk_bytes)
                     self.player.stdin.flush()
                 except (BrokenPipeError, ValueError):
-                    self.stop.set()
+                    stop.set()
                     break
+                if len(audio) > 0:
+                    with self.cond:
+                        self.current_fraction = min(1.0, (index + len(chunk)) / len(audio))
                 mouth = 0.0 if rms < 1e-4 else max(0.0, min(1.0, (20 * math.log10(rms) + 42) / 30))
-                if timeline:
-                    shape = viseme_at(timeline, index / rate + VISEME_LEAD_S) if mouth > 0.05 else REST
-                    emit("mouth", level=round(mouth, 2), viseme=shape)
-                else:
-                    emit("mouth", level=round(mouth, 2))
+                with self.cond:
+                    if not self.paused and not stop.is_set():
+                        if timeline:
+                            shape = viseme_at(timeline, index / rate + VISEME_LEAD_S) if mouth > 0.05 else REST
+                            emit("mouth", level=round(mouth, 2), viseme=shape)
+                        else:
+                            emit("mouth", level=round(mouth, 2))
                 played += len(chunk) / rate
                 delay = started + played - time.monotonic()
                 if delay > 0:
-                    time.sleep(delay)
-        self.close_player()
+                    with self.cond:
+                        if not self.paused and not stop.is_set():
+                            self.cond.wait(delay)
+            if not stop.is_set():
+                with self.cond:
+                    self.spoken_parts.append(part)
+                    self.current_part = ""
+                    self.current_fraction = 0.0
+        self.close_player(stop)
         emit("mouth", level=0)
 
-    def close_player(self):
+    def close_player(self, stop=None):
         player, self.player = self.player, None
         if player is None:
             return
@@ -739,7 +924,7 @@ class Speaker:
             player.stdin.close()
         except (BrokenPipeError, ValueError):
             pass
-        if self.stop.is_set():
+        if (stop or self.stop).is_set():
             player.kill()
         player.wait()
 
@@ -793,6 +978,11 @@ class Voice:
         self.paused_reason = None
         self.conversation_until = 0.0
         self.thinking = False
+        self.cancelled_thinking = False
+        self.last_turn_text = ""
+        self.pending_continuation = ""
+        self.echo_cancelled = False
+        self.echo_coupling = ECHO_COUPLING_INIT
         self.load_on_conversation = False
         self.reset_utterance()
         self.monitor = Monitor(self)
@@ -810,6 +1000,10 @@ class Voice:
         self.turn_checked = False
         self.turn_complete = None
         self.barge_ms = 0.0
+        self.barge_pending = False
+        self.barge_decide_ms = 0.0
+        self.draft_text = ""
+        self.draft_count = 0
         self.preroll = []
         self.spotting = False
         self.recognizer.drop()
@@ -854,6 +1048,7 @@ class Voice:
             return
         self.paused_reason = reason
         if reason:
+            self.cancelled_thinking = False
             self.speaker.hush()
             self.stop_capture()
             emit("paused", reason=reason)
@@ -864,20 +1059,13 @@ class Voice:
         configured = os.environ.get("TOHRU_VOICE_SOURCE")
         if configured:
             return configured
-        try:
-            names = subprocess.run(["pactl", "list", "short", "sources"], capture_output=True, text=True, timeout=5).stdout
-        except (OSError, subprocess.TimeoutExpired):
-            return None
-        for line in names.splitlines():
-            parts = line.split("\t")
-            if len(parts) > 1 and "echo-cancel" in parts[1] and not parts[1].endswith(".monitor"):
-                return parts[1]
-        return None
+        return find_echo_cancel("sources")
 
     def start_capture(self):
         argv = ["parec", "--raw", "--format=s16le", f"--rate={SAMPLE_RATE}", "--channels=1", "--latency-msec=32",
                 "--client-name=tohru-voice", "--stream-name=Wake word"]
         source = self.source()
+        self.echo_cancelled = bool(source and "echo-cancel" in source)
         if source:
             argv.append(f"--device={source}")
         self.capture = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
@@ -927,7 +1115,7 @@ class Voice:
         np = self.np
         probability = self.silero(window)
         rms = float(np.sqrt(np.mean(window * window)))
-        if self.speaker.speaking:
+        if self.speaker.speaking and not self.barge_pending:
             self.listen_for_barge(window, probability, rms)
             return
         if self.speaker.deaf() and not self.in_speech:
@@ -936,7 +1124,8 @@ class Voice:
         if not self.in_speech:
             self.preroll.append(window)
             self.preroll = self.preroll[-max(1, round(PREROLL_MS / WINDOW_MS)):]
-            self.start_run = self.start_run + 1 if probability >= SPEECH_START else 0
+            above = probability >= SPEECH_START and (not self.thinking or rms > BARGE_FLOOR)
+            self.start_run = self.start_run + 1 if above else 0
             if self.start_run >= SPEECH_START_WINDOWS:
                 self.begin(self.preroll)
             if self.conversation_until and not self.in_conversation() and not self.thinking:
@@ -967,10 +1156,41 @@ class Voice:
         for w in preroll:
             self.recognizer.feed(w)
 
+    def discard_draft(self):
+        if self.draft_text:
+            self.draft_text = ""
+            emit("draft_cancel")
+
+    def draft_candidate(self, text):
+        if not text:
+            return ""
+        if self.in_conversation():
+            request = wake_split(text)
+            request = sentence(text) if request is None else request
+            return join_continuation(self.pending_continuation, request) if self.pending_continuation else request
+        request = wake_split(text)
+        return request or ""
+
+    def maybe_draft(self, partial):
+        if self.rejected or self.spotting or self.barge_pending or self.thinking or self.draft_count >= MAX_DRAFTS:
+            return
+        if self.draft_text or self.turn_complete is False:
+            return
+        request = self.draft_candidate(partial)
+        if not request or is_unfinished(request):
+            return
+        norm = normalize_transcript(request)
+        if len(norm.split()) < DRAFT_MIN_WORDS:
+            return
+        self.draft_text = norm
+        self.draft_count += 1
+        emit("draft", text=request)
+
     def hear(self, window, speech):
         self.utterance.append(window)
         self.speech_ms += WINDOW_MS
         if speech:
+            self.discard_draft()
             self.quiet_ms = 0.0
             self.turn_checked = False
             self.turn_complete = None
@@ -980,18 +1200,42 @@ class Voice:
             self.spot(window, speech)
         elif not self.rejected and (speech or self.quiet_ms <= TAIL_MS):
             self.recognizer.feed(window)
+        partial = "" if (self.rejected or self.spotting) else self.recognizer.partial()
+        if self.barge_pending:
+            self.barge_decide_ms += WINDOW_MS
+            if not is_backchannel(partial):
+                self.confirm_barge()
+            elif self.barge_decide_ms >= BARGE_DECIDE_MS:
+                self.end_turn()
+                return
+        elif self.thinking and self.in_conversation() and not self.spotting and not self.rejected:
+            if not is_backchannel(partial):
+                self.cancel_thinking()
         if not self.rejected and not self.spotting and not self.in_conversation() and self.speech_ms >= 320:
-            partial = self.recognizer.partial()
             if not wake_possible(partial) or (self.speech_ms >= WAKE_DECIDE_MS and wake_split(partial) is None):
+                self.discard_draft()
                 self.rejected = True
                 self.recognizer.drop()
+        if self.draft_text and not self.rejected:
+            current_norm = normalize_transcript(self.draft_candidate(partial))
+            if current_norm != self.draft_text:
+                self.discard_draft()
         if self.quiet_ms >= PAUSE_MS and not self.turn_checked:
             self.turn_checked = True
             if self.turn is not None and not self.rejected:
                 audio = np_concat(self.np, self.utterance)
                 self.turn_complete = self.turn.probability(audio) > TURN_COMPLETE
-        hold = SILENCE_FALLBACK_MS if self.turn_complete is None else (PAUSE_MS if self.turn_complete else INCOMPLETE_HOLD_MS)
+        if not speech and self.quiet_ms >= DRAFT_PAUSE_MS:
+            self.maybe_draft(partial)
+        unfinished = not self.rejected and not self.spotting and is_unfinished(partial)
+        if unfinished or self.turn_complete is False:
+            hold = INCOMPLETE_HOLD_MS
+        elif self.draft_text or self.turn_complete is True:
+            hold = DRAFT_HOLD_MS
+        else:
+            hold = COMPLETE_HOLD_MS
         if self.rejected and self.quiet_ms >= PAUSE_MS:
+            self.discard_draft()
             self.reset_utterance()
             return
         if self.quiet_ms >= hold or self.speech_ms >= MAX_UTTERANCE_MS:
@@ -1011,62 +1255,151 @@ class Voice:
             for w in self.utterance:
                 self.recognizer.feed(w)
 
-    def end_turn(self):
-        transcript = "" if self.rejected else self.recognizer.finish()
-        self.reset_utterance()
-        self.deliver(transcript)
+    def confirm_barge(self):
+        self.barge_pending = False
+        self.barge_decide_ms = 0.0
+        spoken = self.speaker.spoken_so_far() if hasattr(self.speaker, "spoken_so_far") else ""
+        self.speaker.hush()
+        self.last_turn_text = ""
+        self.pending_continuation = ""
+        if spoken:
+            emit("barge", spoken=spoken)
+        else:
+            emit("barge")
 
-    def deliver(self, transcript):
+    def resume_barge(self):
+        self.discard_draft()
+        self.barge_pending = False
+        self.barge_decide_ms = 0.0
+        self.reset_utterance()
+        self.speaker.resume()
+
+    def cancel_thinking(self):
+        self.thinking = False
+        self.cancelled_thinking = True
+        if self.last_turn_text:
+            self.pending_continuation = self.last_turn_text
+            self.last_turn_text = ""
+        if self.pending_continuation:
+            emit("barge", continuation=True)
+        else:
+            emit("barge")
+
+    def end_turn(self):
+        pending = self.barge_pending
+        active_draft = self.draft_text
+        transcript = "" if self.rejected else self.recognizer.finish()
+        if pending:
+            if is_backchannel(transcript):
+                self.resume_barge()
+                return
+            self.confirm_barge()
+        self.reset_utterance()
+        self.deliver(transcript, active_draft)
+
+    def deliver(self, transcript, active_draft=""):
         if not transcript.strip():
+            self.pending_continuation = ""
+            if active_draft:
+                emit("draft_cancel")
             return
         if self.in_conversation():
             request = wake_split(transcript)
             request = sentence(transcript) if request is None else request
+            if self.thinking:
+                if is_backchannel(request):
+                    if active_draft:
+                        emit("draft_cancel")
+                    return
+                self.cancel_thinking()
+            if self.pending_continuation:
+                request = join_continuation(self.pending_continuation, request)
+                self.pending_continuation = ""
             self.extend_conversation()
             if request:
+                if active_draft and normalize_transcript(request) != active_draft:
+                    emit("draft_cancel")
+                self.cancelled_thinking = False
+                self.last_turn_text = request
                 self.thinking = True
                 emit("turn", text=request)
+            elif active_draft:
+                emit("draft_cancel")
             return
         request = wake_split(transcript)
         if request is None:
+            if active_draft:
+                emit("draft_cancel")
             return
         self.extend_conversation()
         self.conversation(True)
         if request:
+            if active_draft and normalize_transcript(request) != active_draft:
+                emit("draft_cancel")
+            self.cancelled_thinking = False
+            self.last_turn_text = request
             self.thinking = True
             emit("turn", text=request)
         else:
+            if active_draft:
+                emit("draft_cancel")
             emit("wake")
 
     def listen_for_barge(self, window, probability, rms):
-        floor = max(BARGE_FLOOR, ECHO_MARGIN * self.speaker.echo_level())
+        playback = self.speaker.echo_level()
+        if self.echo_cancelled:
+            floor = BARGE_AEC_FLOOR
+        else:
+            floor = max(BARGE_FLOOR, ECHO_MARGIN * self.echo_coupling * playback)
         if probability >= SPEECH_START and rms > floor:
             self.barge_ms += WINDOW_MS
-        elif probability < SPEECH_CONTINUE or rms < floor / 2:
-            self.barge_ms = 0.0
+        else:
+            if probability < SPEECH_CONTINUE or rms < floor / 2:
+                self.barge_ms = 0.0
+            if not self.echo_cancelled and self.barge_ms == 0.0 and playback >= ECHO_PLAYBACK_MIN and rms <= floor:
+                ratio = min(ECHO_COUPLING_MAX, max(ECHO_COUPLING_MIN, rms / playback))
+                self.echo_coupling += ECHO_COUPLING_ALPHA * (ratio - self.echo_coupling)
         self.preroll.append(window)
-        self.preroll = self.preroll[-max(1, round(BARGE_MS / WINDOW_MS) + 2):]
+        self.preroll = self.preroll[-max(1, round(BARGE_PREROLL_MS / WINDOW_MS)):]
         if self.barge_ms >= BARGE_MS:
-            self.speaker.hush()
             self.barge_ms = 0.0
-            emit("barge")
+            self.barge_pending = True
+            self.barge_decide_ms = 0.0
+            self.speaker.pause()
             self.extend_conversation()
             self.begin(self.preroll)
 
     def command(self, message):
         cmd = message.get("cmd")
         if cmd == "say":
+            if self.cancelled_thinking:
+                self.cancelled_thinking = False
+                return
             text = speakable(str(message.get("text", "")))
             self.thinking = False
+            self.last_turn_text = ""
+            self.pending_continuation = ""
             if text and not self.paused_reason:
+                if self.in_speech and not self.barge_pending:
+                    self.discard_draft()
+                    self.reset_utterance()
                 self.speaker.say(text, message.get("conversation"))
             else:
                 self.spoke()
         elif cmd == "hush":
+            self.barge_pending = False
+            self.barge_decide_ms = 0.0
             self.speaker.hush()
+        elif cmd == "draft":
+            if not message.get("ok"):
+                self.draft_text = ""
         elif cmd == "thinking":
+            if self.cancelled_thinking and not message.get("on"):
+                self.cancelled_thinking = False
+                return
             self.thinking = bool(message.get("on"))
             if not self.thinking:
+                self.last_turn_text = ""
                 self.spoke()
         elif cmd == "tts":
             try:
@@ -1074,6 +1407,10 @@ class Voice:
             except Exception as error:
                 emit("error", message=f"speech settings: {error}")
         elif cmd == "end":
+            self.discard_draft()
+            self.cancelled_thinking = False
+            self.last_turn_text = ""
+            self.pending_continuation = ""
             self.conversation_until = 0.0
             self.conversation(False)
 

@@ -68,6 +68,7 @@ With a standalone Home Manager flake, pass `inputs` through `extraSpecialArgs`, 
 | `programs.tohru.lock.style` | `null` | Sets the managed `lock.style` |
 | `programs.tohru.notifications.position` | `null` | Sets the managed `notifications.position` |
 | `programs.tohru.assistant.voice.enable` | `true` | False writes `assistant.voice = false` and builds the package without the voice service or its Python dependencies |
+| `programs.tohru.assistant.voice.echoCancel` | `programs.tohru.assistant.voice.enable` | Installs `~/.config/pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf` (`libpipewire-module-echo-cancel`, WebRTC AEC) with `tohru-echo-cancel-source` and `tohru-echo-cancel-sink` at priority 0 so default audio devices stay unchanged |
 | `programs.tohru.assistant.voice.wake` | `null` | Sets the managed `assistant.voice_wake` (`kws` or `asr`) |
 | `programs.tohru.assistant.voice.vadModel` | `null` | Sets the managed `assistant.vad_model` |
 | `programs.tohru.assistant.voice.asrModel` | `null` | Sets the managed `assistant.asr_model` |
