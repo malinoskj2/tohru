@@ -1,5 +1,5 @@
 -- Navigation belongs to this window; all values belong to the existing process owner.
-return function(applied)
+return function(applied, publish_corner)
     local pages = {"Bar", "Appearance", "System"}
     local history, position, rows = {1}, 1, {}
     local snapshot = tohru_settings.snapshot()
@@ -20,7 +20,14 @@ return function(applied)
         return setting.value .. " · " .. provenance .. " · Activate to cycle"
     end
     local function refresh(settings)
-        snapshot = settings or snapshot
+        if settings then
+            if settings["assistant.voice_source"] and snapshot["assistant.voice_source"]
+                and settings["assistant.voice_source"].value ~= snapshot["assistant.voice_source"].value then
+                source_status = "Unknown · effectiveness unmeasured"
+            end
+            snapshot = settings
+            if publish_corner then publish_corner(settings) end
+        end
         local pval = snapshot["appearance.palette"] and snapshot["appearance.palette"].value
         fact.palette_id = 0
         for idx, name in ipairs(choices["appearance.palette"]) do
@@ -110,9 +117,15 @@ return function(applied)
         else text.settings_ui_error=tostring(settings) end
     end
     on("settings_open_request",function()
-        refresh(tohru_settings.snapshot())
-        if devices then devices() end
-        fact.settings_open=true
+        fact.settings_open = true
+        local ok, settings = pcall(tohru_settings.reload)
+        if not ok then
+            text.settings_ui_error = tostring(settings)
+            return
+        end
+        text.settings_ui_error = ""
+        refresh(settings)
+        devices()
     end)
     on("settings_close",function() fact.settings_open=false end)
     on("settings_category",navigate)
@@ -146,7 +159,7 @@ return function(applied)
             refresh()
         end)
     end
+    refresh(snapshot)
     devices()
-    refresh()
     return refresh
 end
