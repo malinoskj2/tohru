@@ -2240,7 +2240,7 @@ def assistant_settings():
 
         def walk(prefix, node):
             for key, value in node.items():
-                if prefix.startswith("discord.") and (prefix != "discord." or key not in ("enabled", "read", "post", "guild_id", "channels", "token_file")):
+                if prefix.startswith("discord.") and (prefix != "discord." or key not in ("enabled", "read", "post", "guild_id", "channels", "token_file", "allowed_user_id")):
                     continue
                 if isinstance(value, dict):
                     walk(f"{prefix}{key}.", value)

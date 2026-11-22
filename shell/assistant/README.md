@@ -112,4 +112,4 @@ from terminal `on_answer` notifications; speculative drafts never publish deltas
 speech. The voice service inherits stderr into the bar's existing journal stream.
 Live wake-accepted transcript text is transient UI state above the dragon.
 
-Optional built-in [Discord bot support](../../docs/discord.md) reads bounded channel history and posts through the provider CLI's shell tool. Configure `assistant.discord.*` in Tohru, default off; no MCP, Orca or Nix service is required.
+Optional built-in [Discord bot support](../../docs/discord.md) reads bounded channel history and posts through the provider CLI's shell tool. Configure `assistant.discord.*` in Tohru, default off; one explicit valid `allowed_user_id` is required before any Discord API access, and history returns only that author's messages. No MCP, Orca or Nix service is required.
