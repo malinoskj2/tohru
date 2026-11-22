@@ -41,6 +41,9 @@ end
 publish(tohru_settings.snapshot())
 text.managed_config = tohru_settings.managed_path() or ""
 on("config_reload", function() change(tohru_settings.reload) end)
+on("setting_assistant_reduced_motion", function(n)
+    change(function() return tohru_settings.set("assistant.reduced_motion", n ~= 0) end)
+end)
 on("setting_mooncoil", function(n)
     change(function() return tohru_settings.set("bar.mooncoil", n ~= 0) end)
 end)
@@ -99,7 +102,7 @@ local assistant = require("assistant/controller")({
     choose = function(id) change(function() return tohru_settings.set("assistant.provider", id) end) end,
     value = function(key) local entry = tohru_settings.snapshot()[key]; return entry and entry.value end,
 })
-voice = require("assistant/voice")(assistant, require("assistant/puppet")())
+voice = require("assistant/voice")(assistant, require("assistant/puppet")(require("assistant/full-body")))
 voice.configure(tohru_settings.snapshot())
 on("setting_assistant", function()
     local key, raw = text.setting_key or "", text.setting_value or ""

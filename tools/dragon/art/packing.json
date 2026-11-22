@@ -1,0 +1,74 @@
+{
+  "frames": 562,
+  "cols": 24,
+  "rows": 24,
+  "cell": 240,
+  "logical_cell": 150,
+  "poses": 20,
+  "source_sha256": "119b678914b223343479db8980a8893d1510b1b64c01ba00f5685537df3afa9f",
+  "assets": {
+    "body.webp": {
+      "bytes": 7365870,
+      "width": 5760,
+      "height": 5760,
+      "rgba_bytes": 132710400,
+      "logical_width": 3600,
+      "logical_height": 3600
+    },
+    "faces.webp": {
+      "bytes": 551644,
+      "width": 800,
+      "height": 4080,
+      "rgba_bytes": 13056000,
+      "logical_width": 400,
+      "logical_height": 2040
+    },
+    "travel.webp": {
+      "bytes": 1540598,
+      "width": 768,
+      "height": 6120,
+      "rgba_bytes": 18800640,
+      "logical_width": 384,
+      "logical_height": 3060
+    },
+    "eyes.webp": {
+      "bytes": 4876,
+      "width": 400,
+      "height": 52,
+      "rgba_bytes": 83200,
+      "logical_width": 200,
+      "logical_height": 26
+    },
+    "mouths.webp": {
+      "bytes": 3700,
+      "width": 352,
+      "height": 40,
+      "rgba_bytes": 56320,
+      "logical_width": 176,
+      "logical_height": 20
+    },
+    "heart.png": {
+      "bytes": 2221,
+      "width": 48,
+      "height": 48,
+      "rgba_bytes": 9216,
+      "logical_width": 24,
+      "logical_height": 24
+    }
+  },
+  "memory": {
+    "current": {
+      "disk_bytes": 9468909,
+      "source_rgba_bytes": 164715776,
+      "logical_rgba_1x_bytes": 59841344,
+      "logical_rgba_2x_bytes": 239365376
+    },
+    "previous": {
+      "disk_bytes": 3730951,
+      "source_rgba_bytes": 75028736,
+      "logical_rgba_1x_bytes": 18757184,
+      "logical_rgba_2x_bytes": 75028736
+    },
+    "note": "RGBA8 pixel budgets; excludes decoder temporaries, mipmaps, fonts and driver allocations. Not a measured VRAM delta."
+  }
+}

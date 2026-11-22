@@ -1,0 +1,23 @@
+{
+  "catalogFingerprint": "b17affeb3ff683cb54811c1c17bc068036194438678638aa9687f760074638b7",
+  "model": {
+    "compatibility": "unverified",
+    "dependencies": [],
+    "enabled": true,
+    "files": [
+      {
+        "imports": [],
+        "path": "rife49.pth",
+        "sha256": "e55fd00f3cc184e3c65961f4bb827a9da022e78eed36b055242c0ac30000d533",
+        "size": 21345274,
+        "target": "rife49.pth",
+        "url": "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation/releases/download/models/rife49.pth"
+      }
+    ],
+    "kind": "checkpoint",
+    "loader": "frame-interp --model rife49 (ComfyUI-Frame-Interpolation IFNet); rife46.pth is GMFSS union's IFNet"
+  },
+  "runner": "/nix/store/6shww2pb74ivg46z21s5bwcq0j7210wg-frame-interpolation-0-unstable-2026-11-18/share/frame-interpolation",
+  "interpolation": "RIFE 4.9, multiplier=4, fast_mode=True, ensemble=True, float32, batch_size=1; separate premultiplied RGB and alpha fields",
+  "peak_gpu_allocated_bytes": 83891200
+}

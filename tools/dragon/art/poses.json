@@ -1,0 +1,402 @@
+[
+  {
+    "name": "loose_hover",
+    "eyes": [
+      [
+        118.5,
+        93
+      ],
+      [
+        153.5,
+        88.6
+      ]
+    ],
+    "mouth": [
+      136,
+      100
+    ],
+    "mode": "rest",
+    "shadow": 1,
+    "note": "Loose suspended legs and uncoiled S tail"
+  },
+  {
+    "name": "nested_hover",
+    "eyes": [
+      [
+        112,
+        134.7
+      ],
+      [
+        152.2,
+        130.3
+      ]
+    ],
+    "mouth": [
+      136,
+      145
+    ],
+    "mode": "rest",
+    "shadow": 1,
+    "note": "Knees nested high, lower body enclosed by tail"
+  },
+  {
+    "name": "reclined_hover",
+    "eyes": [
+      [
+        73.9,
+        130.3
+      ],
+      [
+        119.6,
+        119.4
+      ]
+    ],
+    "mouth": [
+      103.5,
+      134
+    ],
+    "mode": "rest",
+    "shadow": 1,
+    "note": "Reclined pelvis and two legs extended sideways"
+  },
+  {
+    "name": "right_bank",
+    "eyes": [
+      [
+        200.6,
+        95.2
+      ],
+      [
+        233.8,
+        104.9
+      ]
+    ],
+    "mouth": [
+      219,
+      109
+    ],
+    "mode": "listen",
+    "shadow": 1,
+    "note": "Right three-quarter bank, knees behind, tail to left"
+  },
+  {
+    "name": "high_knee",
+    "eyes": [
+      [
+        126.7,
+        108.5
+      ],
+      [
+        170.6,
+        106.7
+      ]
+    ],
+    "mouth": [
+      150,
+      119
+    ],
+    "mode": "rest",
+    "shadow": 1,
+    "note": "One knee raised, other leg dangling, offset tail"
+  },
+  {
+    "name": "left_glide",
+    "eyes": [
+      [
+        35.9,
+        142.4
+      ],
+      [
+        65.2,
+        140.7
+      ]
+    ],
+    "mouth": [
+      47,
+      151
+    ],
+    "mode": "drift",
+    "shadow": 0.85,
+    "note": "Near horizontal left float, legs trailing, open tail"
+  },
+  {
+    "name": "rising_bank",
+    "eyes": [
+      [
+        199.7,
+        72.2
+      ],
+      [
+        230.8,
+        70.8
+      ]
+    ],
+    "mouth": [
+      218,
+      80
+    ],
+    "mode": "delight",
+    "shadow": 0.85,
+    "note": "Ascending right bank, feet swept back"
+  },
+  {
+    "name": "belly_hover",
+    "eyes": [
+      [
+        125,
+        168.6
+      ],
+      [
+        170,
+        162.8
+      ]
+    ],
+    "mouth": [
+      150,
+      180
+    ],
+    "mode": "drift",
+    "shadow": 0.85,
+    "note": "Belly faces viewer, broad balancing wings, feet behind"
+  },
+  {
+    "name": "long_hover",
+    "eyes": [
+      [
+        169.3,
+        46.4
+      ],
+      [
+        196.1,
+        37.5
+      ]
+    ],
+    "mouth": [
+      185,
+      48
+    ],
+    "mode": "drift",
+    "shadow": 0.85,
+    "note": "Long vertical torso, feet trailing, long low tail"
+  },
+  {
+    "name": "crossed_feet",
+    "eyes": [
+      [
+        114.6,
+        120.2
+      ],
+      [
+        158.2,
+        116.9
+      ]
+    ],
+    "mouth": [
+      142,
+      128
+    ],
+    "mode": "rest",
+    "shadow": 1,
+    "note": "Crossed floating feet, loose side coil"
+  },
+  {
+    "name": "hip_twist",
+    "eyes": [
+      [
+        74.2,
+        108.5
+      ],
+      [
+        118,
+        108.3
+      ]
+    ],
+    "mouth": [
+      96,
+      121
+    ],
+    "mode": "talk",
+    "shadow": 1,
+    "note": "Pelvis faces right beneath left-turning shoulders"
+  },
+  {
+    "name": "right_glide",
+    "eyes": [
+      [
+        241.7,
+        115
+      ],
+      [
+        266.8,
+        118.8
+      ]
+    ],
+    "mouth": [
+      258,
+      125
+    ],
+    "mode": "talk",
+    "shadow": 1,
+    "note": "Near profile right, near wing forward, tail stretched left"
+  },
+  {
+    "name": "forward_bank",
+    "eyes": [
+      [
+        60.3,
+        171.2
+      ],
+      [
+        95.6,
+        156.3
+      ]
+    ],
+    "mouth": [
+      83,
+      173
+    ],
+    "mode": "listen",
+    "shadow": 1,
+    "note": "Head and chest forward, hips and tail higher behind"
+  },
+  {
+    "name": "lean_back",
+    "eyes": [
+      [
+        132.5,
+        62.5
+      ],
+      [
+        170.3,
+        69.3
+      ]
+    ],
+    "mouth": [
+      147,
+      74
+    ],
+    "mode": "rest",
+    "shadow": 1,
+    "note": "Chest reclines while hips and feet advance"
+  },
+  {
+    "name": "side_float",
+    "eyes": [
+      [
+        129.3,
+        96.7
+      ],
+      [
+        163.7,
+        98.8
+      ]
+    ],
+    "mouth": [
+      141,
+      110
+    ],
+    "mode": "rest",
+    "shadow": 1,
+    "note": "Sideways recline, both legs forward, tail counterbalances"
+  },
+  {
+    "name": "ponder_hover",
+    "eyes": [
+      [
+        106.1,
+        98.5
+      ],
+      [
+        141.4,
+        91.5
+      ]
+    ],
+    "mouth": [
+      125,
+      105
+    ],
+    "mode": "think",
+    "shadow": 1,
+    "note": "Paw at cheek, tucked asymmetrical legs, hanging tail"
+  },
+  {
+    "name": "attentive_hover",
+    "eyes": [
+      [
+        79.2,
+        132.6
+      ],
+      [
+        118.4,
+        127.1
+      ]
+    ],
+    "mouth": [
+      100,
+      143
+    ],
+    "mode": "listen",
+    "shadow": 1,
+    "note": "Forward listening bank, feet drawn back, downward coil"
+  },
+  {
+    "name": "asymmetric_curl",
+    "eyes": [
+      [
+        169,
+        104
+      ],
+      [
+        206.5,
+        105.3
+      ]
+    ],
+    "mouth": [
+      191,
+      118
+    ],
+    "mode": "rest",
+    "shadow": 1,
+    "note": "Right curl, one knee tucked, one foot suspended"
+  },
+  {
+    "name": "bright_hover",
+    "eyes": [
+      [
+        62,
+        87.3
+      ],
+      [
+        97.1,
+        95.7
+      ]
+    ],
+    "mouth": [
+      79,
+      101
+    ],
+    "mode": "delight",
+    "shadow": 0.85,
+    "note": "Airborne stretch, raised wings and unequal legs"
+  },
+  {
+    "name": "open_hover",
+    "eyes": [
+      [
+        178,
+        86.6
+      ],
+      [
+        212.7,
+        87.9
+      ]
+    ],
+    "mouth": [
+      200,
+      98
+    ],
+    "mode": "talk",
+    "shadow": 1,
+    "note": "Right three-quarter conversation, open paw, tail tucked left"
+  }
+]

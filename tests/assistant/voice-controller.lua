@@ -208,3 +208,10 @@ local kills = #killed
 voice.configure(settings({["assistant.voice"] = true, ["assistant.voice_wake"] = "asr"}))
 assert(#killed == kills + 1 and #spawned == 5 and has(spawned[5].args, "--wake", "asr"))
 print("Voice service gating, turns, spoken answers, barge-in, memory hand-off, settings and restarts passed")
+
+-- Motion preferences apply live without restarting the microphone/model service.
+local starts = #spawned
+voice.configure(settings({["assistant.voice"] = true, ["assistant.voice_wake"] = "asr", ["assistant.reduced_motion"] = true}))
+assert(#spawned == starts and fact.ai_dg_reduced)
+voice.configure(settings({["assistant.voice"] = true, ["assistant.voice_wake"] = "asr", ["assistant.reduced_motion"] = false}))
+assert(#spawned == starts and not fact.ai_dg_reduced)

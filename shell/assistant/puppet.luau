@@ -1,5 +1,5 @@
 -- The voice dragon's animator. It plays the sheets in dragon/ at 24 frames a second, and only while she is on screen.
-return function()
+return function(full_body)
     local TICK = 42
     local POSES = {
         neutral = {cell = 0, talk = 12, mx = 0, my = 0, ex = 0, ey = 0},
@@ -19,11 +19,17 @@ return function()
         open_palms = {cell = 25, talk = 35, mx = 0, my = 0, ex = 0, ey = 0},
         chest_paw = {cell = 26, talk = 36, mx = 0, my = 0, ex = 0, ey = 0},
     }
+    for _, p in ipairs(full_body or {}) do
+        POSES[p.name] = {cell = p.cell, talk = p.cell, full = true, face = p.face, fx = p.fx, fy = p.fy, shadow = p.shadow}
+    end
     -- Drawn transitions (first cell among the moves, frames), played backwards for the way back.
     local MOVES = {
         {"neutral", "explain", 0, 17}, {"explain", "cheer", 17, 17, heart = 9},
         {"neutral", "laugh", 34, 17}, {"neutral", "thinking", 51, 18},
     }
+    for _, p in ipairs(full_body or {}) do
+        MOVES[#MOVES + 1] = {"neutral", p.name, p.first - 96, p.count, lip = p}
+    end
     -- Poses with no drawn in-between swap under a squash from their registered hub poses.
     local POPS = {
         {"listening", {"neutral", "explain"}},
@@ -48,8 +54,8 @@ return function()
         edges[a][#edges[a] + 1] = {to = b, step = step}
     end
     for _, m in ipairs(MOVES) do
-        edge(m[1], m[2], {kind = "move", first = m[3], count = m[4], back = false, to = m[2], heart = m.heart})
-        edge(m[2], m[1], {kind = "move", first = m[3], count = m[4], back = true, to = m[1]})
+        edge(m[1], m[2], {kind = "move", first = m[3], count = m[4], back = false, to = m[2], heart = m.heart, lip = m.lip})
+        edge(m[2], m[1], {kind = "move", first = m[3], count = m[4], back = true, to = m[1], lip = m.lip})
     end
     for _, item in ipairs(POPS) do
         local p, hubs = item[1], item[2]
@@ -97,6 +103,37 @@ return function()
     local flourish_in, flourish, flourish_at = 600, nil, 0
     local heart_t = -1
     local timer = nil
+    local load_generation = 0
+    local reduced, mode = false, "neutral"
+    local posture_age, posture_after = 0, 240
+    local recent = {}
+    local function remember(name)
+        if recent[#recent] == name then return end
+        recent[#recent + 1] = name
+        if #recent > 3 then table.remove(recent, 1) end
+    end
+    local REST = {"loose_hover", "nested_hover", "reclined_hover", "high_knee", "crossed_feet", "lean_back", "side_float", "asymmetric_curl"}
+    local WAIT = {"attentive_hover", "right_bank", "forward_bank", "loose_hover", "crossed_feet"}
+    local THINK = {"ponder_hover", "high_knee", "hip_twist", "nested_hover"}
+    local DRIFT = {"left_glide", "rising_bank", "belly_hover", "long_hover"}
+
+    local function next_posture(settling)
+        local source = mode == "listening" and WAIT or mode == "thinking" and THINK or REST
+        -- A spacious drift is occasional; it is followed by a longer quiet hold.
+        if mode == "neutral" and not settling and math.random() < 0.18 then source = DRIFT end
+        local pool = {}
+        for _, name in ipairs(source) do
+            local skip = name == pose
+            for _, previous in ipairs(recent) do skip = skip or name == previous end
+            if POSES[name] and not skip then pool[#pool + 1] = name end
+        end
+        if #pool == 0 then return end
+        local name = pool[math.random(#pool)]
+        remember(name)
+        target = name
+        posture_age = 0
+        posture_after = math.random(mode == "neutral" and 288 or 216, mode == "neutral" and 600 or 432)
+    end
 
     local function rnd(a, b) return a + math.random() * (b - a) end
     local LOOK = {
@@ -105,7 +142,13 @@ return function()
     }
 
     local function want(name)
-        target = name
+        target = reduced and "neutral" or name
+        if not reduced and POSES[name].full then remember(name) end
+        posture_age = 0
+        if reduced then
+            pose, target, plan, step = "neutral", "neutral", {}, nil
+            return
+        end
         if not timer then
             pose, plan, step = name, {}, nil
             phase = 0
@@ -129,10 +172,12 @@ return function()
         end
     end
 
-    -- body.webp holds the loop (0-95), the moves (96-164) and the poses (165-201).
+    -- body.webp retains the legacy cells (0-201); full-body metadata adds registered moves/keys after them.
     local FIRST = {[0] = 0, [1] = 96, [2] = 165}
-    local function draw(sheet, cell, eye, ex, ey)
+    local function draw(sheet, cell, eye, ex, ey, face)
         set("ai_dg_sheet", sheet)
+        set("ai_dg_face", face or -1)
+        set("ai_dg_travel", -1)
         set("ai_dg_cell", cell)
         set("ai_dg_frame", FIRST[sheet] + cell)
         set("ai_dg_eye", eye)
@@ -156,8 +201,20 @@ return function()
         elseif blink_at >= 0 then
             eye = ({0, 1, 1, 0})[blink_at + 1]
         end
-        set("ai_dg_tilt", tilt)
-        if talking and p.talk then
+        set("ai_dg_tilt", reduced and 0 or tilt)
+        set("ai_dg_shadow", p.shadow or 1)
+        if p.full then
+            local blink = blink_at >= 0 and ({1, 2, 2, 1})[blink_at + 1] or 0
+            draw(2, p.cell, -1, 0, 0, p.face * 24 + blink * 8 + (talking and mouth_cell or 0))
+            set("ai_dg_mouth", -1)
+            set("ai_dg_fx", p.fx)
+            set("ai_dg_fy", p.fy)
+        elseif reduced then
+            draw(2, talking and p.talk or p.cell, eye, p.ex, p.ey)
+            set("ai_dg_mouth", talking and mouth_cell or -1)
+            set("ai_dg_mx", 0)
+            set("ai_dg_my", 0)
+        elseif talking and p.talk then
             draw(2, p.talk, p.ex and eye or -1, p.ex, p.ey)
             set("ai_dg_mouth", mouth_cell)
             set("ai_dg_mx", p.mx)
@@ -184,6 +241,10 @@ return function()
 
     local function tick()
         since_change = since_change + 1
+        if not reduced and not talking and not step and hold == 0 and target == pose then
+            posture_age = posture_age + 1
+            if posture_age >= posture_after then next_posture() end
+        end
         if heart_t >= 0 then
             heart_t = heart_t + TICK / 1000
             if heart_t > 1.6 then heart_t = -1 end
@@ -196,7 +257,7 @@ return function()
                 elseif pose == "pleased" or pose == "listening" or pose == "surprised" then target = "neutral" end
             end
         end
-        if talking and pending and pending ~= target and quiet_events >= 5 and since_change >= change_after and not step then
+        if not reduced and talking and pending and pending ~= target and quiet_events >= 5 and since_change >= change_after and not step then
             target, pending = pending, nil
         end
         if not step and target ~= pose then
@@ -213,10 +274,17 @@ return function()
                 set("ai_dg_mouth", -1)
                 set("ai_dg_tilt", 0)
                 draw(1, step.first + i, -1)
+                if talking and step.lip then
+                    local anchor = step.lip.mouths[i + 1]
+                    set("ai_dg_travel", (step.lip.face * step.count + i) * 8 + mouth_cell)
+                    set("ai_dg_tx", anchor[1])
+                    set("ai_dg_ty", anchor[2])
+                end
                 if step.heart and frame == step.heart then heart_t = 0 end
                 frame = frame + 1
                 if frame >= step.count then
                     pose = step.to
+                    if #plan > 0 and plan[#plan].to ~= target then plan = route(pose, target) end
                     step, frame = table.remove(plan, 1), 0
                 end
             else
@@ -226,6 +294,7 @@ return function()
                 frame = frame + 1
                 rest()
                 if frame >= 5 then
+                    if #plan > 0 and plan[#plan].to ~= target then plan = route(pose, target) end
                     set("ai_dg_sq", 0)
                     step, frame = table.remove(plan, 1), 0
                 end
@@ -239,7 +308,7 @@ return function()
             end
             return
         end
-        if pose == "neutral" and not talking then
+        if not reduced and pose == "neutral" and not talking then
             if flourish then
                 flourish_at = flourish_at + 1
                 if (flourish == "flutter" and flourish_at >= 48) or (flourish == "look" and flourish_at >= 65) then
@@ -267,7 +336,7 @@ return function()
         rest()
     end
 
-    local VARIETY = {"explain", "right_gesture", "open_palms", "wing_lift", "lean_in", "chest_paw"}
+    local VARIETY = {"hip_twist", "right_glide", "open_hover", "reclined_hover", "loose_hover", "crossed_feet", "asymmetric_curl", "explain", "right_gesture", "open_palms", "wing_lift", "lean_in", "chest_paw"}
     local last_pick = nil
 
     local function any(s, patterns)
@@ -282,8 +351,8 @@ return function()
         local chosen = nil
         if s:find("%f[%a]ha%s?ha") or s:find("%f[%a]he%s?he%f[%A]") or s:find("%f[%a]hah%f[%A]") then
             chosen = "laugh"
-        elseif s:find("!") then
-            chosen = "cheer"
+        elseif s:find("!") and any(s, {"%f[%a]wonderful", "%f[%a]great", "%f[%a]yay", "%f[%a]lovely", "%f[%a]delighted"}) then
+            chosen = POSES.bright_hover and "bright_hover" or "cheer"
         elseif s:find("?") or any(s, {"%f[%a]curious%f[%A]", "%f[%a]wonder"}) then
             chosen = "head_tilt"
         elseif s:find(":") or s:find(";") or (select(2, s:gsub(",", "")) >= 2 and any(s, {"%f[%a]first%f[%A]", "%f[%a]second%f[%A]", "%f[%a]third%f[%A]", "%f[%a]then%f[%A]", "%f[%a]finally%f[%A]"})) then
@@ -312,7 +381,7 @@ return function()
             local skip = avoid or last_pick
             local pool = {}
             for _, p in ipairs(VARIETY) do
-                if p ~= skip then pool[#pool + 1] = p end
+                if p ~= skip and POSES[p] then pool[#pool + 1] = p end
             end
             chosen = pool[math.random(#pool)]
         end
@@ -322,18 +391,21 @@ return function()
 
     return {
         load = function(dir)
+            load_generation = load_generation + 1
+            local generation = load_generation
             if (dir or "") == "" then
-                for _, n in ipairs({"body", "eyes", "mouths", "heart"}) do text["ai_dg_" .. n .. "_src"] = "" end
+                for _, n in ipairs({"body", "eyes", "mouths", "heart", "faces", "travel"}) do text["ai_dg_" .. n .. "_src"] = "" end
                 fact.ai_dg_ready = false
+                fact.ai_dg_warm = false
                 return
             end
-            for _, n in ipairs({"body", "eyes", "mouths"}) do
+            for _, n in ipairs({"body", "eyes", "mouths", "faces", "travel"}) do
                 text["ai_dg_" .. n .. "_src"] = dir .. "/" .. n .. ".webp"
             end
             text.ai_dg_heart_src = dir .. "/heart.png"
             fact.ai_dg_ready = true
             fact.ai_dg_warm = true
-            after(3000, function() fact.ai_dg_warm = false end)
+            after(3000, function() if generation == load_generation then fact.ai_dg_warm = false end end)
         end,
         visible = function(on)
             if on and not timer then
@@ -349,49 +421,71 @@ return function()
                 end
             end
         end,
+        reduced = function(on)
+            if reduced == on then return end
+            reduced = on
+            fact.ai_dg_reduced = on
+            flourish, pending, hold = nil, nil, 0
+            if on then
+                pose, target, plan, step = "neutral", "neutral", {}, nil
+                heart_t = -1
+                heart(-1)
+                set("ai_dg_sq", 0)
+            end
+            posture_age, posture_after = 0, 288
+            if timer then rest() end
+        end,
         hearing = function(on)
             if on and not talking then
-                want("listening")
-            elseif not on and target == "listening" then
-                hold = 36
+                mode, hold = "listening", 0
+                want(POSES.attentive_hover and "attentive_hover" or "listening")
+            elseif not on and mode == "listening" then
+                -- A VAD silence is still quiet listening; it need not reset her whole body.
+                mode = "neutral"
+                posture_age, posture_after = 0, 288
+                if target == "listening" then hold = 36 end
             end
         end,
         thinking = function()
-            if not talking then want("thinking") end
+            if not talking then mode, hold = "thinking", 0; want(POSES.ponder_hover and "ponder_hover" or "thinking") end
         end,
         speaking = function(on, state)
             talking = on
             pending, quiet_events = nil, 0
             if on then
-                hold = 0
+                mode, hold = "speaking", 0
                 if not POSES[target].talk then want("explain") end
                 since_change = 0
             else
                 mouth_cell = 0
                 if state == "paused" then
-                    want("listening")
+                    mode = "listening"
+                    want(POSES.attentive_hover and "attentive_hover" or "listening")
                 elseif state == "interrupted" then
-                    if target ~= "listening" and target ~= "thinking" then want("neutral") end
+                    if mode ~= "listening" and mode ~= "thinking" then mode = "neutral"; want("neutral") end
                 else
-                    want("pleased")
+                    mode = "neutral"
+                    if POSES.nested_hover then next_posture(true) else want("pleased") end
                 end
             end
         end,
         sentence = function(text)
-            if talking then pending = pick(text, target) end
+            if talking and not reduced then pending = pick(text, target) end
         end,
         mouth = function(level, viseme)
             if level < 0.08 then quiet_events = quiet_events + 1 else quiet_events = 0 end
             if viseme then
-                mouth_cell = viseme
+                mouth_cell = math.max(0, math.min(7, math.floor(viseme)))
             elseif level < 0.08 then mouth_cell = 0
             elseif level < 0.3 then mouth_cell = 4
             elseif level < 0.55 then mouth_cell = 3
             else mouth_cell = 2 end
-            if timer and not step and talking and POSES[pose].talk then set("ai_dg_mouth", mouth_cell) end
+            if timer and not step and talking and POSES[pose].talk then
+                if POSES[pose].full then rest() else set("ai_dg_mouth", mouth_cell) end
+            end
         end,
         calm = function()
-            talking, pending = false, nil
+            talking, pending, mode, hold = false, nil, "neutral", 0
             want("neutral")
         end,
         pose = function() return pose, target end,
