@@ -16,7 +16,7 @@ fn actual_settings_search_history_and_managed_edits_share_the_owner() {
                 ['lock.style']={value='flooded-monolith',managed=false,runtime_override=false},
                 ['notifications.position']={value='top-right',managed=false,runtime_override=false},
                 ['assistant.reduced_motion']={value=false,managed=false,runtime_override=false}}
-        tohru_settings={snapshot=function() return config end,
+        tohru_settings={snapshot=function() return config end, reload=function() return config end,
           set=function(key,value)
             if denied then error('write refused') end
             local row=config[key]; row.value=value
@@ -33,7 +33,7 @@ fn actual_settings_search_history_and_managed_edits_share_the_owner() {
         .unwrap();
     lua.load(
         r#"
-        handlers.settings_open_request(); assert(fact.settings_open)
+        handlers.settings_open_request(); assert(fact.settings_open and text.settings_ui_error=="")
         assert(model.settings_rows[1].title=='Mooncoil mark')
         handlers.settings_row(0)
         assert(config['bar.mooncoil'].value and config['bar.mooncoil'].runtime_override)
