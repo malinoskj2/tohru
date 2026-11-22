@@ -24,6 +24,11 @@ return function(applied, publish_corner)
         ["lock.style"]={"still-glass","ribbon-key","flooded-monolith","drifting-frost-veil","unfolding-glass-capsule",
             "edge-glass-drawer","horizon-meniscus","refractive-typographic-lens","corner-anchor","bar-drop-curtain"},
         ["notifications.position"]={"top-right","bottom-right"},
+        ["assistant.afk_idle_seconds"]={60,120,300,600,900},
+        ["assistant.afk_probability_percent"]={0,25,50,75,100},
+        ["assistant.afk_idle_source"]={"passive","callbacks"},
+        ["assistant.afk_scene"]={"auto","screen_window","corner_nap","glass_inspection","upside_down_peek",
+            "window_perch","tail_chase","sleepy_drift","distant_flight","hide_peek","wing_grooming","waiting_for_you","quiet_rest"},
     }
     local function choice_detail(setting)
         local provenance
@@ -113,6 +118,23 @@ return function(applied, publish_corner)
             catalog[#catalog+1] = {page=4, title="Configure granted shortcuts", detail=(shortcut_report.portal_version or 0) >= 2 and "Open the desktop's shortcut configuration dialog" or "Requires portal v2; v1 supports initial setup only", editable=shortcut_report.configure_available, choice=true, operation="shortcut_configure"}
         end
         local bindings = shortcut_report.bindings or {}
+        if snapshot["assistant.afk_enabled"] then
+            catalog[#catalog+1] = switch(5,"assistant.afk_enabled","Desktop idle dragon scenes")
+            catalog[#catalog+1] = switch(5,"assistant.afk_quiet_rest","Small resting pose with reduced motion")
+            for _, item in ipairs({{"afk_idle_seconds","Desktop idle threshold (seconds)"},
+                {"afk_probability_percent","Chance per idle episode (%)"}, {"afk_scene","AFK replay scene"},
+                {"afk_idle_source","Desktop idle source"},
+                {"afk_seed","AFK replay seed"}, {"afk_scenes","Enabled AFK scene IDs"}}) do
+                local key="assistant."..item[1]
+                local entry=snapshot[key]
+                catalog[#catalog+1]={page=5,key=key,title=item[2],choice=true,editable=true,
+                    managed=entry.managed,temporary=entry.runtime_override,
+                    text_edit=item[1]=="afk_seed" or item[1]=="afk_scenes",
+                    detail=tostring(entry.value).." · "..(entry.managed and "Managed; edits are temporary" or "Saved in config.toml")}
+            end
+            catalog[#catalog+1]={page=5,title="AFK native playback",editable=false,
+                detail="Inactive until shared actor integration and supported scene art are installed; see tohru doctor"}
+        end
         for i=shortcut_offset+1,math.min(shortcut_offset+10,#bindings) do
             local binding = bindings[i]
             catalog[#catalog+1] = {page=4, title=binding.shortcut,

@@ -25,4 +25,12 @@ end
 commands={}
 applied({['assistant.reduced_motion']={value=true,managed=false,runtime_override=false}},nil)
 assert(#commands==1 and commands[1]=='emit config_reload')
+commands={}
+applied({['assistant.afk_enabled']={value=true,managed=true,runtime_override=true},
+    ['assistant.afk_seed']={value='42',managed=true,runtime_override=true}},nil)
+assert(commands[1]=='emit config_reload')
+assert(commands[2]=='text setting_key assistant.afk_enabled' and commands[3]=='text setting_value true')
+assert(commands[4]=='emit setting_assistant')
+assert(commands[5]=='text setting_key assistant.afk_seed' and commands[6]=='text setting_value 42')
+assert(commands[7]=='emit setting_assistant')
 print('Managed motion preferences reach the bar owner; persisted preferences reload normally')

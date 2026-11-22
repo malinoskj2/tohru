@@ -29,6 +29,10 @@ DEFAULTS = {
     "appearance.font_mono": "DejaVu Sans Mono",
     "assistant.voice_python": "python3", "assistant.voice_environment": "",
     "assistant.voice": True, "assistant.voice_source": "", "assistant.tts_engine": "kokoro",
+    "assistant.afk_enabled": False, "assistant.afk_idle_seconds": 300,
+    "assistant.afk_probability_percent": 50, "assistant.afk_seed": "",
+    "assistant.afk_scene": "auto", "assistant.afk_scenes": "all", "assistant.afk_quiet_rest": False,
+    "assistant.afk_idle_source": "passive",
     "assistant.vad_model": "", "assistant.asr_model": "", "assistant.turn_model": "",
     "assistant.kws_model": "", "assistant.tts_model": "", "assistant.voice_wake": "asr",
 }
@@ -77,7 +81,7 @@ def config():
         values.update(layer)
         if owned:
             managed.update(layer)
-    for name in ("wallpaper.enabled", "assistant.voice"):
+    for name in ("wallpaper.enabled", "assistant.voice", "assistant.afk_enabled", "assistant.afk_quiet_rest"):
         if type(values[name]) is not bool:
             raise ValueError(f"{name} must be boolean")
     if values["shortcuts.mode"] not in ("compositor","portal","disabled"):
@@ -89,9 +93,24 @@ def config():
         raise ValueError("supported wallpaper backend: mpvpaper")
     if values["idle.owner"] not in ("external", "tohru", "disabled"):
         raise ValueError("idle.owner must be external, tohru or disabled")
+    if values["assistant.afk_idle_source"] not in ("passive", "callbacks"):
+        raise ValueError("assistant.afk_idle_source must be passive or callbacks")
     for name in ("idle.lock_seconds", "idle.suspend_seconds"):
         if type(values[name]) is not int or not 0 <= values[name] <= 86400:
             raise ValueError(f"{name} must be an integer in 0..86400")
+    for name, minimum, maximum in (("assistant.afk_idle_seconds", 1, 86400), ("assistant.afk_probability_percent", 0, 100)):
+        if type(values[name]) is not int or not minimum <= values[name] <= maximum:
+            raise ValueError(f"{name} must be an integer in {minimum}..{maximum}")
+    scenes = {"screen_window", "corner_nap", "glass_inspection", "upside_down_peek", "window_perch",
+              "tail_chase", "sleepy_drift", "distant_flight", "hide_peek", "wing_grooming", "waiting_for_you", "quiet_rest"}
+    seed = values["assistant.afk_seed"]
+    if not isinstance(seed, str) or seed and (not re.fullmatch(r"[0-9]{1,10}", seed) or int(seed) > 2147483646):
+        raise ValueError("assistant.afk_seed must be empty or decimal text in 0..2147483646")
+    if not isinstance(values["assistant.afk_scene"], str) or values["assistant.afk_scene"] not in scenes | {"auto"}:
+        raise ValueError("unknown assistant.afk_scene")
+    enabled_scenes = values["assistant.afk_scenes"]
+    if not isinstance(enabled_scenes, str) or enabled_scenes not in ("all", "none") and (not enabled_scenes or len(enabled_scenes)>256 or not set(enabled_scenes.split(',')) <= scenes):
+        raise ValueError("assistant.afk_scenes must be all, none, or comma-separated scene IDs")
     for name, default in DEFAULTS.items():
         if isinstance(default, str) and (not isinstance(values[name], str) or any(unicodedata.category(c) == "Cc" for c in values[name])):
             raise ValueError(f"invalid {name}")

@@ -133,8 +133,8 @@ in stdenvNoCC.mkDerivation {
       --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_POLKIT_SCENE $out/share/tohru/shell/polkit/polkit.plm
-    for program in tohru-idle tohru-session-action; do
-      wrapProgram $out/bin/$program --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}"
+    for program in tohru-idle tohru-session-action tohru_afk_idle.py; do
+      wrapProgram $out/bin/$program --set TOHRU_RUNTIME ${runtime}/bin/pleamar --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}"
     done
     runHook postInstall
   '';

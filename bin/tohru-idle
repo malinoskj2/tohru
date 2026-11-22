@@ -16,6 +16,12 @@ def conflicting_owners():
         try:
             if proc.stat().st_uid!=os.getuid():continue
             name=(proc/'comm').read_text().strip()
+            if name == 'swayidle':
+                arguments=(proc/'cmdline').read_bytes().split(b'\0')
+                # This exact client observes idle only; it owns no lock/suspend
+                # commands and must not be mistaken for a competing idle owner.
+                if any(b'tohru_afk_idle.py' in arg for arg in arguments) and not any(arg in (b'lock',b'before-sleep',b'after-resume',b'unlock') for arg in arguments):
+                    continue
             if name in ('hypridle','swayidle','wayidle','xidlehook'):
                 names.append(name)
         except OSError:pass
@@ -26,6 +32,8 @@ def command(values):
     lock=shlex.quote(str(BIN/'tohru-session-action'))+' lock'
     sleep=shlex.quote(str(BIN/'tohru-session-action'))+' sleep'
     args=['swayidle','-w','lock',lock,'before-sleep',lock]
+    from tohru_afk_idle import owned_callbacks
+    args += owned_callbacks(values)
     if values['idle.lock_seconds']:
         args+=['timeout',str(values['idle.lock_seconds']),lock]
     if values['idle.suspend_seconds']:

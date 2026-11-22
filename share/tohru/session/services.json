@@ -28,6 +28,11 @@
     "program": "tohru-idle",
     "description": "Tohru idle owner"
   },
+  "afk": {
+    "program": "tohru_afk_idle.py serve",
+    "description": "Tohru passive desktop idle notifications",
+    "install": false
+  },
   "lock": {
     "program": "tohru-lock",
     "description": "Tohru session locker",

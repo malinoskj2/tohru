@@ -40,6 +40,71 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn afk_defaults_validation_and_managed_replay_preferences() {
+    let files = Fixture::new();
+    let mut owner = Owner::load(files.user(), None).unwrap();
+    assert_eq!(
+        owner.get(Key::AssistantAfkEnabled).value,
+        Value::Bool(false)
+    );
+    assert_eq!(
+        owner.get(Key::AssistantAfkIdleSeconds).value,
+        Value::Integer(300)
+    );
+    assert_eq!(
+        owner.get(Key::AssistantAfkProbability).value,
+        Value::Integer(50)
+    );
+    assert_eq!(
+        owner.get(Key::AssistantAfkSeed).value,
+        Value::Text(String::new())
+    );
+    for (key, value) in [
+        (Key::AssistantAfkEnabled, Value::Integer(1)),
+        (Key::AssistantAfkIdleSeconds, Value::Integer(0)),
+        (Key::AssistantAfkIdleSeconds, Value::Integer(86401)),
+        (Key::AssistantAfkProbability, Value::Integer(101)),
+        (Key::AssistantAfkSeed, Value::Integer(42)),
+        (Key::AssistantAfkSeed, Value::Text("-1".into())),
+        (Key::AssistantAfkSeed, Value::Text("2147483647".into())),
+        (Key::AssistantAfkScene, Value::Text("unknown".into())),
+        (
+            Key::AssistantAfkScenes,
+            Value::Text("screen_window,unknown".into()),
+        ),
+    ] {
+        assert!(owner.set(key, value).is_err(), "{}", key.name());
+    }
+    owner
+        .set(Key::AssistantAfkSeed, Value::Text("2147483646".into()))
+        .unwrap();
+    owner
+        .set(
+            Key::AssistantAfkScenes,
+            Value::Text("screen_window,wing_grooming".into()),
+        )
+        .unwrap();
+    assert_eq!(
+        Owner::load(files.user(), None)
+            .unwrap()
+            .get(Key::AssistantAfkSeed)
+            .value,
+        Value::Text("2147483646".into())
+    );
+    fs::write(files.managed(), "[assistant]\nafk_enabled = false\n").unwrap();
+    let mut managed = files.owner();
+    managed
+        .set(Key::AssistantAfkEnabled, Value::Bool(true))
+        .unwrap();
+    managed.reload().unwrap();
+    assert!(managed.get(Key::AssistantAfkEnabled).runtime_override);
+    assert_eq!(
+        files.owner().get(Key::AssistantAfkEnabled).value,
+        Value::Bool(false)
+    );
+}
+
+#[test]
 fn corner_size_bounds_atomic_reload_and_restart() {
     let files = Fixture::new();
     fs::write(

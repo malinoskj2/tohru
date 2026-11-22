@@ -21,6 +21,8 @@ def required_checks(values):
         core.update(("wallpaper","wallpaper.owner","outputs","executable.wayland-info"))
     if values.get("idle.owner") == "tohru":
         core.update(("executable.swayidle","protocol.idle-notify","protocol.session-lock","locker.pam","service.lock"))
+    if values.get("assistant.afk_enabled"):
+        core.add("assistant.afk")
     if values.get("assistant.voice"):
         core.update(("voice.dependencies","voice.vad_model","voice.asr_model"))
         core.update("executable."+name for name in ("parec","pacat","pactl","espeak-ng"))
@@ -66,6 +68,9 @@ def doctor(as_json=False):
     except (OSError,ValueError):
         add("config","invalid","Configuration cannot be read or validated","Check TOML types, absolute paths and managed-file readability; contents withheld")
         values={};managed=set()
+    add("assistant.afk", "unsupported" if values.get("assistant.afk_enabled") else "disabled",
+        "Policy/choreography available; shared native actor and authored AFK poses are not integrated",
+        "Keep AFK disabled until native composition and capture acceptance gates pass; no synthetic idle fallback")
     from tohru_discord import status as discord_status
     discord = discord_status()
     add("discord.configuration", "disabled" if not values.get("assistant.discord.enabled") else "configured" if discord.get("enabled") else "invalid",

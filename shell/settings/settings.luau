@@ -30,6 +30,15 @@ local function applied(settings, warning)
         end
     end
     tell_bar("emit config_reload")
+    for _, suffix in ipairs({"enabled","idle_seconds","probability_percent","seed","scene","scenes","quiet_rest","idle_source"}) do
+        local key="assistant.afk_"..suffix
+        local setting=settings[key]
+        if setting and setting.runtime_override then
+            tell_bar("text setting_key "..key)
+            tell_bar("text setting_value "..tostring(setting.value))
+            tell_bar("emit setting_assistant")
+        end
+    end
     for key, command in pairs(overrides) do
         local setting = settings[key]
         local event = setting and setting.runtime_override and command(setting.value)

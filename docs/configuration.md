@@ -11,6 +11,9 @@ Only the bar and Settings processes read settings; the bar forwards `notificatio
 
 ## Keys
 
+Optional desktop-idle dragon settings and their current implementation status
+are documented in [Desktop idle dragon scenes](assistant-afk.md).
+
 | Key | Type | Default | Effect |
 |---|---|---|---|
 | `bar.preferred_output` | string, up to 256 characters | `""` | Output name (such as `DP-1`) for the bar, its popups and the volume OSD. Empty means every output. With an output set, workspace monitor metadata filters its ribbon; unknown metadata remains visible |

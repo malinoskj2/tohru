@@ -8,6 +8,20 @@ use thiserror::Error;
 use toml_edit::{DocumentMut, Item, Table, value};
 
 const MAX_CONFIG_BYTES: u64 = 1024 * 1024;
+const AFK_SCENES: [&str; 12] = [
+    "screen_window",
+    "corner_nap",
+    "glass_inspection",
+    "upside_down_peek",
+    "window_perch",
+    "tail_chase",
+    "sleepy_drift",
+    "distant_flight",
+    "hide_peek",
+    "wing_grooming",
+    "waiting_for_you",
+    "quiet_rest",
+];
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Key {
@@ -41,6 +55,14 @@ pub enum Key {
     NotificationsPosition,
     AssistantVoice,
     AssistantReducedMotion,
+    AssistantAfkEnabled,
+    AssistantAfkIdleSeconds,
+    AssistantAfkProbability,
+    AssistantAfkSeed,
+    AssistantAfkScene,
+    AssistantAfkScenes,
+    AssistantAfkQuietRest,
+    AssistantAfkIdleSource,
     AssistantContextualEntrances,
     AssistantEntranceSeed,
     AssistantEntranceVariant,
@@ -173,7 +195,7 @@ pub const ORCA_VOICE_CHATS: [&str; 4] = ["home", "new", "foreground", "quick"];
 pub const ORCA_OFFLINE_MODES: [&str; 2] = ["error", "local"];
 
 impl Key {
-    pub const ALL: [Self; 116] = [
+    pub const ALL: [Self; 124] = [
         Self::ShortcutsMode,
         Self::ShortcutLauncher,
         Self::ShortcutSession,
@@ -204,6 +226,14 @@ impl Key {
         Self::NotificationsPosition,
         Self::AssistantVoice,
         Self::AssistantReducedMotion,
+        Self::AssistantAfkEnabled,
+        Self::AssistantAfkIdleSeconds,
+        Self::AssistantAfkProbability,
+        Self::AssistantAfkSeed,
+        Self::AssistantAfkScene,
+        Self::AssistantAfkScenes,
+        Self::AssistantAfkQuietRest,
+        Self::AssistantAfkIdleSource,
         Self::AssistantContextualEntrances,
         Self::AssistantEntranceSeed,
         Self::AssistantEntranceVariant,
@@ -325,6 +355,14 @@ impl Key {
             Self::NotificationsPosition => "notifications.position",
             Self::AssistantVoice => "assistant.voice",
             Self::AssistantReducedMotion => "assistant.reduced_motion",
+            Self::AssistantAfkEnabled => "assistant.afk_enabled",
+            Self::AssistantAfkIdleSeconds => "assistant.afk_idle_seconds",
+            Self::AssistantAfkProbability => "assistant.afk_probability_percent",
+            Self::AssistantAfkSeed => "assistant.afk_seed",
+            Self::AssistantAfkScene => "assistant.afk_scene",
+            Self::AssistantAfkScenes => "assistant.afk_scenes",
+            Self::AssistantAfkQuietRest => "assistant.afk_quiet_rest",
+            Self::AssistantAfkIdleSource => "assistant.afk_idle_source",
             Self::AssistantContextualEntrances => "assistant.contextual_entrances",
             Self::AssistantEntranceSeed => "assistant.entrance_seed",
             Self::AssistantEntranceVariant => "assistant.entrance_variant",
@@ -495,6 +533,14 @@ impl Key {
             Self::NotificationsPosition => (&["notifications"], "position"),
             Self::AssistantVoice => (&["assistant"], "voice"),
             Self::AssistantReducedMotion => (&["assistant"], "reduced_motion"),
+            Self::AssistantAfkEnabled => (&["assistant"], "afk_enabled"),
+            Self::AssistantAfkIdleSeconds => (&["assistant"], "afk_idle_seconds"),
+            Self::AssistantAfkProbability => (&["assistant"], "afk_probability_percent"),
+            Self::AssistantAfkSeed => (&["assistant"], "afk_seed"),
+            Self::AssistantAfkScene => (&["assistant"], "afk_scene"),
+            Self::AssistantAfkScenes => (&["assistant"], "afk_scenes"),
+            Self::AssistantAfkQuietRest => (&["assistant"], "afk_quiet_rest"),
+            Self::AssistantAfkIdleSource => (&["assistant"], "afk_idle_source"),
             Self::AssistantContextualEntrances => (&["assistant"], "contextual_entrances"),
             Self::AssistantEntranceSeed => (&["assistant"], "entrance_seed"),
             Self::AssistantEntranceVariant => (&["assistant"], "entrance_variant"),
@@ -642,6 +688,8 @@ impl Key {
     pub const fn integer_bounds(self) -> Option<(i64, i64)> {
         match self {
             Self::IdleLockSeconds | Self::IdleSuspendSeconds => Some((0, 86400)),
+            Self::AssistantAfkIdleSeconds => Some((1, 86400)),
+            Self::AssistantAfkProbability => Some((0, 100)),
             Self::AssistantDiscordDesktopTimeoutSeconds => Some((10, 300)),
             Self::AssistantOrcaNeedsYouMinutes => Some((0, 1440)),
             Self::CornerSize => Some((1, 100)),
@@ -674,6 +722,12 @@ impl Key {
             Self::IdleOwner => Value::Text("external".to_owned()),
             Self::IdleLockSeconds => Value::Integer(300),
             Self::IdleSuspendSeconds => Value::Integer(0),
+            Self::AssistantAfkIdleSeconds => Value::Integer(300),
+            Self::AssistantAfkProbability => Value::Integer(50),
+            Self::AssistantAfkSeed => Value::Text(String::new()),
+            Self::AssistantAfkScene => Value::Text("auto".to_owned()),
+            Self::AssistantAfkScenes => Value::Text("all".to_owned()),
+            Self::AssistantAfkIdleSource => Value::Text("passive".to_owned()),
             Self::VoicePython => Value::Text("python3".to_owned()),
             Self::VoiceEnvironment => Value::Text("".to_owned()),
             Self::AssistantDiscordDesktopTimeoutSeconds => Value::Integer(60),
@@ -691,7 +745,9 @@ impl Key {
             | Self::AssistantWaitingChatter
             | Self::AssistantVoiceHighEnabled
             | Self::AssistantQuickVoiceCache
-            | Self::AssistantReducedMotion => Value::Bool(false),
+            | Self::AssistantReducedMotion
+            | Self::AssistantAfkEnabled
+            | Self::AssistantAfkQuietRest => Value::Bool(false),
             Self::Corners
             | Self::AssistantVoice
             | Self::AssistantContextualEntrances
@@ -754,6 +810,20 @@ impl Key {
 
     fn valid_text(self, text: &str) -> bool {
         match self {
+            Self::AssistantAfkIdleSource => ["passive", "callbacks"].contains(&text),
+            Self::AssistantAfkSeed => {
+                text.is_empty()
+                    || (text.len() <= 10
+                        && text.bytes().all(|byte| byte.is_ascii_digit())
+                        && text.parse::<u32>().is_ok_and(|seed| seed <= 2_147_483_646))
+            }
+            Self::AssistantAfkScene => text == "auto" || AFK_SCENES.contains(&text),
+            Self::AssistantAfkScenes => {
+                ["all", "none"].contains(&text)
+                    || (!text.is_empty()
+                        && text.len() <= 256
+                        && text.split(',').all(|scene| AFK_SCENES.contains(&scene)))
+            }
             Self::AssistantEntranceVariant
                 if ["auto", "wrap", "rise", "right", "sweep"].contains(&text) =>
             {
@@ -939,6 +1009,8 @@ impl Key {
                 | Self::AssistantContextualEntrances
                 | Self::AssistantWaitingChatter
                 | Self::AssistantReducedMotion
+                | Self::AssistantAfkEnabled
+                | Self::AssistantAfkQuietRest
                 | Self::AssistantPersona
                 | Self::AssistantMemory
                 | Self::AssistantQuickVoiceCache
