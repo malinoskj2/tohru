@@ -60,8 +60,16 @@ The first successful poll establishes the newest cursor **without answering old
 history**. Wait for this bootstrap before sending an acceptance message. Later
 polls examine at most 50 entries, accept at most one nonempty text request, and
 persist one pending request in a private, atomically replaced/fsynced state file
-under `$XDG_STATE_HOME/tohru/discord/receiver.json`. Busy desktop turns, voice
-conversation/listening/playback, drafts and commits defer dispatch. The pending
+under `$XDG_STATE_HOME/tohru/discord/receiver.json`. A nonblank desktop prompt,
+busy desktop turns, voice conversation/listening/playback, drafts and commits
+defer dispatch without claiming the pending message. Desktop input has priority:
+starting to type during DM generation cancels that turn, and submitting queues
+one desktop message until cancellation finishes, then sends it automatically.
+Repeated submissions while that slot is occupied are explicitly rejected and
+new edits remain in the prompt. A still-running DM provider gets SIGTERM after
+two seconds and SIGKILL after three if it ignores interruption. Claimed DM
+requests are not automatically replayed; an already accepted network delivery
+cannot be undone. The pending
 request remains across polls/restarts; further messages stay on Discord and are
 read after it is claimed. There is no unbounded local queue and no guarantee for
 messages deleted from Discord before polling. Empty text/attachments-only events,
@@ -69,8 +77,17 @@ other authors, bots, webhooks and system events cannot activate the assistant.
 References, embeds and attachments are never expanded. Exact author filtering
 happens before content enters the provider path.
 
-Dispatch revalidates the current DM and saved message against Discord, then claims
-it before generation. The existing local assistant path writes a separate
+Dispatch revalidates the current DM and exact message against Discord, then claims
+it before generation. An edited, still-authorized ordinary text message uses
+only its newly fetched content, never the cached text. An edit to empty text is
+skipped. A definitive HTTP 404 with Discord's [Unknown Message code 10008](https://docs.discord.com/developers/topics/opcodes-and-status-codes#json-json-error-codes)
+from the exact message endpoint in the same validated DM clears only that pending
+item, retaining its forward cursor and reporting the skip. Later messages
+continue normally; history is not reset or bootstrapped again. The bounded
+`last_status` entry in receiver.json records deleted/empty/refreshed outcomes.
+Network, rate-limit, permission, generic 404, wrong-author and wrong-channel
+failures retain pending state for a retry without forwarding stale or foreign
+text. The existing local assistant path writes a separate
 **Discord DM — USER_ID** conversation, scoped by actual channel and recipient,
 without changing the desktop selection or invoking speech listeners. Incoming
 turns use the provider's existing tool-free policy, with no Discord socket/token
@@ -102,11 +119,18 @@ Manual acceptance (real Discord traffic, performed by the human):
 3. Enable desktop_first, send a fresh question and click Got it: no DM reply.
    Repeat without acknowledging, wait the timeout and confirm the fallback reply.
 4. During an active desktop/voice conversation, send a DM: it waits until idle.
+   Leave a nonblank desktop prompt and confirm the DM also waits. Start composing
+   during a DM turn, submit, and confirm Discord is interrupted and the desktop
+   message starts after cancellation without speech or a changed chat selection.
    Restart the bar with a pending request and confirm it is offered once. Restart
    after a completed reply and confirm it is not replayed.
 5. Disable receive/read/enabled or change recipient during generation/notification
    wait: no later reply is sent. Test blocked DMs/missing access and verify a clear
    error, without token values. An already accepted HTTP send cannot be undone.
+6. While desktop composition defers a pending DM, edit its text, then clear the
+   desktop prompt: only the fresh text should reach the provider. Repeat by
+   deleting the pending message and sending another: the deletion is reported and
+   the later request progresses without resetting reception/history.
 
 ## Set up your bot
 
@@ -267,3 +291,9 @@ bin/tohru-discord status
 ```
 
 The Discord suite uses a local fake HTTP server and fake provider CLIs. It covers missing/blank/invalid required author setup, exact author filtering and spoofed/missing authors, mixed/all-discarded pages, bounded cursors/results in both directions, live configuration changes, posting gates, scoped guild/channel access, credentials/redaction, malformed responses, permissions/auth errors, rate limits, broker shutdown/cancellation and provider shell routing without discarded content. Native settings and controller fixtures cover validation, persistence, effective settings propagation and cancellation on author-ID changes. It sends no live Discord traffic. `status` is a safe local smoke check; a real read requires an enabled integration, a configured user ID and a normal assistant turn. Posting requires a separate explicit user request.
+
+CI's Python CPU verification step runs both `discord.py` and `discord-dm.py`.
+The DM regression suite includes fresh edit/deletion progress, transient failure
+retention, bounded cancellation of an interrupt-ignoring fake provider, and
+isolated temporary XDG/SQLite roots; controller fixtures cover desktop draft and
+submission priority as well as voice deferral.

@@ -8,7 +8,9 @@ import json
 import os
 from pathlib import Path
 import signal
+import subprocess
 import sys
+import time
 import unittest
 from unittest.mock import patch
 
@@ -156,6 +158,119 @@ class DM(unittest.TestCase):
             self.receiver.claim("101")
         self.assertIn("pending", json.loads(self.receiver.path.read_text()))
 
+    def test_edited_pending_dispatches_only_fresh_text_then_progresses(self):
+        self.pending()
+        self.page(self.message(content="Fresh authorized edit"), single=True)
+        fresh, _, _ = self.receiver.claim("101")
+        self.assertEqual(fresh["content"], "Fresh authorized edit")
+        self.assertEqual(json.loads(self.receiver.path.read_text())["last_status"],
+                         {"id": "101", "status": "refreshed after edit"})
+        self.page(self.message("102", "Next request"))
+        self.assertEqual(self.receiver.poll()["id"], "102")
+        self.page(self.message("102", "Next request"), single=True)
+        self.assertEqual(self.receiver.claim("102")[0]["content"], "Next request")
+
+    def test_deleted_pending_clears_only_that_slot_then_progresses(self):
+        self.pending()
+        self.replies.extend([(200, self.metadata(), {}), (200, self.metadata(), {}),
+                             (404, {"code": 10008, "message": self.secret}, {})])
+        with self.assertRaisesRegex(d.DiscordMessageDeleted, "preserving the forward cursor") as caught:
+            self.receiver.claim("101")
+        self.assertNotIn(self.secret, str(caught.exception))
+        state = json.loads(self.receiver.path.read_text())
+        self.assertNotIn("pending", state)
+        self.assertEqual(state["cursor"], "101")
+        self.assertEqual(state["last_status"], {"id": "101", "status": "deleted"})
+        self.page(self.message("102", "Not discarded by a bootstrap"))
+        self.assertEqual(self.receiver.poll()["id"], "102")
+        self.page(self.message("102", "Not discarded by a bootstrap"), single=True)
+        self.assertEqual(self.receiver.claim("102")[0]["content"], "Not discarded by a bootstrap")
+
+    def test_empty_edit_skips_only_exact_pending_message(self):
+        self.pending()
+        self.page(self.message(content="   "), single=True)
+        with self.assertRaisesRegex(d.DiscordError, "now has no text"):
+            self.receiver.claim("101")
+        state = json.loads(self.receiver.path.read_text())
+        self.assertNotIn("pending", state)
+        self.assertEqual(state["cursor"], "101")
+        self.page(self.message("102"))
+        self.assertEqual(self.receiver.poll()["id"], "102")
+
+    def test_pending_retained_on_transient_access_and_scope_failures(self):
+        self.pending()
+        for code, body in ((403, {"code": 50001}), (404, {"code": 10003}),
+                           (404, {}), (500, {}), (429, {"retry_after": 0})):
+            with self.subTest(code=code, body=body):
+                self.replies.extend([(200, self.metadata(), {}), (200, self.metadata(), {}), (code, body, {})])
+                if code == 429:
+                    self.replies.append((429, body, {}))
+                with self.assertRaises(d.DiscordError):
+                    self.receiver.claim("101")
+                self.assertEqual(json.loads(self.receiver.path.read_text())["pending"]["content"], "Hello")
+        for changes in ({"author": {"id": "8"}}, {"channel_id": "8"}, {"author": {"id": "9", "bot": True}}, {"type": 7}):
+            self.page(self.message(content="must not dispatch", **changes), single=True)
+            with self.assertRaises(d.DiscordError):
+                self.receiver.claim("101")
+            self.assertIn("pending", json.loads(self.receiver.path.read_text()))
+        with patch.object(self.client, "execute", side_effect=d.DiscordError("Discord network request failed or timed out.")):
+            with self.assertRaises(d.DiscordError):
+                self.receiver.claim("101")
+        self.assertIn("pending", json.loads(self.receiver.path.read_text()))
+        with patch.object(self.client, "execute", side_effect=d.DiscordMessageDeleted("8")):
+            with self.assertRaisesRegex(d.DiscordError, "channel changed"):
+                self.receiver.claim("101")
+        self.assertIn("pending", json.loads(self.receiver.path.read_text()))
+
+    def test_revocation_during_delete_or_edit_preserves_pending(self):
+        self.pending()
+        original = self.client.execute
+        def revoked(request):
+            self.values["receive"] = False
+            raise d.DiscordMessageDeleted("7")
+        with patch.object(self.client, "execute", side_effect=revoked):
+            with self.assertRaisesRegex(d.DiscordError, "reception requires"):
+                self.receiver.claim("101")
+        self.assertIn("pending", json.loads(self.receiver.path.read_text()))
+        self.values["receive"] = True
+        def edited_then_revoked(request):
+            page = original(request)
+            self.values["receive"] = False
+            return page
+        self.page(self.message(content="not dispatched after revocation"), single=True)
+        with patch.object(self.client, "execute", side_effect=edited_then_revoked):
+            with self.assertRaises(d.DiscordError):
+                self.receiver.claim("101")
+        self.assertIn("pending", json.loads(self.receiver.path.read_text()))
+
+    def test_cancel_escalates_for_a_provider_ignoring_interrupts(self):
+        loader = importlib.machinery.SourceFileLoader("dm_cancel_assistant", str(ROOT / "bin/tohru-assistant"))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        assistant = importlib.util.module_from_spec(spec)
+        with patch.dict(os.environ, {"XDG_DATA_HOME": str(self.root / "data"), "XDG_CONFIG_HOME": str(self.root / "config"),
+                                     "XDG_STATE_HOME": str(self.root / "state"), "TOHRU_ASSISTANT_DATA": str(self.root / "data/tohru"),
+                                     "TOHRU_ASSISTANT_SCRATCH": str(self.root / "scratch")}):
+            loader.exec_module(assistant)
+        run = assistant.Run(stop_grace=0.05)
+        # The incoming path uses two seconds; shorten only the test's grace period.
+        code = "import signal,time; signal.signal(signal.SIGINT,signal.SIG_IGN); signal.signal(signal.SIGTERM,signal.SIG_IGN); print('ready',flush=True); time.sleep(30)"
+        run.child = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True, start_new_session=True)
+        cancelled = []
+        run.cancel_tools = lambda: cancelled.append(True)
+        try:
+            self.assertEqual(run.child.stdout.readline().strip(), "ready")
+            started = time.monotonic()
+            run.stop()
+            run.child.wait(timeout=3)
+            self.assertLess(time.monotonic() - started, 3)
+            self.assertEqual(run.child.returncode, -signal.SIGKILL)
+            self.assertTrue(cancelled)
+        finally:
+            run.close()
+            if run.child.poll() is None:
+                os.killpg(run.child.pid, signal.SIGKILL)
+                run.child.wait(timeout=1)
+            run.child.stdout.close()
     def test_changed_user_revoked_receive_read_and_reset(self):
         self.pending()
         for changes in ({"receive": False}, {"read": False}, {"enabled": False}, {"allowed_user_id": "8"}):
@@ -229,6 +344,8 @@ class DM(unittest.TestCase):
             client = self.client
             real_load = client.load
             def fake_provider(*args, **kwargs):
+                self.assertEqual(args[4].stop_grace, 2)
+                self.assertEqual(args[2], "Fresh authorized input")
                 self.assertNotIn(d.TOKEN_ENV, kwargs["extra_env"])
                 self.assertNotIn("TOHRU_DISCORD_SOCKET", kwargs["extra_env"])
                 self.assertIn("--tools", args[1])
@@ -249,7 +366,7 @@ class DM(unittest.TestCase):
                     self.receiver.poll()
                     self.page(self.message())
                     self.receiver.poll()
-                    self.page(self.message(), single=True)  # claim revalidation
+                    self.page(self.message(content="Fresh authorized input"), single=True)  # claim refreshes before generation
                     before = len(self.requests)
                     sends = post and not revoke and not stopped and desktop != "acknowledged"
                     if sends:

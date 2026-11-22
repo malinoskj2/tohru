@@ -6,6 +6,8 @@ return function(settings)
     local conversation, shown_turns = nil, {}
     -- The one answer in flight: its process, conversation, provider and text so far.
     local live = nil
+    local desktop_pending = nil
+    local send
     local draft = nil
     local pending_commit = nil
     local DRAFT_PROVIDERS = {claude = true, codex = true}
@@ -368,6 +370,15 @@ return function(settings)
             if finished.discard and finished.on_discard then finished.on_discard(conversation, false) end
             if event.event == "error" then fail(event.message or "Discord answer failed") end
             if finished.conversation and conversation == finished.conversation then load(finished.conversation) end
+            local queued = desktop_pending
+            desktop_pending = nil
+            if queued then
+                if queued.conversation == conversation and send(queued.prompt, false) then
+                    if text.ai_prompt == queued.prompt then text.ai_prompt = ""; fact.ai_typed = false end
+                else
+                    fail("Desktop message was not sent after interrupting Discord; review the prompt and submit again.")
+                end
+            end
             return
         end
         if finished.discard then
@@ -433,7 +444,7 @@ return function(settings)
         return args
     end
 
-    local function send(prompt, voice, opts)
+    send = function(prompt, voice, opts)
         prompt = (prompt or ""):gsub("^%s+", ""):gsub("%s+$", "")
         if prompt == "" or live then return false end
         local provider = current and providers[current]
@@ -485,6 +496,20 @@ return function(settings)
         return true
     end
 
+    local function desktop_composing()
+        return (text.ai_prompt or ""):match("%S") ~= nil
+    end
+
+    local function interrupt_discord()
+        if not live or not live.discord then return false end
+        if not live.desktop_interrupted then
+            live.desktop_interrupted = true
+            kill(live.id, "int")
+            fail("Discord turn interrupted for desktop input; claimed requests are not replayed and an in-flight delivery may have completed.")
+        end
+        return true
+    end
+
     -- The shell owns idle reception. Only one bounded poll and one pending request;
     -- busy turns defer on Discord rather than filling a local content queue.
     local discord_poll = nil
@@ -502,7 +527,7 @@ return function(settings)
             local event = decode(line)
             local provider = current and providers[current]
             if event and event.event == "error" then fail(event.message) end
-            if event and event.event == "incoming" and provider and provider.signed_in and not is_orca() and not live and not draft and not pending_commit and not fact.ai_listening and not fact.ai_speaking and not fact.ai_voice_conversation then
+            if event and event.event == "incoming" and provider and provider.signed_in and not is_orca() and not desktop_composing() and not live and not draft and not pending_commit and not fact.ai_listening and not fact.ai_speaking and not fact.ai_voice_conversation then
                 send("Discord DM request", false, {discord = event.id})
             end
         end, function() if discord_poll == mine then discord_poll = nil end end)
@@ -823,6 +848,15 @@ return function(settings)
         list_history()
     end)
     on("assistant_send", function()
+        if live and live.discord and desktop_composing() then
+            if desktop_pending then
+                fail("A desktop message is already queued while Discord stops; this submission was not sent. New edits remain in the prompt.")
+                return
+            end
+            desktop_pending = {prompt = text.ai_prompt, conversation = conversation}
+            interrupt_discord()
+            return
+        end
         if live and live_here() then
             kill(live.id, "int")
             return
@@ -845,7 +879,10 @@ return function(settings)
     on("assistant_pick", function(index) pick(index) end)
     on("assistant_search", function() if fact.ai_view == 1 then list_history() end end)
     on("text:ai_search", function() if fact.ai_view == 1 then list_history() end end)
-    on("text:ai_prompt", function(value) fact.ai_typed = value ~= nil and value:match("%S") ~= nil end)
+    on("text:ai_prompt", function(value)
+        fact.ai_typed = value ~= nil and value:match("%S") ~= nil
+        if fact.ai_typed then interrupt_discord() end
+    end)
     on("assistant_move", function(delta)
         if fact.ai_picker then
             local count = #providers

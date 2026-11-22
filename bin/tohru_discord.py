@@ -32,6 +32,13 @@ class DiscordError(Exception):
     """Only fixed, nonsecret messages cross the tool boundary."""
 
 
+class DiscordMessageDeleted(DiscordError):
+    """An accessible, revalidated channel no longer contains this exact message."""
+    def __init__(self, channel):
+        super().__init__("Discord incoming message was deleted; skipped that request, preserving the forward cursor.")
+        self.channel = channel
+
+
 def config():
     root = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
     values = {}
@@ -341,6 +348,9 @@ class Client:
                             continue
                         raise DiscordError("Discord rate limited this request; try again later.")
                     if response.status in (401, 403, 404):
+                        if (response.status == 404 and isinstance(result, dict) and type(result.get("code")) is int and result["code"] == 10008
+                                and method == "GET" and re.fullmatch(r"/channels/[0-9]+/messages/[0-9]+", path)):
+                            raise DiscordMessageDeleted(channel)
                         raise DiscordError({401: "Discord rejected the bot token (401).", 403: "Discord denied access (403); check bot permissions and Message Content access.",
                                             404: "Discord channel was not found or is inaccessible (404)."}[response.status])
                     if not 200 <= response.status < 300:
@@ -595,14 +605,31 @@ class Receiver:
             message = state.get("pending")
             if not isinstance(message, dict) or message.get("id") != ident:
                 raise DiscordError("Discord incoming request is no longer pending.")
-            # Recheck the actual channel and current author before dispatching saved text.
-            page = self.client.execute({"action": "read", "channel": "dm", "limit": 1, "message_id": ident})
-            if page["channel"] != state.get("channel") or not any(item == message for item in page["messages"]):
+            # Never dispatch saved text: recheck channel, exact author and current content.
+            try:
+                page = self.client.execute({"action": "read", "channel": "dm", "limit": 1, "message_id": ident})
+            except DiscordMessageDeleted as error:
+                if error.channel != state.get("channel"):
+                    raise DiscordError("Discord incoming channel changed; pending request retained.") from None
+                del state["pending"]
+                state["last_status"] = {"id": ident, "status": "deleted"}
+                self.save(state, values)
+                raise
+            if page["channel"] != state.get("channel") or len(page["messages"]) != 1:
+                raise DiscordError("Discord incoming request changed or is inaccessible.")
+            fresh = page["messages"][0]
+            if fresh["id"] != ident or fresh["author"] != values["allowed_user_id"]:
                 raise DiscordError("Discord incoming request changed or is inaccessible.")
             del state["pending"]
+            if not fresh["content"].strip():
+                state["last_status"] = {"id": ident, "status": "empty after edit"}
+                self.save(state, values)
+                raise DiscordError("Discord incoming message now has no text; skipped that request, preserving the forward cursor.")
+            if fresh != message:
+                state["last_status"] = {"id": ident, "status": "refreshed after edit"}
             self.save(state, values)
             conversation = hashlib.sha256((page["channel"] + ":" + values["allowed_user_id"]).encode()).hexdigest()[:32]
-            return message, conversation, values
+            return fresh, conversation, values
 
 
 class Broker:

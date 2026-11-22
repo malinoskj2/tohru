@@ -1158,10 +1158,24 @@ class StreamParser:
 
 
 class Run:
-    def __init__(self):
+    def __init__(self, stop_grace=None):
         self.child = None
         self.stopped = False
         self.cancel_tools = None
+        self.stop_grace = stop_grace
+        self.stop_timers = []
+
+    @staticmethod
+    def signal_child(child, how):
+        if child.poll() is None:
+            try:
+                os.killpg(child.pid, how)
+            except OSError:
+                pass
+
+    def close(self):
+        for timer in self.stop_timers:
+            timer.cancel()
 
     def stop(self, *_):
         self.stopped = True
@@ -1169,10 +1183,13 @@ class Run:
             self.cancel_tools()
         child = self.child
         if child and child.poll() is None:
-            try:
-                os.killpg(child.pid, signal.SIGINT)
-            except OSError:
-                pass
+            self.signal_child(child, signal.SIGINT)
+            if self.stop_grace is not None and not self.stop_timers:
+                for seconds, how in ((self.stop_grace, signal.SIGTERM), (self.stop_grace + 1, signal.SIGKILL)):
+                    timer = threading.Timer(seconds, self.signal_child, args=(child, how))
+                    timer.daemon = True
+                    self.stop_timers.append(timer)
+                    timer.start()
 
 
 def run_provider(provider, argv, stdin_text, on_delta=None, run=None, timeout=None, extra_env=None):
@@ -1208,6 +1225,7 @@ def run_provider(provider, argv, stdin_text, on_delta=None, run=None, timeout=No
         if delta and on_delta:
             on_delta(delta)
     code = run.child.wait()
+    run.close()
     if timer:
         timer.cancel()
     drain.join(1)
@@ -2098,7 +2116,7 @@ def local_chat(args, prompt):
         if system and not session["resume"]:
             sent = f"{system}\n\n---\n\n{sent}"
 
-    run = Run()
+    run = Run(stop_grace=2 if getattr(args, "discord_incoming", "") else None)
     incoming_client = getattr(args, "discord_client", None)
     def cancel_tools():
         discord.cancel()
