@@ -78,7 +78,9 @@ _G.json = {
     end,
 }
 local f = dofile("shell/assistant/flight.luau")(paths, {
-    flight = function()
+    end_entrance = function() end,
+    land = function() return true end,
+    begin_entrance = function()
         return true
     end,
     wingbeat = function() end,

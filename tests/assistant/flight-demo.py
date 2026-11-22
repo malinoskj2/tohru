@@ -30,7 +30,7 @@ include "assistant/dragon.plm"
 """)
 (out / "flight.luau").write_text(
     """
-local puppet=require("assistant/puppet")(require("assistant/full-body"))
+local puppet=require("assistant/puppet")(require("assistant/full-body"), require("assistant/landing-frames"))
 local flight=require("assistant/flight")(require("assistant/flight-path"),puppet,require("assistant/flight-actor"))
 puppet.load(ARTDIR)
 on("test_show",function(n)
@@ -60,7 +60,7 @@ if voice:
         )
     )
     (out / "flight.luau").write_text("""
-local puppet=require("assistant/puppet")(require("assistant/full-body"))
+local puppet=require("assistant/puppet")(require("assistant/full-body"), require("assistant/landing-frames"))
 local flight=require("assistant/flight")(require("assistant/flight-path"),puppet,require("assistant/flight-actor"))
 sys.watch("window",flight.window)
 local voice=require("assistant/voice")({

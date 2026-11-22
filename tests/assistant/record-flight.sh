@@ -59,11 +59,15 @@ window=$!
 pids+=("$window")
 sleep 1
 hyprctl -j activewindow | jq '{at,size,workspace,monitor,mapped,hidden,address}' >"$out/window.json"
-for entry in '1 cold-warm' '1 wrap' '2 rise' '3 right' '4 sweep' '1 moved' '1 hearing' '1 speaking' '1 interrupted' '5 reduced'; do
+facts=ai_flying,ai_flight_x,ai_flight_y,ai_flight_behind,ai_flight_alpha,ai_flight_phase,ai_flight_art,ai_flight_cell,ai_dg_frame,ai_dg_warm,ai_dragon_open,ai_speaking,ai_listening
+if [[ ${FLIGHT_LANDING_TRACE:-0} == 1 ]]; then
+    facts+=,ai_landing_art,ai_landing_frame,ai_landing_target,ai_landing_progress,ai_actor_scale,ai_dg_sq_s,ai_mouth_s,ai_flight_bank
+fi
+for entry in '1 cold-warm' '1 wrap' '2 rise' '3 right' '4 sweep' '1 moved' '1 hearing' '1 landing-hearing' '1 speaking' '1 interrupted' '5 reduced'; do
     read -r number variant <<< "$entry"
     if [[ -n ${1:-} && $variant != "$1" ]]; then continue; fi
     "$FLIGHT_RUNTIME" --scene "$scene" --screen "$monitor" --answer-as "$tag" --no-hud --stall 0 \
-        --record ai_flying,ai_flight_x,ai_flight_y,ai_flight_behind,ai_flight_alpha,ai_flight_phase,ai_flight_art,ai_flight_cell,ai_dg_frame,ai_dg_warm,ai_dragon_open,ai_speaking,ai_listening >"$out/trace-$variant.log" 2>&1 &
+        --record "$facts" >"$out/trace-$variant.log" 2>&1 &
     actor=$!
     pids+=("$actor")
     sleep 1
@@ -91,7 +95,15 @@ for entry in '1 cold-warm' '1 wrap' '2 rise' '3 right' '4 sweep' '1 moved' '1 he
         kill "$window"; wait "$window" || :
         window=
     fi
-    if [[ $variant == hearing ]]; then send '{"event":"hearing","on":true}'; fi
+    if [[ $variant == landing-hearing ]]; then
+        for ((attempt=0; attempt<70; attempt++)); do
+            [[ $("$FLIGHT_RUNTIME" --say "$tag" 'get ai_landing_art') == true ]] && break
+            sleep .05
+        done
+        (( attempt < 70 )) || { echo "Landing never became visible" >&2; exit 1; }
+        sleep .16
+    fi
+    if [[ $variant == *hearing ]]; then send '{"event":"hearing","on":true}'; fi
     if [[ $variant == speaking ]]; then send '{"event":"speaking","on":true,"conversation":"test"}'; fi
     "$FLIGHT_RUNTIME" --say "$tag" 'get ai_flight_trace' >"$out/selection-$variant.json"
     hyprctl -j layers >"$out/layers-$variant.json"
@@ -100,15 +112,19 @@ for entry in '1 cold-warm' '1 wrap' '2 rise' '3 right' '4 sweep' '1 moved' '1 he
             echo "No entrance trace for $variant on $monitor" >&2; exit 1;
         }
     fi
-    if [[ $variant == hearing || $variant == speaking ]]; then
+    if [[ $variant == *hearing || $variant == speaking ]]; then
         sleep .35
         "$FLIGHT_RUNTIME" --say "$tag" 'get ai_flying' 'get ai_flight_art' 'get ai_dragon_open' >"$out/preempt-$variant.log"
+        if [[ $variant == landing-hearing ]]; then
+            [[ $("$FLIGHT_RUNTIME" --say "$tag" 'get ai_landing_art') == false ]]
+        fi
         [[ $(tr '\n' / <"$out/preempt-$variant.log") == false/false/true/ ]] || exit 1
         sleep 2.95
     else
         sleep 3.3
     fi
-    if [[ $variant == hearing ]]; then send '{"event":"hearing","on":false}'; fi
+    if [[ ${FLIGHT_LANDING_TRACE:-0} == 1 ]]; then sleep 1; fi
+    if [[ $variant == *hearing ]]; then send '{"event":"hearing","on":false}'; fi
     send '{"event":"speaking","on":true,"conversation":"test"}'
     sleep .3
     send '{"event":"speaking","on":false,"conversation":"test"}'

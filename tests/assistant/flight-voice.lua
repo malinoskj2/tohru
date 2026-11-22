@@ -89,7 +89,7 @@ local assistant = {
         opened = id
     end,
 }
-local puppet = dofile("shell/assistant/puppet.luau")(dofile("shell/assistant/full-body.luau"))
+local puppet = dofile("shell/assistant/puppet.luau")(dofile("shell/assistant/full-body.luau"), dofile("shell/assistant/landing-frames.luau"))
 local flight = dofile("shell/assistant/flight.luau")(
     dofile("shell/assistant/flight-path.luau"),
     puppet,
@@ -213,6 +213,7 @@ for _, kind in ipairs({ "rise", "right", "sweep", "wrap" }) do
     advance(100)
     assert(fact.ai_flight_x == start_x and fact.ai_flight_y == start_y)
     local cells, previous, landing = {}, start_x, false
+    local last_landing_frame = -1
     for _ = 1, 400 do
         advance(16)
         if not fact.ai_flying then
@@ -226,7 +227,14 @@ for _, kind in ipairs({ "rise", "right", "sweep", "wrap" }) do
             assert(kind == "right" and dx <= 0.001 or kind ~= "right" and dx >= -0.001)
         else
             landing = true
-            assert(not fact.ai_flight_art)
+            local index = fact.ai_landing_frame % 15
+            assert(fact.ai_flight_art == (index == 0))
+            assert(fact.ai_landing_art == (index > 0 and index < 14))
+            assert(fact.ai_landing_frame >= last_landing_frame and math.floor(fact.ai_landing_frame / 15) == rows[kind] * 3)
+            last_landing_frame = fact.ai_landing_frame
+            -- The visible turn goes directly to ponder_hover. A backing frame
+            -- from either neutral-hub leg would be a second body transition.
+            assert(fact.ai_dg_frame == 489 and fact.ai_landing_target == 489 and puppet.pose() == "ponder_hover")
         end
         previous = fact.ai_flight_x
     end
@@ -234,9 +242,28 @@ for _, kind in ipairs({ "rise", "right", "sweep", "wrap" }) do
     for _ in pairs(cells) do
         count = count + 1
     end
-    assert(count == 12 and landing and not fact.ai_flying)
+    assert(count == 12 and landing and last_landing_frame % 15 == 14 and not fact.ai_flying)
+    assert(not fact.ai_landing_art)
+    assert(fact.ai_dg_frame == 489 and fact.ai_dragon_open)
+    advance(750)
+    assert(fact.ai_dg_frame == 489 and puppet.pose()=="ponder_hover")
     handlers.assistant_dragon()
 end
+-- A new user utterance while the feet and wings are settling owns the puppet.
+advance(31000)
+wake("wrap")
+for _ = 1, 320 do
+    advance(16)
+    if fact.ai_landing_art and fact.ai_landing_progress > 0.3 then break end
+end
+assert(fact.ai_landing_art)
+deliver("hearing", { on = true })
+advance(260)
+assert(not fact.ai_landing_art and not fact.ai_flight_art and not fact.ai_flying and fact.ai_dragon_open)
+local _, interrupted_target = puppet.pose()
+assert(interrupted_target == "attentive_hover")
+deliver("hearing", { on = false })
+handlers.assistant_dragon()
 -- Keep a visible actor on its selected output across focus changes; a
 -- disconnected selected output must release ownership of the old coordinates.
 advance(31000)

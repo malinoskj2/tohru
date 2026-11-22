@@ -18,6 +18,15 @@ part AssistantDragon {
     fact ai_actor_released = false
     fact ai_actor_quiet = false
     fact ai_actor_open = false
+    image ai_landing = file "dragon/landing.webp", 1470, 882
+    fact ai_landing_x = 0
+    fact ai_landing_y = 0
+    fact ai_landing_w = 0
+    fact ai_landing_h = 0
+    fact ai_landing_art = false
+    fact ai_landing_frame = 0
+    fact ai_landing_target = 0
+    fact ai_landing_progress = 0
     fact ai_flight_art = false
     fact ai_flight_cell = 0
     fact ai_flight_phase = 0
@@ -51,7 +60,7 @@ part AssistantDragon {
                 group {
                     show: ai_dg_ready
                     // Keep the registered landing cell resident during the wingbeat.
-                    opacity: if(ai_flight_art or ai_actor_skin_open or ai_actor_closeup_open, 0.2%, 100%)
+                    opacity: if(ai_landing_art or ai_flight_art or ai_actor_skin_open or ai_actor_closeup_open, 0.2%, 100%)
                     // One sheet for every body frame: changing between separate large images blanked her for a few frames.
                     // Light moving through the glass: a slow drift of hue across the body and a highlight now and then.
                     shader: ai_dg_glass, if(ai_dg_reduced, 0, 1)
@@ -72,6 +81,11 @@ part AssistantDragon {
                 }
                 image ai_actor_closeup { at: ai_dg_x, ai_dg_y; size: 150, 150; show: ai_actor_closeup_open }
                 image ai_actor_skin { at: ai_dg_x, ai_dg_y; size: 150, 150; cell: ai_actor_skin_frame, 8, ai_actor_skin_rows; show: ai_actor_skin_open }
+                group {
+                    show: ai_landing_art
+                    shader: ai_dg_glass, ai_landing_progress
+                    image ai_landing { at: ai_dg_x + ai_landing_x, ai_dg_y + ai_landing_y; size: ai_landing_w, ai_landing_h; cell: ai_landing_frame, 15, 9 }
+                }
                 image ai_wingbeat { at: ai_dg_x, ai_dg_y; size: 150, 150; cell: ai_flight_cell, 12, 3; show: ai_flight_art }
                 image ai_sprite { at: ai_dg_x, ai_dg_y; size: 150, 150; show: not ai_dg_ready }
                 ellipse { at: ai_dg_x + 70.2, ai_dg_y + 46.5; radius: 3.4; scale: 1.15, 0.15 + 0.95 * ai_mouth_s; color: #4a2238; opacity: if(ai_dg_ready, 0%, min(90%, ai_mouth_s * 400%)) }

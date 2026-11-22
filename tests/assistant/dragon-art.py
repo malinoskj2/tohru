@@ -2,6 +2,7 @@
 """Asset contracts: real pose silhouettes, registered native eyes, gutters and bounds."""
 import importlib.util
 import json
+import re
 from pathlib import Path
 import unittest
 import cv2
@@ -33,6 +34,58 @@ class DragonArt(unittest.TestCase):
                 wing = sample[50:150, tip, 3]
                 tips.append(np.where(wing>128)[0].min())
             self.assertGreater(abs(tips[0]-tips[1]), 20)
+
+    def test_landing_endpoints_registration_and_visible_silhouettes(self):
+        import itertools
+        rects = [tuple(map(int, row)) for row in re.findall(
+            r"\{(-?\d+), (-?\d+), (\d+), (\d+)\}",
+            (ROOT/'shell/assistant/landing-frames.luau').read_text())]
+        self.assertEqual(len(rects), 9*15)
+        with Image.open(pack.OUT/'landing.webp') as sheet, Image.open(pack.OUT/'body.webp') as body:
+            self.assertEqual(sheet.size, (15*98, 9*98))
+            for row, (source, target) in enumerate(itertools.product((309,417,327),(489,507,0))):
+                for frame in range(15):
+                    x,y,w,h = rects[row*15+frame]
+                    image = sheet.crop((frame*98,row*98,(frame+1)*98,(row+1)*98))
+                    a = np.asarray(image)[:,:,3]
+                    self.assertGreater(a.max(), 240)
+                    self.assertTrue(-24 <= x < x+w <= 264 and -24 <= y < y+h <= 264)
+                    stats=cv2.connectedComponentsWithStats((a>110).astype(np.uint8))[2][1:,-1]
+                    self.assertLess(sum(sorted(stats)[:-1]), 6)
+                    if frame in (0,14):
+                        key = source if frame==0 else target
+                        left,top = key%24*240, key//24*240
+                        canonical = body.crop((left,top,left+240,top+240))
+                        expected = canonical.crop((x,y,x+w,y+h)).resize((98,98),Image.Resampling.LANCZOS)
+                        # Ignore invisible RGB discarded by the lossless WebP encoder.
+                        np.testing.assert_array_equal(np.asarray(image.convert('RGBa')), np.asarray(expected.convert('RGBa')))
+
+    def test_landing_joint_tracks_keep_tail_bends_and_head_attachment(self):
+        spec = importlib.util.spec_from_file_location('landing', ROOT/'tools/dragon/landing.py')
+        landing = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(landing)
+        with Image.open(pack.OUT/'body.webp') as body:
+            landing.atlas = body
+            parts = {key: landing.prep(key) for key in landing.R}
+        for src in landing.SOURCES:
+            for dst in landing.TARGETS:
+                last_tip = None
+                for t in np.linspace(0,1,landing.FRAMES):
+                    bones = landing.skeleton(parts[src],parts[dst],landing.smooth(t))
+                    self.assertTrue(all(np.isfinite(chain).all() for chain in bones.values()))
+                    # The horn roots travel with her skull; the entire tail
+                    # keeps a continuous sequence of bounded, finite bends.
+                    head = bones['head'][4]
+                    for horn in ('gold','lilac'):
+                        self.assertLess(np.linalg.norm(bones[horn][0] - head)*.625, 41)
+                    tail = bones['tail']
+                    links = np.diff(tail,axis=0)
+                    self.assertGreater(np.linalg.norm(links,axis=1).min(), 2)
+                    angle = np.unwrap(np.arctan2(links[:,1],links[:,0]))
+                    self.assertLess(np.abs(np.diff(angle)).max(), np.deg2rad(128))
+                    if last_tip is not None:
+                        self.assertLess(np.linalg.norm(tail[-1]-last_tip)*.625, 28)
+                    last_tip = tail[-1]
 
     def test_twenty_whole_bodies_with_distinct_lower_silhouettes(self):
         self.assertEqual(len(self.keys),20)

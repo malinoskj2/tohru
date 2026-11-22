@@ -69,3 +69,11 @@ Other harness events: `review_pause`, `review_finish`, `review_interrupt`, `revi
 ## Desktop flight wingbeats
 
 After regenerating the body atlas, run `python3 tools/dragon/flight.py` to rebuild `shell/assistant/dragon/flight.webp`. Its three 12-frame rows derive from the registered left glide, right glide and rising bank keys. Frame zero is the original key. The mesh flexes each wing about its root and adds a small tail counterstroke. The flight puppet and sampler own playback and the handoff to the normal registered body sheet.
+
+## Entrance landing artwork
+
+Run `OPENBLAS_NUM_THREADS=1 python3 tools/dragon/landing.py` after the body pack. The optional `--evidence PATH` writes the nine projected joint tracks. The generator reads the installed body atlas and the six hand-marked drawings in `art/landing-rig.json`. Each part has its visible polygon, ordered joint locations and an optional underpainted area at a joint. The three side views are body cells 309, 417 and 327. The endings use the actual conversational keys 489 for pondering, 507 for attention and 0 for the beginning of the neutral cycle.
+
+The belly carries the head, wing roots and hips. Horns and facial features move in head coordinates. Both hands reach to balance before the near hand settles. The tail follows a tapered link chain through a projected curl. The hidden wing reuses the paint of the visible membrane. This is a stylized cutout turn. The far-side anatomy is reconstructed from the visible artwork. The endpoint drawings retain the different proportions of the original registered views.
+
+The native renderer preloads a 15-column, nine-row WebP along with the wing art. Each frame has a transparent gutter. The generated Luau rectangle restores its original projected width, height and location at the existing actor scale. Cropping before packing keeps the single additional decoded source below 5 MiB. The runtime holds the desired puppet key during the turn. Existing speech transitions retain their original keys and interpolation. No model inference is part of the landing pack.

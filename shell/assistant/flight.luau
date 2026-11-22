@@ -6,7 +6,7 @@ return function(paths, puppet, make_actor)
     local serial, event, last, next_at = 0, 0, nil, 0
     local timer, process, plan, interruption, pending
     local started, sceneKey, waiting, release_at, cycles
-    local PREPARE = 0.20
+    local PREPARE, LANDING = 0.20, 0.76
     local hearing, fullscreen = false, false
     local outputs, focused, selected = {}, "", ""
     local actor, stop_actor, actor_active
@@ -48,7 +48,7 @@ return function(paths, puppet, make_actor)
             process = nil
         end
         if plan then
-            puppet.flight(nil)
+            puppet.end_entrance()
         end
         pending, plan, interruption, sceneKey, waiting = nil, nil, nil, nil, nil
         fact.ai_flying = false
@@ -81,7 +81,7 @@ return function(paths, puppet, make_actor)
             if elapsed < 0.08 then
                 fact.ai_flight_alpha = math.max(0, 1 - elapsed / 0.08)
             else
-                puppet.flight(nil)
+                puppet.end_entrance()
                 fact.ai_flying = false
                 fact.ai_flight_behind = false
                 fact.ai_flight_bank = 0
@@ -98,10 +98,12 @@ return function(paths, puppet, make_actor)
         local p = paths.sample(plan, travel)
         -- The pose and first wing frame are published at the start position
         -- before translation. End on the same registered key for landing.
+        local landing = math.min(1, math.max(0, (travel - release_at) / LANDING))
         if travel < release_at then
             puppet.wingbeat(cycles * travel / release_at)
-        else
-            puppet.flight(nil)
+        elseif not puppet.land(landing) then
+            interrupt()
+            return
         end
         fact.ai_flight_alpha = math.min(1, elapsed / PREPARE)
         fact.ai_flight_phase = p.phase
@@ -109,7 +111,7 @@ return function(paths, puppet, make_actor)
         fact.ai_flight_y = p.y
         fact.ai_flight_bank = p.bank
         fact.ai_flight_altitude = p.altitude
-        if p.phase >= 1 then
+        if p.phase >= 1 and landing >= 1 then
             reset()
         end
     end
@@ -133,7 +135,7 @@ return function(paths, puppet, make_actor)
             return
         end
         local candidate = paths.plan(s, kind)
-        if not puppet.flight(kind, paths.sample(candidate, 0).direction) then
+        if not puppet.begin_entrance(kind, paths.sample(candidate, 0).direction) then
             reset()
             return
         end

@@ -1,5 +1,5 @@
 -- The voice dragon's animator. It plays the sheets in dragon/ at 24 frames a second, and only while she is on screen.
-return function(full_body)
+return function(full_body, landing_frames)
     local TICK = 42
     local POSES = {
         neutral = {cell = 0, talk = 12, mx = 0, my = 0, ex = 0, ey = 0},
@@ -106,7 +106,9 @@ return function(full_body)
     local load_generation = 0
     local reduced, mode = false, "neutral"
     local posture_age, posture_after = 0, 240
-    local flight_row, held_pose
+    local flight_row, held_pose, entrance, touchdown
+    local PIXEL_SCALE = 150 / 240
+    local LANDING = {ponder_hover=489, attentive_hover=507, neutral=0}
     local voice_art, leased_art, current_art = "", "", ""
     local FLIGHT_POSES = {left_glide = 0, right_glide = 1, rising_bank = 2}
     local recent = {}
@@ -243,7 +245,7 @@ return function(full_body)
     end
 
     local function tick()
-        if flight_row or held_pose then return end -- The spatial owner samples these frames directly.
+        if flight_row or held_pose or touchdown then return end -- The spatial owner samples these frames directly.
         since_change = since_change + 1
         if not reduced and not talking and not step and hold == 0 and target == pose then
             posture_age = posture_age + 1
@@ -414,6 +416,30 @@ return function(full_body)
         after(3000, function() if generation == load_generation then fact.ai_dg_warm = false end end)
     end
 
+    local function flight(kind, direction)
+        if not kind then
+            if flight_row then
+                flight_row = nil
+                set("ai_flight_art", false)
+                rest()
+            end
+            return
+        end
+        local name = kind == "rise" and "rising_bank" or direction < 0 and "left_glide" or "right_glide"
+        -- A cold or absent voice atlas cannot support the handoff back to
+        -- the registered key. Give this appearance its ordinary idle pose.
+        if reduced or talking or not fact.ai_dg_ready or fact.ai_dg_warm or not POSES[name] then return false end
+        flight_row = FLIGHT_POSES[name]
+        -- A spatial scene owns the displayed key while voice retains its requested pose.
+        pose, plan, step, flourish = name, {}, nil, nil
+        heart_t = -1
+        heart(-1)
+        rest()
+        set("ai_flight_cell", flight_row * 12)
+        set("ai_flight_art", true)
+        return true
+    end
+
     return {
         load = function(dir)
             voice_art = dir or ""
@@ -436,29 +462,47 @@ return function(full_body)
             rest()
             return true
         end,
-        flight = function(kind, direction)
-            if not kind then
-                if flight_row then
-                    flight_row = nil
-                    set("ai_flight_art", false)
-                    rest()
-                end
-                return
-            end
-            local name = kind == "rise" and "rising_bank" or direction < 0 and "left_glide" or "right_glide"
-            -- A cold or absent voice atlas cannot support the handoff back to
-            -- the registered key. Give this appearance its ordinary idle pose.
-            if reduced or talking or not fact.ai_dg_ready or fact.ai_dg_warm or not POSES[name] then return false end
-            flight_row = FLIGHT_POSES[name]
-            -- Keep the conversation's requested target. It resumes from this
-            -- exact key when braking starts, via the existing authored transitions.
-            pose, plan, step, flourish = name, {}, nil, nil
-            heart_t = -1
-            heart(-1)
-            rest()
-            set("ai_flight_cell", flight_row * 12)
-            set("ai_flight_art", true)
+        flight = flight,
+        begin_entrance = function(kind, direction)
+            if not landing_frames or LANDING[target] == nil or not flight(kind, direction) then return false end
+            entrance = landing_frames[pose]
             return true
+        end,
+        land = function(t)
+            local strip = entrance and entrance[target]
+            if not strip or (touchdown and touchdown ~= target) then return false end
+            if not touchdown then
+                touchdown = target
+                set("ai_flight_cell", flight_row * 12)
+                flight_row = nil
+                -- Pre-stage the actual conversational key under its registered
+                -- last drawing. The ordinary route graph has no part in landing.
+                pose, plan, step, flourish, phase = target, {}, nil, nil, 0
+                set("ai_landing_target", LANDING[target])
+                rest()
+            end
+            local index = math.floor((#strip - 1) * t + 0.5)
+            local rect = strip[index + 1]
+            set("ai_landing_frame", strip.row * #strip + index)
+            set("ai_landing_x", rect[1] * PIXEL_SCALE)
+            set("ai_landing_y", rect[2] * PIXEL_SCALE)
+            set("ai_landing_w", rect[3] * PIXEL_SCALE)
+            set("ai_landing_h", rect[4] * PIXEL_SCALE)
+            -- Use the live, full-resolution endpoint in each direction.
+            set("ai_flight_art", index == 0)
+            set("ai_landing_art", index > 0 and index < #strip - 1)
+            set("ai_landing_progress", t)
+            return true
+        end,
+        end_entrance = function()
+            if not entrance then return end
+            entrance, touchdown, flight_row = nil, nil, nil
+            pose, plan, step, flourish, phase = target, {}, nil, nil, 0
+            posture_age, hold = 0, 0
+            set("ai_flight_art", false)
+            set("ai_landing_art", false)
+            set("ai_landing_progress", 0)
+            rest()
         end,
         wingbeat = function(cycle)
             if flight_row then set("ai_flight_cell", flight_row * 12 + math.floor(cycle * 12 + 0.5) % 12) end

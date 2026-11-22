@@ -99,7 +99,7 @@ on("sound_open_request", osd.hide)
 on("sound_toggle", function() if fact.sound_open then osd.hide() end end)
 
 local media = require("media/controller")()
-local puppet = require("assistant/puppet")(require("assistant/full-body"))
+local puppet = require("assistant/puppet")(require("assistant/full-body"), require("assistant/landing-frames"))
 flight = require("assistant/flight")(require("assistant/flight-path"), puppet, require("assistant/flight-actor"))
 flight.outputs(flight_outputs)
 require("bar/controller")(flight.window)
