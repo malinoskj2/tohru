@@ -2,7 +2,26 @@
 
 Audited Tohru main at `fd8c4b5f4485fe15d4bb7c74e1397f37fe855e08`. The strongest immediate changes are in scene wiring. One downstream rendering patch has a concrete upstream replacement when the project next updates Pleamar.
 
-## Ranked decisions
+## Implementation status
+
+The first four recommendations are implemented on the independent audit branch against Pleamar 0.7.27. The findings and proposed checks below describe the original audit at `d5b3b60`.
+
+| Change | Implementation | Verification |
+|---|---|---|
+| Settings | `1593c2f`, fixture follow-up `2264108`. One reopen handler shows the window, reloads, publishes the resulting rows and corner editor, then probes the effective microphone. Reload failure leaves the previous view available. | The process fixture exercises multicast event registration, one row publication per reopen/edit, search/navigation retention, a failed reload, unavailable bar, managed overrides and stale device completions. A native Settings process on a private bus read a temporary config and queried a recording voice helper exactly once for the old source and once for the new source on reopen. |
+| Media | `0f561e6`. Both views register synchronously in the same VM. Each handles its own native report. | Two production controllers and their PLM state ran in an isolated scene against a private MPRIS player. A bus monitor observed one MPRIS `Seeked` subscription across startup and reload. Both views showed the initial track and paused state. After overwriting both titles with test values, a VM reload restored both from the paused report. |
+| Calendar | `0e54d8a`. Compare local year/month/day before updating the grid. | Lua fixtures checked grid identity across visible and closed same-date ticks, backward and forward date changes, leap day, retained month, and selection after reopen. |
+| Standalone Information | `26c4224`. Use a relative symlink alongside the entry module, with the same target as the launcher rail. | Native Information opened and switched to page 2 in both the checkout and a staged package layout copied with the package's `cp -r shell` operation. In each case the shared rail reported goal 40. This exercises module loading and actual rail interaction. |
+
+**Verification scope.** The isolated native checks used prebuilt Nix-store Pleamar 0.7.27 binaries, the sandbox Sway display, a private session bus, separate settings/cache/socket paths and a shared GPU reservation. The MPRIS scene used the production bar/media controllers without the other bar services. The Settings device helper was a fixture. No microphone hardware or external account was needed.
+
+Lua 5.4.9 passed the Settings process and corner-size tests, the bar and Calendar controllers, media controller, Information controllers/overview/power, and sound reconciliation and OSD integration. Both embedded Luau scenarios in `tests/settings-ui/logic.rs` also passed when executed under Lua 5.4.9 with a clamp shim. The role-launch test and both loopback remote-art tests passed. `tests/settings-ui/contrast.py` failed identically on the report-only base and the implementation because it expects literal colors where the scene references palette tokens. The heavy Rust suite, Nix build, whole-bar compositor acceptance and portability integration remain unverified. CPU/RAM admission was unavailable.
+
+**Portability merge touchpoint.** At unmerged `6cef2f4`, `shell/settings/controller.luau` adds shortcut operations, a status query on open, and periodic refresh on the shortcuts page. Preserve that query in the single reopen handler after successful reload. Retain its navigation, async results and managed font settings when reconciling edit/publication callbacks. The independent main-base commits include none of the portability implementation.
+
+**Deferred choices.** Continue shipping patch 0028 with the current pin. Its removal requires the future-rebase acceptance checks in finding 5 below. Remote HTTP(S) album art remains supported and its cache and fetch limits still apply.
+
+## Original ranked decisions
 
 | Priority | Decision | Outcome |
 |---|---|---|
@@ -19,7 +38,7 @@ Audited Tohru main at `fd8c4b5f4485fe15d4bb7c74e1397f37fe855e08`. The strongest 
 
 I compared the pin to upstream HEAD observed for this investigation, **0.7.31** at `2cadc88310ff7cb2560a2f4b329be03db741d019`. The source delta touches fonts, GPU/rendering, surface compilation, scene/platform and Wayland code. In particular the Luau dispatcher, MPRIS implementation and UI library are identical at these revisions. Patch numbers below refer to files under `runtime/pleamar/patches/`. [Upstream comparison](https://github.com/k4ditano/pleamar/compare/dc902feb0ee9058b7db7c2bc2c9d59d9f655fd86...2cadc88310ff7cb2560a2f4b329be03db741d019)
 
-## Changes worth making
+## Findings on the audited base
 
 **1. Settings owns two reopen handlers.** In `shell/settings/controller.luau` the handler refreshes from the process snapshot, starts `devices()` with the selected source, and shows the window. In `shell/settings/settings.luau` a later handler reloads the files, publishes corner size and refreshes again. On row edits, `activate` refreshes and calls `applied`, which refreshes again. Native Luau `on` appends handlers in registration order. A fixture with native-style multicast, a recorded device request and a changed source on reload produced **two row publications, probe for “before”, effective source “after”** on one reopen. That can show a status for the wrong microphone. [Pinned handler registration and dispatch](https://github.com/k4ditano/pleamar/blob/dc902feb0ee9058b7db7c2bc2c9d59d9f655fd86/src/logic_luau.rs)
 
@@ -70,7 +89,7 @@ Every entry below ships on the audited base. “Keep” records a continuing con
 | 0028 lock views together | Replace after a verified upgrade as described above. |
 | 0040 spawn stderr | Keep voice observability. Piping errors into structured stdout has different framing and failure semantics. |
 
-### Verification and sequence
+### Original verification and proposed sequence
 
 1. **First change the fixtures.** The existing production-module bar/calendar and media tests passed under Lua 5.4.9. The recording-process role-launch test passed. The unmodified Settings process fixture failed on its missing reduced-motion setting. An augmented local fixture reproduced the stale-source result. These checks exercise logic and wrapper arguments. They do not exercise Wayland, PAM, MPRIS transport or rendering.
 2. **Land independent pin-compatible changes.** Start with Settings after the portability edits settle, or take the Calendar, media-dispatch and standalone Information changes independently. For the media and Information changes, test actual initial service delivery, reload and file/module resolution in private runtime instances. Preserve focus, public events, role boundaries and the existing visuals.
