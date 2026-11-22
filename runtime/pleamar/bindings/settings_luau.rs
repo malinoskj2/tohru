@@ -70,7 +70,7 @@ fn applied(lua: &Lua, owner: &Owner, outcome: SetOutcome) -> mlua::Result<(Table
 
 fn input(key: Key, value: LuaValue) -> mlua::Result<Value> {
     Ok(match value {
-        LuaValue::Boolean(value) => Value::Bool(value),
+        LuaValue::Boolean(value) => key.parse_bool(value),
         LuaValue::String(value) => key.parse_text(value.to_str()?.as_ref()).map_err(report)?,
         LuaValue::Integer(value) => Value::Integer(value),
         LuaValue::Number(value)

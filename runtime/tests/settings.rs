@@ -544,6 +544,8 @@ fn assistant_settings_default_to_voice_on_and_validate() {
             Value::Text("relative/pack.bin".into()),
         ),
         (Key::AssistantVoiceWake, Value::Text("always".into())),
+        (Key::AssistantOrca, Value::Text("yes".into())),
+        (Key::AssistantOrca, Value::Integer(1)),
         (Key::AssistantTtsModel, Value::Text("kokoro".into())),
         (Key::AssistantTtsPitch, Value::Integer(13)),
         (Key::AssistantVoice, Value::Text("true".into())),
@@ -648,4 +650,27 @@ fn assistant_models_nest_under_each_provider() {
         Key::parse("assistant.models.opencode.effort").unwrap(),
         Key::AssistantEffort(Cli::Opencode)
     );
+    assert_eq!(
+        Key::parse("assistant.orca").unwrap(),
+        Key::AssistantOrca
+    );
+    assert_eq!(
+        restarted.get(Key::AssistantOrca).value,
+        Value::Text("auto".into())
+    );
+    owner
+        .set(Key::AssistantOrca, Value::Text("false".into()))
+        .unwrap();
+    let restarted = files.owner();
+    assert_eq!(
+        restarted.get(Key::AssistantOrca).value,
+        Value::Text("false".into())
+    );
+    fs::write(files.managed(), "[assistant]\norca = true\n").unwrap();
+    let bool_managed = files.owner();
+    assert_eq!(
+        bool_managed.get(Key::AssistantOrca).value,
+        Value::Text("true".into())
+    );
+    assert_eq!(bool_managed.get(Key::AssistantOrca).origin, Origin::Nix);
 }

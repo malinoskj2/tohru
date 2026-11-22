@@ -17,7 +17,7 @@ FAKE_CLAUDE = r'''#!/usr/bin/env python3
 import json, os, sys, time
 args = sys.argv[1:]
 with open(os.environ["FAKE_LOG"], "a") as log:
-    log.write(json.dumps({"cli": os.path.basename(sys.argv[0]), "argv": args, "cwd": os.getcwd(), "auto_memory_off": os.environ.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY") == "1", "stdin": sys.stdin.read() if "-p" in args else ""}) + "\n")
+    log.write(json.dumps({"cli": os.path.basename(sys.argv[0]), "argv": args, "cwd": os.getcwd(), "auto_memory_off": os.environ.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY") == "1", "orca_env": {k: v for k, v in os.environ.items() if k.startswith("ORCA_")}, "stdin": sys.stdin.read() if "-p" in args else ""}) + "\n")
 if args[:2] == ["auth", "status"]:
     print(json.dumps({"loggedIn": os.environ.get("FAKE_SIGNED_IN") == "1"})); sys.exit(0)
 session = args[args.index("--resume") + 1] if "--resume" in args else args[args.index("--session-id") + 1] if "--session-id" in args else "ephemeral"
@@ -34,7 +34,7 @@ FAKE_AGY = r'''#!/usr/bin/env python3
 import json, os, sys
 args = sys.argv[1:]
 with open(os.environ["FAKE_LOG"], "a") as log:
-    log.write(json.dumps({"cli": os.path.basename(sys.argv[0]), "argv": args, "cwd": os.getcwd(), "stdin": ""}) + "\n")
+    log.write(json.dumps({"cli": os.path.basename(sys.argv[0]), "argv": args, "cwd": os.getcwd(), "orca_env": {k: v for k, v in os.environ.items() if k.startswith("ORCA_")}, "stdin": ""}) + "\n")
 conversation = args[args.index("--conversation") + 1] if "--conversation" in args else "agy-1"
 print(json.dumps({"event": "init", "conversation_id": conversation}))
 print(json.dumps({"event": "step_update", "step_update": {"step_type": "agent_response", "text_delta": "Hello."}}))
@@ -45,12 +45,41 @@ FAKE_CODEX = r'''#!/usr/bin/env python3
 import json, os, sys
 args = sys.argv[1:]
 with open(os.environ["FAKE_LOG"], "a") as log:
-    log.write(json.dumps({"cli": os.path.basename(sys.argv[0]), "argv": args, "cwd": os.getcwd(), "stdin": sys.stdin.read() if args[:1] == ["exec"] else ""}) + "\n")
+    log.write(json.dumps({"cli": os.path.basename(sys.argv[0]), "argv": args, "cwd": os.getcwd(), "orca_env": {k: v for k, v in os.environ.items() if k.startswith("ORCA_")}, "stdin": sys.stdin.read() if args[:1] == ["exec"] else ""}) + "\n")
 if args[:2] == ["login", "status"]:
     sys.exit(1)
 print(json.dumps({"type": "thread.started", "thread_id": "thread-1"}))
 print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "Sixteen cups."}}))
 print(json.dumps({"type": "turn.completed"}))
+'''
+
+FAKE_GEMINI = r'''#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+with open(os.environ["FAKE_LOG"], "a") as log:
+    log.write(json.dumps({"cli": os.path.basename(sys.argv[0]), "argv": args, "cwd": os.getcwd(), "orca_env": {k: v for k, v in os.environ.items() if k.startswith("ORCA_")}, "stdin": ""}) + "\n")
+session = args[args.index("--resume") + 1] if "--resume" in args else "gem-1"
+print(json.dumps({"type": "init", "session_id": session}))
+print(json.dumps({"type": "message", "role": "assistant", "content": "Hi from Gemini."}))
+'''
+
+FAKE_OPENCODE = r'''#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+with open(os.environ["FAKE_LOG"], "a") as log:
+    log.write(json.dumps({"cli": os.path.basename(sys.argv[0]), "argv": args, "cwd": os.getcwd(), "orca_env": {k: v for k, v in os.environ.items() if k.startswith("ORCA_")}, "stdin": ""}) + "\n")
+session = args[args.index("--session") + 1] if "--session" in args else "oc-1"
+print(json.dumps({"type": "text", "sessionID": session, "part": {"text": "Hi from OpenCode."}}))
+'''
+
+FAKE_ORCA_TEMPLATE = r'''#!/usr/bin/env python3
+import json, os, sys
+log_path = os.environ.get("FAKE_ORCA_LOG")
+if log_path:
+    with open(log_path, "a") as f:
+        f.write(json.dumps({"argv": sys.argv[1:], "user_data": os.environ.get("ORCA_USER_DATA_PATH", "")}) + "\n")
+running = {running!r}
+print(json.dumps({"ok": True, "result": {"app": {"running": running}, "runtime": {"reachable": running}}}))
 '''
 
 
@@ -400,6 +429,109 @@ class Assistant(unittest.TestCase):
         texts = sorted(m["text"] for m in self.memories()["memories"])
         self.assertIn("The user bakes rye now", texts)
         self.assertNotIn("stale", texts)
+
+    def make_orca_shim(self, user_data, running=True):
+        shim = Path(user_data) / "linux-orca-cli-shim" / "orca"
+        shim.parent.mkdir(parents=True, exist_ok=True)
+        shim.write_text(FAKE_ORCA_TEMPLATE.replace("{running!r}", repr(running)))
+        shim.chmod(0o755)
+        return shim
+
+    def test_orca_absent_and_never_resolves_bare_orca(self):
+        bare_marker = Path(self.directory.name) / "bare-orca-ran"
+        self.fake("orca", f"#!/bin/sh\ntouch '{bare_marker}'\nexit 0\n")
+        self.chat("--provider", "claude", "--persona", "off")
+        call = self.calls("claude")[-1]
+        self.assertFalse(bare_marker.exists())
+        self.assertEqual(call["orca_env"], {})
+        self.assertNotIn("--append-system-prompt", call["argv"])
+
+        self.chat("--provider", "claude", "--persona", "off", "--orca", "true")
+        forced = self.calls("claude")[-1]
+        self.assertFalse(bare_marker.exists())
+        self.assertEqual(forced["orca_env"], {})
+        system = forced["argv"][forced["argv"].index("--append-system-prompt") + 1]
+        self.assertIn("no Orca CLI shim or `orca-ide`", system)
+        self.assertIn("never run bare `orca`", system.lower())
+
+    def test_orca_shim_detection_caches_status_and_strips_terminal_vars(self):
+        user_data = Path(self.directory.name) / "orca-user-data"
+        shim = self.make_orca_shim(user_data, running=True)
+        orca_log = Path(self.directory.name) / "orca-probes.jsonl"
+        leaked = {
+            "ORCA_USER_DATA_PATH": str(user_data),
+            "ORCA_WORKTREE_ID": "wt-leak",
+            "ORCA_TERMINAL_HANDLE": "term-leak",
+            "ORCA_TAB_ID": "tab-leak",
+            "ORCA_PANE_KEY": "pane-leak",
+            "ORCA_AGENT_SESSION_ID": "sess-leak",
+            "ORCA_AGENT_HOOK_TOKEN": "tok-leak",
+            "FAKE_ORCA_LOG": str(orca_log),
+        }
+        self.chat("--provider", "claude", "--persona", "off", **leaked)
+        self.chat("--provider", "claude", "--persona", "off", **leaked)
+        calls = self.calls("claude")
+        self.assertEqual(calls[0]["orca_env"], {"ORCA_CLI_COMMAND": str(shim), "ORCA_USER_DATA_PATH": str(user_data)})
+        self.assertEqual(calls[1]["orca_env"], {"ORCA_CLI_COMMAND": str(shim), "ORCA_USER_DATA_PATH": str(user_data)})
+        system = calls[0]["argv"][calls[0]["argv"].index("--append-system-prompt") + 1]
+        self.assertIn("currently running", system)
+        self.assertIn("NOT running inside an Orca terminal or worktree", system)
+        self.assertIn("may or may not be talking about Orca", system)
+        self.assertIn(f"{shim} skills get orca-cli", system)
+        self.assertIn(f"{shim} skills get orchestration", system)
+        self.assertEqual(len(orca_log.read_text().splitlines()), 1)
+        self.assertEqual(list(self.scratch.iterdir()), [])
+
+    def test_orca_not_running_still_gives_cli_context(self):
+        xdg_orca = Path(self.env["XDG_CONFIG_HOME"]) / "orca"
+        shim = self.make_orca_shim(xdg_orca, running=False)
+        self.chat("--provider", "claude", "--persona", "off")
+        call = self.calls("claude")[-1]
+        self.assertEqual(call["orca_env"], {"ORCA_CLI_COMMAND": str(shim), "ORCA_USER_DATA_PATH": str(xdg_orca)})
+        system = call["argv"][call["argv"].index("--append-system-prompt") + 1]
+        self.assertIn("not currently running", system)
+        self.assertIn(f"{shim} skills get orca-cli", system)
+
+    def test_orca_context_reaches_every_provider_via_its_own_mechanism(self):
+        orca_ide = self.bin / "orca-ide"
+        orca_ide.write_text(FAKE_ORCA_TEMPLATE.replace("{running!r}", "True"))
+        orca_ide.chmod(0o755)
+        expected_env = {"ORCA_CLI_COMMAND": str(orca_ide), "ORCA_USER_DATA_PATH": str(Path(self.env["XDG_CONFIG_HOME"]) / "orca")}
+        self.fake("agy", FAKE_AGY)
+        self.fake("gemini", FAKE_GEMINI)
+        self.fake("opencode", FAKE_OPENCODE)
+
+        self.chat("--provider", "claude", "--persona", "off")
+        claude = self.calls("claude")[-1]
+        self.assertEqual(claude["orca_env"], expected_env)
+        self.assertIn(f"{orca_ide} skills get orca-cli", claude["argv"][claude["argv"].index("--append-system-prompt") + 1])
+
+        self.chat("--provider", "codex", "--persona", "off")
+        codex = self.calls("codex")[-1]
+        self.assertEqual(codex["orca_env"], expected_env)
+        dev = next(a for a in codex["argv"] if a.startswith("developer_instructions="))
+        self.assertIn(f"{orca_ide} skills get orca-cli", json.loads(dev.split("=", 1)[1]))
+
+        for name in ("agy", "gemini", "opencode"):
+            cid = self.chat("--provider", name, "--persona", "off", stdin="First")[0]["conversation"]
+            self.chat("--provider", name, "--persona", "off", "--conversation", cid, stdin="Second")
+            turns = self.calls(name)
+            self.assertEqual(turns[0]["orca_env"], expected_env, name)
+            self.assertEqual(turns[1]["orca_env"], expected_env, name)
+            self.assertIn(f"{orca_ide} skills get orca-cli", turns[0]["argv"][-1], name)
+            self.assertEqual(turns[1]["argv"][-1], "Second", name)
+
+    def test_orca_false_disables_detection_env_and_prompt(self):
+        user_data = Path(self.directory.name) / "orca-disabled"
+        shim = self.make_orca_shim(user_data, running=True)
+        orca_log = Path(self.directory.name) / "orca-disabled.jsonl"
+        self.chat("--provider", "claude", "--persona", "off", "--orca", "false",
+                  ORCA_USER_DATA_PATH=str(user_data), ORCA_CLI_COMMAND=str(shim),
+                  ORCA_WORKTREE_ID="wt-leak", FAKE_ORCA_LOG=str(orca_log))
+        call = self.calls("claude")[-1]
+        self.assertFalse(orca_log.exists())
+        self.assertEqual(call["orca_env"], {})
+        self.assertNotIn("--append-system-prompt", call["argv"])
 
 
 if __name__ == "__main__":

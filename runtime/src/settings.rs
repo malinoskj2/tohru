@@ -33,6 +33,7 @@ pub enum Key {
     AssistantPersona,
     AssistantPersonaFile,
     AssistantMemory,
+    AssistantOrca,
     AssistantTtsModel,
     AssistantTtsVoicepack,
     AssistantTtsLoadOnConversation,
@@ -67,8 +68,11 @@ pub const TTS_ENGINES: [&str; 2] = ["kokoro", "espeak-ng"];
 /// How the voice service spots the wake word: a keyword spotter, or the full recogniser.
 pub const VOICE_WAKE: [&str; 2] = ["kws", "asr"];
 
+/// Whether the assistant gets Orca CLI context: detect when installed, always on, or off.
+pub const ASSISTANT_ORCA: [&str; 3] = ["auto", "true", "false"];
+
 impl Key {
-    pub const ALL: [Self; 37] = [
+    pub const ALL: [Self; 38] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::InfoButton,
@@ -91,6 +95,7 @@ impl Key {
         Self::AssistantPersona,
         Self::AssistantPersonaFile,
         Self::AssistantMemory,
+        Self::AssistantOrca,
         Self::AssistantTtsModel,
         Self::AssistantTtsVoicepack,
         Self::AssistantTtsLoadOnConversation,
@@ -133,6 +138,7 @@ impl Key {
             Self::AssistantPersona => "assistant.persona",
             Self::AssistantPersonaFile => "assistant.persona_file",
             Self::AssistantMemory => "assistant.memory",
+            Self::AssistantOrca => "assistant.orca",
             Self::AssistantTtsModel => "assistant.tts_model",
             Self::AssistantTtsVoicepack => "assistant.tts_voicepack",
             Self::AssistantTtsLoadOnConversation => "assistant.tts_load_on_conversation",
@@ -178,6 +184,15 @@ impl Key {
         }
     }
 
+    #[must_use]
+    pub fn parse_bool(self, boolean: bool) -> Value {
+        match self {
+            // Accept unquoted TOML/Lua booleans for tri-state assistant.orca alongside "auto"/"true"/"false".
+            Self::AssistantOrca => Value::Text(if boolean { "true" } else { "false" }.to_owned()),
+            _ => Value::Bool(boolean),
+        }
+    }
+
     /// The tables leading to the setting and its field.
     const fn location(self) -> (&'static [&'static str], &'static str) {
         match self {
@@ -203,6 +218,7 @@ impl Key {
             Self::AssistantPersona => (&["assistant"], "persona"),
             Self::AssistantPersonaFile => (&["assistant"], "persona_file"),
             Self::AssistantMemory => (&["assistant"], "memory"),
+            Self::AssistantOrca => (&["assistant"], "orca"),
             Self::AssistantTtsModel => (&["assistant"], "tts_model"),
             Self::AssistantTtsVoicepack => (&["assistant"], "tts_voicepack"),
             Self::AssistantTtsLoadOnConversation => (&["assistant"], "tts_load_on_conversation"),
@@ -248,6 +264,7 @@ impl Key {
             Self::AssistantTtsVoice => Value::Text("en-us+f3".to_owned()),
             Self::AssistantTtsVoicepack => Value::Text("tide".to_owned()),
             Self::AssistantVoiceWake => Value::Text(VOICE_WAKE[1].to_owned()),
+            Self::AssistantOrca => Value::Text(ASSISTANT_ORCA[0].to_owned()),
             Self::AssistantTtsSpeed => Value::Integer(100),
             Self::AssistantTtsPitch => Value::Integer(3),
             Self::CornerSize => Value::Integer(32),
@@ -294,6 +311,11 @@ impl Key {
             }
             (Self::AssistantVoiceWake, Value::Text(text))
                 if VOICE_WAKE.contains(&text.as_str()) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantOrca, Value::Text(text))
+                if ASSISTANT_ORCA.contains(&text.as_str()) =>
             {
                 Ok(())
             }
@@ -617,7 +639,7 @@ impl Layer {
             let candidate = if let Some(text) = item.as_str() {
                 key.parse_text(text)?
             } else if let Some(boolean) = item.as_bool() {
-                Value::Bool(boolean)
+                key.parse_bool(boolean)
             } else if let Some(integer) = item.as_integer() {
                 Value::Integer(integer)
             } else {

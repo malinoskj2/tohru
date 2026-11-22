@@ -251,6 +251,10 @@ class Cli(unittest.TestCase):
             result = self.invoke("config", "set", key, "/models/x")
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)[2:4], [f"text setting_key {key}", "text setting_value /models/x"])
+        for value in ("auto", "true", "false"):
+            result = self.invoke("config", "set", "assistant.orca", value)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)[2:4], ["text setting_key assistant.orca", f"text setting_value {value}"])
         for key in ("assistant", "assistant.", "assistant.Voice", "assistant.voice;rm"):
             self.assertEqual(self.invoke("config", "set", key, "true").returncode, 2, key)
         helper = Path(self.directory.name) / "fake-assistant"

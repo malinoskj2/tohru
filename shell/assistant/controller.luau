@@ -233,6 +233,10 @@ return function(settings)
         args[#args + 1] = setting("assistant.persona_file", "")
         args[#args + 1] = "--memory"
         args[#args + 1] = memory_on() and "on" or "off"
+        local orca = setting("assistant.orca", "auto")
+        if orca == true then orca = "true" elseif orca == false then orca = "false" end
+        args[#args + 1] = "--orca"
+        args[#args + 1] = (orca == "true" or orca == "false") and orca or "auto"
         live = {conversation = conversation, slot = provider.slot, text = "", voice = voice == true, provider = provider.id}
         local turns = {}
         for _, turn in ipairs(shown_turns) do turns[#turns + 1] = turn end

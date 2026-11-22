@@ -97,6 +97,7 @@ local info = require("info/controller")(tohru_info.snapshot, nil, make_rail(3))
 local assistant = require("assistant/controller")({
     provider = function() return tohru_settings.snapshot()["assistant.provider"].value end,
     choose = function(id) change(function() return tohru_settings.set("assistant.provider", id) end) end,
+    value = function(key) local entry = tohru_settings.snapshot()[key]; return entry and entry.value end,
 })
 voice = require("assistant/voice")(assistant, require("assistant/puppet")())
 voice.configure(tohru_settings.snapshot())
