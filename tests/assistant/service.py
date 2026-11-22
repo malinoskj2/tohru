@@ -402,5 +402,63 @@ class Assistant(unittest.TestCase):
         self.assertNotIn("stale", texts)
 
 
+    def test_draft_forks_session_without_writing_history_until_committed(self):
+        # First turn establishes a Claude session.
+        first = self.chat("--provider", "claude", "--voice", stdin="How many ounces in a cup?")
+        cid = first[0]["conversation"]
+        orig_session = self.calls("claude")[0]["argv"][self.calls("claude")[0]["argv"].index("--session-id") + 1]
+        # A discarded draft on that conversation uses --resume + --fork-session and writes nothing to SQLite.
+        draft = self.events(self.invoke("chat", "--provider", "claude", "--conversation", cid, "--voice", "--draft",
+                                        stdin="What is the weather in Tokyo?", FAKE_ANSWER="Sunny."))
+        self.assertEqual(draft[-1]["event"], "done")
+        self.assertTrue(draft[0].get("draft"))
+        draft_argv = self.calls("claude")[-1]["argv"]
+        self.assertEqual(draft_argv[draft_argv.index("--resume") + 1], orig_session)
+        self.assertIn("--fork-session", draft_argv)
+        # History and saved provider session are untouched by the discarded draft.
+        self.assertEqual(len(self.show(cid)["turns"]), 2)
+        self.chat("--provider", "claude", "--conversation", cid, "--voice", stdin="And a pint?")
+        self.assertEqual(self.calls("claude")[-1]["argv"][self.calls("claude")[-1]["argv"].index("--resume") + 1], orig_session)
+        # Committing a draft records the turn and advances the session without another provider call.
+        before_calls = len(self.calls("claude"))
+        committed = self.events(self.invoke("commit", "--provider", "claude", "--conversation", cid, "--voice", "--session", "fork-99",
+                                            stdin=json.dumps({"prompt": "What is the weather in Tokyo?", "answer": "Sunny."})))
+        self.assertEqual(committed[-1], {"event": "committed", "conversation": cid})
+        self.assertEqual(len(self.calls("claude")), before_calls)
+        turns = self.show(cid)["turns"]
+        self.assertEqual((turns[-2]["text"], turns[-1]["text"]), ("What is the weather in Tokyo?", "Sunny."))
+        self.chat("--provider", "claude", "--conversation", cid, "--voice", stdin="Thanks")
+        self.assertEqual(self.calls("claude")[-1]["argv"][self.calls("claude")[-1]["argv"].index("--resume") + 1], "fork-99")
+        # Codex draft forks an existing thread with `codex exec fork`.
+        cid2 = self.chat("--provider", "codex", "--voice", stdin="First codex turn")[0]["conversation"]
+        self.invoke("chat", "--provider", "codex", "--conversation", cid2, "--voice", "--draft", stdin="Draft codex turn")
+        codex_draft = self.calls("codex")[-1]["argv"]
+        self.assertEqual(codex_draft[:2], ["exec", "fork"])
+        self.assertEqual(len(self.show(cid2)["turns"]), 2)
+        # Unsupported provider (agy) declines drafts without spawning the CLI.
+        self.fake("agy", FAKE_AGY)
+        res = self.events(self.invoke("chat", "--provider", "agy", "--voice", "--draft", stdin="Hello there friend"))
+        self.assertEqual(res, [{"event": "draft_unsupported"}])
+        self.assertEqual(self.calls("agy"), [])
+
+    def test_rollback_drops_cancelled_fragment_and_interrupted_context_reaches_model(self):
+        # First fragment cancelled before speaking: rollback removes the empty conversation so only the merged turn remains.
+        frag = self.chat("--provider", "claude", "--voice", stdin="Tell me about the history")
+        cid = frag[0]["conversation"]
+        rb = self.events(self.invoke("rollback", cid))
+        self.assertEqual(rb[-1], {"event": "rolled_back", "conversation": cid, "deleted": True})
+        self.assertEqual(self.invoke("show", cid).returncode, 1)
+        merged = self.chat("--provider", "claude", "--voice", stdin="Tell me about the history of Rome")
+        cid_m = merged[0]["conversation"]
+        self.assertEqual([t["text"] for t in self.show(cid_m)["turns"] if t["role"] == "user"], ["Tell me about the history of Rome"])
+        # Interruption context reaches the model while history keeps only the user's clean words.
+        self.chat("--provider", "claude", "--conversation", cid_m, "--voice",
+                  "--interrupted", "Rome was founded in…", stdin="Wait, what about Athens?")
+        sent = self.calls("claude")[-1]["stdin"]
+        self.assertIn('You had already said: "Rome was founded in…"', sent)
+        self.assertIn("Wait, what about Athens?", sent)
+        self.assertEqual(self.show(cid_m)["turns"][-2]["text"], "Wait, what about Athens?")
+
+
 if __name__ == "__main__":
     unittest.main()

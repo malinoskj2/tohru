@@ -745,6 +745,16 @@ def transcript_prompt(turns, prompt):
 # Claude and Codex take instructions on every run, so the persona and memories are fresh each turn.
 # Gemini, Antigravity and OpenCode have no flag for them; those get them ahead of the first turn only.
 SYSTEM_FLAG = {"claude", "codex"}
+# Only providers that can fork a resumed session cleanly support speculative drafts without polluting history.
+DRAFT_PROVIDERS = {"claude", "codex"}
+
+
+def interrupted_note(spoken):
+    spoken = " ".join((spoken or "").split())[:400]
+    if not spoken:
+        return ""
+    return (f'[You were interrupted while speaking. You had already said: "{spoken}". '
+            "Address what the user just said directly; do not repeat what you already said or apologise at length.]")
 
 
 def gemini_settings(scratch, model, effort):
@@ -773,6 +783,8 @@ def provider_argv(ident, session, model="", effort="", system="", scratch=None, 
             argv += ["--no-session-persistence"]
         elif session["resume"]:
             argv += ["--resume", session["id"]]
+            if session.get("fork"):
+                argv += ["--fork-session"]
         else:
             argv += ["--session-id", session["id"]]
         return argv
@@ -788,7 +800,8 @@ def provider_argv(ident, session, model="", effort="", system="", scratch=None, 
         if session.get("ephemeral"):
             common += ["--ephemeral"]
         if session["resume"]:
-            return ["codex", "exec", "resume", *common, session["id"], "-"]
+            verb = "fork" if session.get("fork") else "resume"
+            return ["codex", "exec", verb, *common, session["id"], "-"]
         return ["codex", "exec", *common, *([] if tools else ["--sandbox", "read-only"]), "--color", "never", "-"]
     if ident == "gemini":
         argv = ["gemini", "--output-format", "stream-json", "--approval-mode", "yolo" if tools else "default"]
@@ -1009,6 +1022,9 @@ def chat(args):
     if provider is None or not provider.installed():
         emit({"event": "error", "message": f"{args.provider} is not installed"})
         return 3
+    if args.draft and (provider.id not in DRAFT_PROVIDERS or FORGET.match(prompt)):
+        emit({"event": "draft_unsupported"})
+        return 0
     db = connect()
     now = int(time.time())
     conversation = load(db, args.conversation) if args.conversation else None
@@ -1019,16 +1035,22 @@ def chat(args):
     earlier = list(conversation["turns"])
     sessions = conversation["sessions"]
     session = {"id": sessions.get(provider.id), "resume": provider.id in sessions}
+    if args.draft and session["resume"]:
+        session["fork"] = True
     if not session["resume"] and provider.id == "claude":
         session["id"] = str(uuid.uuid4())
     conversation["provider"] = provider.id
     conversation["voice"] = bool(conversation.get("voice") or args.voice)
     conversation["updated"] = now
-    with transaction(db):
-        save_conversation(db, conversation)
-        add_turn(db, conversation["id"], {"role": "user", "text": prompt, "time": now, "voice": bool(args.voice)})
-    emit({"event": "start", "conversation": conversation["id"], "provider": provider.id, "slot": provider.slot,
-          "title": conversation["title"]})
+    if not args.draft:
+        with transaction(db):
+            save_conversation(db, conversation)
+            add_turn(db, conversation["id"], {"role": "user", "text": prompt, "time": now, "voice": bool(args.voice)})
+    start_event = {"event": "start", "conversation": conversation["id"], "provider": provider.id, "slot": provider.slot,
+                   "title": conversation["title"]}
+    if args.draft:
+        start_event["draft"] = True
+    emit(start_event)
 
     forget = FORGET.match(prompt)
     if forget:
@@ -1045,6 +1067,9 @@ def chat(args):
     system = instructions(persona, block, args.voice)
     model, effort = resolve_model(provider.id, args.model, args.effort)
     sent = prompt if session["resume"] or not earlier else transcript_prompt(earlier, prompt)
+    note = interrupted_note(args.interrupted)
+    if note:
+        sent = f"{note}\n\n{sent}"
     if provider.id in SYSTEM_FLAG:
         argv = provider_argv(provider.id, session, model, effort, system, tools=True)
     else:
@@ -1062,15 +1087,24 @@ def chat(args):
     except OSError as error:
         emit({"event": "error", "message": str(error)})
         return 3
-    if parser.session:
-        sessions[provider.id] = parser.session
-    elif session["id"] and provider.id == "claude" and parser.text:
-        sessions[provider.id] = session["id"]
+    next_session = parser.session or (session["id"] if session["id"] and provider.id == "claude" and parser.text else None)
     answer = parser.text.strip()
+    failed = not stopped and (parser.error or (code != 0 and not answer))
+    if args.draft:
+        if stopped:
+            emit({"event": "stopped", "conversation": conversation["id"]})
+            return 0
+        if failed:
+            message = parser.error or (errors[-1].strip() if errors else f"{provider.id} exited with {code}")
+            emit({"event": "error", "conversation": conversation["id"], "message": message[:500]})
+            return 1
+        emit({"event": "done", "conversation": conversation["id"], "session": next_session or ""})
+        return 0
+    if next_session:
+        sessions[provider.id] = next_session
     turn = {"role": "assistant", "text": answer, "time": int(time.time()), "provider": provider.id}
     if stopped:
         turn["stopped"] = True
-    failed = not stopped and (parser.error or (code != 0 and not answer))
     if failed:
         message = parser.error or (errors[-1].strip() if errors else f"{provider.id} exited with {code}")
         turn["error"] = message[:500]
@@ -1086,6 +1120,61 @@ def chat(args):
         emit({"event": "error", "conversation": conversation["id"], "message": turn["error"]})
         return 1
     emit({"event": "done", "conversation": conversation["id"]})
+    return 0
+
+
+def commit_draft(args):
+    data = json.loads(sys.stdin.read() or "{}")
+    prompt = str(data.get("prompt") or "").strip()
+    answer = str(data.get("answer") or "").strip()
+    if not prompt:
+        raise SystemExit("tohru-assistant: empty draft prompt")
+    db = connect()
+    now = int(time.time())
+    conversation = load(db, args.conversation) if args.conversation else None
+    if conversation is None:
+        conversation = {"id": check_id(args.conversation) if args.conversation else uuid.uuid4().hex,
+                        "title": title_of(prompt), "provider": args.provider, "created": now, "updated": now,
+                        "voice": bool(args.voice), "sessions": {}, "turns": [], "forgotten": False}
+    conversation["provider"] = args.provider
+    conversation["voice"] = bool(conversation.get("voice") or args.voice)
+    conversation["updated"] = now
+    if args.session:
+        conversation["sessions"][args.provider] = args.session
+    with transaction(db):
+        save_conversation(db, conversation)
+        add_turn(db, conversation["id"], {"role": "user", "text": prompt, "time": now, "voice": bool(args.voice)})
+        if answer:
+            add_turn(db, conversation["id"], {"role": "assistant", "text": answer, "time": now, "provider": args.provider})
+    emit({"event": "committed", "conversation": conversation["id"]})
+    return 0
+
+
+def rollback(args):
+    db = connect()
+    cid = check_id(args.conversation)
+    conversation = load(db, cid)
+    if conversation is None:
+        emit({"event": "rolled_back", "conversation": cid, "deleted": True})
+        return 0
+    row = db.execute("SELECT MAX(seq) AS seq FROM turns WHERE conversation_id = ? AND role = 'user'", (cid,)).fetchone()
+    if row is None or row["seq"] is None:
+        emit({"event": "rolled_back", "conversation": cid, "deleted": False})
+        return 0
+    with transaction(db):
+        db.execute("DELETE FROM turns WHERE conversation_id = ? AND seq >= ?", (cid, row["seq"]))
+        remaining = db.execute("SELECT role, provider, time FROM turns WHERE conversation_id = ? ORDER BY seq", (cid,)).fetchall()
+        if not remaining:
+            db.execute("DELETE FROM conversations WHERE id = ?", (cid,))
+            db.execute("DELETE FROM summaries WHERE conversation_id = ?", (cid,))
+            deleted = True
+        else:
+            active_providers = {r["provider"] for r in remaining if r["role"] == "assistant" and r["provider"]}
+            conversation["sessions"] = {k: v for k, v in conversation["sessions"].items() if k in active_providers}
+            conversation["updated"] = remaining[-1]["time"]
+            save_conversation(db, conversation)
+            deleted = False
+    emit({"event": "rolled_back", "conversation": cid, "deleted": deleted})
     return 0
 
 
@@ -1379,6 +1468,8 @@ def main(argv=None):
             p.add_argument("--provider", required=True)
             p.add_argument("--conversation", default="")
             p.add_argument("--voice", action="store_true")
+            p.add_argument("--draft", action="store_true")
+            p.add_argument("--interrupted", default="")
             p.add_argument("--persona", choices=("on", "off"), default="on")
             p.add_argument("--persona-file", default="")
         else:
@@ -1387,6 +1478,13 @@ def main(argv=None):
         p.add_argument("--model", default="")
         p.add_argument("--effort", default="")
         p.add_argument("--memory", choices=("on", "off"), default="on")
+    p = sub.add_parser("commit")
+    p.add_argument("--provider", required=True)
+    p.add_argument("--conversation", default="")
+    p.add_argument("--voice", action="store_true")
+    p.add_argument("--session", default="")
+    p = sub.add_parser("rollback")
+    p.add_argument("conversation")
     p = sub.add_parser("history")
     p.add_argument("--query", default="")
     p.add_argument("--provider", default="")
@@ -1421,6 +1519,10 @@ def main(argv=None):
         signin(args.provider)
     elif args.command == "chat":
         return chat(args)
+    elif args.command == "commit":
+        return commit_draft(args)
+    elif args.command == "rollback":
+        return rollback(args)
     elif args.command == "remember":
         return remember(args)
     elif args.command == "history":

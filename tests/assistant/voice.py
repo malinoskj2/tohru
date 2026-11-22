@@ -91,12 +91,16 @@ class FakeSpeaker:
         self.hushed = 0
         self.pauses = 0
         self.resumes = 0
+        self.spoken_text = ""
 
     def echo_level(self):
         return self.echo
 
     def deaf(self):
         return self.quiet
+
+    def spoken_so_far(self):
+        return self.spoken_text
 
     def say(self, text, conversation):
         self.said.append((text, conversation))
@@ -126,6 +130,8 @@ def make_voice(recognizer, spotter=None):
     voice.conversation_until = 0.0
     voice.thinking = False
     voice.cancelled_thinking = False
+    voice.last_turn_text = ""
+    voice.pending_continuation = ""
     voice.echo_cancelled = False
     voice.echo_coupling = voice_module.ECHO_COUPLING_INIT
     voice.load_on_conversation = False
@@ -314,7 +320,7 @@ class VoiceTests(unittest.TestCase):
 
     @unittest.skipIf(numpy is None, "needs numpy")
     def test_pause_then_resume_on_noise_and_backchannels(self):
-        for partial, final in (("", ""), ("MM", "MM"), ("MHM", "MHM"), ("UH HUH", "UH HUH"), ("YEAH", "YEAH"), ("OKAY", "OKAY")):
+        for partial, final in (("", ""), ("MM", "MM"), ("MHM", "MHM"), ("UH HUH", "UH HUH"), ("YEAH", "YEAH"), ("RIGHT", "RIGHT"), ("OKAY", "OKAY")):
             self.events.clear()
             recognizer = FakeRecognizer([partial], final)
             voice = make_voice(recognizer)
@@ -370,7 +376,7 @@ class VoiceTests(unittest.TestCase):
             if not voice.in_speech:
                 break
             voice.step(numpy.zeros(512, dtype=numpy.float32))
-        self.assertEqual([e["event"] for e in self.events], ["hearing", "barge", "hearing", "turn"])
+        self.assertEqual([e["event"] for e in self.events], ["hearing", "barge", "draft", "hearing", "turn"])
         self.assertEqual(self.events[-1]["text"], "Wait what about tomorrow")
 
     @unittest.skipIf(numpy is None, "needs numpy")
@@ -403,6 +409,143 @@ class VoiceTests(unittest.TestCase):
         # The replacement answer speaks normally.
         voice.command({"cmd": "say", "text": "New answer", "conversation": "c1"})
         self.assertEqual(voice.speaker.said, [("New answer", "c1")])
+
+    def test_continuation_merges_fragments_into_one_turn(self):
+        recognizer = FakeRecognizer(["TELL ME ABOUT THE HISTORY"], "TELL ME ABOUT THE HISTORY")
+        voice = make_voice(recognizer)
+        voice.extend_conversation()
+        # First fragment ends and starts thinking (nothing spoken yet).
+        self.speak(voice, 10, 25)
+        self.assertEqual(self.events[-1], {"event": "turn", "text": "Tell me about the history"})
+        self.assertTrue(voice.thinking)
+        # User continues before she starts speaking.
+        voice.recognizer = FakeRecognizer(["OF THE ROMAN EMPIRE"], "OF THE ROMAN EMPIRE")
+        self.events.clear()
+        self.speak(voice, 10, 25)
+        barge = next(e for e in self.events if e["event"] == "barge")
+        self.assertTrue(barge.get("continuation"))
+        self.assertEqual(self.events[-1], {"event": "turn", "text": "Tell me about the history of the roman empire"})
+
+    def test_endpointing_holds_unfinished_phrases_and_shortens_with_draft(self):
+        # Complete-looking phrase without draft (< 4 words) finishes around COMPLETE_HOLD_MS (~650 ms, 21 windows).
+        voice = make_voice(FakeRecognizer(["WHAT TIME IS"], "WHAT TIME IS"))
+        voice.extend_conversation()
+        voice.begin([])
+        voice.hear(b"", True)
+        # "IS" is unfinished, so even after 25 quiet windows (800 ms) it must NOT end the turn!
+        for _ in range(25):
+            voice.hear(b"", False)
+        self.assertTrue(voice.in_speech)
+        self.assertEqual([e for e in self.events if e["event"] == "turn"], [])
+        # Past INCOMPLETE_HOLD_MS (~1050 ms, 33 windows total) it ends.
+        for _ in range(10):
+            if not voice.in_speech:
+                break
+            voice.hear(b"", False)
+        self.assertFalse(voice.in_speech)
+        self.assertEqual(self.events[-1]["text"], "What time is")
+
+        # Thinking pause "so... um... what I want is" never cuts in prematurely.
+        self.events.clear()
+        for phrase in ("SO", "SO UM", "SO UM WHAT I WANT IS", "TELL ME ABOUT,"):
+            self.assertTrue(voice_module.is_unfinished(phrase), phrase)
+        self.assertFalse(voice_module.is_unfinished("WHAT TIME IS IT"))
+
+        # Complete-looking phrase with < 4 words (no draft): stays open at 15 windows (480 ms), ends by 21 windows (672 ms).
+        voice2 = make_voice(FakeRecognizer(["WHAT TIME NOW"], "WHAT TIME NOW"))
+        voice2.extend_conversation()
+        voice2.begin([])
+        voice2.hear(b"", True)
+        for _ in range(15):
+            voice2.hear(b"", False)
+        self.assertTrue(voice2.in_speech)
+        for _ in range(7):
+            if not voice2.in_speech:
+                break
+            voice2.hear(b"", False)
+        self.assertFalse(voice2.in_speech)
+        self.assertEqual(self.events[-1]["text"], "What time now")
+
+        # Complete-looking >= 4 word phrase emits draft at ~220 ms and finishes at ~480 ms (15 windows).
+        self.events.clear()
+        voice3 = make_voice(FakeRecognizer(["WHAT IS THE WEATHER TODAY"], "WHAT IS THE WEATHER TODAY"))
+        voice3.extend_conversation()
+        voice3.begin([])
+        voice3.hear(b"", True)
+        for _ in range(7):
+            voice3.hear(b"", False)
+        self.assertEqual([e["event"] for e in self.events], ["hearing", "draft"])
+        self.assertEqual(self.events[-1]["text"], "What is the weather today")
+        for _ in range(8):
+            if not voice3.in_speech:
+                break
+            voice3.hear(b"", False)
+        self.assertFalse(voice3.in_speech)
+        self.assertEqual([e["event"] for e in self.events], ["hearing", "draft", "hearing", "turn"])
+        self.assertNotIn("draft_cancel", [e["event"] for e in self.events])
+
+    def test_draft_discards_on_resumed_speech_changed_text_and_caps_at_two(self):
+        # Resuming speech cancels draft 1; a second pause starts draft 2; resuming cancels draft 2; a third pause starts NO draft.
+        recognizer = FakeRecognizer(["WHAT IS THE WEATHER TODAY"], "WHAT IS THE WEATHER TODAY")
+        voice = make_voice(recognizer)
+        voice.extend_conversation()
+        voice.begin([])
+        for attempt in range(3):
+            voice.hear(b"", True)
+            for _ in range(8):
+                voice.hear(b"", False)
+            if attempt < 2:
+                voice.hear(b"", True)
+        drafts = [e for e in self.events if e["event"] == "draft"]
+        cancels = [e for e in self.events if e["event"] == "draft_cancel"]
+        self.assertEqual(len(drafts), 2)
+        self.assertEqual(len(cancels), 2)
+
+        # Changed final transcript cancels the draft before delivering the turn.
+        self.events.clear()
+        voice2 = make_voice(FakeRecognizer(["WHAT IS THE WEATHER TODAY"], "WHAT IS THE WEATHER TOMORROW"))
+        voice2.extend_conversation()
+        voice2.begin([])
+        voice2.hear(b"", True)
+        for _ in range(16):
+            if not voice2.in_speech:
+                break
+            voice2.hear(b"", False)
+        self.assertEqual([e["event"] for e in self.events], ["hearing", "draft", "hearing", "draft_cancel", "turn"])
+
+        # Short (< 4 words) or unfinished phrases never emit a draft.
+        for phrase in ("HI THERE NOW", "WHAT IS THE WEATHER IN"):
+            self.events.clear()
+            v = make_voice(FakeRecognizer([phrase], phrase))
+            v.extend_conversation()
+            v.begin([])
+            v.hear(b"", True)
+            for _ in range(10):
+                v.hear(b"", False)
+            self.assertNotIn("draft", [e["event"] for e in self.events], phrase)
+
+    @unittest.skipIf(numpy is None, "needs numpy")
+    def test_barge_carries_spoken_so_far_and_fade_out_decays_to_zero(self):
+        audio = numpy.ones(24000, dtype=numpy.float32) * 0.5
+        faded = voice_module.fade_samples(numpy, audio, 1000, 2400, fade_in=False)
+        samples = numpy.frombuffer(faded, dtype=numpy.int16)
+        self.assertEqual(len(samples), 2400)
+        self.assertGreater(samples[0], 15000)
+        self.assertEqual(samples[-1], 0)
+        self.assertTrue(bool(numpy.all(samples[:-1] >= samples[1:])))
+
+        # Spoken progress is reported on confirmed barge.
+        voice = make_voice(FakeRecognizer(["WAIT WHAT"], "WAIT WHAT"))
+        voice.np = numpy
+        voice.echo_cancelled = True
+        voice.speaker.speaking = True
+        voice.speaker.spoken_text = "Paris is the capital. It is known for…"
+        loud = numpy.full(512, 0.1, dtype=numpy.float32)
+        voice.silero = lambda window: 0.9
+        for _ in range(8):
+            voice.step(loud)
+        barge = next(e for e in self.events if e["event"] == "barge")
+        self.assertEqual(barge["spoken"], "Paris is the capital. It is known for…")
 
     def test_backchannel_while_thinking_does_not_cancel(self):
         voice = make_voice(FakeRecognizer(["OKAY"], "OKAY"))

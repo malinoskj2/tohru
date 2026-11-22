@@ -17,13 +17,19 @@ _G.spawn = function(command, args, line, exit, how)
 end
 
 local asked, remembered, stopped, listeners = {}, {}, 0, {}
+local drafted, discarded, cancelled, rolled_back = {}, 0, 0, {}
 local refusing = false
+local draft_ok = true
 local shown = nil
 local assistant = {
     listening = function(on) fact.ai_listening = on end,
-    ask = function(prompt, conversation) asked[#asked + 1] = {prompt, conversation}; return not refusing end,
+    ask = function(prompt, conversation, opts) asked[#asked + 1] = {prompt, conversation, opts}; return not refusing end,
+    draft = function(prompt, conversation, opts) drafted[#drafted + 1] = {prompt, conversation, opts}; return draft_ok end,
+    discard_draft = function() discarded = discarded + 1 end,
     streaming = function() return refusing == "busy" end,
     stop = function() stopped = stopped + 1 end,
+    cancel = function(on_done) cancelled = cancelled + 1; if on_done then on_done(nil, true) end end,
+    rollback = function(cid, on_done) rolled_back[#rolled_back + 1] = cid; if on_done then on_done(true) end end,
     remember = function(id) remembered[#remembered + 1] = id end,
     show = function(id) shown = id end,
     on_answer = function(listener) listeners[#listeners + 1] = listener end,
@@ -103,19 +109,37 @@ assert(target == "listening")
 -- Interrupting while thinking cancels the pending answer, swallows its stale reply and sends the replacement turn.
 local streaming_now = true
 local real_streaming = assistant.streaming
+local real_cancel = assistant.cancel
 assistant.streaming = function() return streaming_now end
+local cancel_cb = nil
+assistant.cancel = function(cb) cancelled = cancelled + 1; cancel_cb = cb end
 local asked_before, written_before = #asked, #written
-service.line({event = "barge"})
-assert(stopped == 3)
-service.line({event = "turn", text = "Actually tell me the weather"})
+service.line({event = "barge", continuation = true})
+assert(cancelled == 1)
+service.line({event = "turn", text = "Tell me about the history of Rome"})
 assert(#asked == asked_before and #written == written_before)
 streaming_now = false
-listeners[1]("done", "v1", "Stale answer that must not be spoken", true)
+cancel_cb("v1", false)
 assert(#written == written_before)
-assert(#asked == asked_before + 1 and asked[#asked][1] == "Actually tell me the weather")
-listeners[1]("done", "v1", "It is sunny.", true)
-assert(written[#written].message.cmd == "say" and written[#written].message.text == "It is sunny.")
+assert(#asked == asked_before + 1 and asked[#asked][1] == "Tell me about the history of Rome")
+listeners[1]("done", "v1", "Rome started in 753 BC.", true)
+assert(written[#written].message.cmd == "say" and written[#written].message.text == "Rome started in 753 BC.")
+
+-- Barge with spoken progress passes --interrupted context on the next draft/turn.
+service.line({event = "barge", spoken = "Rome started in…"})
+service.line({event = "draft", text = "Wait what about Greece instead"})
+assert(drafted[#drafted][1] == "Wait what about Greece instead" and drafted[#drafted][3].interrupted == "Rome started in…")
+service.line({event = "draft_cancel"})
+assert(discarded > 0)
+service.line({event = "turn", text = "Wait what about Athens instead"})
+assert(asked[#asked][1] == "Wait what about Athens instead" and asked[#asked][3].interrupted == "Rome started in…")
+-- Unsupported draft notifies tohru-voice so it waits the full silence window.
+draft_ok = false
+service.line({event = "draft", text = "Tell me another quick fact"})
+assert(written[#written].message.cmd == "draft" and written[#written].message.ok == false)
+draft_ok = true
 assistant.streaming = real_streaming
+assistant.cancel = real_cancel
 
 -- The wake word alone gets a short spoken reply, never the same one twice running.
 local greetings = {}
@@ -125,14 +149,17 @@ for i = 1, 12 do
     assert(said.cmd == "say" and said.text ~= "" and said.text ~= greetings[i - 1])
     greetings[i] = said.text
 end
--- A turn the assistant cannot take is answered aloud rather than with silence.
+-- A turn the assistant cannot take when signed out is answered aloud; when streaming it queues silently without the busy line.
 refusing = true
 service.line({event = "turn", text = "Are you there"})
 assert(written[#written].message.cmd == "say" and written[#written].message.text:find("Sign in"))
+local w_count = #written
 refusing = "busy"
 service.line({event = "turn", text = "Are you there"})
-assert(written[#written].message.text:find("still on the last"))
+assert(#written == w_count)
 refusing = false
+listeners[1]("done", "c9", "Typed answer", false)
+assert(asked[#asked][1] == "Are you there")
 
 -- The end of a voice conversation hands it to memory; she lingers after her last word, then goes.
 service.line({event = "speaking", on = true, conversation = "v1"})
