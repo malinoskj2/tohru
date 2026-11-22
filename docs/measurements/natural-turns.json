@@ -1,0 +1,716 @@
+{
+  "baseline_turns": {
+    "kind": "authored mock-policy transport, development only",
+    "rows": [
+      {
+        "case": "request",
+        "label": "respond",
+        "gap_ms": 3000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "answer",
+        "label": "respond",
+        "gap_ms": 3000,
+        "handoff_ms": 672.0,
+        "drafts": 0,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "thinking",
+        "label": "wait",
+        "gap_ms": 5000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "self_question",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "explicit_wait",
+        "label": "wait",
+        "gap_ms": 8000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "unfinished",
+        "label": "wait",
+        "gap_ms": 1200,
+        "handoff_ms": 1056.0,
+        "drafts": 0,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "acknowledgment",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": 672.0,
+        "drafts": 0,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "handoff_after_wait",
+        "label": "respond",
+        "gap_ms": 3000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "ambiguous",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": 672.0,
+        "drafts": 0,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "label_in_content",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "malformed",
+        "label": "error",
+        "gap_ms": 5000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "timeout",
+        "label": null,
+        "gap_ms": 5000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": true,
+        "missed": false
+      }
+    ],
+    "premature": 9,
+    "missed": 0
+  },
+  "candidate_turns": {
+    "kind": "authored mock-policy transport, development only",
+    "rows": [
+      {
+        "case": "request",
+        "label": "respond",
+        "gap_ms": 3000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "answer",
+        "label": "respond",
+        "gap_ms": 3000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "thinking",
+        "label": "wait",
+        "gap_ms": 5000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "self_question",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "explicit_wait",
+        "label": "wait",
+        "gap_ms": 8000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "unfinished",
+        "label": "wait",
+        "gap_ms": 1200,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "acknowledgment",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "handoff_after_wait",
+        "label": "respond",
+        "gap_ms": 3000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "ambiguous",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "label_in_content",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "malformed",
+        "label": "error",
+        "gap_ms": 5000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "timeout",
+        "label": null,
+        "gap_ms": 5000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      }
+    ],
+    "premature": 0,
+    "missed": 0
+  },
+  "baseline_history": {
+    "kind": "controlled application clock, synthetic clips, fake pipe; not physical hearing",
+    "rows": [
+      {
+        "cut_s": 0,
+        "completed": [],
+        "context": "",
+        "fraction_presented_as_heard": false
+      },
+      {
+        "cut_s": 0.01,
+        "completed": [],
+        "context": "",
+        "fraction_presented_as_heard": false
+      },
+      {
+        "cut_s": 0.1,
+        "completed": [],
+        "context": "First\u2026",
+        "fraction_presented_as_heard": true
+      },
+      {
+        "cut_s": 0.5,
+        "completed": [],
+        "context": "First complete\u2026",
+        "fraction_presented_as_heard": true
+      },
+      {
+        "cut_s": 0.99,
+        "completed": [],
+        "context": "First complete sentence.",
+        "fraction_presented_as_heard": true
+      },
+      {
+        "cut_s": 1.01,
+        "completed": [
+          "First complete sentence."
+        ],
+        "context": "First complete sentence.",
+        "fraction_presented_as_heard": true
+      },
+      {
+        "cut_s": 1.5,
+        "completed": [
+          "First complete sentence."
+        ],
+        "context": "First complete sentence. Second complete\u2026",
+        "fraction_presented_as_heard": true
+      },
+      {
+        "cut_s": 1.99,
+        "completed": [
+          "First complete sentence."
+        ],
+        "context": "First complete sentence. Second complete sentence.",
+        "fraction_presented_as_heard": true
+      },
+      {
+        "cut_s": 2.1,
+        "completed": [
+          "First complete sentence.",
+          "Second complete sentence."
+        ],
+        "context": "First complete sentence. Second complete sentence.",
+        "fraction_presented_as_heard": false
+      }
+    ]
+  },
+  "candidate_history": {
+    "kind": "controlled application clock, synthetic clips, fake pipe; not physical hearing",
+    "rows": [
+      {
+        "cut_s": 0,
+        "completed": [],
+        "context": "Completed application-paced segments: none. Current segment playback uncertain; remaining generated text may be unheard.",
+        "fraction_presented_as_heard": false
+      },
+      {
+        "cut_s": 0.01,
+        "completed": [],
+        "context": "Completed application-paced segments: none. Current segment playback uncertain; remaining generated text may be unheard.",
+        "fraction_presented_as_heard": false
+      },
+      {
+        "cut_s": 0.1,
+        "completed": [],
+        "context": "Completed application-paced segments: none. Current segment playback uncertain; remaining generated text may be unheard.",
+        "fraction_presented_as_heard": false
+      },
+      {
+        "cut_s": 0.5,
+        "completed": [],
+        "context": "Completed application-paced segments: none. Current segment playback uncertain; remaining generated text may be unheard.",
+        "fraction_presented_as_heard": false
+      },
+      {
+        "cut_s": 0.99,
+        "completed": [],
+        "context": "Completed application-paced segments: none. Current segment playback uncertain; remaining generated text may be unheard.",
+        "fraction_presented_as_heard": false
+      },
+      {
+        "cut_s": 1.01,
+        "completed": [
+          "First complete sentence."
+        ],
+        "context": "Completed application-paced segments: First complete sentence.. Current segment playback uncertain; remaining generated text may be unheard.",
+        "fraction_presented_as_heard": false
+      },
+      {
+        "cut_s": 1.5,
+        "completed": [
+          "First complete sentence."
+        ],
+        "context": "Completed application-paced segments: First complete sentence.. Current segment playback uncertain; remaining generated text may be unheard.",
+        "fraction_presented_as_heard": false
+      },
+      {
+        "cut_s": 1.99,
+        "completed": [
+          "First complete sentence."
+        ],
+        "context": "Completed application-paced segments: First complete sentence.. Current segment playback uncertain; remaining generated text may be unheard.",
+        "fraction_presented_as_heard": false
+      },
+      {
+        "cut_s": 2.1,
+        "completed": [
+          "First complete sentence.",
+          "Second complete sentence."
+        ],
+        "context": "Completed application-paced segments: First complete sentence. Second complete sentence.. Current segment playback uncertain; remaining generated text may be unheard.",
+        "fraction_presented_as_heard": false
+      }
+    ]
+  },
+  "baseline_delay_1000": {
+    "kind": "authored mock-policy transport, development only",
+    "decision_delay_ms": 1000.0,
+    "rows": [
+      {
+        "case": "request",
+        "label": "respond",
+        "gap_ms": 3000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "answer",
+        "label": "respond",
+        "gap_ms": 3000,
+        "handoff_ms": 672.0,
+        "drafts": 0,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "thinking",
+        "label": "wait",
+        "gap_ms": 5000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "self_question",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "explicit_wait",
+        "label": "wait",
+        "gap_ms": 8000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "unfinished",
+        "label": "wait",
+        "gap_ms": 1200,
+        "handoff_ms": 1056.0,
+        "drafts": 0,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "acknowledgment",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": 672.0,
+        "drafts": 0,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "handoff_after_wait",
+        "label": "respond",
+        "gap_ms": 3000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "ambiguous",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": 672.0,
+        "drafts": 0,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "label_in_content",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "malformed",
+        "label": "error",
+        "gap_ms": 5000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": true,
+        "missed": false
+      },
+      {
+        "case": "timeout",
+        "label": null,
+        "gap_ms": 5000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": true,
+        "missed": false
+      }
+    ],
+    "premature": 9,
+    "missed": 0
+  },
+  "candidate_delay_1000": {
+    "kind": "authored mock-policy transport, development only",
+    "decision_delay_ms": 1000.0,
+    "rows": [
+      {
+        "case": "request",
+        "label": "respond",
+        "gap_ms": 3000,
+        "handoff_ms": 1280.0,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "answer",
+        "label": "respond",
+        "gap_ms": 3000,
+        "handoff_ms": 1280.0,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "thinking",
+        "label": "wait",
+        "gap_ms": 5000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "self_question",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "explicit_wait",
+        "label": "wait",
+        "gap_ms": 8000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "unfinished",
+        "label": "wait",
+        "gap_ms": 1200,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "acknowledgment",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "handoff_after_wait",
+        "label": "respond",
+        "gap_ms": 3000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "ambiguous",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "label_in_content",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "malformed",
+        "label": "error",
+        "gap_ms": 5000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "timeout",
+        "label": null,
+        "gap_ms": 5000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      }
+    ],
+    "premature": 0,
+    "missed": 0
+  },
+  "candidate_delay_5000": {
+    "kind": "authored mock-policy transport, development only",
+    "decision_delay_ms": 5000.0,
+    "rows": [
+      {
+        "case": "request",
+        "label": "respond",
+        "gap_ms": 3000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": true
+      },
+      {
+        "case": "answer",
+        "label": "respond",
+        "gap_ms": 3000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": true
+      },
+      {
+        "case": "thinking",
+        "label": "wait",
+        "gap_ms": 5000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "self_question",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "explicit_wait",
+        "label": "wait",
+        "gap_ms": 8000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "unfinished",
+        "label": "wait",
+        "gap_ms": 1200,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "acknowledgment",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "handoff_after_wait",
+        "label": "respond",
+        "gap_ms": 3000,
+        "handoff_ms": 480.0,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "ambiguous",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "label_in_content",
+        "label": "wait",
+        "gap_ms": 3000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "malformed",
+        "label": "error",
+        "gap_ms": 5000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      },
+      {
+        "case": "timeout",
+        "label": null,
+        "gap_ms": 5000,
+        "handoff_ms": null,
+        "drafts": 1,
+        "premature": false,
+        "missed": false
+      }
+    ],
+    "premature": 0,
+    "missed": 2
+  }
+}

@@ -136,8 +136,13 @@ return function(assistant, puppet)
             puppet.sentence(tostring(message.text or ""))
         elseif event == "draft" then
             if assistant.draft and not cancelling then
-                local opts = interrupted_spoken and {interrupted = interrupted_spoken} or nil
+                local opts = interrupted_spoken and {interrupted = interrupted_spoken} or {}
+                opts.semantic = message.semantic == true
+                opts.on_semantic = function(decision)
+                    send({cmd = "semantic", token = message.token, text = message.text, decision = decision})
+                end
                 if not assistant.draft(message.text, conversation, opts) then
+                    if opts.semantic then opts.on_semantic("unsupported") end
                     send({cmd = "draft", ok = false})
                 end
             else

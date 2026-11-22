@@ -383,7 +383,7 @@ class Assistant(unittest.TestCase):
     def test_migrations_create_the_schema_and_refuse_a_newer_one(self):
         self.invoke("history")
         db = sqlite3.connect(self.data / "assistant.sqlite")
-        self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 1)
+        self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 2)
         self.assertEqual(db.execute("PRAGMA journal_mode").fetchone()[0], "wal")
         tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         self.assertTrue({"conversations", "turns", "turns_fts", "memories", "memories_fts", "summaries", "relationship"} <= tables)
@@ -540,6 +540,20 @@ class Assistant(unittest.TestCase):
         self.assertNotIn("--append-system-prompt", call["argv"])
 
 
+    def test_semantic_protocol_is_explicit_and_tool_free(self):
+        for answer, decision in (("WAIT", "wait"), ("RESPOND\nA short answer.", "respond"),
+                                 ("Ordinary prose says WAIT", "error"), ("RESPOND: answer", "error")):
+            events = self.events(self.invoke("chat", "--provider", "claude", "--voice", "--draft", "--semantic",
+                                             stdin="Maybe a map", FAKE_ANSWER=answer))
+            self.assertEqual(next(e['decision'] for e in events if e['event'] == 'semantic'), decision)
+            if decision != 'respond':
+                self.assertFalse(any(e['event'] in ('delta', 'done') for e in events))
+            argv = self.calls('claude')[-1]['argv']
+            self.assertEqual(argv[argv.index('--tools') + 1], '')
+        ordinary = self.events(self.invoke("chat", "--provider", "claude", "--voice", "--draft",
+                                           stdin="Quote a label", FAKE_ANSWER="WAIT"))
+        self.assertFalse(any(e['event'] == 'semantic' for e in ordinary))
+
     def test_draft_forks_session_without_writing_history_until_committed(self):
         # First turn establishes a Claude session.
         first = self.chat("--provider", "claude", "--voice", stdin="How many ounces in a cup?")
@@ -615,7 +629,11 @@ class Assistant(unittest.TestCase):
         self.chat("--provider", "claude", "--conversation", cid_m, "--voice",
                   "--interrupted", "Rome was founded in…", stdin="Wait, what about Athens?")
         sent = self.calls("claude")[-1]["stdin"]
-        self.assertIn('You had already said: "Rome was founded in…"', sent)
+        self.assertIn('Application playback evidence: Rome was founded in…', sent)
+        self.assertIn('not proof it was heard', sent)
+        previous = self.show(cid_m)["turns"][-3]
+        self.assertIn('not proof it was heard', previous['delivery'])
+        self.assertEqual(previous['text'], 'Eight fluid ounces.')
         self.assertIn("Wait, what about Athens?", sent)
         self.assertEqual(self.show(cid_m)["turns"][-2]["text"], "Wait, what about Athens?")
 

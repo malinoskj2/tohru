@@ -37,8 +37,47 @@ and provider transport are included in their surrounding application stages.
 latency. `inter_sentence_application_gap` excludes waveform padding and device
 buffering. `interruption_detected` marks the application's threshold decision;
 `audio_cancel_requested` and `player_stop_requested` mark cancellation/kill requests,
-not acoustic silence. `spoken_so_far` remains a pacing-based estimate for follow-up
-context. None of these events measures a loudspeaker or physical room echo.
+not acoustic silence. `spoken_so_far` reports completed application-paced segments
+and marks remaining playback uncertain; it no longer estimates partial words.
+None of these events measures a loudspeaker or physical room echo.
+
+## Optional semantic floor decisions
+
+`TOHRU_VOICE_SEMANTIC=on` opts the voice process into experimental semantic gating;
+the default is off. No Nix change, service or model download is required. Claude
+and Codex reuse the existing silent, tool-free speculative call with prior context.
+Only an explicitly requested semantic draft parses the strict whole-output protocol:
+`WAIT` alone, or `RESPOND` followed by a newline and an answer. Ordinary prose and
+labels inside user text have no protocol authority. Answers remain behind the
+existing tool-marker validation, commit, cancellation and rollback gates.
+
+WAIT retains the floor. New speech invalidates the token and ASR changes invalidate
+the text match. Final recognition is checked again; a changed final is retained for
+the next utterance instead of speaking an obsolete draft. Four seconds of quiet
+without accepted intent ends capture and cancels the draft, retaining at most 4096
+characters as continuation in the existing conversation window. The 30-second
+capture ceiling and two-draft budget remain. A long pause therefore needs another
+utterance; it does not leave an audio buffer or provider request running forever.
+
+Unsupported backends (including Orca), malformed protocol, errors and timeouts
+abstain. Narrow trailing handoffs (`go ahead`, `your turn`, `over to you`, `what do
+you think`) provide an escape to the normal provider path, also checked after final
+ASR. This heuristic can misread quoted language; semantic mode is not enabled by
+default. Backend changes/end discard capture authority. Metadata-only
+`semantic_decision` and `semantic_deferred` events expose decisions and fallback;
+existing draft/stream events expose call and playback costs without transcript logs.
+
+Local SQLite schema 2 preserves full assistant text and attaches a separate
+`delivery` note to the interrupted answer when the next turn is committed. Fresh
+provider transcript reconstruction includes that note; resumed native sessions
+receive it on the next request. Native sessions still contain the full generated
+answer: their history is not rewritten or claimed to reflect physical hearing.
+Orca receives the same note in its request, but its remote history has no separately
+reconciled delivery field. Metadata is unavailable if no subsequent request is sent.
+Pauses/backchannels retain the playback generation and resume it; only confirmed
+interruption supplies the note. New queued replies clear evidence from old replies.
+
+See [measurement and remaining gates](natural-turn-measurement.md).
 
 ## Pipeline and safety
 
