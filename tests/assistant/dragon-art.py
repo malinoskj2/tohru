@@ -18,6 +18,22 @@ class DragonArt(unittest.TestCase):
         cls.keys=pack.extract(pack.ART/'hover-source.png')
         cls.faces=np.array(Image.open(pack.OUT/'faces.webp'))
 
+    def test_flight_rows_match_registered_keys_and_move_the_wing(self):
+        body = Image.open(pack.OUT / 'body.webp').convert('RGBA')
+        flight = Image.open(pack.OUT / 'flight.webp').convert('RGBA')
+        self.assertEqual(flight.size, (12 * 240, 3 * 240))
+        for row, (key, tip) in enumerate(((309, 152), (417, 83), (327, 64))):
+            x, y = key % 24 * 240, key // 24 * 240
+            original = np.array(body.crop((x, y, x+240, y+240)))
+            start = np.array(flight.crop((0, row*240, 240, (row+1)*240)))
+            np.testing.assert_array_equal(start[start[:,:,3]>0], original[original[:,:,3]>0])
+            tips = []
+            for cell in (3, 9):
+                sample = np.array(flight.crop((cell*240, row*240, (cell+1)*240, (row+1)*240)))
+                wing = sample[50:150, tip, 3]
+                tips.append(np.where(wing>128)[0].min())
+            self.assertGreater(abs(tips[0]-tips[1]), 20)
+
     def test_twenty_whole_bodies_with_distinct_lower_silhouettes(self):
         self.assertEqual(len(self.keys),20)
         silhouettes=[]

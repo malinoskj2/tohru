@@ -7,6 +7,8 @@ import math
 import os
 from pathlib import Path
 import socket
+import sys
+import subprocess
 import time
 
 
@@ -45,12 +47,24 @@ def clear_landing(clients, target, output):
     return True
 
 
-def snapshot(monitors, win, clients):
-    # Without proof of which monitor layer-shell selected, only the native
-    # surface dimensions are safe to use. Edge entrances handle this case.
-    if len(monitors) != 1:
+def flight_output(layers, owner_pid):
+    """Hyprland reports mapped layer surfaces grouped by output and level."""
+    matches = [
+        name
+        for name, output in layers.items()
+        for surfaces in output["levels"].values()
+        for surface in surfaces
+        if surface.get("namespace") == "tohru-dragon-flight"
+        and surface.get("pid") == owner_pid
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def snapshot(monitors, win, clients, output):
+    selected = [m for m in monitors if m["name"] == output]
+    if len(selected) != 1:
         return {}
-    m = monitors[0]
+    m = selected[0]
     scale, rotation = m["scale"], m["transform"]
     if not 0.25 <= scale <= 8 or rotation not in range(8):
         return {}
@@ -60,6 +74,7 @@ def snapshot(monitors, win, clients):
     workspace = m["activeWorkspace"]["id"]
     out = dict(
         output=m["name"],
+        output_id=m["id"],
         ox=m["x"],
         oy=m["y"],
         w=round(w / scale),
@@ -67,13 +82,22 @@ def snapshot(monitors, win, clients):
         scale=scale,
         rotation=rotation,
         workspace=workspace,
+        fullscreen=any(
+            c.get("mapped")
+            and not c.get("hidden")
+            and c.get("monitor") == m["id"]
+            and (c.get("workspace", {}).get("id") == workspace or c.get("pinned"))
+            and c.get("fullscreen", 0)
+            for c in clients
+        ),
         blocked=bool(
             m.get("specialWorkspace", {}).get("name")
             or m.get("specialWorkspace", {}).get("id")
             or m.get("solitary") not in (None, 0, "0", "0x0")
-            or win.get("fullscreen", 0)
+            or (win.get("monitor") == m["id"] and win.get("fullscreen", 0))
         ),
     )
+    out["blocked"] |= out["fullscreen"]
     if (
         win.get("mapped")
         and not win.get("hidden", True)
@@ -89,6 +113,30 @@ def snapshot(monitors, win, clients):
                 id=win["address"], x=x - m["x"], y=y - m["y"], w=width, h=height
             )
     return out
+
+
+def session_state(session):
+    if not session or not session.isalnum():
+        return {}
+    try:
+        reply = subprocess.run(
+            ["loginctl", "show-session", session, "-p", "Active", "-p", "LockedHint"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=0.3,
+        )
+        fields = dict(
+            line.split("=", 1) for line in reply.stdout.splitlines() if "=" in line
+        )
+        result = {}
+        if fields.get("Active") in ("yes", "no"):
+            result["session_active"] = fields["Active"] == "yes"
+        if fields.get("LockedHint") in ("yes", "no"):
+            result["unlocked"] = fields["LockedHint"] == "no"
+        return result
+    except (OSError, subprocess.SubprocessError, UnicodeError):
+        return {}
 
 
 def main():
@@ -115,19 +163,52 @@ def main():
             hypr = (runtime / display).samefile(runtime / os.environ["WAYLAND_DISPLAY"])
         except (KeyError, IndexError, OSError, UnicodeError):
             hypr = False
-    previous = None
-    for _ in range(64):
+    # Pleamar spawns this executable directly. Its PID distinguishes this
+    # character from another running scene advertising the same namespace.
+    owner_pid = os.getppid()
+    actor = sys.argv[1:] == ["--actor"]
+    root = Path(__file__).resolve().parents[1]
+    art = next(
+        (
+            str(p)
+            for p in (
+                root / "shell/assistant/dragon",
+                root / "share/tohru/shell/assistant/dragon",
+            )
+            if (p / "body.webp").is_file()
+        ),
+        "",
+    )
+    previous, status = None, {}
+    for index in range(336 if actor else 64):
         scene = {}
         if hypr:
             try:
+                output = flight_output(query(path, b"layers"), owner_pid)
+                if not output and previous is None:
+                    # The first visible configure can race the geometry helper.
+                    for _attempt in range(3):
+                        time.sleep(0.035)
+                        output = flight_output(query(path, b"layers"), owner_pid)
+                        if output:
+                            break
                 scene = snapshot(
                     query(path, b"monitors"),
                     query(path, b"activewindow"),
                     query(path, b"clients"),
+                    output,
                 )
             except (OSError, ValueError, KeyError, TypeError, IndexError):
                 hypr = False
+        if actor:
+            if index % 6 == 0:
+                status = session_state(os.environ.get("XDG_SESSION_ID"))
+            scene.update(status, art=art)
+            if scene.get("unlocked") is False or scene.get("session_active") is False:
+                scene["blocked"] = True
         if lock.exists():
+            if actor:
+                scene["unlocked"] = False
             scene["blocked"] = True
         if scene != previous:
             print(json.dumps(scene, separators=(",", ":")), flush=True)

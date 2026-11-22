@@ -1,7 +1,11 @@
 -- Settings ownership is in Rust, outside this reloadable VM.
 local make_rail = require("bar/rail")
 local flight
-local workspace = require("bar/workspace")(make_rail(0), function() if flight then flight.interrupt() end end)
+local flight_outputs = {}
+local workspace = require("bar/workspace")(make_rail(0), function() if flight then flight.interrupt() end end, function(names)
+    flight_outputs = names
+    if flight then flight.outputs(names) end
+end)
 local close_panels
 local bell = require("bar/bell")(function() if close_panels then close_panels("notifications") end end)
 local PALETTE_INDEX = {mocha=0, macchiato=1, rose_pine=2, nord=3, gruvbox=4, tokyo_night=5, dracula=6, everforest=7}
@@ -96,7 +100,8 @@ on("sound_toggle", function() if fact.sound_open then osd.hide() end end)
 
 local media = require("media/controller")()
 local puppet = require("assistant/puppet")(require("assistant/full-body"))
-flight = require("assistant/flight")(require("assistant/flight-path"), puppet)
+flight = require("assistant/flight")(require("assistant/flight-path"), puppet, require("assistant/flight-actor"))
+flight.outputs(flight_outputs)
 require("bar/controller")(flight.window)
 require("bar/launcher")()
 local calendar = require("calendar/controller")(make_rail(1, 21))

@@ -17,7 +17,7 @@ local function wrap(s)
         and r.x >= 24
         and r.y >= 24
         and (r.x >= 96 or r.y >= 96)
-        and right <= s.w - 96
+        and right <= s.w - 132
         and bottom <= s.h - 96
         and (right <= s.w - 220 or bottom <= s.h - 230)
 end
@@ -63,20 +63,20 @@ function M.plan(s, kind)
     if kind == "wrap" then
         local r = s.target
         local a, b = r.x + r.w, r.y + r.h
-        local dx, dy = math.min(r.w * 0.22, 92), math.min(r.h * 0.22, 80)
+        local dx, dy = math.min(r.w * 0.22, 92, (x - a) * 0.40), math.min(r.h * 0.22, 80)
         p = {
             { math.max(80, r.x - 96), math.max(80, r.y - 96) },
             { r.x + 64, r.y - 40 },
             { a - dx, b - dy },
             { a, b },
             { a + dx, b + dy },
-            { x - 35, y - 14 },
+            { x - math.min(35, (x - a) * 0.35), y - 14 },
             { x, y },
         }
     elseif kind == "rise" then
-        p = { { x - 60, h + 84 }, { x - 130, h - 96 }, { x + 30, y - 74 }, { x, y } }
+        p = { { x - 60, h + 84 }, { x - 48, h - 96 }, { x - 20, y - 74 }, { x, y } }
     elseif kind == "right" then
-        p = { { w + 84, h * 0.57 }, { w - 115, h * 0.48 }, { x - 100, y - 12 }, { x, y } }
+        p = { { w + 84, h * 0.57 }, { w - 12, h * 0.48 }, { x + 26, y - 12 }, { x, y } }
     else
         p = { { -84, h * 0.78 }, { w * 0.27, h * 0.43 }, { w * 0.61, y + 36 }, { x, y } }
     end
@@ -104,10 +104,13 @@ function M.sample(path, t)
     -- Ease orientation into the desktop bind-independent idle transform.
     local landing = math.min(1, (1 - u) * 5)
     local facing = math.atan2 and math.atan2(dy, dx) or math.atan(dy, dx)
-    local bank = u == 1 and 0 or math.sin(math.pi * u) * 14 * dx / math.max(1, length(dx, dy))
+    local tangent_tilt = (dx < 0 and -1 or 1) * dy / math.max(1, length(dx, dy))
+    local bank = u == 1 and 0
+        or math.sin(math.pi * u) * (22 * tangent_tilt + 8 * dx / math.max(1, length(dx, dy)))
     return {
         x = x,
         y = y,
+        direction = dx < 0 and -1 or 1,
         heading = facing * landing * landing * (3 - 2 * landing),
         bank = bank,
         phase = u,

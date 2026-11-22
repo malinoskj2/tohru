@@ -1,5 +1,5 @@
 -- Output ownership is independent of the optional window/workspace protocols.
-return function(rail, scene_changed)
+return function(rail, scene_changed, placement_changed)
     local available, report, preferred, outputs = {}, nil, "", {}
     local function publish_outputs()
         local names, present = {}, {}
@@ -16,7 +16,9 @@ return function(rail, scene_changed)
             if present[name] then selected[#selected+1] = name end
         end
         -- A temporarily disconnected preferred output falls back to the live outputs.
-        text.bar_outputs = table.concat(#selected > 0 and selected or names, ", ")
+        local eligible = #selected > 0 and selected or names
+        text.bar_outputs = table.concat(eligible, ", ")
+        if placement_changed then placement_changed(eligible) end
     end
     local function publish()
         local output = preferred:find(",", 1, true) and "" or preferred

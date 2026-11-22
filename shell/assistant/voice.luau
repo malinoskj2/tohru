@@ -1,5 +1,5 @@
 -- Runs tohru-voice only while assistant.voice is on: off means no process, no microphone and no models loaded.
-return function(assistant, puppet, flight)
+return function(assistant, puppet, flight, service_executable)
     local id = nil
     local wanted = false
     local args = {}
@@ -228,7 +228,7 @@ return function(assistant, puppet, flight)
     function start()
         generation = generation + 1
         local mine = generation
-        id = spawn("tohru-voice", args, function(raw) if mine == generation then line(raw) end end, function(_, code)
+        id = spawn(service_executable or "tohru-voice", args, function(raw) if mine == generation then line(raw) end end, function(_, code)
             if mine ~= generation then return end
             id = nil
             quiet()

@@ -106,7 +106,9 @@ return function(full_body)
     local load_generation = 0
     local reduced, mode = false, "neutral"
     local posture_age, posture_after = 0, 240
-    local flight_pose, after_flight
+    local flight_row, held_pose
+    local voice_art, leased_art, current_art = "", "", ""
+    local FLIGHT_POSES = {left_glide = 0, right_glide = 1, rising_bank = 2}
     local recent = {}
     local function remember(name)
         if recent[#recent] == name then return end
@@ -241,6 +243,7 @@ return function(full_body)
     end
 
     local function tick()
+        if flight_row or held_pose then return end -- The spatial owner samples these frames directly.
         since_change = since_change + 1
         if not reduced and not talking and not step and hold == 0 and target == pose then
             posture_age = posture_age + 1
@@ -390,36 +393,75 @@ return function(full_body)
         return chosen
     end
 
+    local function sync_art()
+        local dir = voice_art ~= "" and voice_art or leased_art
+        if current_art == dir then return end
+        current_art = dir
+        load_generation = load_generation + 1
+        local generation = load_generation
+        if (dir or "") == "" then
+            for _, n in ipairs({"body", "eyes", "mouths", "heart", "faces", "travel"}) do text["ai_dg_" .. n .. "_src"] = "" end
+            fact.ai_dg_ready = false
+            fact.ai_dg_warm = false
+            return
+        end
+        for _, n in ipairs({"body", "eyes", "mouths", "faces", "travel"}) do
+            text["ai_dg_" .. n .. "_src"] = dir .. "/" .. n .. ".webp"
+        end
+        text.ai_dg_heart_src = dir .. "/heart.png"
+        fact.ai_dg_ready = true
+        fact.ai_dg_warm = true
+        after(3000, function() if generation == load_generation then fact.ai_dg_warm = false end end)
+    end
+
     return {
         load = function(dir)
-            load_generation = load_generation + 1
-            local generation = load_generation
-            if (dir or "") == "" then
-                for _, n in ipairs({"body", "eyes", "mouths", "heart", "faces", "travel"}) do text["ai_dg_" .. n .. "_src"] = "" end
-                fact.ai_dg_ready = false
-                fact.ai_dg_warm = false
+            voice_art = dir or ""
+            sync_art()
+        end,
+        lease_art = function(dir)
+            leased_art = dir or ""
+            sync_art()
+        end,
+        hold_pose = function(name)
+            if not name then
+                held_pose = nil
+                return true
+            end
+            if reduced or talking or not POSES[name] or not fact.ai_dg_ready or fact.ai_dg_warm then return false end
+            held_pose = name
+            pose, plan, step, flourish = name, {}, nil, nil
+            heart_t = -1
+            heart(-1)
+            rest()
+            return true
+        end,
+        flight = function(kind, direction)
+            if not kind then
+                if flight_row then
+                    flight_row = nil
+                    set("ai_flight_art", false)
+                    rest()
+                end
                 return
             end
-            for _, n in ipairs({"body", "eyes", "mouths", "faces", "travel"}) do
-                text["ai_dg_" .. n .. "_src"] = dir .. "/" .. n .. ".webp"
-            end
-            text.ai_dg_heart_src = dir .. "/heart.png"
-            fact.ai_dg_ready = true
-            fact.ai_dg_warm = true
-            after(3000, function() if generation == load_generation then fact.ai_dg_warm = false end end)
+            local name = kind == "rise" and "rising_bank" or direction < 0 and "left_glide" or "right_glide"
+            -- A cold or absent voice atlas cannot support the handoff back to
+            -- the registered key. Give this appearance its ordinary idle pose.
+            if reduced or talking or not fact.ai_dg_ready or fact.ai_dg_warm or not POSES[name] then return false end
+            flight_row = FLIGHT_POSES[name]
+            -- Keep the conversation's requested target. It resumes from this
+            -- exact key when braking starts, via the existing authored transitions.
+            pose, plan, step, flourish = name, {}, nil, nil
+            heart_t = -1
+            heart(-1)
+            rest()
+            set("ai_flight_cell", flight_row * 12)
+            set("ai_flight_art", true)
+            return true
         end,
-        flight = function(kind)
-            if kind then
-                if talking or reduced or mode == "listening" then return end
-                local name = ({rise="rising_bank",right="left_glide",sweep="right_glide",wrap="forward_bank"})[kind]
-                if name and POSES[name] then
-                    after_flight, flight_pose = target, name
-                    want(name)
-                end
-            elseif flight_pose then
-                if target == flight_pose and not talking then want(after_flight) end
-                flight_pose, after_flight = nil, nil
-            end
+        wingbeat = function(cycle)
+            if flight_row then set("ai_flight_cell", flight_row * 12 + math.floor(cycle * 12 + 0.5) % 12) end
         end,
         visible = function(on)
             if on and not timer then
@@ -464,7 +506,7 @@ return function(full_body)
             if not talking then
                 mode, hold = "thinking", 0
                 local name = POSES.ponder_hover and "ponder_hover" or "thinking"
-                if flight_pose then after_flight = name else want(name) end
+                want(name)
             end
         end,
         speaking = function(on, state)

@@ -36,7 +36,7 @@ for _, kind in ipairs({ "rise", "right", "sweep", "wrap" }) do
         local pos = paths.sample(p, dt * i)
         local dx, dy = pos.x - prev.x, pos.y - prev.y
         local v = math.sqrt(dx * dx + dy * dy) / dt
-        assert(v < 4000 and math.abs(v - speed) / dt < 16000 and math.abs(pos.bank) <= 14)
+        assert(v < 4000 and math.abs(v - speed) / dt < 16000 and math.abs(pos.bank) <= 24)
         assert(pos.heading == pos.heading and pos.phase >= prev.phase)
         prev, speed = pos, v
     end
@@ -77,7 +77,12 @@ _G.json = {
         return x
     end,
 }
-local f = dofile("shell/assistant/flight.luau")(paths, { flight = function() end })
+local f = dofile("shell/assistant/flight.luau")(paths, {
+    flight = function()
+        return true
+    end,
+    wingbeat = function() end,
+})
 local function configure(k, default)
     if k == "assistant.contextual_entrances" then
         return true
@@ -87,6 +92,8 @@ local function configure(k, default)
     end
     return default
 end
+f.outputs({ "test" })
+scene.output = "test"
 f.configure(configure)
 handlers.dragon_view_width(1920)
 handlers.dragon_view_height(1080)

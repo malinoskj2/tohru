@@ -65,3 +65,7 @@ WAYLAND_DISPLAY=hyprland-1 pleamar --say dragon-body-review \
 ```
 
 Other harness events: `review_pause`, `review_finish`, `review_interrupt`, `review_calm`, `review_reduced 1`, `review_key 0` through `review_key 19`, and `review_live`. Static key inspection freezes the controller; `review_live` resumes it. These events exist only in the harness.
+
+## Desktop flight wingbeats
+
+After regenerating the body atlas, run `python3 tools/dragon/flight.py` to rebuild `shell/assistant/dragon/flight.webp`. Its three 12-frame rows derive from the registered left glide, right glide and rising bank keys. Frame zero is the original key. The mesh flexes each wing about its root and adds a small tail counterstroke. The flight puppet and sampler own playback and the handoff to the normal registered body sheet.
