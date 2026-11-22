@@ -3,7 +3,7 @@
 Branch: `malinoskj2/wayland-portability`. Implementation commits:
 `8b49059` (output/workspace separation) and `df055d6` (standalone ownership,
 configuration, diagnostics, portal shortcuts, packaging and focused tests).
-The final documentation/test commit contains this report. This independent Orca
+Documentation/test commit `0688f82` contains the full report; the subsequent doctor readiness refinement also requires an owned wallpaper supervisor and a loadable locker unit when their dependent features are enabled. This independent Orca
 worktree remains open; main, other worktrees and the 3D exploration were not edited.
 The selected session was confirmed by the supervisor as Codex gpt-6.1-sol, medium.
 
@@ -38,7 +38,7 @@ host or vendored. No voice dependency/model installer or model download ran.
 | 7. Greeter | Administrator templates for greetd/Sway/TUI recovery, native runtime paths, assets, power policy and setup validation; distro UID_MIN/high-UID discovery; NixOS Noto fonts and child-exit status propagation | Four greeter wrapper checks including fatal-child status propagation; template validator returns expected missing prerequisites without host changes; Nix files parsed; UID regression added | No installation, PAM/authentication or actual greetd session. NixOS VM and distro recovery/permission/avatar/power checks remain gated |
 | 8. Voice | Configurable interpreter and explicit TOML environment; arbitrary local paths retained; offline defaults and spaCy downloader guard; explicit dependency/model provenance docs | Nine existing model-path/cancellation regressions; environment layering test; Python syntax; direct dependency versions/artifact hashes verified from primary PyPI metadata | No dependency environment installation/inference or microphone test. Candidate Python 3.11 environment is not transitively hash-locked or inference-certified. Models remain user-supplied |
 | 9. Echo cancellation | Shared HM/standalone PipeWire drop-in, explicit opt-in, exclusive file creation, no route/restart action; separate configured/installed/module/node/selection/effectiveness checks | Shared-config/exclusive-write policy tests, HM source/parse checks, doctor JSON/human paths | No PipeWire restart/module activation, physical loopback or acoustic validation. Module/node availability is not successful cancellation |
-| 10. Packaging/doctor | Nix/release helpers + setup data/docs; declared required vs optional dependencies; read-only bounded subprocesses; structured required/severity/summary and exit 0/1/2/3 | 22 policy/lifecycle tests cover invalid/inaccessible config, missing tools, timeout/output bounds, conditional requirements, read-only status, redaction and relocated non-Nix layout. Actual doctor emits valid JSON (86 checks) and human output, expected exit 1 here | No compiled release/dynamic-loader/Nix closure test. Sandbox has missing runtime/session/tools; its nonzero doctor result is expected and not a healthy-session claim |
+| 10. Packaging/doctor | Nix/release helpers + setup data/docs; declared required vs optional dependencies; read-only bounded subprocesses; structured required/severity/summary and exit 0/1/2/3 | 23 policy/lifecycle tests cover invalid/inaccessible config, missing tools, timeout/output bounds, conditional requirements, read-only status, redaction and relocated non-Nix layout. Actual doctor emits valid JSON (87 checks) and human output, expected exit 1 here | No compiled release/dynamic-loader/Nix closure test. Sandbox has missing runtime/session/tools; its nonzero doctor result is expected and not a healthy-session claim |
 | 11. Generic Nix/non-Nix UI | Native XDG config remains first-class, managed overlay preserved; Nix generation reads are gated on platform identity; ordinary UI replaces Generations with Platform | XDG/managed/alias/path/unit/layout tests; native non-Nix snapshot regression added; Nix syntax and lock-graph consistency checks | Native snapshot regression not run; HM/NixOS evaluation and non-Nix rendered System Info remain gated |
 | 12. Shortcuts ownership/editing | Default compositor mode displays actual Hyprland runtime bindings read-only; Sway explicitly cannot enumerate active bindings. Opt-in native portal mode owns only three fixed Tohru actions, persistent session, user Setup/v2 Configure, actual trigger descriptions, owner/session/grant filtering and cleanup | Nine tests on a real private dbus-daemon with a fake portal: delayed/cancelled/denied/partial requests, actual descriptions vs preferred hints, changes/revocation/restart, previous grants inactive, v1 limit, duplicate owner, unknown IDs/sessions, disabled/compositor no portal contact. Settings tests exercise real Setup/Configure wiring/read-only rows/managed mode | No host grant/configure dialog, desktop app-identity/backend compatibility or actual key delivery test. v1 cannot Configure; service/portal restart requires explicit Setup to bind remembered grants, avoiding automatic prompt loops. No global capture/config rewrite |
 
@@ -46,7 +46,7 @@ host or vendored. No voice dependency/model installer or model download ran.
 
 Latest results under this worktree's `.tmp/`:
 
-- `portability-policy.log`: **22 tests passed**. This includes the added final
+- `portability-policy.log`: **23 tests passed**. This includes the added final
   end-to-end wallpaper supervisor/disabled-restart and relocated layout checks.
 - `shortcuts-portal.log`: **9 private D-Bus tests passed**, dbus-fast 5.2.0 pure
   Python path; no desktop portal or host grant interaction.
@@ -69,7 +69,7 @@ Latest results under this worktree's `.tmp/`:
   this sandbox; structured summary verified. `greeter-template-check.log`: expected
   exit **1** for uninstalled host/user/PAM/session/font prerequisites.
 - `verification-results.json`: 31 grouped lightweight checks, all expected exit
-  statuses. The final policy extension was rerun afterwards and passed 22 tests.
+  statuses. The final policy/doctor extensions were rerun afterwards and passed 23 tests.
 
 An actual sanitized JSON excerpt is in
 [examples/doctor-sandbox.json](examples/doctor-sandbox.json). Doctor's explicit

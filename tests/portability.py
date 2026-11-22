@@ -139,6 +139,15 @@ interface: 'zxdg_output_manager_v1', version: 3, name: 9
         self.assertEqual(result,1);data=json.loads(out.getvalue());self.assertTrue(data['read_only'])
         self.assertNotIn('do-not-report',out.getvalue());self.assertTrue(any(c['state']=='missing' for c in data['checks']))
 
+    def test_doctor_does_not_treat_failed_owned_wallpaper_as_healthy(self):
+        self.write_config('[wallpaper]\nenabled=true\n[assistant]\nvoice=false\n')
+        def responses(args):
+            return ({'owner':'tohru','errors':{'eDP-1':'backend failed'}},'ok') if str(args[0]).endswith('tohru-wallpaper') else (None,'missing')
+        with patch.object(tohru_doctor,'json_probe',side_effect=responses),contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertNotEqual(tohru_doctor.doctor(True),0)
+        check=next(c for c in json.loads(out.getvalue())['checks'] if c['name']=='wallpaper.owner')
+        self.assertEqual(check['state'],'backend-errors');self.assertTrue(check['required']);self.assertEqual(check['severity'],'error')
+
     def test_doctor_exit_contract_required_optional_unknown_and_invalid(self):
         values={"assistant.voice":False,"wallpaper.enabled":False,"idle.owner":"external"}
         names=tohru_doctor.required_checks(values)
@@ -154,6 +163,8 @@ interface: 'zxdg_output_manager_v1', version: 3, name: 9
         self.assertEqual(report({"systemd-user":"missing"})["exit_code"],1)
         self.assertNotIn('executable.parec',names)
         self.assertIn('voice.vad_model',tohru_doctor.required_checks({"assistant.voice":True}))
+        self.assertIn('service.lock',tohru_doctor.required_checks({'idle.owner':'tohru'}))
+        self.assertIn('wallpaper.owner',tohru_doctor.required_checks({'wallpaper.enabled':True}))
 
     def test_doctor_malformed_and_inaccessible_config_is_exit_two(self):
         self.write_config("[broken")

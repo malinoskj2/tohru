@@ -6,6 +6,8 @@
     "status": "required-failures",
     "required_failures": [
       "environment.XDG_SESSION_ID",
+      "executable.setsid",
+      "executable.flock",
       "executable.systemctl",
       "executable.loginctl",
       "executable.busctl",
@@ -84,6 +86,14 @@
       "action": "Choose a layer-shell compositor; workspace/window support degrades independently",
       "required": true,
       "severity": "warning"
+    },
+    {
+      "name": "wallpaper.owner",
+      "state": "disabled",
+      "detail": "No owned supervisor observed",
+      "action": "Explicitly start the configured wallpaper owner; doctor never starts one",
+      "required": false,
+      "severity": "info"
     },
     {
       "name": "echo-cancel.effectiveness",

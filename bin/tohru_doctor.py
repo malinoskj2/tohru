@@ -18,9 +18,9 @@ def required_checks(values):
     if values.get("shortcuts.mode")=="portal":
         core.update(("shortcuts.dependencies","shortcuts.portal","shortcuts.registration"))
     if values.get("wallpaper.enabled"):
-        core.update(("wallpaper","outputs","executable.wayland-info"))
+        core.update(("wallpaper","wallpaper.owner","outputs","executable.wayland-info"))
     if values.get("idle.owner") == "tohru":
-        core.update(("executable.swayidle","protocol.idle-notify","protocol.session-lock","locker.pam"))
+        core.update(("executable.swayidle","protocol.idle-notify","protocol.session-lock","locker.pam","service.lock"))
     if values.get("assistant.voice"):
         core.update(("voice.dependencies","voice.vad_model","voice.asr_model"))
         core.update("executable."+name for name in ("parec","pacat","pactl","espeak-ng"))
@@ -121,7 +121,9 @@ def doctor(as_json=False):
         "Run only one polkit agent per session")
     for component in ("bar","session","launcher","notifications","polkit","idle","wallpaper","lock"):
         out,state=probe(["systemctl","--user","show",f"tohru-{component}.service","-p","LoadState","-p","ActiveState","--value"],timeout=1)
-        add("service."+component,"observed" if out else "unknown",out.strip().replace("\n",", ") if out else state,
+        unit_states=set(out.split()) if out else set()
+        unit_state="present" if "loaded" in unit_states else "missing" if "not-found" in unit_states else "unavailable" if "masked" in unit_states else "unknown"
+        add("service."+component,unit_state,out.strip().replace("\n",", ") if out else state,
             "Generate/install units and inspect journalctl --user -u tohru-"+component)
     pam=next((name for name in ("tohru-lock","pleamar","hyprlock","login") if Path("/etc/pam.d",name).is_file()),None)
     add("locker.pam","present-unverified" if pam else "missing",pam or "No fallback PAM policy found",
@@ -132,6 +134,11 @@ def doctor(as_json=False):
     executable=values.get("wallpaper.executable","mpvpaper")
     add("wallpaper","disabled" if not wallpaper else "configured" if shutil.which(executable) else "missing",
         "Explicit ownership "+("enabled" if wallpaper else "disabled"),"Configure wallpaper.directory, install mpvpaper, and start only Tohru's owner if desired")
+    wallpaper_status,wallpaper_state=json_probe([str(BIN/"tohru-wallpaper"),"status"]) if wallpaper else (None,"disabled")
+    backend_errors=isinstance(wallpaper_status,dict) and bool(wallpaper_status.get("errors"))
+    add("wallpaper.owner","disabled" if not wallpaper else "backend-errors" if backend_errors else "ok" if isinstance(wallpaper_status,dict) and wallpaper_status.get("owner")=="tohru" else "missing" if isinstance(wallpaper_status,dict) else "unknown",
+        "Owned supervisor reports output backend failures" if backend_errors else "Owned supervisor reachable" if isinstance(wallpaper_status,dict) and wallpaper_status.get("owner")=="tohru" else "No owned supervisor observed",
+        "Explicitly start the configured wallpaper owner; doctor never starts one")
     for key in ("wallpaper.directory","wallpaper.assignments"):
         value=values.get(key,"")
         add(key,"default" if not value else "present" if Path(value).exists() else "missing","XDG/Pictures default" if not value else "Configured path exists" if Path(value).exists() else "Configured path missing")
