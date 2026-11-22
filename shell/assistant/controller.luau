@@ -83,12 +83,13 @@ return function(settings)
         end
         return args
     end
-    local DISCORD_KEYS = {"enabled", "read", "post", "token_file", "guild_id", "channels", "allowed_user_id", "desktop_first", "desktop_timeout_seconds"}
+    local DISCORD_KEYS = {"enabled", "read", "post", "token_file", "guild_id", "channels", "allowed_user_id", "desktop_first", "desktop_timeout_seconds", "destination", "receive"}
     local function discord_config()
         local values = {}
         for _, key in ipairs(DISCORD_KEYS) do
             local default = ""
-            if key == "enabled" or key == "read" or key == "post" or key == "desktop_first" then default = false end
+            if key == "enabled" or key == "read" or key == "post" or key == "desktop_first" or key == "receive" then default = false end
+            if key == "destination" then default = "channel" end
             if key == "desktop_timeout_seconds" then default = 60 end
             values[key] = setting("assistant.discord." .. key, default)
         end
@@ -238,11 +239,11 @@ return function(settings)
     end
 
     local function live_here()
-        return live ~= nil and conversation ~= nil and live.conversation == conversation
+        return live ~= nil and not live.discord and conversation ~= nil and live.conversation == conversation
     end
 
     local function refresh_live()
-        fact.ai_live_here = live_here() or (live ~= nil and live.conversation == nil and conversation == nil)
+        fact.ai_live_here = live_here() or (live ~= nil and not live.discord and live.conversation == nil and conversation == nil)
         text.ai_live = live and live.text or ""
         fact.ai_streaming = live ~= nil
         fact.ai_stream_slot = live and live.slot or 0
@@ -363,6 +364,12 @@ return function(settings)
         live = nil
         refresh_live()
         if not finished then return end
+        if finished.discord then
+            if finished.discard and finished.on_discard then finished.on_discard(conversation, false) end
+            if event.event == "error" then fail(event.message or "Discord answer failed") end
+            if finished.conversation and conversation == finished.conversation then load(finished.conversation) end
+            return
+        end
         if finished.discard then
             if finished.draft or not finished.conversation then
                 if finished.on_discard then finished.on_discard(finished.conversation, false) end
@@ -433,12 +440,19 @@ return function(settings)
         if not provider or not provider.signed_in then return false end
         discard_draft()
         fail(nil)
-        local args = chat_args(provider.id, conversation, voice, opts)
-        live = {conversation = conversation, slot = provider.slot, text = "", voice = voice == true, provider = provider.id, voice_generation = opts and opts.voice_generation}
+        local incoming = opts and opts.discord
+        local target = conversation
+        if incoming then target = nil end
+        local args = chat_args(provider.id, target, voice, opts)
+        if incoming then
+            args[#args + 1] = "--discord-incoming"
+            args[#args + 1] = incoming
+        end
+        live = {conversation = target, discord = incoming, slot = provider.slot, text = "", voice = voice == true, provider = provider.id, voice_generation = opts and opts.voice_generation}
         local turns = {}
         for _, turn in ipairs(shown_turns) do turns[#turns + 1] = turn end
         turns[#turns + 1] = {role = "user", text = prompt, voice = voice}
-        if conversation or not voice or fact.ai_open then show_turns(turns) end
+        if not incoming and (conversation or not voice or fact.ai_open) then show_turns(turns) end
         fact.ai_actions = false
         refresh_live()
         local mine = live
@@ -447,6 +461,7 @@ return function(settings)
             if not event or live ~= mine then return end
             if event.event == "start" then
                 mine.conversation = event.conversation
+                if incoming then refresh_live(); return end
                 want_new_chat = false
                 for _, listener in ipairs(speech_listeners) do
                     listener("start", mine.conversation, "", mine.voice, mine.voice_generation)
@@ -455,6 +470,7 @@ return function(settings)
                 refresh_live()
             elseif event.event == "delta" then
                 mine.text = mine.text .. (event.text or "")
+                if incoming then return end
                 for _, listener in ipairs(speech_listeners) do
                     listener("delta", mine.conversation, event.text or "", mine.voice, mine.voice_generation)
                 end
@@ -468,6 +484,29 @@ return function(settings)
         end, {input = prompt})
         return true
     end
+
+    -- The shell owns idle reception. Only one bounded poll and one pending request;
+    -- busy turns defer on Discord rather than filling a local content queue.
+    local discord_poll = nil
+    local discord_generation = 0
+    local discord_resetting = false
+    every(5000, function()
+        local values = discord_config()
+        if is_orca() or values.enabled ~= true or values.read ~= true or values.receive ~= true or values.destination ~= "dm" then return end
+        if discord_poll or discord_resetting then return end
+        local generation = discord_generation
+        local mine = {}
+        discord_poll = mine
+        mine.id = spawn("tohru-discord", {"poll", "--settings", json.encode(values)}, function(line)
+            if discord_poll ~= mine or generation ~= discord_generation then return end
+            local event = decode(line)
+            local provider = current and providers[current]
+            if event and event.event == "error" then fail(event.message) end
+            if event and event.event == "incoming" and provider and provider.signed_in and not is_orca() and not live and not draft and not pending_commit and not fact.ai_listening and not fact.ai_speaking and not fact.ai_voice_conversation then
+                send("Discord DM request", false, {discord = event.id})
+            end
+        end, function() if discord_poll == mine then discord_poll = nil end end)
+    end)
 
     local function start_draft(prompt, voice_conversation, opts)
         if is_orca() then return false end
@@ -864,6 +903,17 @@ return function(settings)
                 end
             end
             discord_previous = next_values
+            if changed then
+                discord_generation = discord_generation + 1
+                if discord_poll then kill(discord_poll.id, "int"); discord_poll = nil end
+                discord_resetting = true
+                local generation = discord_generation
+                run("tohru-discord", {"reset-receiver"}, function(_, code)
+                    if generation ~= discord_generation then return end
+                    discord_resetting = false
+                    if code ~= 0 then fail("Discord receiver reset failed; run tohru-discord reset-receiver before enabling reception") end
+                end)
+            end
             if changed and not is_orca() then
                 if pending_commit then pending_commit.cancelled = true end
                 discard_draft()

@@ -27,6 +27,10 @@ def required_checks(values):
         if values.get("assistant.voice_wake") == "kws":core.add("voice.kws_model")
     if values.get("assistant.discord.enabled") and values.get("assistant.discord.post") and values.get("assistant.discord.desktop_first"):
         core.add("executable.notify-send")
+    if values.get("assistant.discord.enabled"):
+        core.add("discord.configuration")
+        if values.get("assistant.discord.receive"):
+            core.add("discord.receiver")
     return core
 
 
@@ -62,6 +66,16 @@ def doctor(as_json=False):
     except (OSError,ValueError):
         add("config","invalid","Configuration cannot be read or validated","Check TOML types, absolute paths and managed-file readability; contents withheld")
         values={};managed=set()
+    from tohru_discord import status as discord_status
+    discord = discord_status()
+    add("discord.configuration", "disabled" if not values.get("assistant.discord.enabled") else "configured" if discord.get("enabled") else "invalid",
+        "Local setup validated; credentials/access not verified" if discord.get("enabled") else "Disabled or incomplete; run tohru-discord status")
+    receiving = values.get("assistant.discord.receive", False)
+    receiver_ready = (discord.get("enabled") and values.get("assistant.backend", "local") == "local"
+                      and discord.get("destination") == "dm" and discord.get("read"))
+    add("discord.receiver", "disabled" if not receiving else "configured" if receiver_ready else "unsupported",
+        "Owned by the running Tohru bar assistant controller; activity not probed" if receiver_ready else "Requires local backend, DM destination, enabled/read and a valid configured user",
+        "Keep the Tohru bar running; remote Orca reception is unsupported")
     for name in ("WAYLAND_DISPLAY","XDG_RUNTIME_DIR","DBUS_SESSION_BUS_ADDRESS","XDG_SESSION_ID"):
         add("environment."+name,"ok" if os.environ.get(name) else "missing","set" if os.environ.get(name) else "unset",
             "Import session environment into systemd --user before starting graphical-session.target")

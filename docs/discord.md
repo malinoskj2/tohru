@@ -1,14 +1,120 @@
 # Discord bot integration
 
-Tohru can read text-channel history and send plain text as **your bot**, when you ask in a normal assistant conversation. This is optional and off by default. It uses Discord HTTPS REST API v10 directly, Python 3.11+ and its standard library, and the installed assistant provider CLI's shell tool. It needs no Nix configuration, MCP server, Orca bot, connector, Discord SDK or background service. The release bundle and source checkout keep the helper and module together in `bin/`; the repository Nix package installs the same files.
+Tohru can read history and send plain text as **your bot**, in allowlisted server channels or a one-to-one DM with your configured user. Optional DM reception activates the local assistant while its shell is running. Everything is off by default. The implementation uses Discord HTTPS REST API v10, Python 3.11+ and its standard library; no SDK, Gateway dependency, downloads or separate daemon. The release bundle and Nix package keep the same helpers together in `bin/`.
+
+## One-to-one DM destination and idle reception
+
+After creating the bot and private token file below, configure your user ID (never a DM channel ID):
+
+```sh
+tohru config set assistant.backend local
+tohru config set assistant.discord.allowed_user_id 123456789012345678
+tohru config set assistant.discord.token_file /home/me/.config/tohru/discord-token
+tohru config set assistant.discord.destination dm
+tohru config set assistant.discord.enabled true
+tohru config set assistant.discord.read true
+tohru config set assistant.discord.post false
+tohru config set assistant.discord.receive true
+tohru-discord status
+tohru doctor --json
+```
+
+`destination` accepts `channel` (the backwards-compatible default) or `dm`.
+`receive` is a separate default-off activation permission, requiring enabled/read,
+DM mode and a valid `allowed_user_id`. Guild/channel fields are required only in
+channel mode. Normal assistant tool calls use `tohru-discord read dm` and
+`tohru-discord post dm`; the latter reads text from stdin. A model cannot choose
+another recipient. Enabling reception authorizes generation of answers to that
+user's future DM text, and enabling post separately permits automatic delivery of
+those answers. Read-only reception still saves answers in local history.
+
+The adapter calls [Create DM](https://docs.discord.com/developers/resources/user#create-dm)
+with only the configured `recipient_id`; Discord returns the existing DM if one
+already exists. It validates type `1`, exactly one matching non-bot recipient and
+no guild, then independently fetches/validates the actual channel before accessing
+messages. Group DMs, arbitrary channel IDs and messages claiming another channel
+are rejected. The API can deny opening/sending a DM because of access, privacy or
+blocking; a valid user ID does not promise delivery. Use an actual bot account,
+establish access to the bot (usually through a shared server), and have the user
+open/message the bot. This is not access to the user's other private conversations.
+Discord warns against opening unsolicited DMs or many DMs quickly. No setup probe
+posts a message. Guild permissions below apply to channel mode, not DM scope.
+Discord's [message-content rules](https://docs.discord.com/developers/events/gateway#message-content-intent)
+include a DM exception; restricted/missing content is never inferred or invented.
+
+The **running Tohru bar's assistant controller** owns a five-second REST poll,
+including while its popup is closed. No voice service is required.
+Polling reuses the existing bounded REST/rate-limit adapter instead of adding a
+Gateway connection; delivery has five-second polling latency plus busy/cooldown
+delays, and revalidates the DM on each operation. The standalone
+bar lifecycle, release bundle and Home Manager bar service all use that same
+controller; no extra unit is installed. Stopping the bar stops scheduling polls;
+an already spawned poll has a 15-second REST deadline. Configuration changes kill
+its poll and cancel active local turns. `tohru-discord poll` is a bounded diagnostic
+operation, not a standalone receiver service. `status` and doctor check setup,
+not network access or proof that a shell is running. Remote Orca reception is
+unsupported and doctor reports it; no local token, broker or incoming prompt is
+forwarded to an Orca bot.
+
+The first successful poll establishes the newest cursor **without answering old
+history**. Wait for this bootstrap before sending an acceptance message. Later
+polls examine at most 50 entries, accept at most one nonempty text request, and
+persist one pending request in a private, atomically replaced/fsynced state file
+under `$XDG_STATE_HOME/tohru/discord/receiver.json`. Busy desktop turns, voice
+conversation/listening/playback, drafts and commits defer dispatch. The pending
+request remains across polls/restarts; further messages stay on Discord and are
+read after it is claimed. There is no unbounded local queue and no guarantee for
+messages deleted from Discord before polling. Empty text/attachments-only events,
+other authors, bots, webhooks and system events cannot activate the assistant.
+References, embeds and attachments are never expanded. Exact author filtering
+happens before content enters the provider path.
+
+Dispatch revalidates the current DM and saved message against Discord, then claims
+it before generation. The existing local assistant path writes a separate
+**Discord DM — USER_ID** conversation, scoped by actual channel and recipient,
+without changing the desktop selection or invoking speech listeners. Incoming
+turns use the provider's existing tool-free policy, with no Discord socket/token
+or tool guidance; text is untrusted content, never permission to change settings.
+The host delivers a successful answer (up to 2000 characters) through the same
+guarded adapter only if posting remains enabled. `desktop_first` applies fully:
+Got it suppresses the DM; failure/timeout permits fallback. Replies are plain text
+with mentions disabled. There are no automatic retries of ambiguous sends.
+
+Duplicate polls/restarts do not re-dispatch a claimed message. A crash, provider
+failure or cancellation after claim can leave the request unanswered; consult
+local history/error and send a new DM to retry. A network post may have succeeded
+even if its acknowledgement was lost. This is deliberately **not exactly-once
+delivery**. Scope/configuration changes invalidate old pending state and the shell
+resets bootstrap; recipient changes never reuse another recipient's conversation.
+Disable/re-enable receive through native settings to discard/reset a pending
+request. For direct edits use `tohru config reload`; changes made entirely while
+the shell is stopped cannot be observed as transitions, so use
+`tohru-discord reset-receiver` before re-enabling when a fresh baseline is needed.
+
+Manual acceptance (real Discord traffic, performed by the human):
+
+1. Keep the bar running with a signed-in local provider. With post=false, enable
+   receive, wait at least one successful poll, then DM a unique question from the
+   allowed account. Find the separate Discord conversation in history and confirm
+   an answer, no Discord reply, no speech and an unchanged desktop conversation.
+2. Enable post, wait for bootstrap again, then send another unique question and
+   confirm one DM reply. Send from another account and confirm no activation.
+3. Enable desktop_first, send a fresh question and click Got it: no DM reply.
+   Repeat without acknowledging, wait the timeout and confirm the fallback reply.
+4. During an active desktop/voice conversation, send a DM: it waits until idle.
+   Restart the bar with a pending request and confirm it is offered once. Restart
+   after a completed reply and confirm it is not replayed.
+5. Disable receive/read/enabled or change recipient during generation/notification
+   wait: no later reply is sent. Test blocked DMs/missing access and verify a clear
+   error, without token values. An already accepted HTTP send cannot be undone.
 
 ## Set up your bot
 
 1. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications). Open **Bot**, create/reset its bot token, and store the raw token in a private file. Do not use your personal Discord account token, OAuth client secret or a webhook URL.
 2. To read ordinary message text, enable **Message Content Intent** on the Bot page and obtain approval if Discord requires it for your application. This restriction also affects REST message content. Posting alone needs no privileged intent. Presence and Server Members intents are unnecessary. See Discord's [Message Content guidance](https://docs.discord.com/developers/events/gateway#message-content-intent).
-3. Under OAuth2 URL Generator (or Installation), select **Guild Install** and the **bot** scope, then invite the bot to the server you control. This integration does not need `applications.commands` or slash commands. See [Discord bot authorization](https://docs.discord.com/developers/topics/oauth2#bot-authorization-flow).
-4. Grant **View Channel** and **Read Message History** for reading; add **Send Messages** for posting. For threads, grant **Send Messages in Threads** and ensure the bot has access to the thread. Avoid Administrator. Channel overrides can deny permissions granted by the server role. See [Discord permissions](https://docs.discord.com/developers/topics/permissions).
-5. Enable Developer Mode in Discord's Advanced settings, then copy the one allowed user's ID, the server ID and the specific channel IDs. Use **Copy User ID** on that user's profile; names and nicknames are not IDs. Threads have their own IDs and must be explicitly allowlisted. Tohru never discovers or fills in the user ID from messages, account lookups or guild membership.
+3. For channel mode, under OAuth2 URL Generator (or Installation), select **Guild Install** and the **bot** scope, then invite the bot to the server you control. This integration does not need `applications.commands` or slash commands. See [Discord bot authorization](https://docs.discord.com/developers/topics/oauth2#bot-authorization-flow).
+4. For channel mode, grant **View Channel** and **Read Message History** for reading; add **Send Messages** for posting. For threads, grant **Send Messages in Threads** and ensure the bot has access to the thread. Avoid Administrator. Channel overrides can deny permissions granted by the server role. See [Discord permissions](https://docs.discord.com/developers/topics/permissions).
+5. Enable Developer Mode in Discord's Advanced settings, then copy the one allowed user's ID, plus the server/channel IDs only for channel mode. Use **Copy User ID** on that user's profile; names and nicknames are not IDs. Threads have their own IDs and must be explicitly allowlisted. Tohru never discovers or fills in the user ID from messages, account lookups or guild membership.
 
 Missing Read Message History can yield an empty list; missing Message Content access can yield messages with empty content. An empty result alone does not prove that the channel is empty. See [Get Channel Messages and message objects](https://docs.discord.com/developers/resources/message#get-channel-messages).
 
@@ -108,8 +214,8 @@ or changing effective settings aborts it without falling through to Discord.
 The notification helper is terminated/reaped on cancellation or timeout; the
 notification itself requests the same expiry, although the desktop may choose
 its own expiry behavior. After waiting, configuration is revalidated and the
-existing 15-second REST deadline begins. No unattended background queue or
-automatic schedule is introduced, and a fallback cannot outlive its turn.
+existing 15-second REST deadline begins. The desktop fallback has no separate
+queue or schedule and cannot outlive its turn, including incoming DM turns.
 Credential and broker environment variables are stripped from the notification
 child. No Discord channel metadata or message request is made if the desktop
 acknowledges first.
@@ -138,7 +244,7 @@ Reading is **on demand**, examining one REST history page of at most 50 entries 
 
 The requested limit bounds examined entries, not matching results: mixed pages can return fewer messages, and an all-discarded page can return none while more history remains. There is no automatic scan to fill the result. Continue older history with `--before` and the returned `next_before`, or newer history with `--after` and `next_after`; these ID-only cursors include discarded entries so empty filtered pages can progress without revealing their content. A full page or size truncation sets `possibly_more`; a page without valid message IDs has null cursors. Size truncation keeps whole matching messages and advances only across consumed entries in the requested direction. Each additional page requires another bounded tool call and counts against the turn's call budget.
 
-Attachments, embeds, reactions, rich messages and files are not fetched separately or sent. There is no Gateway connection, live event receiver, polling loop, unread-message store, incoming-message wake-up, automatic reply or user-configured automation engine. This filter covers the integration's sole reception path: on-demand REST history through the local tool broker. Incoming content cannot itself activate the assistant or authorize tools.
+Attachments, embeds, reactions, rich messages and files are not fetched separately or sent. Channel history stays on demand; only explicitly activated DM reception polls and generates replies as described above. There is no Gateway connection or general automation engine.
 
 Posts accept 1–2000 characters from stdin and disable all parsed mentions, including `@everyone`. Only explicit user requests/authorization should lead to posting. The assistant is instructed never to follow commands embedded in Discord content or let messages authorize a post. The execution boundary enforces feature and channel controls; semantic user intent remains the responsibility of the assistant's existing tool-using policy.
 
@@ -154,6 +260,7 @@ From a checkout, with Python 3.11+ and Rust installed:
 
 ```sh
 python3 -B tests/assistant/discord.py
+python3 -B tests/assistant/discord-dm.py
 python3 -B tests/assistant/service.py
 cargo test --locked --manifest-path runtime/Cargo.toml
 bin/tohru-discord status

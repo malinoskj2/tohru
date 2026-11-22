@@ -54,6 +54,8 @@ pub enum Key {
     AssistantPersonaFile,
     AssistantMemory,
     AssistantOrca,
+    AssistantDiscordDestination,
+    AssistantDiscordReceive,
     AssistantDiscordEnabled,
     AssistantDiscordRead,
     AssistantDiscordPost,
@@ -122,7 +124,7 @@ pub const ORCA_VOICE_CHATS: [&str; 2] = ["home", "new"];
 pub const ORCA_OFFLINE_MODES: [&str; 2] = ["error", "local"];
 
 impl Key {
-    pub const ALL: [Self; 91] = [
+    pub const ALL: [Self; 93] = [
         Self::ShortcutsMode,
         Self::ShortcutLauncher,
         Self::ShortcutSession,
@@ -166,6 +168,8 @@ impl Key {
         Self::AssistantPersonaFile,
         Self::AssistantMemory,
         Self::AssistantOrca,
+        Self::AssistantDiscordDestination,
+        Self::AssistantDiscordReceive,
         Self::AssistantDiscordEnabled,
         Self::AssistantDiscordRead,
         Self::AssistantDiscordPost,
@@ -262,6 +266,8 @@ impl Key {
             Self::AssistantPersonaFile => "assistant.persona_file",
             Self::AssistantMemory => "assistant.memory",
             Self::AssistantOrca => "assistant.orca",
+            Self::AssistantDiscordDestination => "assistant.discord.destination",
+            Self::AssistantDiscordReceive => "assistant.discord.receive",
             Self::AssistantDiscordEnabled => "assistant.discord.enabled",
             Self::AssistantDiscordRead => "assistant.discord.read",
             Self::AssistantDiscordPost => "assistant.discord.post",
@@ -401,6 +407,8 @@ impl Key {
             Self::AssistantPersonaFile => (&["assistant"], "persona_file"),
             Self::AssistantMemory => (&["assistant"], "memory"),
             Self::AssistantOrca => (&["assistant"], "orca"),
+            Self::AssistantDiscordDestination => (&["assistant", "discord"], "destination"),
+            Self::AssistantDiscordReceive => (&["assistant", "discord"], "receive"),
             Self::AssistantDiscordEnabled => (&["assistant", "discord"], "enabled"),
             Self::AssistantDiscordRead => (&["assistant", "discord"], "read"),
             Self::AssistantDiscordPost => (&["assistant", "discord"], "post"),
@@ -517,7 +525,9 @@ impl Key {
             Self::VoicePython => Value::Text("python3".to_owned()),
             Self::VoiceEnvironment => Value::Text("".to_owned()),
             Self::AssistantDiscordDesktopTimeoutSeconds => Value::Integer(60),
-            Self::AssistantDiscordEnabled
+            Self::AssistantDiscordDestination => Value::Text("channel".to_owned()),
+            Self::AssistantDiscordReceive
+            | Self::AssistantDiscordEnabled
             | Self::AssistantDiscordRead
             | Self::AssistantDiscordPost
             | Self::AssistantDiscordDesktopFirst
@@ -604,6 +614,7 @@ impl Key {
                 true
             }
             Self::NotificationsPosition if NOTIFICATION_POSITIONS.contains(&text) => true,
+            Self::AssistantDiscordDestination if ["channel", "dm"].contains(&text) => true,
             Self::AssistantDiscordGuildId if text.is_empty() || valid_discord_id(text) => true,
             Self::AssistantDiscordAllowedUserId
                 if text.is_empty()
@@ -702,6 +713,7 @@ impl Key {
             (_, Value::Text(text)) if self.valid_text(text) => Ok(()),
             (
                 Self::WallpaperEnabled
+                | Self::AssistantDiscordReceive
                 | Self::AssistantDiscordEnabled
                 | Self::AssistantDiscordRead
                 | Self::AssistantDiscordPost

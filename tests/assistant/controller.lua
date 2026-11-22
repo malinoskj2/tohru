@@ -477,4 +477,51 @@ outputs.sync = json.encode({
 for _ = 1, 16 do every_cbs[1]() end
 assert(fact.ai_ready)
 
+-- Idle DM polling defers during active desktop/voice work and never speaks or
+-- replaces the selected conversation. The same pending ID is offered again.
+values["assistant.backend"] = "local"
+values["assistant.discord.destination"] = "dm"
+values["assistant.discord.receive"] = true
+values["assistant.discord.enabled"] = true
+values["assistant.discord.read"] = true
+values["assistant.discord.allowed_user_id"] = "9"
+outputs.providers = {{id = "claude", name = "Claude", slot = 0, signed_in = true}}
+outputs["reset-receiver"] = {event = "reset"}
+assistant.configure()
+assistant.configure_discord()
+local poll_tick = every_cbs[2]
+local before_poll = #spawned
+poll_tick()
+assert(#spawned == before_poll + 1 and spawned[#spawned].args[1] == "poll")
+local dm_poll = spawned[#spawned]
+fact.ai_voice_conversation = true
+dm_poll.line({event = "incoming", id = "101"})
+assert(#spawned == before_poll + 1, "active voice defers the pending DM")
+dm_poll.exit(nil, 0)
+fact.ai_voice_conversation = false
+poll_tick()
+dm_poll = spawned[#spawned]
+local before_dm = #spawned
+local before_conversation = assistant.status().conversation
+dm_poll.line({event = "incoming", id = "101"})
+local dm_turn = spawned[#spawned]
+assert(#spawned == before_dm + 1 and has(dm_turn.args, "--discord-incoming", "101"))
+assert(dm_turn.how.input == "Discord DM request")
+dm_turn.line({event = "start", conversation = "discord-cid"})
+dm_turn.line({event = "delta", text = "DM answer"})
+assert(assistant.status().conversation == before_conversation)
+local before_second = #spawned
+dm_poll.line({event = "incoming", id = "102"})
+assert(#spawned == before_second, "a running DM turn defers the next request")
+dm_turn.line({event = "done", conversation = "discord-cid"})
+assert(not assistant.streaming())
+dm_poll.exit(nil, 0)
+poll_tick()
+dm_poll = spawned[#spawned]
+local before_revoke = #spawned
+values["assistant.discord.receive"] = false
+assistant.configure_discord()
+dm_poll.line({event = "incoming", id = "103"})
+assert(#spawned == before_revoke, "late polls cannot dispatch after revocation")
+
 print("Assistant provider choice, models, streaming, Stop, ready mark, sign-in, history, voice turn, drafts, memory hand-off, alerts and Orca backend fixtures passed")
