@@ -6,6 +6,9 @@ _G.fact = {}
 _G.text = {}
 _G.on = function(name, handler) events[name] = handler end
 _G.after = function(seconds, f) timers[#timers + 1] = f end
+local ticking = {}
+_G.every = function(ms, f) ticking[#ticking + 1] = f; return #ticking end
+_G.cancel = function(t) ticking[t] = nil end
 _G.kill = function(id, how) killed[#killed + 1] = {id, how} end
 _G.write = function(id, line) written[#written + 1] = {id = id, message = line.value} end
 _G.spawn = function(command, args, line, exit, how)
@@ -23,7 +26,8 @@ local assistant = {
     show = function(id) shown = id end,
     on_answer = function(listener) listeners[#listeners + 1] = listener end,
 }
-local voice = assert(loadfile("shell/assistant/voice.luau"))()(assistant)
+local puppet = assert(loadfile("shell/assistant/puppet.luau"))()()
+local voice = assert(loadfile("shell/assistant/voice.luau"))()(assistant, puppet)
 local function settings(values)
     local rows = {}
     for key, value in pairs(values) do rows[key] = {value = value} end
@@ -44,7 +48,12 @@ assert(#spawned == 1 and spawned[1].command == "tohru-voice" and spawned[1].how.
 assert(has(spawned[1].args, "--vad-model", "/v.onnx") and has(spawned[1].args, "--asr-model", "/asr") and has(spawned[1].args, "--turn-model", "") and has(spawned[1].args, "--tts-engine", "kokoro") and has(spawned[1].args, "--tts-voicepack", "tide"))
 for _, a in ipairs(spawned[1].args) do assert(a ~= "--tts-load-on-conversation") end
 local service = spawned[1]
-service.line({event = "ready", warning = "speech: assistant.tts_model is not set; using espeak-ng"})
+service.line({event = "ready", warning = "speech: assistant.tts_model is not set; using espeak-ng", dragon = "/art"})
+-- The sheets are set once the service is ready and drawn unseen for a moment, so they are loaded before she shows.
+assert(fact.ai_dg_warm and #timers == 1)
+timers[1]()
+assert(not fact.ai_dg_warm)
+timers = {}
 assert(text.ai_voice_error == "speech: assistant.tts_model is not set; using espeak-ng" and fact.ai_voice_failed)
 service.line({event = "listening", on = true})
 assert(fact.ai_listening)
@@ -60,27 +69,33 @@ assert(#written == 1)
 service.line({event = "turn", text = "And tomorrow"})
 assert(asked[2][2] == "v1")
 service.line({event = "speaking", on = true, conversation = "v1"})
-assert(fact.ai_dragon_open and fact.ai_speaking)
-service.line({event = "mouth", level = 0.6})
+assert(fact.ai_dragon_open and fact.ai_speaking and #ticking == 1)
+service.line({event = "mouth", level = 0.6, viseme = 5})
 assert(fact.ai_mouth == 0.6)
+-- In a conversation she stays on screen, listening for the next turn; a click opens what she said.
 service.line({event = "speaking", on = false, conversation = "v1"})
-assert(fact.ai_mouth == 0 and fact.ai_dragon_open and #timers == 1)
-timers[1]()
-assert(not fact.ai_dragon_open)
-service.line({event = "speaking", on = true, conversation = "v1"})
-service.line({event = "speaking", on = false, conversation = "v1"})
-service.line({event = "speaking", on = true, conversation = "v1"})
-timers[2]()
-assert(fact.ai_dragon_open)
+assert(fact.ai_mouth == 0 and fact.ai_dragon_open and #timers == 0)
 events.assistant_dragon()
-assert(shown == "v1" and not fact.ai_dragon_open)
-timers = {}
+assert(shown == "v1" and not fact.ai_dragon_open and next(ticking) == nil)
 service.line({event = "barge"})
 assert(stopped == 1)
 
--- The end of a voice conversation hands it to memory.
+-- The end of a voice conversation hands it to memory; she lingers after her last word, then goes.
+service.line({event = "speaking", on = true, conversation = "v1"})
 service.line({event = "conversation", on = false})
-assert(remembered[1] == "v1" and not fact.ai_voice_conversation)
+assert(remembered[1] == "v1" and not fact.ai_voice_conversation and fact.ai_dragon_open and #timers == 0)
+service.line({event = "speaking", on = false, conversation = "v1"})
+assert(#timers == 1)
+service.line({event = "speaking", on = true, conversation = "v1"})
+timers[1]()
+assert(fact.ai_dragon_open)
+service.line({event = "speaking", on = false, conversation = "v1"})
+timers[2]()
+assert(not fact.ai_dragon_open)
+timers = {}
+
+-- The sheets load from the service's folder once it is ready, and unload when voice is turned off.
+assert(text.ai_dg_body_src == "/art/body.webp" and text.ai_dg_heart_src == "/art/heart.png" and fact.ai_dg_ready)
 
 -- Speech settings change in place; loading on conversation is passed through.
 voice.configure(settings({["assistant.voice"] = true, ["assistant.tts_voicepack"] = "af_heart", ["assistant.vad_model"] = "/v.onnx", ["assistant.asr_model"] = "/asr", ["assistant.tts_load_on_conversation"] = true}))
@@ -90,6 +105,7 @@ assert(written[#written].message.load_on_conversation == true)
 -- Disabling stops it completely and clears the mic dot; a late exit does not restart it.
 voice.configure(settings({["assistant.voice"] = false}))
 assert(#killed == 1 and killed[1][1] == 1 and killed[1][2] == "term" and not fact.ai_listening and not voice.running())
+assert(text.ai_dg_body_src == "" and not fact.ai_dg_ready)
 service.exit(nil, 0)
 assert(#spawned == 1 and #timers == 0)
 

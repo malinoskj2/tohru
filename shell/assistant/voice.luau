@@ -1,5 +1,5 @@
 -- Runs tohru-voice only while assistant.voice is on: off means no process, no microphone and no models loaded.
-return function(assistant)
+return function(assistant, puppet)
     local id = nil
     local wanted = false
     local args = {}
@@ -9,6 +9,22 @@ return function(assistant)
     -- The overlay stays a moment after she stops talking, and a click opens what she said.
     local DRAGON_LINGER = 5000
     local spoken, hide_serial = nil, 0
+    local loaded = false
+
+    local function show_dragon(on)
+        hide_serial = hide_serial + 1
+        fact.ai_dragon_open = on
+        puppet.visible(on)
+    end
+
+    -- She stays a moment after the last word, unless the conversation is still listening for more.
+    local function linger()
+        hide_serial = hide_serial + 1
+        local mine = hide_serial
+        after(DRAGON_LINGER, function()
+            if mine == hide_serial and not fact.ai_speaking and not fact.ai_voice_conversation then show_dragon(false) end
+        end)
+    end
 
     local function send(message)
         if id then write(id, json.encode(message) .. "\n") end
@@ -18,8 +34,9 @@ return function(assistant)
         assistant.listening(false)
         fact.ai_speaking = false
         fact.ai_mouth = 0
-        fact.ai_dragon_open = false
         fact.ai_voice_conversation = false
+        puppet.calm()
+        show_dragon(false)
     end
 
     local start
@@ -35,31 +52,45 @@ return function(assistant)
         local event = message.event
         if event == "ready" then
             failures = 0
+            local art = tostring(message.dragon or "")
+            -- The sheets load with the service, while she is hidden: a sheet arriving blanks her for a frame or two.
+            if not loaded and art ~= "" then
+                loaded = true
+                puppet.load(art)
+            end
             voice_error(tostring(message.warning or ""))
         elseif event == "listening" then
             assistant.listening(message.on == true)
         elseif event == "conversation" then
             fact.ai_voice_conversation = message.on == true
-            if not message.on then
+            if message.on then
+                show_dragon(true)
+            else
                 if conversation then assistant.remember(conversation) end
                 conversation = nil
+                puppet.calm()
+                if fact.ai_dragon_open and not fact.ai_speaking then linger() end
             end
+        elseif event == "hearing" then
+            puppet.hearing(message.on == true)
+        elseif event == "sentence" then
+            puppet.sentence(tostring(message.text or ""))
         elseif event == "turn" then
+            puppet.thinking()
             if not assistant.ask(message.text, conversation) then send({cmd = "thinking", on = false}) end
         elseif event == "speaking" then
             fact.ai_speaking = message.on == true
+            puppet.speaking(message.on == true)
             if message.on then
                 spoken = message.conversation or conversation
-                hide_serial = hide_serial + 1
-                fact.ai_dragon_open = true
+                show_dragon(true)
             else
                 fact.ai_mouth = 0
-                hide_serial = hide_serial + 1
-                local mine = hide_serial
-                after(DRAGON_LINGER, function() if mine == hide_serial then fact.ai_dragon_open = false end end)
+                if not fact.ai_voice_conversation then linger() end
             end
         elseif event == "mouth" then
             fact.ai_mouth = tonumber(message.level) or 0
+            puppet.mouth(fact.ai_mouth, tonumber(message.viseme))
         elseif event == "barge" then
             assistant.stop()
         elseif event == "paused" then
@@ -98,7 +129,7 @@ return function(assistant)
 
     on("assistant_hush", function() send({cmd = "hush"}) end)
     on("assistant_dragon", function()
-        fact.ai_dragon_open = false
+        show_dragon(false)
         if spoken then assistant.show(spoken) end
     end)
 
@@ -139,6 +170,10 @@ return function(assistant)
             id = nil
             quiet()
             voice_error("")
+            if loaded then
+                loaded = false
+                puppet.load("")
+            end
             return
         end
         wanted = true

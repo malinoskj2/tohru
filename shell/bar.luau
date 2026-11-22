@@ -98,7 +98,7 @@ local assistant = require("assistant/controller")({
     provider = function() return tohru_settings.snapshot()["assistant.provider"].value end,
     choose = function(id) change(function() return tohru_settings.set("assistant.provider", id) end) end,
 })
-voice = require("assistant/voice")(assistant)
+voice = require("assistant/voice")(assistant, require("assistant/puppet")())
 voice.configure(tohru_settings.snapshot())
 on("setting_assistant", function()
     local key, raw = text.setting_key or "", text.setting_value or ""
