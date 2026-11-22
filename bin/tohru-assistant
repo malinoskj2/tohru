@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -26,9 +27,25 @@ def xdg(name, fallback):
 
 DATA = Path(os.environ.get("TOHRU_ASSISTANT_DATA") or xdg("XDG_DATA_HOME", ".local/share") / "tohru")
 SCRATCH = Path(os.environ.get("TOHRU_ASSISTANT_SCRATCH") or xdg("XDG_STATE_HOME", ".local/state") / "tohru/assistant/scratch")
-CONVERSATION_ID = re.compile(r"^[0-9a-f]{32}$")
+CONVERSATION_ID = re.compile(r"^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$", re.I)
 PROBE_SECONDS = 6
 TITLE_CHARS = 48
+ORCA_ENV_STRIP = (
+    "ORCA_AGENT_SESSION_ID",
+    "ORCA_AGENT_SESSION_SPAWN_TOKEN",
+    "ORCA_STRUCTURED_SESSION",
+    "ORCA_CHAT_SCRATCH_DIR",
+    "ORCA_TERMINAL_HANDLE",
+    "ORCA_PANE_KEY",
+    "ORCA_TAB_ID",
+    "ORCA_WORKTREE_ID",
+    "ORCA_ENVIRONMENT",
+    "ORCA_PAIRING_CODE",
+    "ORCA_REMOTE_PAIRING",
+)
+DESKTOP_TAG = "[tohru-desktop]"
+DESKTOP_VOICE_TAG = "[tohru-desktop:voice]"
+MEMORY_BOILERPLATE = "one line per fact, newest first. longer notes go in memory/<topic>.md."
 
 
 def read_json(path):
@@ -353,7 +370,7 @@ class transaction:
 def check_id(cid):
     if not CONVERSATION_ID.match(cid or ""):
         raise SystemExit("tohru-assistant: invalid conversation id")
-    return cid
+    return cid.lower()
 
 
 def load(db, cid):
@@ -1142,10 +1159,764 @@ def forget_reply(db, conversation, request):
     return "Consider it forgotten. Nothing from this conversation goes into my memory."
 
 
-def chat(args):
-    prompt = sys.stdin.read().strip()
-    if not prompt:
-        raise SystemExit("tohru-assistant: empty prompt")
+def resolve_backend_config(args):
+    """Effective backend settings: explicit CLI flags override config.toml/managed settings, default local."""
+    settings = assistant_settings()
+    backend = getattr(args, "backend", None) or settings.get("assistant.backend") or "local"
+    if backend not in ("local", "orca"):
+        backend = "local"
+    bot = getattr(args, "orca_bot", None) or settings.get("assistant.orca_bot") or "Tohru"
+    voice_chat = getattr(args, "orca_voice_chat", None) or settings.get("assistant.orca_voice_chat") or "home"
+    if voice_chat not in ("home", "new"):
+        voice_chat = "home"
+    offline = getattr(args, "orca_offline", None) or settings.get("assistant.orca_offline") or "error"
+    if offline not in ("error", "local"):
+        offline = "error"
+    return backend, str(bot), voice_chat, offline
+
+
+def orca_executable():
+    configured = os.environ.get("TOHRU_ORCA_BIN")
+    if configured:
+        return (configured, "") if os.path.isfile(configured) and os.access(configured, os.X_OK) else ("", "")
+    return find_orca_cli()
+
+
+def orca_env(user_data=""):
+    env = clean_orca_env(os.environ)
+    if user_data:
+        env["ORCA_USER_DATA_PATH"] = user_data
+    return env
+
+
+def orca_call(argv, timeout=15):
+    """Run an Orca CLI command as an external local caller; returns (ok, result_dict, error_str)."""
+    exe, user_data = orca_executable()
+    if not exe:
+        return False, None, "orca CLI is not installed"
+    try:
+        proc = subprocess.run([exe, *argv], stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              timeout=timeout, cwd=str(HOME), env=orca_env(user_data), start_new_session=True)
+    except OSError as error:
+        return False, None, str(error)
+    except subprocess.TimeoutExpired:
+        return False, None, "orca command timed out"
+    raw = (proc.stdout or "").strip()
+    data = None
+    if raw:
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            for line in reversed(raw.splitlines()):
+                try:
+                    data = json.loads(line)
+                    break
+                except ValueError:
+                    continue
+    if isinstance(data, dict):
+        if data.get("ok"):
+            return True, data.get("result") if isinstance(data.get("result"), dict) else {}, ""
+        err = data.get("error")
+        if isinstance(err, dict):
+            return False, None, str(err.get("message") or err.get("code") or "orca error")
+        return False, None, str(err or (proc.stderr or "").strip() or f"orca exited with {proc.returncode}")
+    if proc.returncode == 0:
+        return True, {}, ""
+    return False, None, (proc.stderr or raw or f"orca exited with {proc.returncode}").strip()[:300]
+
+
+def orca_bots_root():
+    override = os.environ.get("TOHRU_ORCA_BOTS_DIR")
+    return Path(override) if override else HOME / ".orca/bots"
+
+
+def bot_slug(name):
+    return re.sub(r"[^a-z0-9]+", "-", (name or "").casefold()).strip("-") or "tohru"
+
+
+def orca_bot_dir(bot_name, bot_id=None):
+    root = orca_bots_root()
+    if root.is_dir():
+        for entry in sorted(root.iterdir()):
+            if not entry.is_dir():
+                continue
+            meta = read_json(entry / "bot.json")
+            if isinstance(meta, dict):
+                if bot_id and meta.get("id") == bot_id:
+                    return entry
+                if str(meta.get("name") or "").casefold() == bot_name.casefold():
+                    return entry
+    return root / bot_slug(bot_name)
+
+
+def orca_find_bot(bot_name):
+    ok, result, err = orca_call(["bot", "list", "--json"], timeout=PROBE_SECONDS)
+    if not ok:
+        return None, err or "Orca is not running"
+    bots = result.get("bots") if isinstance(result, dict) else None
+    for bot in bots or []:
+        if not isinstance(bot, dict):
+            continue
+        if str(bot.get("name") or "").casefold() == bot_name.casefold() or bot.get("id") == bot_name:
+            return bot, ""
+    return None, f"Bot '{bot_name}' was not found in Orca"
+
+
+def orca_bot_chats(bot_name, include_all=False):
+    argv = ["bot", "chats", "--bot", bot_name, "--json"]
+    if include_all:
+        argv.insert(-1, "--all")
+    ok, result, err = orca_call(argv, timeout=10)
+    if not ok:
+        return None, err
+    chats = result.get("chats") if isinstance(result, dict) else []
+    return [c for c in (chats or []) if isinstance(c, dict)], ""
+
+
+def orca_ts(value):
+    try:
+        stamp = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return stamp // 1000 if stamp > 10_000_000_000 else stamp
+
+
+def unwrap_desktop_text(text):
+    """Strip Orca mail framing and Tohru desktop tags from user turns while leaving Bots-panel turns verbatim."""
+    raw = (text or "").replace("\r\n", "\n").strip()
+    if not raw:
+        return "", False
+    body = raw
+    # Strip Orca mail wrapper when present (──── From: ... ──── / Subject: ... / [Reply: ...] / ────).
+    if "──── From:" in body and "────" in body:
+        lines = body.splitlines()
+        cleaned = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("────") and stripped.endswith("────"):
+                continue
+            if stripped.startswith("Subject:") and not cleaned:
+                continue
+            if stripped.startswith("[Reply: orca orchestration reply"):
+                continue
+            cleaned.append(line)
+        body = "\n".join(cleaned).strip()
+    for tag, is_voice in ((DESKTOP_VOICE_TAG, True), (DESKTOP_TAG, False)):
+        if body.startswith(tag):
+            rest = body[len(tag):].lstrip("\n ")
+            return rest, is_voice
+        idx = body.find("\n" + tag)
+        if idx >= 0:
+            rest = body[idx + 1 + len(tag):].lstrip("\n ")
+            return rest, is_voice
+    return raw, False
+
+
+def orca_providers(bot_name, models, offline):
+    bot, err = orca_find_bot(bot_name)
+    if bot is not None:
+        paused = bool(bot.get("paused"))
+        agent = str(bot.get("agent") or "")
+        label = f"Orca · {agent}" if agent else "Orca bot"
+        if paused:
+            label = "Paused in Orca"
+        return [{
+            "id": f"orca:{bot['name']}",
+            "name": bot["name"],
+            "slot": 0,
+            "signed_in": not paused,
+            "model": label,
+            "model_id": agent,
+            "effort": "",
+            "backend": "orca",
+            "bot": bot["name"],
+            "can_signin": False,
+            "offline_title": f"{bot['name']} is paused in Orca" if paused else "",
+            "offline_body": "Unpause this bot in Orca’s Bots panel to resume chatting." if paused else "",
+        }]
+    if offline == "local":
+        found = discover(models)
+        for p in found:
+            p["offline_fallback"] = True
+            p["model"] = (p["model"] + " · offline") if p["model"] else "Local fallback"
+        return found
+    not_found = "was not found" in (err or "")
+    return [{
+        "id": f"orca:{bot_name}",
+        "name": bot_name,
+        "slot": 0,
+        "signed_in": False,
+        "model": "Not in Orca" if not_found else "Orca offline",
+        "model_id": "",
+        "effort": "",
+        "backend": "orca",
+        "bot": bot_name,
+        "can_signin": False,
+        "offline_title": f"{bot_name} isn’t in Orca yet" if not_found else "Orca isn’t running",
+        "offline_body": (f"Create a bot named {bot_name} in Orca’s Bots panel, then run: tohru assistant orca init --bot {bot_name}"
+                         if not_found else "Open Orca (or run orca serve) so desktop chats stay in sync with Orca’s Bots panel."),
+    }]
+
+
+def orca_read_messages(chat_id, limit=100):
+    ok, result, err = orca_call(["agent", "read", f"orca_session_id:{chat_id}", "--limit", str(limit), "--json"], timeout=10)
+    if not ok:
+        return None, "", err
+    entries = []
+    for item in (result.get("entries") or []):
+        if not isinstance(item, dict):
+            continue
+        if item.get("kind") in (None, "message") and item.get("role") in ("user", "assistant"):
+            entries.append({"role": item["role"], "text": str(item.get("text") or "")})
+    return entries, str(result.get("state") or ""), ""
+
+
+def orca_extract_chat_id(receipt):
+    if not isinstance(receipt, dict):
+        return ""
+    for key in ("chatId", "orcaSessionId", "sessionId", "targetChatId"):
+        val = str(receipt.get(key) or "")
+        if val.startswith("orca_session_id:"):
+            val = val.split(":", 1)[1]
+        if CONVERSATION_ID.match(val):
+            return val.lower()
+    for key in ("toHandle", "to_handle", "to"):
+        val = str(receipt.get(key) or "")
+        if val.startswith("orca_session_id:"):
+            val = val.split(":", 1)[1]
+            if CONVERSATION_ID.match(val):
+                return val.lower()
+    return ""
+
+
+def orca_send_to_bot(bot_name, body, subject, chat_arg=None):
+    """Write body to a private temp file and send via `orca orchestration send --to bot:<name> --type handoff`."""
+    scratch = private_dir(SCRATCH)
+    fd, tmp = tempfile.mkstemp(dir=scratch, prefix=".orca-body-")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(body)
+        argv = ["orchestration", "send", "--to", f"bot:{bot_name}", "--from", "tohru-desktop",
+                "--type", "handoff", "--subject", subject or "Desktop", "--body-file", tmp, "--json"]
+        if chat_arg:
+            argv += ["--chat", chat_arg]
+        return orca_call(argv, timeout=30)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
+def orca_poll_interval():
+    try:
+        ms = int(os.environ.get("TOHRU_ORCA_POLL_MS", "250"))
+    except ValueError:
+        ms = 250
+    return max(0.02, min(ms / 1000.0, 5.0))
+
+
+def orca_timeout():
+    try:
+        return max(1.0, float(os.environ.get("TOHRU_ORCA_TIMEOUT_S", "600")))
+    except ValueError:
+        return 600.0
+
+
+def orca_wait_for_reply(chat_id, before_count, prompt_marker, on_delta=None, stop_flag=None):
+    """Poll `orca agent read` until the bot finishes this turn; returns (text, stopped, error)."""
+    deadline = time.monotonic() + orca_timeout()
+    interval = orca_poll_interval()
+    emitted = ""
+    saw_working = False
+    saw_activity = False
+    grace = 0
+    while True:
+        if stop_flag and stop_flag():
+            return emitted, True, ""
+        entries, state, err = orca_read_messages(chat_id, limit=100)
+        if entries is None:
+            if time.monotonic() >= deadline:
+                return emitted, False, err or "Could not read Orca bot chat"
+            time.sleep(interval)
+            continue
+        # Slice messages from this turn: after before_count, or after the matching user entry if window shifted.
+        tail = entries[before_count:] if len(entries) >= before_count else entries
+        if len(entries) < before_count and prompt_marker:
+            for idx in range(len(entries) - 1, -1, -1):
+                if entries[idx]["role"] == "user" and prompt_marker in entries[idx]["text"]:
+                    tail = entries[idx:]
+                    break
+        # Find assistant replies that appear after our new user entry (or any new assistant entries in tail).
+        assistant_parts = []
+        seen_new_user = (before_count == 0 and not prompt_marker)
+        for item in tail:
+            if item["role"] == "user":
+                seen_new_user = True
+                assistant_parts = []
+            elif item["role"] == "assistant" and (seen_new_user or len(entries) > before_count):
+                if item["text"]:
+                    assistant_parts.append(item["text"])
+        current = "\n\n".join(assistant_parts).strip()
+        if current:
+            if current.startswith(emitted) and len(current) > len(emitted):
+                delta = current[len(emitted):]
+                emitted = current
+                if on_delta:
+                    on_delta(delta)
+            elif not emitted:
+                emitted = current
+                if on_delta:
+                    on_delta(current)
+        if state == "working":
+            saw_working = True
+            saw_activity = True
+            grace = 0
+        elif len(entries) > before_count or current:
+            saw_activity = True
+        if saw_activity and state != "working":
+            if current:
+                return emitted, False, ""
+            grace += 1
+            if grace >= 3:
+                return emitted, False, ""
+        if time.monotonic() >= deadline:
+            return emitted, False, "Timed out waiting for Orca bot response"
+        time.sleep(interval)
+
+
+def orca_chat(args, prompt, bot_name, voice_chat, offline):
+    bot, err = orca_find_bot(bot_name)
+    if bot is None:
+        if offline == "local":
+            if args.provider not in BY_ID or not BY_ID[args.provider].installed():
+                fallback = next((p for p in discover() if p["signed_in"]), None)
+                if fallback is None:
+                    emit({"event": "error", "message": f"{err}; no signed-in local CLI available for fallback"})
+                    return 3
+                args.provider = fallback["id"]
+            return local_chat(args, prompt)
+        emit({"event": "error", "message": f"{err}. Open Orca (or run orca serve) and try again."})
+        return 3
+    if bot.get("paused"):
+        emit({"event": "error", "message": f"Bot '{bot['name']}' is paused in Orca."})
+        return 3
+    actual_bot = bot["name"]
+    chats, _ = orca_bot_chats(actual_bot)
+    chats = chats or []
+    known_ids = {c["id"] for c in chats if c.get("id")}
+
+    create_new = False
+    target_chat = None
+    if args.conversation:
+        target_chat = check_id(args.conversation)
+    elif args.new_chat or (args.voice and voice_chat == "new"):
+        create_new = True
+    else:
+        home = next((c for c in chats if c.get("home") and not c.get("closed")), None)
+        if home and home.get("id"):
+            target_chat = home["id"]
+
+    before_count = 0
+    if target_chat:
+        before_entries, _, _ = orca_read_messages(target_chat, limit=100)
+        before_count = len(before_entries) if before_entries is not None else 0
+
+    tag = DESKTOP_VOICE_TAG if args.voice else DESKTOP_TAG
+    note = interrupted_note(getattr(args, "interrupted", ""))
+    body = f"{tag}\n{note}\n\n{prompt}" if note else f"{tag}\n{prompt}"
+    subject = title_of(prompt)
+    chat_arg = "new" if create_new else target_chat
+    ok, receipt, send_err = orca_send_to_bot(actual_bot, body, subject, chat_arg=chat_arg)
+    if not ok:
+        emit({"event": "error", "message": send_err or "Could not send message to Orca bot"})
+        return 1
+
+    chat_id = orca_extract_chat_id(receipt) or target_chat or ""
+    if not chat_id:
+        for _ in range(12):
+            after_chats, _ = orca_bot_chats(actual_bot)
+            after_chats = after_chats or []
+            if create_new:
+                new_ones = [c for c in after_chats if c.get("id") and c["id"] not in known_ids]
+                if new_ones:
+                    new_ones.sort(key=lambda c: orca_ts(c.get("lastActivityAt")), reverse=True)
+                    chat_id = new_ones[0]["id"]
+                    break
+            else:
+                home = next((c for c in after_chats if c.get("home") and not c.get("closed")), None)
+                if home and home.get("id"):
+                    chat_id = home["id"]
+                    break
+            time.sleep(0.25)
+    if not chat_id:
+        emit({"event": "error", "message": "Orca accepted the message, but the bot chat ID could not be resolved"})
+        return 1
+
+    emit({"event": "start", "conversation": chat_id, "provider": f"orca:{actual_bot}", "slot": 0, "title": subject})
+
+    stopped = False
+
+    def handle_stop(*_):
+        nonlocal stopped
+        stopped = True
+
+    signal.signal(signal.SIGINT, handle_stop)
+    signal.signal(signal.SIGTERM, handle_stop)
+
+    answer, was_stopped, wait_err = orca_wait_for_reply(
+        chat_id,
+        before_count,
+        prompt[:80],
+        on_delta=lambda d: emit({"event": "delta", "text": d}),
+        stop_flag=lambda: stopped,
+    )
+    if was_stopped:
+        emit({"event": "stopped", "conversation": chat_id})
+        return 0
+    if wait_err and not answer:
+        emit({"event": "error", "conversation": chat_id, "message": wait_err})
+        return 1
+    emit({"event": "done", "conversation": chat_id})
+    return 0
+
+
+def orca_history(bot_name, query, limit):
+    chats, err = orca_bot_chats(bot_name)
+    if chats is None:
+        return []
+    now = time.time()
+    needle = (query or "").casefold().strip()
+    chats = sorted(chats, key=lambda c: (not bool(c.get("home")) if not needle else False, -orca_ts(c.get("lastActivityAt"))))
+    results = []
+    for c in chats:
+        cid = str(c.get("id") or "")
+        if not cid:
+            continue
+        title = str(c.get("title") or ("Home" if c.get("home") else cid[:8]))
+        asked, is_voice = unwrap_desktop_text(str(c.get("lastAsked") or ""))
+        said = str(c.get("lastSaid") or "")
+        match = ""
+        if needle:
+            found = False
+            if needle in title.casefold():
+                match = title
+                found = True
+            else:
+                for hay in (asked, said):
+                    at = hay.casefold().find(needle)
+                    if at >= 0:
+                        match = snippet(hay, at, len(needle))
+                        found = True
+                        break
+            if not found:
+                continue
+        updated = orca_ts(c.get("lastActivityAt")) or int(now)
+        group, when = day_group(updated, now)
+        results.append({
+            "id": cid,
+            "title": title,
+            "provider": f"orca:{bot_name}",
+            "slot": 0,
+            "created": updated,
+            "updated": updated,
+            "voice": is_voice,
+            "turns": 1 if (asked or said) else 0,
+            "match": match,
+            "group": group,
+            "when": when,
+            "home": bool(c.get("home")),
+        })
+        if len(results) >= limit:
+            break
+    return results
+
+
+def orca_show(bot_name, cid):
+    cid = check_id(cid)
+    entries, _, err = orca_read_messages(cid, limit=100)
+    if entries is None:
+        return None
+    title = cid[:8]
+    updated = int(time.time())
+    chats, _ = orca_bot_chats(bot_name, include_all=True)
+    for c in chats or []:
+        if str(c.get("id") or "").lower() == cid:
+            title = str(c.get("title") or ("Home" if c.get("home") else title))
+            updated = orca_ts(c.get("lastActivityAt")) or updated
+            break
+    turns = []
+    any_voice = False
+    for idx, item in enumerate(entries):
+        role = item["role"]
+        text = item["text"]
+        voice = False
+        if role == "user":
+            text, voice = unwrap_desktop_text(text)
+            any_voice = any_voice or voice
+        turn = {"id": f"{idx:032x}", "role": role, "text": text, "time": updated}
+        if role == "assistant":
+            turn["provider"] = f"orca:{bot_name}"
+        if voice:
+            turn["voice"] = True
+        turns.append(turn)
+    return {
+        "id": cid,
+        "title": title,
+        "provider": f"orca:{bot_name}",
+        "created": updated,
+        "updated": updated,
+        "voice": any_voice,
+        "forgotten": False,
+        "turns": turns,
+    }
+
+
+def parse_bot_memory_md(bot_dir):
+    """Parse ~/.orca/bots/<slug>/MEMORY.md and memory/*.md into Tohru's memory list shape."""
+    mem_path = bot_dir / "MEMORY.md"
+    memories = []
+    if mem_path.is_file():
+        mtime = int(mem_path.stat().st_mtime)
+        for raw in mem_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.casefold() == MEMORY_BOILERPLATE:
+                continue
+            cleaned = re.sub(r"^[-*+]\s+", "", line).strip()
+            if not cleaned or cleaned.casefold() == MEMORY_BOILERPLATE:
+                continue
+            fid = hashlib.sha256(cleaned.encode("utf-8")).hexdigest()[:32]
+            memories.append({
+                "id": fid,
+                "kind": "fact",
+                "text": cleaned,
+                "source_conversation": "",
+                "created": mtime,
+                "updated": mtime,
+                "confidence": 1.0,
+            })
+    summaries = []
+    topics_dir = bot_dir / "memory"
+    if topics_dir.is_dir():
+        for path in sorted(topics_dir.glob("*.md")):
+            try:
+                st = path.stat()
+                first = next((l.strip().lstrip("# ").strip() for l in path.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()), path.stem)
+            except OSError:
+                continue
+            summaries.append({"conversation_id": path.stem, "text": first[:240], "created": int(st.st_mtime), "updated": int(st.st_mtime)})
+    return memories, summaries
+
+
+def orca_memory_command(args, bot_name):
+    bot, _ = orca_find_bot(bot_name)
+    actual_bot = bot["name"] if bot else bot_name
+    bot_dir = orca_bot_dir(actual_bot, bot.get("id") if bot else None)
+    memories, summaries = parse_bot_memory_md(bot_dir)
+    if args.action == "list":
+        chats, _ = orca_bot_chats(actual_bot)
+        chat_count = len(chats) if chats is not None else 0
+        if args.json:
+            emit({"memories": memories, "relationship": {"conversations": chat_count, "source": "orca", "bot": actual_bot},
+                  "summaries": summaries})
+        else:
+            for row in memories:
+                print(f"{row['id'][:8]}  {row['kind']:<10}  {row['confidence']:.2f}  {row['text']}")
+            if not memories:
+                print("No memories.")
+        return 0
+    if args.action == "forget":
+        ident = (args.id or "").strip().lower()
+        if not re.match(r"^[0-9a-f]{4,32}$", ident):
+            raise SystemExit("tohru-assistant: memory forget takes an ID from memory list")
+        matches = [m for m in memories if m["id"].startswith(ident)]
+        if len(matches) > 1:
+            raise SystemExit("tohru-assistant: that ID prefix matches more than one memory")
+        if not matches:
+            print("tohru-assistant: no such memory", file=sys.stderr)
+            return 1
+        fact_text = matches[0]["text"]
+        if bot is None:
+            print(f"tohru-assistant: Orca is not running; cannot ask {actual_bot} to forget that memory", file=sys.stderr)
+            return 1
+        body = f"{DESKTOP_TAG}\nPlease forget this memory and remove it from your MEMORY.md now: {fact_text}"
+        ok, _, err = orca_send_to_bot(actual_bot, body, "Forget memory")
+        if not ok:
+            print(f"tohru-assistant: {err}", file=sys.stderr)
+            return 1
+        return 0
+    if args.action == "clear":
+        if bot is None:
+            print(f"tohru-assistant: Orca is not running; cannot ask {actual_bot} to clear memories", file=sys.stderr)
+            return 1
+        body = f"{DESKTOP_TAG}\nPlease clear all facts from your MEMORY.md (keeping only the header)."
+        ok, _, err = orca_send_to_bot(actual_bot, body, "Clear memory")
+        if not ok:
+            print(f"tohru-assistant: {err}", file=sys.stderr)
+            return 1
+        return 0
+    return 2
+
+
+def orca_sync(bot_name):
+    bot, err = orca_find_bot(bot_name)
+    if bot is None:
+        return {"backend": "orca", "online": False, "bot": bot_name, "error": err, "home_chat": "", "chats": []}
+    actual_bot = bot["name"]
+    chats, chat_err = orca_bot_chats(actual_bot)
+    if chats is None:
+        return {"backend": "orca", "online": False, "bot": actual_bot, "error": chat_err, "home_chat": "", "chats": []}
+    home_chat = ""
+    out = []
+    for c in chats:
+        cid = str(c.get("id") or "")
+        if not cid:
+            continue
+        is_home = bool(c.get("home")) and not bool(c.get("closed"))
+        if is_home and not home_chat:
+            home_chat = cid
+        out.append({
+            "id": cid,
+            "title": str(c.get("title") or ("Home" if is_home else cid[:8])),
+            "updated": orca_ts(c.get("lastActivityAt")),
+            "last_said": str(c.get("lastSaid") or ""),
+            "home": is_home,
+        })
+    return {"backend": "orca", "online": True, "bot": actual_bot, "home_chat": home_chat, "chats": out}
+
+
+ORCA_SOUL_ADDENDUM = """## Desktop & Voice Interface
+
+You are one unified Tohru, reachable both in Orca's Bots panel and from the Tohru desktop shell (text popup and voice).
+
+- Messages starting with `[tohru-desktop]` came from the user's desktop chat popup. Reply naturally as your normal answer.
+- Messages starting with `[tohru-desktop:voice]` were spoken aloud through the desktop microphone. Reply in one to three short sentences of plain speech: no markdown, lists, code, links or URLs. If the full answer would be long, give the gist and offer to show the rest in chat.
+- When you wake up on your own (from a schedule, an event, a finished worker, or another agent's reply) and have something the user should see on the desktop, alert them with:
+  - `tohru assistant alert --chat <your_chat_id> "<brief summary>"` (lights up the bar dragon and posts a desktop notification).
+  - Add `--speak` only when it is urgent or the user explicitly asked to be told out loud.
+- Use `orca automations create --bot <your_name>` for schedules, reminders (`--once --by`), and event waits; use `orca orchestration` to delegate and coordinate workers so their replies wake you automatically.
+"""
+
+
+def build_orca_soul(bot_name, persona_override=""):
+    base = persona_text(True, persona_override)
+    header = f"# {bot_name}\n\n"
+    if base.startswith("#"):
+        return f"{base}\n\n{ORCA_SOUL_ADDENDUM}"
+    return f"{header}{base}\n\n{ORCA_SOUL_ADDENDUM}" if base else f"{header}{ORCA_SOUL_ADDENDUM}"
+
+
+def migrate_sqlite_to_bot_home(bot_dir):
+    """Copy existing Tohru SQLite memories, summaries and relationship into the Orca bot's MEMORY.md and memory/."""
+    db_path = database_path()
+    if not db_path.is_file():
+        return 0, False
+    db = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    db.row_factory = sqlite3.Row
+    try:
+        memories = db.execute("SELECT kind, text, updated FROM memories ORDER BY updated DESC, id").fetchall()
+        summaries = db.execute("SELECT conversation_id, text, updated FROM summaries ORDER BY updated DESC LIMIT 30").fetchall()
+        rel = {r["key"]: json.loads(r["value"]) for r in db.execute("SELECT key, value FROM relationship")}
+    except sqlite3.OperationalError:
+        return 0, False
+    finally:
+        db.close()
+
+    mem_path = bot_dir / "MEMORY.md"
+    existing_text = mem_path.read_text(encoding="utf-8", errors="replace") if mem_path.is_file() else "# Memory\n\nOne line per fact, newest first. Longer notes go in memory/<topic>.md.\n"
+    existing_norm = {re.sub(r"^[-*+]\s+", "", l.strip()).casefold() for l in existing_text.splitlines() if l.strip()}
+    added_lines = []
+    for row in memories:
+        text = " ".join(str(row["text"] or "").split())
+        if not text:
+            continue
+        date = time.strftime("%Y-%m-%d", time.localtime(int(row["updated"] or time.time())))
+        line = f"- {date}: {text}"
+        if text.casefold() in existing_norm or f"{date}: {text}".casefold() in existing_norm:
+            continue
+        existing_norm.add(text.casefold())
+        added_lines.append(line)
+    if added_lines:
+        base = existing_text.rstrip("\n")
+        write_private(mem_path, base + "\n" + "\n".join(added_lines) + "\n")
+
+    archive_written = False
+    if summaries or rel:
+        topics_dir = bot_dir / "memory"
+        topics_dir.mkdir(parents=True, exist_ok=True)
+        notes = ["# Imported Tohru Desktop Memory", "", f"Imported from `{db_path}` on {time.strftime('%Y-%m-%d')}. Original SQLite database was left untouched.", ""]
+        if rel:
+            notes.append("## Relationship")
+            for k in ("first_met", "conversations", "streak", "nicknames", "topics", "jokes"):
+                if k in rel and rel[k]:
+                    notes.append(f"- {k}: {json.dumps(rel[k], ensure_ascii=False)}")
+            notes.append("")
+        if summaries:
+            notes.append("## Earlier conversation summaries")
+            for s in summaries:
+                date = time.strftime("%Y-%m-%d", time.localtime(int(s["updated"] or time.time())))
+                notes.append(f"- {date}: {s['text']}")
+            notes.append("")
+        write_private(topics_dir / "imported-tohru-sqlite.md", "\n".join(notes))
+        archive_written = True
+    return len(added_lines), archive_written
+
+
+def orca_init_command(args):
+    bot_name = args.bot or "Tohru"
+    bot, err = orca_find_bot(bot_name)
+    if bot is None:
+        emit({
+            "ok": False,
+            "error": err,
+            "instructions": (
+                f"Create a bot named {bot_name} in Orca's Bots panel first "
+                f"(or run `orca bot create --offer --name {bot_name} --purpose \"Desktop voice and chat assistant\"` "
+                f"from an existing bot chat), then re-run `tohru assistant orca init --bot {bot_name}`."
+            ),
+        })
+        return 1
+    actual_bot = bot["name"]
+    bot_dir = orca_bot_dir(actual_bot, bot.get("id"))
+    if not bot_dir.is_dir():
+        emit({"ok": False, "error": f"Bot home folder not found at {bot_dir}"})
+        return 1
+
+    soul_path = bot_dir / "SOUL.md"
+    desired_soul = build_orca_soul(actual_bot, args.persona_file)
+    soul_written = False
+    backup_path = ""
+    current_soul = soul_path.read_text(encoding="utf-8", errors="replace") if soul_path.is_file() else ""
+    if args.force_soul or not current_soul.strip() or "Desktop & Voice Interface" not in current_soul:
+        if current_soul.strip() and current_soul.strip() != desired_soul.strip() and args.force_soul:
+            backup = bot_dir / "SOUL.md.bak"
+            write_private(backup, current_soul)
+            backup_path = str(backup)
+        write_private(soul_path, desired_soul)
+        soul_written = True
+
+    migrated, archive_written = (0, False) if args.no_migrate else migrate_sqlite_to_bot_home(bot_dir)
+    emit({
+        "ok": True,
+        "bot": actual_bot,
+        "id": bot.get("id", ""),
+        "home": str(bot_dir),
+        "soul_written": soul_written,
+        "soul_backup": backup_path,
+        "migrated_memories": migrated,
+        "migrated_archive": archive_written,
+        "next": [
+            f"tohru config set assistant.orca_bot {actual_bot}",
+            "tohru config set assistant.backend orca",
+        ],
+    })
+    return 0
+
+
+def local_chat(args, prompt):
     provider = BY_ID.get(args.provider)
     if provider is None or not provider.installed():
         emit({"event": "error", "message": f"{args.provider} is not installed"})
@@ -1313,6 +2084,19 @@ def rollback(args):
             deleted = False
     emit({"event": "rolled_back", "conversation": cid, "deleted": deleted})
     return 0
+
+
+def chat(args):
+    prompt = sys.stdin.read().strip()
+    if not prompt:
+        raise SystemExit("tohru-assistant: empty prompt")
+    backend, bot_name, voice_chat, offline = resolve_backend_config(args)
+    if backend == "orca":
+        if getattr(args, "draft", False):
+            emit({"event": "draft_unsupported"})
+            return 0
+        return orca_chat(args, prompt, bot_name, voice_chat, offline)
+    return local_chat(args, prompt)
 
 
 def remember(args):
@@ -1592,18 +2376,28 @@ def import_command(args):
     return 0
 
 
+def add_backend_args(parser):
+    parser.add_argument("--backend", choices=("local", "orca"), default="")
+    parser.add_argument("--orca-bot", default="")
+    parser.add_argument("--orca-voice-chat", choices=("home", "new"), default="")
+    parser.add_argument("--orca-offline", choices=("error", "local"), default="")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="tohru-assistant")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("providers")
     p.add_argument("--models", default="{}", help='JSON: {"claude": {"model": "", "effort": ""}, ...}')
+    add_backend_args(p)
     p = sub.add_parser("signin")
     p.add_argument("provider")
     for name in ("chat", "remember"):
         p = sub.add_parser(name)
+        add_backend_args(p)
         if name == "chat":
             p.add_argument("--provider", required=True)
             p.add_argument("--conversation", default="")
+            p.add_argument("--new-chat", action="store_true")
             p.add_argument("--voice", action="store_true")
             p.add_argument("--draft", action="store_true")
             p.add_argument("--interrupted", default="")
@@ -1624,18 +2418,31 @@ def main(argv=None):
     p = sub.add_parser("rollback")
     p.add_argument("conversation")
     p = sub.add_parser("history")
+    add_backend_args(p)
     p.add_argument("--query", default="")
     p.add_argument("--provider", default="")
     p.add_argument("--since", type=int)
     p.add_argument("--limit", type=int, default=50)
     p = sub.add_parser("show")
+    add_backend_args(p)
     p.add_argument("conversation")
     p = sub.add_parser("delete")
+    add_backend_args(p)
     p.add_argument("conversation")
     p = sub.add_parser("memory")
+    add_backend_args(p)
     p.add_argument("action", choices=("list", "forget", "clear"))
     p.add_argument("id", nargs="?")
     p.add_argument("--json", action="store_true")
+    p = sub.add_parser("sync")
+    add_backend_args(p)
+    p = sub.add_parser("orca")
+    orca_sub = p.add_subparsers(dest="orca_command", required=True)
+    oi = orca_sub.add_parser("init")
+    oi.add_argument("--bot", default="Tohru")
+    oi.add_argument("--persona-file", default="")
+    oi.add_argument("--no-migrate", action="store_true")
+    oi.add_argument("--force-soul", action="store_true")
     p = sub.add_parser("export")
     p.add_argument("file", nargs="?")
     p = sub.add_parser("import")
@@ -1647,12 +2454,19 @@ def main(argv=None):
     p.add_argument("--only", action="append", choices=SECTIONS)
     args = parser.parse_args(argv)
 
+    if args.command == "orca":
+        if args.orca_command == "init":
+            return orca_init_command(args)
+        return 2
+
+    backend, bot_name, _, offline = resolve_backend_config(args)
+
     if args.command == "providers":
         try:
             models = json.loads(args.models)
         except ValueError:
             models = {}
-        emit(discover(models))
+        emit(orca_providers(bot_name, models, offline) if backend == "orca" else discover(models))
     elif args.command == "signin":
         signin(args.provider)
     elif args.command == "chat":
@@ -1662,25 +2476,53 @@ def main(argv=None):
     elif args.command == "rollback":
         return rollback(args)
     elif args.command == "remember":
+        if backend == "orca":
+            return 0
         return remember(args)
     elif args.command == "history":
-        emit(search(connect(), args.query, max(1, min(args.limit, 500)), args.provider or None, args.since))
+        limit = max(1, min(args.limit, 500))
+        if backend == "orca":
+            rows = orca_history(bot_name, args.query, limit)
+            if not rows and offline == "local" and orca_find_bot(bot_name)[0] is None:
+                rows = search(connect(), args.query, limit, args.provider or None, args.since)
+            emit(rows)
+        else:
+            emit(search(connect(), args.query, limit, args.provider or None, args.since))
     elif args.command == "show":
-        conversation = load(connect(), args.conversation)
+        if backend == "orca":
+            conversation = orca_show(bot_name, args.conversation)
+            if conversation is None and offline == "local":
+                conversation = load(connect(), args.conversation)
+                if conversation is not None:
+                    for key in ("sessions", "remembered"):
+                        conversation.pop(key, None)
+        else:
+            conversation = load(connect(), args.conversation)
+            if conversation is not None:
+                for key in ("sessions", "remembered"):
+                    conversation.pop(key, None)
         if conversation is None:
             print("tohru-assistant: no such conversation", file=sys.stderr)
             return 1
-        for key in ("sessions", "remembered"):
-            conversation.pop(key, None)
         emit(conversation)
     elif args.command == "delete":
+        if backend == "orca":
+            print("tohru-assistant: close Orca bot chats in Orca's Bots panel", file=sys.stderr)
+            return 1
         db = connect()
         with transaction(db):
             gone = db.execute("DELETE FROM conversations WHERE id = ?", (check_id(args.conversation),)).rowcount
             db.execute("DELETE FROM summaries WHERE conversation_id = ?", (args.conversation,))
         return 0 if gone else 1
     elif args.command == "memory":
+        if backend == "orca":
+            return orca_memory_command(args, bot_name)
         return memory_command(args)
+    elif args.command == "sync":
+        if backend == "orca":
+            emit(orca_sync(bot_name))
+        else:
+            emit({"backend": "local", "online": True, "home_chat": "", "chats": []})
     elif args.command == "export":
         return export_command(args)
     elif args.command == "import":

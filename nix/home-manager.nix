@@ -26,6 +26,11 @@ let
     // lib.optionalAttrs (assistant.voice.kwsModel != null) { kws_model = assistant.voice.kwsModel; }
     // lib.optionalAttrs (assistant.tts.model != null) { tts_model = assistant.tts.model; }
     // lib.optionalAttrs (assistant.provider != null) { provider = assistant.provider; }
+    // lib.optionalAttrs (assistant.backend != null) { backend = assistant.backend; }
+    // lib.optionalAttrs (assistant.backend == null && assistant.orcaBot.enable) { backend = "orca"; }
+    // lib.optionalAttrs (assistant.orcaBot.bot != null) { orca_bot = assistant.orcaBot.bot; }
+    // lib.optionalAttrs (assistant.orcaBot.voiceChat != null) { orca_voice_chat = assistant.orcaBot.voiceChat; }
+    // lib.optionalAttrs (assistant.orcaBot.offline != null) { orca_offline = assistant.orcaBot.offline; }
     // lib.optionalAttrs (assistant.persona.file != null) { persona_file = "${assistant.persona.file}"; }
     // lib.optionalAttrs (assistant.models != { }) {
       models = lib.mapAttrs (_: m: lib.filterAttrs (_: v: v != null) { inherit (m) model effort; }) assistant.models;
@@ -198,6 +203,34 @@ in {
         type = lib.types.nullOr (lib.types.enum providers);
         default = null;
         description = "The provider CLI the assistant uses, written to `assistant.provider`; `null` picks the first installed and signed-in one in the order claude, codex, gemini, agy, opencode.";
+      };
+      backend = lib.mkOption {
+        type = lib.types.nullOr (lib.types.enum [ "local" "orca" ]);
+        default = null;
+        description = "Which backend runs assistant chats (`local` by default, or opt-in `orca` to route through an Orca bot). `null` leaves it to the user's config (or `orca` when `assistant.orcaBot.enable` is true).";
+      };
+      orcaBot = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Route Tohru's desktop popup and voice through a real Orca bot (`assistant.backend = \"orca\"`). Off by default so non-Orca users have zero Orca dependency.";
+        };
+        bot = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "Tohru";
+          description = "The Orca bot name Tohru routes through, written to `assistant.orca_bot`; `null` leaves it to the user's config (`Tohru`).";
+        };
+        voiceChat = lib.mkOption {
+          type = lib.types.nullOr (lib.types.enum [ "home" "new" ]);
+          default = null;
+          description = "Where voice turns land in Orca bot mode (`home` for the bot's Home Chat, or `new` for a fresh chat), written to `assistant.orca_voice_chat`.";
+        };
+        offline = lib.mkOption {
+          type = lib.types.nullOr (lib.types.enum [ "error" "local" ]);
+          default = null;
+          description = "Behavior when `assistant.backend = \"orca\"` and Orca is unreachable (`error` to prevent split-brain, or `local` to fall back), written to `assistant.orca_offline`.";
+        };
       };
       models = lib.mkOption {
         type = lib.types.attrsOf (lib.types.submodule {

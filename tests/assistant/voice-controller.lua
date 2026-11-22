@@ -16,7 +16,7 @@ _G.spawn = function(command, args, line, exit, how)
     return #spawned
 end
 
-local asked, remembered, stopped, listeners = {}, {}, 0, {}
+local asked, remembered, stopped, listeners, alert_listeners = {}, {}, 0, {}, {}
 local drafted, discarded, cancelled, rolled_back = {}, 0, 0, {}
 local refusing = false
 local draft_ok = true
@@ -33,6 +33,7 @@ local assistant = {
     remember = function(id) remembered[#remembered + 1] = id end,
     show = function(id) shown = id end,
     on_answer = function(listener) listeners[#listeners + 1] = listener end,
+    on_alert = function(listener) alert_listeners[#alert_listeners + 1] = listener end,
 }
 local puppet = assert(loadfile("shell/assistant/puppet.luau"))()()
 local voice = assert(loadfile("shell/assistant/voice.luau"))()(assistant, puppet)
@@ -207,11 +208,36 @@ assert(#spawned == 4 and has(spawned[4].args, "--wake", "kws") and has(spawned[4
 local kills = #killed
 voice.configure(settings({["assistant.voice"] = true, ["assistant.voice_wake"] = "asr"}))
 assert(#killed == kills + 1 and #spawned == 5 and has(spawned[5].args, "--wake", "asr"))
-print("Voice service gating, turns, spoken answers, barge-in, memory hand-off, settings and restarts passed")
-
 -- Motion preferences apply live without restarting the microphone/model service.
 local starts = #spawned
 voice.configure(settings({["assistant.voice"] = true, ["assistant.voice_wake"] = "asr", ["assistant.reduced_motion"] = true}))
 assert(#spawned == starts and fact.ai_dg_reduced)
 voice.configure(settings({["assistant.voice"] = true, ["assistant.voice_wake"] = "asr", ["assistant.reduced_motion"] = false}))
 assert(#spawned == starts and not fact.ai_dg_reduced)
+
+-- Proactive alerts speak only when --speak is set and neither locked nor in DND.
+local before_alert = #written
+alert_listeners[1]("4f71ebb6-db33-43e9-af8f-e5bc79a11077", "Silent update", false)
+assert(#written == before_alert)
+fact.notices_dnd = true
+alert_listeners[1]("4f71ebb6-db33-43e9-af8f-e5bc79a11077", "Suppressed by DND", true)
+assert(#written == before_alert)
+fact.notices_dnd = false
+fact.ai_voice_paused = true
+alert_listeners[1]("4f71ebb6-db33-43e9-af8f-e5bc79a11077", "Suppressed while locked", true)
+assert(#written == before_alert)
+fact.ai_voice_paused = false
+alert_listeners[1]("4f71ebb6-db33-43e9-af8f-e5bc79a11077", "Your overnight task finished.", true)
+assert(#written == before_alert + 1 and written[#written].message.cmd == "say"
+    and written[#written].message.text == "Your overnight task finished."
+    and written[#written].message.conversation == "4f71ebb6-db33-43e9-af8f-e5bc79a11077")
+
+-- When Orca backend is unavailable (ai_can_signin == false), ask_turn speaks Orca-unavailable instead of Sign in.
+refusing = true
+fact.ai_can_signin = false
+spawned[5].line({event = "turn", text = "Hello"})
+assert(written[#written].message.text:find("Orca"))
+refusing = false
+fact.ai_can_signin = true
+
+print("Voice service gating, turns, spoken answers, barge-in, memory hand-off, proactive alerts, reduced motion, settings and restarts passed")

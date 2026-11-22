@@ -620,5 +620,319 @@ class Assistant(unittest.TestCase):
         self.assertEqual(self.show(cid_m)["turns"][-2]["text"], "Wait, what about Athens?")
 
 
+FAKE_ORCA = r'''#!/usr/bin/env python3
+import json, os, sys, uuid
+from pathlib import Path
+
+args = sys.argv[1:]
+state_path = Path(os.environ["FAKE_ORCA_STATE"])
+log_path = Path(os.environ["FAKE_ORCA_LOG"])
+with open(log_path, "a") as f:
+    f.write(json.dumps({
+        "argv": args,
+        "stripped_env": all(k not in os.environ for k in ("ORCA_AGENT_SESSION_ID", "ORCA_TERMINAL_HANDLE", "ORCA_ENVIRONMENT")),
+    }) + "\n")
+
+if os.environ.get("FAKE_ORCA_OFFLINE") == "1":
+    print(json.dumps({"ok": False, "error": {"code": "runtime_unavailable", "message": "Orca is not running"}}))
+    sys.exit(1)
+
+state = json.loads(state_path.read_text())
+
+def save():
+    state_path.write_text(json.dumps(state))
+
+if args[:2] == ["bot", "list"]:
+    print(json.dumps({"ok": True, "result": {"bots": state["bots"], "unreachable": []}}))
+    sys.exit(0)
+
+if args[:2] == ["bot", "chats"]:
+    print(json.dumps({"ok": True, "result": {"bot": state["bots"][0]["name"] if state["bots"] else "Tohru", "chats": state["chats"]}}))
+    sys.exit(0)
+
+if args[:2] == ["agent", "read"]:
+    sid = args[2].split(":", 1)[1]
+    chat = next((c for c in state["chats"] if c["id"] == sid), None)
+    if chat is None:
+        print(json.dumps({"ok": False, "error": {"code": "not_found", "message": "chat not found"}}))
+        sys.exit(1)
+    pending = state.get("pending", {}).get(sid)
+    if pending:
+        pending["polls"] -= 1
+        if pending["polls"] <= 0:
+            state["entries"][sid].append({"kind": "message", "role": "assistant", "text": pending["reply"]})
+            chat["lastSaid"] = pending["reply"]
+            chat["lastActivityAt"] = chat.get("lastActivityAt", 1700000000000) + 1000
+            del state["pending"][sid]
+            save()
+            print(json.dumps({"ok": True, "result": {"orcaSessionId": sid, "state": "done", "entries": state["entries"][sid]}}))
+            sys.exit(0)
+        save()
+        entries = list(state["entries"][sid])
+        if pending.get("partial") and pending["polls"] == 1:
+            entries.append({"kind": "message", "role": "assistant", "text": pending["partial"]})
+        print(json.dumps({"ok": True, "result": {"orcaSessionId": sid, "state": "working", "entries": entries}}))
+        sys.exit(0)
+    print(json.dumps({"ok": True, "result": {"orcaSessionId": sid, "state": "done", "entries": state["entries"].get(sid, [])}}))
+    sys.exit(0)
+
+if args[:2] == ["orchestration", "send"]:
+    body_file = args[args.index("--body-file") + 1]
+    body = Path(body_file).read_text(encoding="utf-8")
+    subject = args[args.index("--subject") + 1] if "--subject" in args else "Desktop"
+    chat_arg = args[args.index("--chat") + 1] if "--chat" in args else None
+    if chat_arg == "new":
+        cid = str(uuid.uuid4())
+        chat = {"id": cid, "title": subject, "lastActivityAt": 1700000010000, "lastAsked": body, "lastSaid": "", "home": False, "closed": False}
+        state["chats"].append(chat)
+        state["entries"][cid] = []
+    else:
+        chat = next((c for c in state["chats"] if c["id"] == chat_arg), None) or next(c for c in state["chats"] if c.get("home"))
+        cid = chat["id"]
+    wrapped = f"──── From: TOHRU-DESKTOP (tohru-desktop) (handoff) ────\nSubject: {subject}\n{body}\n────────────────────────────────────────────────────────────"
+    state["entries"].setdefault(cid, []).append({"kind": "message", "role": "user", "text": wrapped})
+    chat["lastAsked"] = body
+    reply = os.environ.get("FAKE_ORCA_REPLY", "Eight fluid ounces from Orca.")
+    polls = int(os.environ.get("FAKE_ORCA_POLLS", "2"))
+    partial = os.environ.get("FAKE_ORCA_PARTIAL", "")
+    state.setdefault("pending", {})[cid] = {"polls": polls, "reply": reply, "partial": partial}
+    save()
+    print(json.dumps({"ok": True, "result": {"id": "msg_1", "chatId": cid}}))
+    sys.exit(0)
+
+print(json.dumps({"ok": False, "error": {"code": "unknown", "message": "unexpected args"}}))
+sys.exit(1)
+'''
+
+
+class OrcaBotBackend(unittest.TestCase):
+    HOME_UUID = "4f71ebb6-db33-43e9-af8f-e5bc79a11077"
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix="tohru-orca-backend-")
+        self.addCleanup(self.directory.cleanup)
+        root = Path(self.directory.name)
+        self.bin = root / "bin"
+        self.bin.mkdir()
+        self.home = root / "home"
+        self.bots = self.home / ".orca/bots"
+        self.tohru_bot = self.bots / "tohru"
+        self.tohru_bot.mkdir(parents=True)
+        (self.tohru_bot / "bot.json").write_text(json.dumps({"id": "bot-1", "name": "Tohru", "agent": "claude"}))
+        (self.tohru_bot / "SOUL.md").write_text("# Tohru\n\nDefault stub.\n")
+        (self.tohru_bot / "MEMORY.md").write_text(
+            "# Memory\n\nOne line per fact, newest first. Longer notes go in memory/<topic>.md.\n"
+            "- 2026-11-20: Prefers metric units\n"
+            "- 2026-11-21: Works on Tohru shell\n"
+        )
+        (self.tohru_bot / "memory").mkdir()
+        (self.tohru_bot / "memory/projects.md").write_text("# Projects\nTohru and Orca.\n")
+        self.data = root / "data"
+        self.scratch = root / "scratch"
+        self.fake_claude_log = root / "claude.jsonl"
+        self.fake_claude_log.write_text("")
+        self.orca_log = root / "orca.jsonl"
+        self.orca_log.write_text("")
+        self.orca_state = root / "orca-state.json"
+        self.write_orca_state()
+        for name, src in (("claude", FAKE_CLAUDE), ("orca", FAKE_ORCA)):
+            p = self.bin / name
+            p.write_text(src)
+            p.chmod(0o755)
+        self.env = {
+            "PATH": f"{self.bin}:/usr/bin:/bin:" + os.path.dirname(os.path.realpath(subprocess.check_output(["sh", "-c", "command -v python3"], text=True).strip())),
+            "HOME": str(self.home),
+            "XDG_DATA_HOME": str(root / "xdg-data"),
+            "XDG_CONFIG_HOME": str(root / "xdg-config"),
+            "TOHRU_ASSISTANT_DATA": str(self.data),
+            "TOHRU_ASSISTANT_SCRATCH": str(self.scratch),
+            "TOHRU_ORCA_BIN": str(self.bin / "orca"),
+            "TOHRU_ORCA_BOTS_DIR": str(self.bots),
+            "TOHRU_ORCA_POLL_MS": "20",
+            "FAKE_LOG": str(self.fake_claude_log),
+            "FAKE_SIGNED_IN": "1",
+            "FAKE_ORCA_STATE": str(self.orca_state),
+            "FAKE_ORCA_LOG": str(self.orca_log),
+            "ORCA_AGENT_SESSION_ID": "caller-should-be-stripped",
+            "ORCA_ENVIRONMENT": "remote-should-be-stripped",
+        }
+
+    def write_orca_state(self, bots=None):
+        state = {
+            "bots": bots if bots is not None else [{"id": "bot-1", "name": "Tohru", "agent": "claude", "paused": False}],
+            "chats": [{
+                "id": self.HOME_UUID,
+                "title": "Home",
+                "lastActivityAt": 1700000000000,
+                "lastAsked": "Hello from Orca UI",
+                "lastSaid": "Hi! Ready in Orca.",
+                "home": True,
+                "closed": False,
+            }],
+            "entries": {
+                self.HOME_UUID: [
+                    {"kind": "message", "role": "user", "text": "Hello from Orca UI"},
+                    {"kind": "message", "role": "assistant", "text": "Hi! Ready in Orca."},
+                ],
+            },
+            "pending": {},
+        }
+        self.orca_state.write_text(json.dumps(state))
+
+    def invoke(self, *args, stdin="", **env):
+        return subprocess.run([str(HELPER), *args], input=stdin, env={**self.env, **env}, text=True,
+                              capture_output=True, timeout=30)
+
+    def orca_calls(self):
+        text = self.orca_log.read_text().strip()
+        return [json.loads(line) for line in text.splitlines()] if text else []
+
+    def test_default_local_backend_never_touches_orca(self):
+        providers = json.loads(self.invoke("providers").stdout)
+        self.assertEqual([p["id"] for p in providers], ["claude"])
+        self.assertEqual(self.orca_calls(), [])
+
+    def test_orca_providers_online_paused_missing_and_offline(self):
+        online = json.loads(self.invoke("providers", "--backend", "orca", "--orca-bot", "Tohru").stdout)
+        self.assertEqual(len(online), 1)
+        self.assertEqual((online[0]["id"], online[0]["signed_in"], online[0]["can_signin"], online[0]["model"]),
+                         ("orca:Tohru", True, False, "Orca · claude"))
+        self.assertTrue(self.orca_calls()[0]["stripped_env"])
+
+        self.write_orca_state(bots=[{"id": "bot-1", "name": "Tohru", "agent": "claude", "paused": True}])
+        paused = json.loads(self.invoke("providers", "--backend", "orca", "--orca-bot", "Tohru").stdout)
+        self.assertFalse(paused[0]["signed_in"])
+        self.assertIn("paused", paused[0]["offline_title"].lower())
+
+        self.write_orca_state(bots=[])
+        missing = json.loads(self.invoke("providers", "--backend", "orca", "--orca-bot", "Tohru").stdout)
+        self.assertFalse(missing[0]["signed_in"])
+        self.assertIn("orca init", missing[0]["offline_body"])
+
+        offline_err = json.loads(self.invoke("providers", "--backend", "orca", "--orca-offline", "error", FAKE_ORCA_OFFLINE="1").stdout)
+        self.assertEqual((offline_err[0]["signed_in"], offline_err[0]["can_signin"]), (False, False))
+        self.assertIn("isn’t running", offline_err[0]["offline_title"])
+
+        offline_local = json.loads(self.invoke("providers", "--backend", "orca", "--orca-offline", "local", FAKE_ORCA_OFFLINE="1").stdout)
+        self.assertEqual(offline_local[0]["id"], "claude")
+        self.assertTrue(offline_local[0]["offline_fallback"])
+
+    def test_orca_chat_routes_to_home_voice_new_chat_and_unwraps_show(self):
+        res = self.invoke("chat", "--backend", "orca", "--orca-bot", "Tohru", "--provider", "orca:Tohru",
+                          stdin="How many ounces in a cup?", FAKE_ORCA_PARTIAL="Eight fluid", FAKE_ORCA_REPLY="Eight fluid ounces.")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        events = [json.loads(l) for l in res.stdout.splitlines()]
+        self.assertEqual(events[0]["event"], "start")
+        self.assertEqual(events[0]["conversation"], self.HOME_UUID)
+        self.assertEqual("".join(e["text"] for e in events if e["event"] == "delta"), "Eight fluid ounces.")
+        self.assertEqual(events[-1], {"event": "done", "conversation": self.HOME_UUID})
+
+        send_call = next(c for c in self.orca_calls() if c["argv"][:2] == ["orchestration", "send"])
+        self.assertIn("bot:Tohru", send_call["argv"])
+        self.assertIn("handoff", send_call["argv"])
+        self.assertIn(self.HOME_UUID, send_call["argv"])
+
+        # Voice turn in a new chat when --orca-voice-chat new.
+        vres = self.invoke("chat", "--backend", "orca", "--orca-bot", "Tohru", "--orca-voice-chat", "new",
+                           "--provider", "orca:Tohru", "--voice", stdin="What is the weather?", FAKE_ORCA_REPLY="Clear skies.")
+        self.assertEqual(vres.returncode, 0, vres.stderr)
+        vevents = [json.loads(l) for l in vres.stdout.splitlines()]
+        new_cid = vevents[0]["conversation"]
+        self.assertNotEqual(new_cid, self.HOME_UUID)
+        self.assertEqual("".join(e["text"] for e in vevents if e["event"] == "delta"), "Clear skies.")
+
+        # History lists Home Chat first and searches across title/lastAsked/lastSaid.
+        hist = json.loads(self.invoke("history", "--backend", "orca", "--orca-bot", "Tohru").stdout)
+        self.assertEqual(hist[0]["id"], self.HOME_UUID)
+        self.assertEqual(len(hist), 2)
+        found = json.loads(self.invoke("history", "--backend", "orca", "--orca-bot", "Tohru", "--query", "Clear skies").stdout)
+        self.assertEqual([c["id"] for c in found], [new_cid])
+
+        # Show unwraps desktop envelope on desktop turns while keeping Bots-panel turns verbatim.
+        shown_home = json.loads(self.invoke("show", "--backend", "orca", "--orca-bot", "Tohru", self.HOME_UUID).stdout)
+        self.assertEqual([t["text"] for t in shown_home["turns"]], [
+            "Hello from Orca UI", "Hi! Ready in Orca.", "How many ounces in a cup?", "Eight fluid ounces.",
+        ])
+        self.assertNotIn("voice", shown_home["turns"][0])
+        shown_voice = json.loads(self.invoke("show", "--backend", "orca", "--orca-bot", "Tohru", new_cid).stdout)
+        self.assertTrue(shown_voice["turns"][0]["voice"])
+        self.assertEqual(shown_voice["turns"][0]["text"], "What is the weather?")
+
+    def test_orca_stop_and_offline_modes(self):
+        proc = subprocess.Popen(
+            [str(HELPER), "chat", "--backend", "orca", "--orca-bot", "Tohru", "--provider", "orca:Tohru"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+            env={**self.env, "FAKE_ORCA_POLLS": "200", "TOHRU_ORCA_POLL_MS": "50"},
+        )
+        proc.stdin.write("Long overnight check")
+        proc.stdin.close()
+        first = json.loads(proc.stdout.readline())
+        self.assertEqual(first["event"], "start")
+        proc.send_signal(signal.SIGINT)
+        rest = [json.loads(l) for l in proc.stdout.read().splitlines() if l.strip()]
+        proc.stdout.close()
+        self.assertEqual(proc.wait(timeout=10), 0)
+        self.assertEqual(rest[-1]["event"], "stopped")
+
+        err_res = self.invoke("chat", "--backend", "orca", "--orca-offline", "error", "--provider", "orca:Tohru",
+                              stdin="Hi", FAKE_ORCA_OFFLINE="1")
+        self.assertEqual(err_res.returncode, 3)
+        self.assertFalse((self.data / "assistant.sqlite").exists())
+
+        fb_res = self.invoke("chat", "--backend", "orca", "--orca-offline", "local", "--provider", "orca:Tohru",
+                             stdin="Hi offline", FAKE_ORCA_OFFLINE="1")
+        self.assertEqual(fb_res.returncode, 0, fb_res.stderr)
+        fb_events = [json.loads(l) for l in fb_res.stdout.splitlines()]
+        self.assertEqual(fb_events[-1]["event"], "done")
+
+    def test_orca_memory_sync_remember_and_init_migration(self):
+        mem = json.loads(self.invoke("memory", "list", "--json", "--backend", "orca", "--orca-bot", "Tohru").stdout)
+        self.assertEqual(len(mem["memories"]), 2)
+        self.assertEqual(mem["relationship"]["source"], "orca")
+        self.assertEqual(mem["summaries"][0]["conversation_id"], "projects")
+        self.assertEqual(self.invoke("memory", "forget", mem["memories"][0]["id"][:8], "--backend", "orca", "--orca-bot", "Tohru").returncode, 0)
+        sends = [c for c in self.orca_calls() if c["argv"][:2] == ["orchestration", "send"]]
+        self.assertEqual(len(sends), 1)
+        self.assertIn("Forget memory", sends[0]["argv"])
+
+        # remember is a no-op in orca mode.
+        self.assertEqual(self.invoke("remember", self.HOME_UUID, "--backend", "orca", "--orca-bot", "Tohru").returncode, 0)
+        self.assertEqual(self.fake_claude_log.read_text(), "")
+
+        # sync reports online + home_chat + chat watermarks.
+        synced = json.loads(self.invoke("sync", "--backend", "orca", "--orca-bot", "Tohru").stdout)
+        self.assertTrue(synced["online"])
+        self.assertEqual(synced["home_chat"], self.HOME_UUID)
+        self.assertEqual(len(synced["chats"]), 1)
+
+        # Seed local SQLite, then run `orca init` to seed SOUL.md and migrate memories without touching SQLite.
+        self.invoke("chat", "--provider", "claude", stdin="I love NixOS")
+        db = sqlite3.connect(self.data / "assistant.sqlite")
+        with db:
+            db.execute("INSERT INTO memories (id, kind, text, source_conversation, created, updated, confidence) VALUES (?, 'fact', ?, '', 1700000000, 1700000000, 0.9)",
+                       ("a" * 32, "The user runs NixOS with Hyprland"))
+            db.execute("INSERT INTO summaries (conversation_id, text, created, updated) VALUES (?, ?, 1700000000, 1700000000)",
+                       ("b" * 32, "Discussed NixOS setup."))
+            db.execute("INSERT INTO relationship (key, value, updated) VALUES ('conversations', '5', 1700000000)")
+        db.close()
+
+        init = self.invoke("orca", "init", "--bot", "Tohru")
+        self.assertEqual(init.returncode, 0, init.stderr)
+        payload = json.loads(init.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["soul_written"])
+        self.assertEqual(payload["migrated_memories"], 1)
+        self.assertTrue(payload["migrated_archive"])
+        soul = (self.tohru_bot / "SOUL.md").read_text()
+        self.assertIn("Desktop & Voice Interface", soul)
+        self.assertIn("[tohru-desktop:voice]", soul)
+        self.assertIn("The user runs NixOS with Hyprland", (self.tohru_bot / "MEMORY.md").read_text())
+        self.assertTrue((self.tohru_bot / "memory/imported-tohru-sqlite.md").is_file())
+        # Re-running does not duplicate facts.
+        second = json.loads(self.invoke("orca", "init", "--bot", "Tohru").stdout)
+        self.assertEqual(second["migrated_memories"], 0)
+        self.assertFalse(second["soul_written"])
+
+
 if __name__ == "__main__":
     unittest.main()

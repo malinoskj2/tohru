@@ -55,6 +55,7 @@ The bar process owns the one answer in flight, so its state survives closing the
 | `assistant_copy`, `assistant_retry` | Copy the last answer; send the last question again |
 | `assistant_pick <row>`, `assistant_move <delta>`, `assistant_activate`, `assistant_search` | Open a history row; move in history or the picker; open the selected row; search again |
 | `assistant_menu`, `assistant_menu_close`, `assistant_show_history` | Toggle or close the mark's menu; open the popup on history |
+| `assistant_alert <0\|1>` | Surface a proactive alert (`tohru assistant alert`): reload the matching open chat or light up `ai_ready`, and notify `voice.luau` to speak when `1` and neither locked nor in DND |
 
 ## The service: `bin/tohru-assistant`
 
@@ -71,7 +72,9 @@ A Python helper (standard library only) that the bar runs with `sys.spawn`. Each
 | `memory list [--json]`, `memory forget ID`, `memory clear` | What is remembered, and dropping it |
 | `export [FILE]`, `import FILE [--merge\|--replace --yes] [--only history\|memory\|relationship]` | Versioned JSON of everything, written 0600; import validates the whole file first |
 | `history [--query Q] [--provider ID] [--since T] [--limit N]` | Conversations, newest first, with the matching snippet when `--query` is given |
-| `show CID`, `delete CID` | One conversation, or remove it |
+| `show CID`, `delete CID` | One conversation, or remove it (UUIDs supported in `orca` mode) |
+| `sync` | Lightweight background check for new Orca bot replies (`orca` mode); no-op in `local` mode |
+| `orca init [--bot NAME] [--no-migrate] [--force-soul]` | Seeds `~/.orca/bots/<slug>/SOUL.md` and migrates SQLite memories into `MEMORY.md` without altering `assistant.sqlite` |
 
 - **Auth probes** never prompt: stdin is closed, each probe has 6 s, and they run in parallel. `claude auth status` and `codex login status` where the CLI has one; otherwise the credential file (`~/.gemini/oauth_creds.json`, `~/.gemini/antigravity-cli/antigravity-oauth-token`, `~/.local/share/opencode/auth.json`). **Sign in…** runs `claude auth login`, `codex login`, `opencode auth login`, or the bare CLI for `gemini` and `agy`, in `TOHRU_TERMINAL`, `xdg-terminal-exec`, `$TERMINAL -e` or the first common terminal found.
 - **Models** come from `assistant.models.<cli>.model` and `.effort`, with Tohru's defaults when empty (see [docs/ai-assistant.md](../../docs/ai-assistant.md#as-built)); `providers --models JSON` reports what each will use.

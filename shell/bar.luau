@@ -5,7 +5,7 @@ local close_panels
 local bell = require("bar/bell")(function() if close_panels then close_panels("notifications") end end)
 local PALETTE_INDEX = {mocha=0, macchiato=1, rose_pine=2, nord=3, gruvbox=4, tokyo_night=5, dracula=6, everforest=7}
 local last_palette = nil
-local voice
+local assistant, voice
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
@@ -27,6 +27,7 @@ local function publish(settings)
     local position = settings["notifications.position"]
     bell.place(position and position.value == "bottom-right" and 1 or 0)
     text.settings_status = json.encode({schema = 7, settings = settings})
+    if assistant then assistant.configure() end
     if voice then voice.configure(settings) end
 end
 local function change(operation)
@@ -97,7 +98,7 @@ local bluetooth = require("bluetooth/controller")(make_rail(4))
 local wallpaper = require("wallpaper/controller")()
 local tray = require("tray/controller")(function() if close_panels then close_panels("tray") end end)
 local info = require("info/controller")(tohru_info.snapshot, nil, make_rail(3))
-local assistant = require("assistant/controller")({
+assistant = require("assistant/controller")({
     provider = function() return tohru_settings.snapshot()["assistant.provider"].value end,
     choose = function(id) change(function() return tohru_settings.set("assistant.provider", id) end) end,
     value = function(key) local entry = tohru_settings.snapshot()[key]; return entry and entry.value end,

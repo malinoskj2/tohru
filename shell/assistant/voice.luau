@@ -50,8 +50,10 @@ return function(assistant, puppet)
             if assistant.streaming and assistant.streaming() then
                 queued = {text = prompt, opts = opts}
             else
+                local unavailable = fact.ai_can_signin == false
                 send({cmd = "say", conversation = conversation,
-                    text = "I can't answer yet. Sign in to an assistant from the chat popup first."})
+                    text = unavailable and "I can't reach Orca right now. Open Orca and try again."
+                        or "I can't answer yet. Sign in to an assistant from the chat popup first."})
             end
         end
     end
@@ -215,6 +217,14 @@ return function(assistant, puppet)
         end
         flush_queued()
     end)
+
+    if assistant.on_alert then
+        assistant.on_alert(function(chat_id, msg, speak)
+            if not speak or not id or not msg or msg == "" then return end
+            if fact.ai_voice_paused or fact.notices_dnd or fact.ai_speaking or fact.ai_voice_conversation then return end
+            send({cmd = "say", text = msg, conversation = (chat_id and chat_id ~= "") and chat_id or conversation})
+        end)
+    end
 
     on("assistant_hush", function() send({cmd = "hush"}) end)
     on("assistant_dragon", function()

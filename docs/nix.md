@@ -77,6 +77,9 @@ With a standalone Home Manager flake, pass `inputs` through `extraSpecialArgs`, 
 | `programs.tohru.assistant.tts.model` | `null` | Sets the managed `assistant.tts_model` |
 | `programs.tohru.assistant.tts.loadOnConversation` | `null` | Sets the managed `assistant.tts_load_on_conversation` |
 | `programs.tohru.assistant.provider` | `null` | Sets the managed `assistant.provider` |
+| `programs.tohru.assistant.backend` | `null` | Sets the managed `assistant.backend` (`local` or `orca`) |
+| `programs.tohru.assistant.orcaBot.enable` | `false` | Opt-in: sets `assistant.backend = "orca"` so popup and voice route through an Orca bot (inert when false) |
+| `programs.tohru.assistant.orcaBot.bot`, `.voiceChat`, `.offline` | `null` | Set the managed `assistant.orca_bot`, `assistant.orca_voice_chat` (`home`\|`new`) and `assistant.orca_offline` (`error`\|`local`) |
 | `programs.tohru.assistant.models.<cli>.model`, `.effort` | `null` | Set the managed `assistant.models.<cli>.*` for `claude`, `codex`, `gemini`, `agy` or `opencode` |
 | `programs.tohru.assistant.persona.enable`, `.file` | `null` | Set the managed `assistant.persona` and `assistant.persona_file` |
 | `programs.tohru.assistant.memory.enable` | `null` | Sets the managed `assistant.memory` |

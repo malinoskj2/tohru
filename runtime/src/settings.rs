@@ -40,6 +40,10 @@ pub enum Key {
     AssistantTtsLoadOnConversation,
     AssistantVoiceWake,
     AssistantKwsModel,
+    AssistantBackend,
+    AssistantOrcaBot,
+    AssistantOrcaVoiceChat,
+    AssistantOrcaOffline,
     AssistantModel(Cli),
     AssistantEffort(Cli),
 }
@@ -72,8 +76,17 @@ pub const VOICE_WAKE: [&str; 2] = ["kws", "asr"];
 /// Whether the assistant gets Orca CLI context: detect when installed, always on, or off.
 pub const ASSISTANT_ORCA: [&str; 3] = ["auto", "true", "false"];
 
+/// Which backend runs assistant chats: local provider CLIs (default) or an opt-in Orca bot.
+pub const ASSISTANT_BACKENDS: [&str; 2] = ["local", "orca"];
+
+/// Where voice conversations land when `assistant.backend = "orca"`.
+pub const ORCA_VOICE_CHATS: [&str; 2] = ["home", "new"];
+
+/// What happens when `assistant.backend = "orca"` and Orca is unreachable.
+pub const ORCA_OFFLINE_MODES: [&str; 2] = ["error", "local"];
+
 impl Key {
-    pub const ALL: [Self; 39] = [
+    pub const ALL: [Self; 43] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::InfoButton,
@@ -103,6 +116,10 @@ impl Key {
         Self::AssistantTtsLoadOnConversation,
         Self::AssistantVoiceWake,
         Self::AssistantKwsModel,
+        Self::AssistantBackend,
+        Self::AssistantOrcaBot,
+        Self::AssistantOrcaVoiceChat,
+        Self::AssistantOrcaOffline,
         Self::AssistantModel(Cli::Claude),
         Self::AssistantEffort(Cli::Claude),
         Self::AssistantModel(Cli::Codex),
@@ -147,6 +164,10 @@ impl Key {
             Self::AssistantTtsLoadOnConversation => "assistant.tts_load_on_conversation",
             Self::AssistantVoiceWake => "assistant.voice_wake",
             Self::AssistantKwsModel => "assistant.kws_model",
+            Self::AssistantBackend => "assistant.backend",
+            Self::AssistantOrcaBot => "assistant.orca_bot",
+            Self::AssistantOrcaVoiceChat => "assistant.orca_voice_chat",
+            Self::AssistantOrcaOffline => "assistant.orca_offline",
             Self::AssistantModel(Cli::Claude) => "assistant.models.claude.model",
             Self::AssistantEffort(Cli::Claude) => "assistant.models.claude.effort",
             Self::AssistantModel(Cli::Codex) => "assistant.models.codex.model",
@@ -228,6 +249,10 @@ impl Key {
             Self::AssistantTtsLoadOnConversation => (&["assistant"], "tts_load_on_conversation"),
             Self::AssistantVoiceWake => (&["assistant"], "voice_wake"),
             Self::AssistantKwsModel => (&["assistant"], "kws_model"),
+            Self::AssistantBackend => (&["assistant"], "backend"),
+            Self::AssistantOrcaBot => (&["assistant"], "orca_bot"),
+            Self::AssistantOrcaVoiceChat => (&["assistant"], "orca_voice_chat"),
+            Self::AssistantOrcaOffline => (&["assistant"], "orca_offline"),
             Self::AssistantModel(cli) => (cli.tables(), "model"),
             Self::AssistantEffort(cli) => (cli.tables(), "effort"),
         }
@@ -270,6 +295,10 @@ impl Key {
             Self::AssistantTtsVoicepack => Value::Text("tide".to_owned()),
             Self::AssistantVoiceWake => Value::Text(VOICE_WAKE[1].to_owned()),
             Self::AssistantOrca => Value::Text(ASSISTANT_ORCA[0].to_owned()),
+            Self::AssistantBackend => Value::Text(ASSISTANT_BACKENDS[0].to_owned()),
+            Self::AssistantOrcaBot => Value::Text("Tohru".to_owned()),
+            Self::AssistantOrcaVoiceChat => Value::Text(ORCA_VOICE_CHATS[0].to_owned()),
+            Self::AssistantOrcaOffline => Value::Text(ORCA_OFFLINE_MODES[0].to_owned()),
             Self::AssistantTtsSpeed => Value::Integer(100),
             Self::AssistantTtsPitch => Value::Integer(3),
             Self::CornerSize => Value::Integer(32),
@@ -320,6 +349,31 @@ impl Key {
                 Ok(())
             }
             (Self::AssistantOrca, Value::Text(text)) if ASSISTANT_ORCA.contains(&text.as_str()) => {
+                Ok(())
+            }
+            (Self::AssistantBackend, Value::Text(text))
+                if ASSISTANT_BACKENDS.contains(&text.as_str()) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantOrcaBot, Value::Text(text))
+                if (1..=64).contains(&text.len())
+                    && !text.starts_with('.')
+                    && !text.trim().is_empty()
+                    && text
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || " _.-".contains(c)) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantOrcaVoiceChat, Value::Text(text))
+                if ORCA_VOICE_CHATS.contains(&text.as_str()) =>
+            {
+                Ok(())
+            }
+            (Self::AssistantOrcaOffline, Value::Text(text))
+                if ORCA_OFFLINE_MODES.contains(&text.as_str()) =>
+            {
                 Ok(())
             }
             (Self::AssistantTtsVoicepack, Value::Text(text))
