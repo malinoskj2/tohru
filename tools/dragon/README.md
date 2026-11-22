@@ -77,3 +77,9 @@ Run `OPENBLAS_NUM_THREADS=1 python3 tools/dragon/landing.py` after the body pack
 The belly carries the head, wing roots and hips. Horns and facial features move in head coordinates. Both hands reach to balance before the near hand settles. The tail follows a tapered link chain through a projected curl. The hidden wing reuses the paint of the visible membrane. This is a stylized cutout turn. The far-side anatomy is reconstructed from the visible artwork. The endpoint drawings retain the different proportions of the original registered views.
 
 The native renderer preloads a 15-column, nine-row WebP along with the wing art. Each frame has a transparent gutter. The generated Luau rectangle restores its original projected width, height and location at the existing actor scale. Cropping before packing keeps the single additional decoded source below 5 MiB. The runtime holds the desired puppet key during the turn. Existing speech transitions retain their original keys and interpolation. No model inference is part of the landing pack.
+
+### Human review
+
+The user provisionally accepted all four native landings at `71610d8f331ec8b0542aecc38d8447ec8a5292e8` for integration. The final settle still visibly reads as the dragon morphing into her idle pose. Further landing polish is deferred. The independent Rive puppet exploration will investigate better continuity.
+
+The accepted normal-speed recordings are gallery #23 (wrap), #27 (rise), #31 (right edge) and #35 (sweep). Their paths and checksums are in `.tmp/landing-review-evidence/media-paths.tsv` and `manifest.tsv` in the contextual flight worktree.
