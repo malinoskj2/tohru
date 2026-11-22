@@ -130,3 +130,7 @@ make install PREFIX="$HOME/.local"
 ```
 
 Then load `$HOME/.local/lib/libtohru-hyprland.so` from your Hyprland configuration with `hl.plugin.load(...)`, or with `hyprctl plugin load`. See [nix.md](nix.md#hyprland-plugin) for its settings and caveats.
+
+## Discord bot support
+
+Optional [Discord read/post support](discord.md) uses Python 3.11+ (including its standard-library SSL module and system CA certificates). Keep `bin/tohru-discord` and `bin/tohru_discord.py` beside `bin/tohru-assistant`; releases and the Nix package include them. Configure it in Tohru's normal TOML settings; no external service or additional Python package is needed.

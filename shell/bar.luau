@@ -29,6 +29,7 @@ local function publish(settings)
     text.settings_status = json.encode({schema = 7, settings = settings})
     if assistant then assistant.configure() end
     if voice then voice.configure(settings) end
+    if assistant then assistant.configure_discord() end
 end
 local function change(operation)
     local ok, result, warning = pcall(operation)
@@ -103,6 +104,7 @@ assistant = require("assistant/controller")({
     choose = function(id) change(function() return tohru_settings.set("assistant.provider", id) end) end,
     value = function(key) local entry = tohru_settings.snapshot()[key]; return entry and entry.value end,
 })
+assistant.configure_discord()
 voice = require("assistant/voice")(assistant, require("assistant/puppet")(require("assistant/full-body")))
 voice.configure(tohru_settings.snapshot())
 on("setting_assistant", function()

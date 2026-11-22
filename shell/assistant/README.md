@@ -111,3 +111,5 @@ source selection, AEC provenance, journal commands and reproducible benchmarks.
 from terminal `on_answer` notifications; speculative drafts never publish deltas to
 speech. The voice service inherits stderr into the bar's existing journal stream.
 Live wake-accepted transcript text is transient UI state above the dragon.
+
+Optional built-in [Discord bot support](../../docs/discord.md) reads bounded channel history and posts through the provider CLI's shell tool. Configure `assistant.discord.*` in Tohru, default off; no MCP, Orca or Nix service is required.

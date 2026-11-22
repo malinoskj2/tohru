@@ -75,6 +75,17 @@ return function(settings)
     local function model_flags(id)
         return {"--model", setting("assistant.models." .. id .. ".model", ""), "--effort", setting("assistant.models." .. id .. ".effort", "")}
     end
+    local DISCORD_KEYS = {"enabled", "read", "post", "token_file", "guild_id", "channels"}
+    local function discord_config()
+        local values = {}
+        for _, key in ipairs(DISCORD_KEYS) do
+            local default = ""
+            if key == "enabled" or key == "read" or key == "post" then default = false end
+            values[key] = setting("assistant.discord." .. key, default)
+        end
+        return values
+    end
+    local discord_previous = nil
     local function memory_on() return setting("assistant.memory", true) == true end
     local function models_config()
         local models = {}
@@ -386,6 +397,8 @@ return function(settings)
         if orca == true then orca = "true" elseif orca == false then orca = "false" end
         args[#args + 1] = "--orca"
         args[#args + 1] = (orca == "true" or orca == "false") and orca or "auto"
+        args[#args + 1] = "--discord-settings"
+        args[#args + 1] = json.encode(discord_config())
         return args
     end
 
@@ -807,6 +820,21 @@ return function(settings)
     end
 
     return {
+        configure_discord = function()
+            local next_values = discord_config()
+            local changed = false
+            if discord_previous then
+                for _, key in ipairs(DISCORD_KEYS) do
+                    if discord_previous[key] ~= next_values[key] then changed = true end
+                end
+            end
+            discord_previous = next_values
+            if changed and not is_orca() then
+                if pending_commit then pending_commit.cancelled = true end
+                discard_draft()
+                if live then kill(live.id, "int") end
+            end
+        end,
         open = open,
         close = close,
         toggle = function() if fact.ai_open then close() else open() end end,

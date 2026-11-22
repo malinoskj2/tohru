@@ -125,7 +125,7 @@ assert(#model.ai_turns == 0 and not fact.ai_actions)
 local answers = {}
 local speech_events = {}
 assistant.on_speech(function(kind, conv, text, voice, generation) speech_events[#speech_events + 1] = {kind, text, generation} end)
-assistant.on_answer(function(kind, conversation, answer, voice) answers[#answers + 1] = {kind, conversation, answer, voice} end)
+assistant.on_answer(function(kind, conversation, answer, voice, generation) answers[#answers + 1] = {kind, conversation, answer, voice, generation} end)
 assistant.close()
 emit("assistant_choose", 0)
 assert(assistant.ask("tell me a joke", nil))
@@ -309,6 +309,18 @@ assistant.cancel(function() cancelled_commit = true end)
 count = #answers
 commit_callback(json.encode({event="committed",conversation="v1"}),0)
 assert(cancelled_commit and not assistant.streaming() and #answers==count)
+-- Reconfiguring local Discord cancels a pending voice commit without speaking its draft.
+assistant.configure_discord()
+finished_draft("Pending commit during Discord reconfiguration")
+values["assistant.discord.read"] = true
+assistant.configure_discord()
+local rollback_before_discord_commit = #runs_of("rollback")
+count = #answers
+commit_callback(json.encode({event="committed",conversation="v1"}),0)
+assert(not assistant.streaming() and #runs_of("rollback") == rollback_before_discord_commit+1)
+assert(#answers == count+1 and answers[#answers][1] == "stopped" and answers[#answers][5] == 77)
+values["assistant.discord.read"] = false
+assistant.configure_discord()
 -- Cancelling a local commit during a backend transition cleans only its local
 -- history, without treating an Orca conversation as a SQLite conversation.
 finished_draft("A local draft crossing a backend change")
@@ -327,6 +339,25 @@ local sp_agy = #spawned
 assert(not assistant.draft("What is the weather in Tokyo", "v1"))
 assert(#spawned == sp_agy)
 emit("assistant_choose", 0)
+
+-- Effective Discord settings reach normal turns; changes cancel the current turn.
+assistant.configure_discord()
+assert(assistant.ask("Read Discord", "v1"))
+local discord_run = spawned[#spawned]
+local discord_flags
+for i, flag in ipairs(discord_run.args) do
+    if flag == "--discord-settings" then discord_flags = discord_run.args[i + 1] end
+end
+assert(discord_flags.enabled == false and discord_flags.read == false and discord_flags.post == false)
+local before_discord_change = #killed
+values["assistant.discord.enabled"] = true
+values["assistant.discord.read"] = true
+assistant.configure_discord()
+assert(#killed == before_discord_change + 1 and killed[#killed][2] == "int")
+assistant.configure_discord()
+assert(#killed == before_discord_change + 1, "unchanged configuration must not interrupt a turn")
+discord_run.line(json.encode({event = "stopped", conversation = "v1"}))
+
 
 -- UUID conversation IDs and proactive alerts (`tohru assistant alert`) set ready mark or reload active chat.
 local uuid = "4f71ebb6-db33-43e9-af8f-e5bc79a11077"
@@ -377,6 +408,10 @@ text.ai_prompt = "Start a fresh thread"
 emit("assistant_send")
 local orca_send = spawned[#spawned]
 assert(has(orca_send.args, "--backend", "orca"))
+local before_remote_discord_change = #killed
+values["assistant.discord.post"] = true
+assistant.configure_discord()
+assert(#killed == before_remote_discord_change, "local Discord settings must not interrupt a remote Orca turn")
 local has_new_chat = false
 for _, a in ipairs(orca_send.args) do has_new_chat = has_new_chat or a == "--new-chat" end
 assert(has_new_chat)

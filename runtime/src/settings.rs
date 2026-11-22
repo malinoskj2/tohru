@@ -36,6 +36,12 @@ pub enum Key {
     AssistantPersonaFile,
     AssistantMemory,
     AssistantOrca,
+    AssistantDiscordEnabled,
+    AssistantDiscordRead,
+    AssistantDiscordPost,
+    AssistantDiscordTokenFile,
+    AssistantDiscordGuildId,
+    AssistantDiscordChannels,
     AssistantTtsModel,
     AssistantTtsVoicepack,
     AssistantTtsLoadOnConversation,
@@ -47,6 +53,10 @@ pub enum Key {
     AssistantOrcaOffline,
     AssistantModel(Cli),
     AssistantEffort(Cli),
+}
+
+fn valid_discord_id(text: &str) -> bool {
+    (1..=20).contains(&text.len()) && text.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 /// A provider CLI with its own model and effort settings.
@@ -87,7 +97,7 @@ pub const ORCA_VOICE_CHATS: [&str; 2] = ["home", "new"];
 pub const ORCA_OFFLINE_MODES: [&str; 2] = ["error", "local"];
 
 impl Key {
-    pub const ALL: [Self; 44] = [
+    pub const ALL: [Self; 50] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::InfoButton,
@@ -113,6 +123,12 @@ impl Key {
         Self::AssistantPersonaFile,
         Self::AssistantMemory,
         Self::AssistantOrca,
+        Self::AssistantDiscordEnabled,
+        Self::AssistantDiscordRead,
+        Self::AssistantDiscordPost,
+        Self::AssistantDiscordTokenFile,
+        Self::AssistantDiscordGuildId,
+        Self::AssistantDiscordChannels,
         Self::AssistantTtsModel,
         Self::AssistantTtsVoicepack,
         Self::AssistantTtsLoadOnConversation,
@@ -162,6 +178,12 @@ impl Key {
             Self::AssistantPersonaFile => "assistant.persona_file",
             Self::AssistantMemory => "assistant.memory",
             Self::AssistantOrca => "assistant.orca",
+            Self::AssistantDiscordEnabled => "assistant.discord.enabled",
+            Self::AssistantDiscordRead => "assistant.discord.read",
+            Self::AssistantDiscordPost => "assistant.discord.post",
+            Self::AssistantDiscordTokenFile => "assistant.discord.token_file",
+            Self::AssistantDiscordGuildId => "assistant.discord.guild_id",
+            Self::AssistantDiscordChannels => "assistant.discord.channels",
             Self::AssistantTtsModel => "assistant.tts_model",
             Self::AssistantTtsVoicepack => "assistant.tts_voicepack",
             Self::AssistantTtsLoadOnConversation => "assistant.tts_load_on_conversation",
@@ -248,6 +270,12 @@ impl Key {
             Self::AssistantPersonaFile => (&["assistant"], "persona_file"),
             Self::AssistantMemory => (&["assistant"], "memory"),
             Self::AssistantOrca => (&["assistant"], "orca"),
+            Self::AssistantDiscordEnabled => (&["assistant", "discord"], "enabled"),
+            Self::AssistantDiscordRead => (&["assistant", "discord"], "read"),
+            Self::AssistantDiscordPost => (&["assistant", "discord"], "post"),
+            Self::AssistantDiscordTokenFile => (&["assistant", "discord"], "token_file"),
+            Self::AssistantDiscordGuildId => (&["assistant", "discord"], "guild_id"),
+            Self::AssistantDiscordChannels => (&["assistant", "discord"], "channels"),
             Self::AssistantTtsModel => (&["assistant"], "tts_model"),
             Self::AssistantTtsVoicepack => (&["assistant"], "tts_voicepack"),
             Self::AssistantTtsLoadOnConversation => (&["assistant"], "tts_load_on_conversation"),
@@ -274,7 +302,10 @@ impl Key {
 
     fn default_value(self) -> Value {
         match self {
-            Self::Mooncoil
+            Self::AssistantDiscordEnabled
+            | Self::AssistantDiscordRead
+            | Self::AssistantDiscordPost
+            | Self::Mooncoil
             | Self::InfoButton
             | Self::AboutButton
             | Self::PolkitAgent
@@ -285,6 +316,9 @@ impl Key {
             | Self::AssistantPersona
             | Self::AssistantMemory => Value::Bool(true),
             Self::AssistantVoiceSource
+            | Self::AssistantDiscordTokenFile
+            | Self::AssistantDiscordGuildId
+            | Self::AssistantDiscordChannels
             | Self::PreferredOutput
             | Self::AssistantProvider
             | Self::AssistantVadModel
@@ -313,55 +347,36 @@ impl Key {
         }
     }
 
-    fn validate(self, candidate: &Value) -> Result<(), Error> {
-        match (self, candidate) {
-            (Self::PreferredOutput, Value::Text(text))
-                if text.len() <= 256 && !text.chars().any(char::is_control) =>
-            {
-                Ok(())
+    fn valid_text(self, text: &str) -> bool {
+        match self {
+            Self::PreferredOutput if text.len() <= 256 && !text.chars().any(char::is_control) => {
+                true
             }
-            (Self::NotificationsPosition, Value::Text(text))
-                if NOTIFICATION_POSITIONS.contains(&text.as_str()) =>
+            Self::NotificationsPosition if NOTIFICATION_POSITIONS.contains(&text) => true,
+            Self::AssistantDiscordGuildId if text.is_empty() || valid_discord_id(text) => true,
+            Self::AssistantDiscordChannels
+                if text.is_empty()
+                    || text.len() <= 704
+                        && text.split(',').count() <= 32
+                        && text.split(',').all(|id| valid_discord_id(id.trim())) =>
             {
-                Ok(())
+                true
             }
-            (Self::AssistantProvider, Value::Text(text))
-                if ASSISTANT_PROVIDERS.contains(&text.as_str()) =>
-            {
-                Ok(())
-            }
-            (Self::AssistantTtsEngine, Value::Text(text))
-                if TTS_ENGINES.contains(&text.as_str()) =>
-            {
-                Ok(())
-            }
-            (Self::AssistantEffort(_), Value::Text(text))
-                if ASSISTANT_EFFORTS.contains(&text.as_str()) =>
-            {
-                Ok(())
-            }
-            (Self::AssistantModel(_), Value::Text(text))
+            Self::AssistantProvider if ASSISTANT_PROVIDERS.contains(&text) => true,
+            Self::AssistantTtsEngine if TTS_ENGINES.contains(&text) => true,
+            Self::AssistantEffort(_) if ASSISTANT_EFFORTS.contains(&text) => true,
+            Self::AssistantModel(_)
                 if text.len() <= 128
                     && text
                         .chars()
                         .all(|c| c.is_ascii_alphanumeric() || "._:/@#+-".contains(c)) =>
             {
-                Ok(())
+                true
             }
-            (Self::AssistantVoiceWake, Value::Text(text))
-                if VOICE_WAKE.contains(&text.as_str()) =>
-            {
-                Ok(())
-            }
-            (Self::AssistantOrca, Value::Text(text)) if ASSISTANT_ORCA.contains(&text.as_str()) => {
-                Ok(())
-            }
-            (Self::AssistantBackend, Value::Text(text))
-                if ASSISTANT_BACKENDS.contains(&text.as_str()) =>
-            {
-                Ok(())
-            }
-            (Self::AssistantOrcaBot, Value::Text(text))
+            Self::AssistantVoiceWake if VOICE_WAKE.contains(&text) => true,
+            Self::AssistantOrca if ASSISTANT_ORCA.contains(&text) => true,
+            Self::AssistantBackend if ASSISTANT_BACKENDS.contains(&text) => true,
+            Self::AssistantOrcaBot
                 if (1..=64).contains(&text.len())
                     && !text.starts_with('.')
                     && !text.trim().is_empty()
@@ -369,19 +384,11 @@ impl Key {
                         .chars()
                         .all(|c| c.is_ascii_alphanumeric() || " _.-".contains(c)) =>
             {
-                Ok(())
+                true
             }
-            (Self::AssistantOrcaVoiceChat, Value::Text(text))
-                if ORCA_VOICE_CHATS.contains(&text.as_str()) =>
-            {
-                Ok(())
-            }
-            (Self::AssistantOrcaOffline, Value::Text(text))
-                if ORCA_OFFLINE_MODES.contains(&text.as_str()) =>
-            {
-                Ok(())
-            }
-            (Self::AssistantTtsVoicepack, Value::Text(text))
+            Self::AssistantOrcaVoiceChat if ORCA_VOICE_CHATS.contains(&text) => true,
+            Self::AssistantOrcaOffline if ORCA_OFFLINE_MODES.contains(&text) => true,
+            Self::AssistantTtsVoicepack
                 if (1..=64).contains(&text.len())
                     && text
                         .chars()
@@ -391,37 +398,46 @@ impl Key {
                         && text.len() <= 4096
                         && !text.chars().any(char::is_control) =>
             {
-                Ok(())
+                true
             }
-            (
-                Self::AssistantVadModel
-                | Self::AssistantAsrModel
-                | Self::AssistantTurnModel
-                | Self::AssistantPersonaFile
-                | Self::AssistantTtsModel
-                | Self::AssistantKwsModel,
-                Value::Text(text),
-            ) if text.len() <= 4096
-                && !text.chars().any(char::is_control)
-                && (text.is_empty() || text.starts_with('/')) =>
+            Self::AssistantVadModel
+            | Self::AssistantAsrModel
+            | Self::AssistantTurnModel
+            | Self::AssistantPersonaFile
+            | Self::AssistantTtsModel
+            | Self::AssistantKwsModel
+            | Self::AssistantDiscordTokenFile
+                if text.len() <= 4096
+                    && !text.chars().any(char::is_control)
+                    && (text.is_empty() || text.starts_with('/')) =>
             {
-                Ok(())
+                true
             }
-            (Self::AssistantVoiceSource, Value::Text(text))
+            Self::AssistantVoiceSource
                 if text.len() <= 256 && !text.chars().any(char::is_control) =>
             {
-                Ok(())
+                true
             }
-            (Self::AssistantTtsVoice, Value::Text(text))
+            Self::AssistantTtsVoice
                 if (1..=64).contains(&text.len())
                     && text
                         .chars()
                         .all(|c| c.is_ascii_alphanumeric() || "+-_.".contains(c)) =>
             {
-                Ok(())
+                true
             }
+            _ => false,
+        }
+    }
+
+    fn validate(self, candidate: &Value) -> Result<(), Error> {
+        match (self, candidate) {
+            (_, Value::Text(text)) if self.valid_text(text) => Ok(()),
             (
-                Self::Mooncoil
+                Self::AssistantDiscordEnabled
+                | Self::AssistantDiscordRead
+                | Self::AssistantDiscordPost
+                | Self::Mooncoil
                 | Self::InfoButton
                 | Self::AboutButton
                 | Self::Corners
