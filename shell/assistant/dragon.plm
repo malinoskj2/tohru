@@ -9,8 +9,6 @@ part AssistantDragon {
     image ai_actor_skin = from ai_actor_skin_src, 0, 0
     text ai_actor_closeup_src = ""
     image ai_actor_closeup = from ai_actor_closeup_src, 0, 0
-    fact ai_actor_skin_loaded = false
-    fact ai_actor_closeup_loaded = false
     fact ai_actor_closeup_open = false
     fact ai_actor_skin_rows = 1
     fact ai_actor_skin_frame = 0
@@ -71,8 +69,8 @@ part AssistantDragon {
                         cell: max(ai_dg_mouth, 0), 8, 1; opacity: if(ai_dg_mouth >= 0, 100%, 0.1%)
                     }
                 }
-                image ai_actor_closeup { at: ai_dg_x, ai_dg_y; size: 150, 150; show: ai_actor_closeup_loaded; opacity: if(ai_actor_closeup_open, 100%, 0.2%) }
-                image ai_actor_skin { at: ai_dg_x, ai_dg_y; size: 150, 150; cell: ai_actor_skin_frame, 8, ai_actor_skin_rows; show: ai_actor_skin_loaded; opacity: if(ai_actor_skin_open, 100%, 0.2%) }
+                image ai_actor_closeup { at: ai_dg_x, ai_dg_y; size: 150, 150; show: ai_actor_closeup_open }
+                image ai_actor_skin { at: ai_dg_x, ai_dg_y; size: 150, 150; cell: ai_actor_skin_frame, 8, ai_actor_skin_rows; show: ai_actor_skin_open }
                 image ai_wingbeat { at: ai_dg_x, ai_dg_y; size: 150, 150; cell: ai_flight_cell, 12, 3; show: ai_flight_art }
                 image ai_sprite { at: ai_dg_x, ai_dg_y; size: 150, 150; show: not ai_dg_ready }
                 ellipse { at: ai_dg_x + 70.2, ai_dg_y + 46.5; radius: 3.4; scale: 1.15, 0.15 + 0.95 * ai_mouth_s; color: #4a2238; opacity: if(ai_dg_ready, 0%, min(90%, ai_mouth_s * 400%)) }

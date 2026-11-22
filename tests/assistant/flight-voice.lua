@@ -269,6 +269,8 @@ local function stopped(_, why)
     reason = why
 end
 assert(actor.register_skin("/fixture/afk.webp", 12))
+assert(actor.register_closeup("/fixture/bust.webp"))
+assert((text.ai_actor_skin_src or "") == "" and (text.ai_actor_closeup_src or "") == "")
 assert(not actor.register_skin("/fixture/afk.webp", 13))
 local lease = assert(actor.acquire(ready, stopped))
 assert(not actor.acquire(ready, stopped) and fact.ai_actor_open and not fact.ai_dragon_open)
@@ -295,13 +297,28 @@ assert(
         and fact.ai_actor_skin_frame == 95
         and fact.ai_actor_rotation == 180
 )
+assert(text.ai_actor_skin_src == "/fixture/afk.webp" and text.ai_actor_closeup_src == "")
+frame.pose = "closeup"
+ok, state = actor.play(lease, frame)
+assert(
+    ok
+        and state == "preparing"
+        and text.ai_actor_skin_src == ""
+        and text.ai_actor_closeup_src == "/fixture/bust.webp"
+)
+advance(3100)
+assert(actor.play(lease, frame))
 frame.pose = "nested_hover"
 assert(actor.play(lease, frame))
 assert(not fact.ai_flight_art and not fact.ai_actor_skin_open and puppet.pose() == "nested_hover")
+assert(text.ai_actor_skin_src == "" and text.ai_actor_closeup_src == "")
+frame.pose = "closeup"
+assert(actor.play(lease, frame))
 local stale = processes["tohru_flight_scene.py"]
 flight.hearing(true)
 assert(reason == "activity" and not fact.ai_flying and not fact.ai_actor_open and fact.ai_actor_scale == 1)
 assert(not actor.play(lease, frame) and not actor.release(lease))
+assert(text.ai_actor_closeup_src == "" and text.ai_actor_skin_src == "")
 stale.line(sample)
 stale.exit()
 assert(not fact.ai_actor_open and not fact.ai_dg_ready)

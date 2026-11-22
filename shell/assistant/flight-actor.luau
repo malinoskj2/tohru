@@ -22,8 +22,8 @@ return function(puppet, host)
             kill(lease.process, "term")
         end
         fact.ai_actor_open, fact.ai_actor_skin_open, fact.ai_actor_released = false, false, true
-        fact.ai_actor_closeup_open, fact.ai_actor_closeup_loaded, fact.ai_actor_skin_loaded =
-            false, false, false
+        fact.ai_actor_closeup_open = false
+        text.ai_actor_closeup_src, text.ai_actor_skin_src = "", ""
         fact.ai_actor_scale, fact.ai_actor_rotation = 1, 0
         puppet.hold_pose(nil)
         puppet.flight(nil)
@@ -48,7 +48,6 @@ return function(puppet, host)
             return false
         end
         skin_path, skin_rows = path, rows
-        text.ai_actor_skin_src, fact.ai_actor_skin_rows = path, rows
         return true
     end
 
@@ -57,7 +56,6 @@ return function(puppet, host)
             return false
         end
         closeup_path = path
-        text.ai_actor_closeup_src = path
         return true
     end
 
@@ -223,13 +221,18 @@ return function(puppet, host)
                 return false
             end
             lease.pose, lease.flying, lease.beat = pose, flying, now
-            if not lease.prepared_at then
-                lease.prepared_at = now + 0.20
+            -- Bind only the currently presented supplement. Removing the
+            -- live path lets Pleamar reclaim it with its usual atlas policy.
+            text.ai_actor_skin_src = skin and skin_path or ""
+            text.ai_actor_closeup_src = closeup and closeup_path or ""
+            if skin then
+                fact.ai_actor_skin_rows = skin_rows
             end
-            if (skin or closeup) and not lease[pose] then
-                lease[pose] = true
-                fact["ai_actor_" .. pose .. "_loaded"] = true
+            lease.anchor = nil
+            if skin or closeup then
                 lease.prepared_at = now + 3
+            else
+                lease.prepared_at = math.min(lease.prepared_at or now + 0.20, now + 0.20)
             end
         end
         fact.ai_actor_skin_open, fact.ai_actor_closeup_open = skin, closeup
