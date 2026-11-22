@@ -228,6 +228,7 @@ return function(assistant, puppet)
             if row == nil or row.value == nil then return default end
             return row.value
         end
+        puppet.reduced(value("assistant.reduced_motion", false) == true)
         local tts = {
             engine = value("assistant.tts_engine", "kokoro"),
             model = value("assistant.tts_model", ""),

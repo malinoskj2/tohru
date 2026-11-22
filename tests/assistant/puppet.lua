@@ -114,7 +114,7 @@ assert(puppet.pose() == "neutral" and fact.ai_dg_sheet == 0)
 
 -- Sentence cues pick the matching pose.
 assert(puppet.pick("Haha, that's funny.") == "laugh")
-assert(puppet.pick("Hey there!") == "cheer")
+assert(puppet.pick("Something failed!") ~= "cheer", "punctuation alone must not celebrate a failure")
 assert(puppet.pick("Does that make sense?") == "head_tilt")
 assert(puppet.pick("I wonder how that works.") == "head_tilt")
 assert(puppet.pick("Then the head goes, first, second.") == "scroll")
@@ -194,7 +194,7 @@ local cols, rows = assert(slurp("shell/assistant/dragon.plm"):match("cell:%s*ai_
 cols, rows = tonumber(cols), tonumber(rows)
 local lw, lh = assert(slurp("shell/assistant/state.plm"):match("image%s+ai_dg_body%s*=%s*from%s+ai_dg_body_src,%s*(%d+),%s*(%d+)"))
 lw, lh = tonumber(lw), tonumber(lh)
-assert(atlas_w == cols * 300 and atlas_h == rows * 300, string.format("atlas %dx%d vs %dx%d grid", atlas_w, atlas_h, cols, rows))
+assert(atlas_w == cols * 240 and atlas_h == rows * 240, string.format("atlas %dx%d vs %dx%d grid", atlas_w, atlas_h, cols, rows))
 assert(lw == cols * 150 and lh == rows * 150, string.format("logical %dx%d vs %dx%d grid", lw, lh, cols, rows))
 local total_cells = cols * rows
 local used_frames = {}

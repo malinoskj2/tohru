@@ -650,10 +650,7 @@ fn assistant_models_nest_under_each_provider() {
         Key::parse("assistant.models.opencode.effort").unwrap(),
         Key::AssistantEffort(Cli::Opencode)
     );
-    assert_eq!(
-        Key::parse("assistant.orca").unwrap(),
-        Key::AssistantOrca
-    );
+    assert_eq!(Key::parse("assistant.orca").unwrap(), Key::AssistantOrca);
     assert_eq!(
         restarted.get(Key::AssistantOrca).value,
         Value::Text("auto".into())
@@ -673,4 +670,33 @@ fn assistant_models_nest_under_each_provider() {
         Value::Text("true".into())
     );
     assert_eq!(bool_managed.get(Key::AssistantOrca).origin, Origin::Nix);
+}
+
+#[test]
+fn dragon_reduced_motion_persists_and_rejects_non_boolean_values() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    let mut owner = files.owner();
+    let key = Key::parse("assistant.reduced_motion").unwrap();
+    assert_eq!(owner.get(key).value, Value::Bool(false));
+    owner.set(key, Value::Bool(true)).unwrap();
+    assert_eq!(files.owner().get(key).value, Value::Bool(true));
+    assert!(owner.set(key, Value::Text("true".into())).is_err());
+    assert_eq!(files.owner().get(key).value, Value::Bool(true));
+}
+
+#[test]
+fn managed_dragon_motion_override_survives_reload_without_writing_user_config() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "[assistant]\nreduced_motion = true\n").unwrap();
+    let mut owner = files.owner();
+    let key = Key::AssistantReducedMotion;
+    assert_eq!(owner.get(key).value, Value::Bool(true));
+    assert_eq!(owner.get(key).origin, Origin::Nix);
+    owner.set(key, Value::Bool(false)).unwrap();
+    owner.reload().unwrap();
+    assert_eq!(owner.get(key).value, Value::Bool(false));
+    assert_eq!(owner.get(key).origin, Origin::Runtime);
+    assert!(!files.user().exists());
+    assert_eq!(files.owner().get(key).value, Value::Bool(true));
 }

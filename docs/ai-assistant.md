@@ -97,17 +97,17 @@ The spotter is about five times cheaper but fails the bar for the default (recal
   - She shows once a voice conversation opens, stays while it lasts, and goes five seconds after her last word once it has ended.
   - Clicking her opens the popup on that conversation.
 - **Sheets:** pre-rendered 2D, in `shell/assistant/dragon/`; their layout and provenance are in its README.
-  - `body.webp` holds the idle breath, the wing flutter, four drawn moves and the poses.
-  - The eyes and mouths are patches drawn over it.
+  - `body.webp` retains the legacy breath, flutter and expressive moves, and adds 20 redrawn airborne body poses with registered 17-frame transitions. Their feet, pelvis, tail, wings and facing change together.
+  - Each new resting view has its own eyes and mouth patches in `faces.webp`; `travel.webp` keeps lip sync registered through the new body turns. No front-facing eye patch is forced onto a turned face.
   - `glass.wgsl` adds the shimmer of light through the glass.
   - The sheets are set once the voice service is ready, and drawn unseen for three seconds so they are loaded before she first shows. With voice off nothing is loaded.
 - **Animator:** `shell/assistant/puppet.luau` runs at 24 fps, and only while she is shown.
-  - Idle: she breathes on the loop, blinks every 3–6 s, and every 20–40 s she flutters her wings or looks around.
-  - Listening: while follow-up speech is heard (`hearing` events).
-  - Thinking: from the turn until her answer starts.
-  - Talking: she explains, and changes pose by sentence across her talking poses. `!` gives the wing cheer with two glass hearts, laughter gives the laugh, lists give the scroll, questions give a head tilt, step cues ("first", "second", "one thing") point up, caveats ("it depends", "either", "maybe") shrug, agreement ("yes", "right", "exactly") gives a soft nod, recalling ("let's see", paths) glances aside, summaries ("overall", "in short") open both palms, contrasts ("on the other hand", "however") gesture right, tips ("by the way", "handy") lean in, sincere remarks ("honestly", "recommend") rest a paw on her chest, light topic shifts ("good news", "speaking of") lift one wing, and warm words give happy; uncued sentences vary across general conversational poses without immediate repeats.
+  - Idle: she blinks every 3–6 s, holds varied floating rests for roughly 12–25 s, excludes her last three selections, and occasionally drifts into a more extended alignment.
+  - Listening: an attentive forward hover while follow-up speech is heard (`hearing` events), with quiet variation during longer waits.
+  - Thinking: a cheek paw with loosely tucked feet and hanging tail, from the turn until her answer starts; long waits can change to another quiet posture.
+  - Talking: she explains, and changes pose by sentence across her talking poses. Explicit positive excitement gives an airborne wing lift; punctuation alone does not celebrate an error, laughter gives the laugh, lists give the scroll, questions give a head tilt, step cues ("first", "second", "one thing") point up, caveats ("it depends", "either", "maybe") shrug, agreement ("yes", "right", "exactly") gives a soft nod, recalling ("let's see", paths) glances aside, summaries ("overall", "in short") open both palms, contrasts ("on the other hand", "however") gesture right, tips ("by the way", "handy") lean in, sincere remarks ("honestly", "recommend") rest a paw on her chest, light topic shifts ("good news", "speaking of") lift one wing, and warm words give happy; uncued sentences vary across general conversational poses without immediate repeats.
   - Pose changes wait for a dip in her voice (five quiet mouth events) and at least 2.5–4 s since the last change.
-  - Done: pleased for a moment, then back to idle.
+  - After speech: settle into a quiet airborne rest. Interruption preserves listening/thinking or recovers to neutral.
   - Drawn moves go through neutral, except explain↔cheer. Poses without drawn in-betweens swap under a squash from their registered hub poses (`neutral`, `explain`, `listening`, `thinking`, `pleased`, `scroll`, or `happy`).
 - **Lip-sync:** `tohru-voice` maps each sentence's phonemes to eight mouths (rest, M/B/P, AA, EH, EE, OH, OO, F/V).
   - espeak-ng's IPA (`--ipa`) is spread over the voiced part of the clip.
@@ -115,6 +115,8 @@ The spotter is about five times cheaper but fails the bar for the default (recal
   - Mouths shorter than two frames merge into a neighbour, except a closed M/B/P.
   - Each `mouth` event carries the `viseme` 40 ms ahead of the audio. Without one, the mouth falls back to the envelope (rest, EE, EH, AA by level).
   - The jaw drops and the body squashes slightly with the level.
+- **Reduced motion:** Settings → Appearance → Reduce dragon motion, or `assistant.reduced_motion = true`, keeps the body still and disables bobbing, shimmer and flourishes while preserving blinking and lip sync. It applies live, including temporary Nix-managed overrides, without restarting the voice service.
+- Source art, provenance, decoded memory costs and reproducible packing/native verification are documented in `shell/assistant/dragon/README.md` and `tools/dragon/README.md`.
 
 ## Voice of the dragon
 

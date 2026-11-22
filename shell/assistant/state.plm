@@ -97,11 +97,25 @@ part AssistantState {
     text ai_dg_body_src = ""
     text ai_dg_eyes_src = ""
     text ai_dg_mouths_src = ""
+    text ai_dg_travel_src = ""
+    text ai_dg_faces_src = ""
     text ai_dg_heart_src = ""
-    image ai_dg_body = from ai_dg_body_src, 1200, 3900
+    image ai_dg_body = from ai_dg_body_src, 3600, 3600
     image ai_dg_eyes = from ai_dg_eyes_src, 200, 26
     image ai_dg_mouths = from ai_dg_mouths_src, 176, 20
+    image ai_dg_travel_mouths = from ai_dg_travel_src, 384, 3060
+    image ai_dg_faces = from ai_dg_faces_src, 400, 2040
     image ai_dg_heart = from ai_dg_heart_src, 24, 24
+    fact ai_dg_reduced = false
+    fact ai_dg_shadow = 1
+    prop ai_dg_shadow_s = 1 ~300ms
+    follow ai_dg_shadow_s = ai_dg_shadow
+    fact ai_dg_travel = -1
+    fact ai_dg_tx = 0
+    fact ai_dg_ty = 0
+    fact ai_dg_face = -1
+    fact ai_dg_fx = 0
+    fact ai_dg_fy = 0
     fact ai_dg_ready = false
     fact ai_dg_warm = false
     // The cell of body.webp: the idle and flutter loop, the drawn moves, then the still poses. The eye and mouth patches go over it (-1 none).

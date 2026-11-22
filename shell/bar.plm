@@ -35,6 +35,7 @@ scene Tohru {
  text setting_key = ""
  text setting_value = ""
  event setting_assistant ->
+ event setting_assistant_reduced_motion ->
  event config_reload ->
  event setting_mooncoil ->
  event setting_info_button ->

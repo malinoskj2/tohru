@@ -59,6 +59,7 @@ return function(applied)
             {page=2, key="notifications.position", title="Notification position", choice=true,
              detail=choice_detail(snapshot["notifications.position"]), editable=true,
              managed=snapshot["notifications.position"].managed, temporary=snapshot["notifications.position"].runtime_override},
+            switch(2, "assistant.reduced_motion", "Reduce dragon motion"),
             {page=3, title="Shell", detail="Tohru · pinned native Pleamar 0.7.27", editable=false},
         }
         rows = {}
