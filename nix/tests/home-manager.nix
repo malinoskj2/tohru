@@ -34,6 +34,7 @@ let
       assistant = {
         voice.enable = false;
         memory.enable = false;
+        orca = false;
         voice.wake = "kws";
         voice.kwsModel = "/k";
         voice.vadModel = "/vad.onnx";
@@ -92,7 +93,7 @@ assert pkgs.lib.hasInfix "preferred_output = \"DP-CHECK\"" agentManaged;
 assert !(pkgs.lib.hasInfix "assistant" (builtins.readFile managed));
 assert config.programs.tohru.package.passthru.withVoice;
 assert !quiet.programs.tohru.package.passthru.withVoice;
-assert pkgs.lib.hasInfix "[assistant]\nasr_model = \"/asr\"\nkws_model = \"/k\"\nmemory = false\nprovider = \"codex\"\ntts_model = \"/kokoro\"\nturn_model = \"/turn.onnx\"\nvad_model = \"/vad.onnx\"\nvoice = false\nvoice_wake = \"kws\"" quietManaged;
+assert pkgs.lib.hasInfix "[assistant]\nasr_model = \"/asr\"\nkws_model = \"/k\"\nmemory = false\norca = \"false\"\nprovider = \"codex\"\ntts_model = \"/kokoro\"\nturn_model = \"/turn.onnx\"\nvad_model = \"/vad.onnx\"\nvoice = false\nvoice_wake = \"kws\"" quietManaged;
 assert !(pkgs.lib.hasInfix "voice_models" quietManaged);
 assert pkgs.lib.hasInfix "[assistant.models.codex]\neffort = \"high\"\nmodel = \"gpt-6.2-sol\"" quietManaged;
 assert pkgs.lib.hasInfix "[assistant.models.claude]\neffort = \"low\"" quietManaged;

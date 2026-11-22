@@ -61,7 +61,7 @@ emit("assistant_send")
 assert(#spawned == 1 and spawned[1].how.input == "How many ounces in a cup?")
 assert(spawned[1].args[1] == "chat" and spawned[1].args[3] == "claude")
 assert(has(spawned[1].args, "--model", "claude-sonnet-5-5") and has(spawned[1].args, "--effort", "high"))
-assert(has(spawned[1].args, "--persona", "on") and has(spawned[1].args, "--memory", "on"))
+assert(has(spawned[1].args, "--persona", "on") and has(spawned[1].args, "--memory", "on") and has(spawned[1].args, "--orca", "auto"))
 assert(fact.ai_streaming and fact.ai_live_here and text.ai_prompt == "")
 spawned[1].line(json.encode({event = "start", conversation = "c1", slot = 0}))
 spawned[1].line(json.encode({event = "delta", text = "Eight "}))
@@ -161,17 +161,25 @@ assert(#remembered == before + 1 and remembered[#remembered].args[2] == "m1" and
 assistant.close()
 assert(#runs_of("remember") == before + 1)
 values["assistant.memory"] = false
+values["assistant.orca"] = "false"
 emit("assistant_open")
 emit("assistant_new")
 text.ai_prompt = "Private"
 emit("assistant_send")
-assert(has(spawned[#spawned].args, "--memory", "off"))
+assert(has(spawned[#spawned].args, "--memory", "off") and has(spawned[#spawned].args, "--orca", "false"))
 spawned[#spawned].line(json.encode({event = "start", conversation = "m2"}))
 spawned[#spawned].line(json.encode({event = "done", conversation = "m2"}))
 assistant.close()
 emit("assistant_new")
 assert(#runs_of("remember") == before + 1)
 values["assistant.memory"] = true
+values["assistant.orca"] = "true"
+emit("assistant_open")
+text.ai_prompt = "Orca"
+emit("assistant_send")
+assert(has(spawned[#spawned].args, "--orca", "true"))
+spawned[#spawned].line(json.encode({event = "done", conversation = "m3"}))
+values["assistant.orca"] = nil
 
 -- The Memory view lists what is remembered; forgetting everything takes a second press.
 local long = string.rep("Keeps a sourdough starter called Clint ", 4)

@@ -591,8 +591,132 @@ def memory_block(db, prompt, budget=MEMORY_TOKENS):
     return header + "\n" + "\n".join(lines) if lines else ""
 
 
-def instructions(persona, block, voice):
-    parts = [p for p in (persona, VOICE_RULE if voice and persona else "", TYPED_RULE if not voice and persona else "", block) if p]
+ORCA_PROBE_SECONDS = 2
+ORCA_STATUS_TTL = 10
+
+
+def clean_orca_env(base):
+    # Never inherit an outer Orca terminal's session/worktree variables into Tohru's assistant.
+    return {k: v for k, v in base.items() if not k.startswith("ORCA_")}
+
+
+def is_executable(path):
+    try:
+        return path.is_file() and os.access(path, os.X_OK)
+    except OSError:
+        return False
+
+
+def find_orca_cli():
+    user_data_env = os.environ.get("ORCA_USER_DATA_PATH", "")
+    user_data_env = user_data_env if user_data_env and os.path.isabs(user_data_env) else ""
+    xdg_orca = xdg("XDG_CONFIG_HOME", ".config") / "orca"
+    home_orca = HOME / ".config/orca"
+    data_dirs = []
+    for candidate in (Path(user_data_env) if user_data_env else None, xdg_orca, home_orca):
+        if candidate is not None and candidate not in data_dirs:
+            data_dirs.append(candidate)
+    for directory in data_dirs:
+        shim = directory / "linux-orca-cli-shim/orca"
+        if is_executable(shim):
+            return str(shim), str(directory)
+    # Never resolve bare `orca` on Linux: outside Orca's terminals it is usually the GNOME screen reader.
+    cli = shutil.which("orca-ide")
+    if cli:
+        user_data = user_data_env or str(xdg_orca if xdg_orca.is_dir() else home_orca if home_orca.is_dir() else xdg_orca)
+        return cli, user_data
+    return "", ""
+
+
+def orca_running(cli, user_data):
+    cache_path = SCRATCH.parent / "orca-status.json"
+    now = time.time()
+    cached = read_json(cache_path)
+    if (isinstance(cached, dict)
+            and cached.get("cli") == cli
+            and cached.get("user_data") == user_data
+            and isinstance(cached.get("running"), bool)
+            and isinstance(cached.get("checked"), (int, float))
+            and 0 <= now - cached["checked"] < ORCA_STATUS_TTL):
+        return cached["running"]
+    env = clean_orca_env(os.environ)
+    if user_data:
+        env["ORCA_USER_DATA_PATH"] = user_data
+    try:
+        result = subprocess.run(
+            [cli, "status", "--json"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=ORCA_PROBE_SECONDS,
+            cwd=str(HOME),
+            env=env,
+            start_new_session=True,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        result = None
+    running = False
+    if result is not None and result.returncode == 0:
+        try:
+            data = json.loads(result.stdout)
+        except ValueError:
+            data = None
+        if isinstance(data, dict) and data.get("ok") is True:
+            body = data.get("result")
+            if isinstance(body, dict):
+                app = body.get("app")
+                runtime = body.get("runtime")
+                running = bool(
+                    (isinstance(app, dict) and app.get("running") is True)
+                    or (isinstance(runtime, dict) and runtime.get("reachable") is True)
+                )
+    try:
+        private_dir(cache_path.parent)
+        write_private(cache_path, json.dumps({"cli": cli, "user_data": user_data, "running": running, "checked": time.time()}))
+    except OSError:
+        pass
+    return running
+
+
+def orca_prompt(cli, running):
+    if cli:
+        state = "currently running" if running else "installed, but not currently running"
+        return (
+            f"Orca (the multi-agent IDE) is available on this machine ({state}). "
+            "You are NOT running inside an Orca terminal or worktree, and the user may or may not be talking about Orca — "
+            "only use it when their request involves Orca, its worktrees, agents, terminals, browser or integrations. "
+            f"When you do Orca work, invoke the CLI via `$ORCA_CLI_COMMAND` ({cli}); never run bare `orca` on Linux "
+            "(it is usually the GNOME screen reader). "
+            "Before running Orca commands, load the version-matched guide instead of guessing: "
+            f"`{cli} skills get orca-cli` (worktrees, terminals, handoffs, browser), "
+            f"`{cli} skills get orchestration` (supervised worker agents), "
+            f"`{cli} skills get orca-computer-use` (GUI control), or `{cli} skills list` for all bundled guides."
+        )
+    return (
+        "Orca support is enabled, but no Orca CLI shim or `orca-ide` executable was found on this launch. "
+        "You are NOT running inside an Orca terminal or worktree, and the user may or may not be talking about Orca. "
+        "Never run bare `orca` on Linux (it is usually the GNOME screen reader); if the user asks for Orca work, "
+        "look for `orca-ide` or `~/.config/orca/linux-orca-cli-shim/orca`, and run `<cli> skills get orca-cli` before guessing commands."
+    )
+
+
+def orca_context(mode):
+    if mode == "false":
+        return {}, ""
+    cli, user_data = find_orca_cli()
+    if cli:
+        running = orca_running(cli, user_data)
+        env = {"ORCA_CLI_COMMAND": cli}
+        if user_data:
+            env["ORCA_USER_DATA_PATH"] = user_data
+        return env, orca_prompt(cli, running)
+    if mode == "true":
+        return {}, orca_prompt("", False)
+    return {}, ""
+
+
+def instructions(persona, block, voice, orca=""):
+    parts = [p for p in (persona, VOICE_RULE if voice and persona else "", TYPED_RULE if not voice and persona else "", orca, block) if p]
     if voice and not persona:
         parts.insert(0, VOICE_RULE)
     return "\n\n".join(parts)
@@ -940,7 +1064,7 @@ def run_provider(provider, argv, stdin_text, on_delta=None, run=None, timeout=No
     run = run or Run()
     scratch = private_dir(SCRATCH)
     parser = StreamParser(provider.id)
-    env = dict(os.environ)
+    env = clean_orca_env(os.environ)
     env["NO_COLOR"] = "1"
     env.update(extra_env or {})
     # Tohru keeps her own memory; Claude Code's would be a second one she never sees in other providers.
@@ -1042,7 +1166,8 @@ def chat(args):
 
     persona = persona_text(flag(args.persona), args.persona_file)
     block = memory_block(db, prompt) if flag(args.memory) and not conversation.get("forgotten") else ""
-    system = instructions(persona, block, args.voice)
+    orca_env, orca_note = orca_context(args.orca)
+    system = instructions(persona, block, args.voice, orca_note)
     model, effort = resolve_model(provider.id, args.model, args.effort)
     sent = prompt if session["resume"] or not earlier else transcript_prompt(earlier, prompt)
     if provider.id in SYSTEM_FLAG:
@@ -1058,7 +1183,7 @@ def chat(args):
     stdin_text = place_prompt(provider, argv, sent)
     try:
         parser, code, errors, stopped = run_provider(provider, argv, stdin_text, lambda d: emit({"event": "delta", "text": d}), run,
-                                                      extra_env={"TOHRU_CONVERSATION": conversation["id"]})
+                                                      extra_env={"TOHRU_CONVERSATION": conversation["id"], **orca_env})
     except OSError as error:
         emit({"event": "error", "message": str(error)})
         return 3
@@ -1381,6 +1506,7 @@ def main(argv=None):
             p.add_argument("--voice", action="store_true")
             p.add_argument("--persona", choices=("on", "off"), default="on")
             p.add_argument("--persona-file", default="")
+            p.add_argument("--orca", choices=("auto", "true", "false"), default="auto")
         else:
             p.add_argument("conversation")
             p.add_argument("--models", default="{}", help="as for providers")

@@ -79,6 +79,7 @@ With a standalone Home Manager flake, pass `inputs` through `extraSpecialArgs`, 
 | `programs.tohru.assistant.models.<cli>.model`, `.effort` | `null` | Set the managed `assistant.models.<cli>.*` for `claude`, `codex`, `gemini`, `agy` or `opencode` |
 | `programs.tohru.assistant.persona.enable`, `.file` | `null` | Set the managed `assistant.persona` and `assistant.persona_file` |
 | `programs.tohru.assistant.memory.enable` | `null` | Sets the managed `assistant.memory` |
+| `programs.tohru.assistant.orca` | `null` | Sets the managed `assistant.orca` (`"auto"`, `"true"`, `"false"`, or `true`/`false`) |
 | `programs.tohru.lock.command` | read-only | `tohru-lock` with `TOHRU_MANAGED_CONFIG` set, for hypridle's `lock_cmd` |
 | `programs.tohru.hyprlandPlugin.package` | Plugin built against your session's Hyprland | The plugin package. Nothing loads it automatically |
 

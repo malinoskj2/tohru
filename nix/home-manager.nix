@@ -16,6 +16,9 @@ let
     // lib.optionalAttrs (assistant.tts.loadOnConversation != null) { tts_load_on_conversation = assistant.tts.loadOnConversation; }
     // lib.optionalAttrs (assistant.persona.enable != null) { persona = assistant.persona.enable; }
     // lib.optionalAttrs (assistant.memory.enable != null) { memory = assistant.memory.enable; }
+    // lib.optionalAttrs (assistant.orca != null) {
+      orca = if builtins.isBool assistant.orca then (if assistant.orca then "true" else "false") else assistant.orca;
+    }
     // lib.optionalAttrs (assistant.voice.wake != null) { voice_wake = assistant.voice.wake; }
     // lib.optionalAttrs (assistant.voice.vadModel != null) { vad_model = assistant.voice.vadModel; }
     // lib.optionalAttrs (assistant.voice.asrModel != null) { asr_model = assistant.voice.asrModel; }
@@ -210,6 +213,16 @@ in {
         type = lib.types.nullOr lib.types.bool;
         default = null;
         description = "Whether Tohru remembers facts and summaries between chats (`assistant.memory`, default on); off keeps history only. `null` leaves it to the user's config.";
+      };
+      orca = lib.mkOption {
+        type = lib.types.nullOr (lib.types.oneOf [ (lib.types.enum [ "auto" "true" "false" ]) lib.types.bool ]);
+        default = null;
+        description = ''
+          Whether the assistant gets Orca CLI context (`assistant.orca`, default `"auto"`):
+          `"auto"` detects Orca when installed, `"true"` always enables it, and `"false"`
+          disables detection, environment variables and prompt context. `null` leaves it
+          to the user's config.
+        '';
       };
     };
     systemd.target = lib.mkOption {
