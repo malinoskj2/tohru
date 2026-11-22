@@ -82,6 +82,41 @@ assert(shown == "v1" and not fact.ai_dragon_open and next(ticking) == nil)
 service.line({event = "barge"})
 assert(stopped == 1)
 
+-- Pausing speech for barge-in closes the mouth and moves her to listening without lingering; resuming talks again.
+service.line({event = "conversation", on = true})
+service.line({event = "speaking", on = true, conversation = "v1"})
+service.line({event = "mouth", level = 0.5, viseme = 3})
+service.line({event = "speaking", on = false, paused = true, conversation = "v1"})
+assert(not fact.ai_speaking and fact.ai_mouth == 0 and fact.ai_dragon_open and #timers == 0)
+local _, target = puppet.pose()
+assert(target == "listening")
+service.line({event = "speaking", on = true, conversation = "v1"})
+_, target = puppet.pose()
+assert(fact.ai_speaking and target == "explain")
+-- Confirming barge leaves her listening/thinking instead of switching to pleased when interrupted speaking ends.
+service.line({event = "speaking", on = false, paused = true, conversation = "v1"})
+service.line({event = "barge"})
+service.line({event = "speaking", on = false, interrupted = true, conversation = "v1"})
+_, target = puppet.pose()
+assert(target == "listening")
+
+-- Interrupting while thinking cancels the pending answer, swallows its stale reply and sends the replacement turn.
+local streaming_now = true
+local real_streaming = assistant.streaming
+assistant.streaming = function() return streaming_now end
+local asked_before, written_before = #asked, #written
+service.line({event = "barge"})
+assert(stopped == 3)
+service.line({event = "turn", text = "Actually tell me the weather"})
+assert(#asked == asked_before and #written == written_before)
+streaming_now = false
+listeners[1]("done", "v1", "Stale answer that must not be spoken", true)
+assert(#written == written_before)
+assert(#asked == asked_before + 1 and asked[#asked][1] == "Actually tell me the weather")
+listeners[1]("done", "v1", "It is sunny.", true)
+assert(written[#written].message.cmd == "say" and written[#written].message.text == "It is sunny.")
+assistant.streaming = real_streaming
+
 -- The wake word alone gets a short spoken reply, never the same one twice running.
 local greetings = {}
 for i = 1, 12 do

@@ -290,15 +290,22 @@ return function()
         thinking = function()
             if not talking then want("thinking") end
         end,
-        speaking = function(on)
+        speaking = function(on, state)
             talking = on
             pending, quiet_events = nil, 0
             if on then
+                hold = 0
                 if not POSES[target].talk then want("explain") end
                 since_change = 0
             else
                 mouth_cell = 0
-                want("pleased")
+                if state == "paused" then
+                    want("listening")
+                elseif state == "interrupted" then
+                    if target ~= "listening" and target ~= "thinking" then want("neutral") end
+                else
+                    want("pleased")
+                end
             end
         end,
         sentence = function(text)

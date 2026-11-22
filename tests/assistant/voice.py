@@ -80,6 +80,7 @@ class FakeEngine:
 
 class FakeSpeaker:
     speaking = False
+    paused = False
     level = 0.0
     echo = 0.0
     quiet = False
@@ -88,6 +89,8 @@ class FakeSpeaker:
         self.said = []
         self.engine = FakeEngine()
         self.hushed = 0
+        self.pauses = 0
+        self.resumes = 0
 
     def echo_level(self):
         return self.echo
@@ -98,7 +101,17 @@ class FakeSpeaker:
     def say(self, text, conversation):
         self.said.append((text, conversation))
 
+    def pause(self):
+        self.paused = True
+        self.pauses += 1
+
+    def resume(self):
+        self.paused = False
+        self.resumes += 1
+
     def hush(self):
+        self.paused = False
+        self.speaking = False
         self.hushed += 1
 
 
@@ -112,6 +125,9 @@ def make_voice(recognizer, spotter=None):
     voice.paused_reason = None
     voice.conversation_until = 0.0
     voice.thinking = False
+    voice.cancelled_thinking = False
+    voice.echo_cancelled = False
+    voice.echo_coupling = voice_module.ECHO_COUPLING_INIT
     voice.load_on_conversation = False
     voice.reset_utterance()
     return voice
@@ -236,7 +252,7 @@ class VoiceTests(unittest.TestCase):
 
     @unittest.skipIf(numpy is None, "needs numpy")
     def test_the_dragon_does_not_answer_its_own_echo(self):
-        voice = make_voice(FakeRecognizer(["TOHRU"], "TOHRU"))
+        voice = make_voice(FakeRecognizer(["WAIT STOP"], "WAIT STOP"))
         voice.np = numpy
         voice.silero = lambda window: 0.9
         voice.speaker.speaking = True
@@ -244,18 +260,211 @@ class VoiceTests(unittest.TestCase):
         echo = numpy.full(512, 0.25, dtype=numpy.float32)
         for _ in range(40):
             voice.step(echo)
-        self.assertEqual(voice.speaker.hushed, 0)
+        self.assertEqual((voice.speaker.pauses, voice.speaker.hushed), (0, 0))
         louder = numpy.full(512, 0.5, dtype=numpy.float32)
         for _ in range(10):
             voice.step(louder)
-        self.assertEqual(voice.speaker.hushed, 1)
-        self.assertEqual([e["event"] for e in self.events], ["barge", "hearing"])
+        self.assertEqual((voice.speaker.pauses, voice.speaker.hushed), (1, 1))
+        self.assertEqual([e["event"] for e in self.events], ["hearing", "barge"])
         voice.speaker.speaking = False
         voice.speaker.quiet = True
         voice.reset_utterance()
         for _ in range(10):
             voice.step(louder)
         self.assertFalse(voice.in_speech)
+
+    @unittest.skipIf(numpy is None, "needs numpy")
+    def test_aec_uses_a_flat_barge_threshold(self):
+        voice = make_voice(FakeRecognizer(["WAIT"], "WAIT"))
+        voice.np = numpy
+        voice.silero = lambda window: 0.9
+        voice.echo_cancelled = True
+        voice.speaker.speaking = True
+        voice.speaker.echo = 0.35
+        quiet_mic = numpy.full(512, 0.05, dtype=numpy.float32)
+        for _ in range(20):
+            voice.step(quiet_mic)
+        self.assertEqual(voice.speaker.pauses, 0)
+        normal_voice = numpy.full(512, 0.08, dtype=numpy.float32)
+        for _ in range(7):
+            voice.step(normal_voice)
+        self.assertEqual(voice.speaker.pauses, 1)
+        self.assertTrue(voice.barge_pending)
+
+    @unittest.skipIf(numpy is None, "needs numpy")
+    def test_echo_coupling_adapts_without_aec(self):
+        voice = make_voice(FakeRecognizer(["WAIT"], "WAIT"))
+        voice.np = numpy
+        voice.silero = lambda window: 0.9
+        voice.echo_cancelled = False
+        voice.speaker.speaking = True
+        voice.speaker.echo = 0.25
+        # Room echo is ~0.16 of playback RMS; coupling should adapt down from 1.0 so normal speech can barge.
+        room_echo = numpy.full(512, 0.04, dtype=numpy.float32)
+        for _ in range(40):
+            voice.step(room_echo)
+        self.assertEqual(voice.speaker.pauses, 0)
+        self.assertLess(voice.echo_coupling, 0.25)
+        self.assertGreaterEqual(voice.echo_coupling, voice_module.ECHO_COUPLING_MIN)
+        # 0.12 RMS is far below old 1.6 * 0.25 = 0.40, but well above 1.6 * coupling * 0.25.
+        user_voice = numpy.full(512, 0.12, dtype=numpy.float32)
+        for _ in range(7):
+            voice.step(user_voice)
+        self.assertEqual(voice.speaker.pauses, 1)
+
+    @unittest.skipIf(numpy is None, "needs numpy")
+    def test_pause_then_resume_on_noise_and_backchannels(self):
+        for partial, final in (("", ""), ("MM", "MM"), ("MHM", "MHM"), ("UH HUH", "UH HUH"), ("YEAH", "YEAH"), ("OKAY", "OKAY")):
+            self.events.clear()
+            recognizer = FakeRecognizer([partial], final)
+            voice = make_voice(recognizer)
+            voice.np = numpy
+            voice.echo_cancelled = True
+            voice.speaker.speaking = True
+            loud = numpy.full(512, 0.1, dtype=numpy.float32)
+            # Fill ~1 s of pre-roll before crossing the barge window.
+            voice.silero = lambda window: 0.0
+            for _ in range(30):
+                voice.step(loud)
+            voice.silero = lambda window: 0.9
+            for _ in range(7):
+                voice.step(loud)
+            self.assertEqual(voice.speaker.pauses, 1)
+            self.assertEqual(voice.speaker.hushed, 0)
+            self.assertGreaterEqual(recognizer.fed, 30)
+            # Continue without real words until the ~1 s decision window expires.
+            for _ in range(35):
+                if not voice.barge_pending:
+                    break
+                voice.step(loud)
+            self.assertFalse(voice.barge_pending)
+            self.assertEqual(voice.speaker.resumes, 1)
+            self.assertEqual(voice.speaker.hushed, 0)
+            self.assertNotIn("barge", [e["event"] for e in self.events])
+            self.assertNotIn("turn", [e["event"] for e in self.events])
+
+    @unittest.skipIf(numpy is None, "needs numpy")
+    def test_pause_then_barge_on_real_words(self):
+        recognizer = FakeRecognizer(["", "WAIT WHAT", "WAIT WHAT ABOUT TOMORROW"], "WAIT WHAT ABOUT TOMORROW")
+        voice = make_voice(recognizer)
+        voice.np = numpy
+        voice.echo_cancelled = True
+        voice.speaker.speaking = True
+        loud = numpy.full(512, 0.1, dtype=numpy.float32)
+        voice.silero = lambda window: 0.0
+        for _ in range(30):
+            voice.step(loud)
+        voice.silero = lambda window: 0.9
+        for _ in range(7):
+            voice.step(loud)
+        self.assertEqual((voice.speaker.pauses, voice.speaker.hushed), (1, 0))
+        self.assertGreaterEqual(recognizer.fed, 30)
+        # First window partial is empty (stays paused); second has real words -> confirms barge.
+        voice.step(loud)
+        self.assertEqual(voice.speaker.hushed, 0)
+        voice.step(loud)
+        self.assertEqual(voice.speaker.hushed, 1)
+        self.assertFalse(voice.barge_pending)
+        voice.silero = lambda window: 0.0
+        for _ in range(35):
+            if not voice.in_speech:
+                break
+            voice.step(numpy.zeros(512, dtype=numpy.float32))
+        self.assertEqual([e["event"] for e in self.events], ["hearing", "barge", "hearing", "turn"])
+        self.assertEqual(self.events[-1]["text"], "Wait what about tomorrow")
+
+    @unittest.skipIf(numpy is None, "needs numpy")
+    def test_interrupt_while_thinking_cancels_stale_answer(self):
+        recognizer = FakeRecognizer(["", "ACTUALLY NEVER MIND"], "ACTUALLY NEVER MIND")
+        voice = make_voice(recognizer)
+        voice.np = numpy
+        voice.extend_conversation()
+        voice.thinking = True
+        # Below-floor noise while thinking does not start a turn.
+        voice.silero = lambda window: 0.9
+        for _ in range(5):
+            voice.step(numpy.full(512, 0.01, dtype=numpy.float32))
+        self.assertFalse(voice.in_speech)
+        # Normal speech while thinking starts listening and cancels the pending answer once words appear.
+        speech = numpy.full(512, 0.05, dtype=numpy.float32)
+        for _ in range(4):
+            voice.step(speech)
+        self.assertIn("barge", [e["event"] for e in self.events])
+        # A stale answer arriving for the cancelled turn is dropped instead of spoken.
+        voice.command({"cmd": "say", "text": "Old answer", "conversation": "c1"})
+        self.assertEqual(voice.speaker.said, [])
+        voice.silero = lambda window: 0.0
+        for _ in range(35):
+            if not voice.in_speech:
+                break
+            voice.step(numpy.zeros(512, dtype=numpy.float32))
+        self.assertEqual([e["event"] for e in self.events], ["hearing", "barge", "hearing", "turn"])
+        self.assertEqual(self.events[-1]["text"], "Actually never mind")
+        # The replacement answer speaks normally.
+        voice.command({"cmd": "say", "text": "New answer", "conversation": "c1"})
+        self.assertEqual(voice.speaker.said, [("New answer", "c1")])
+
+    def test_backchannel_while_thinking_does_not_cancel(self):
+        voice = make_voice(FakeRecognizer(["OKAY"], "OKAY"))
+        voice.extend_conversation()
+        voice.thinking = True
+        self.speak(voice, 10, 35)
+        self.assertTrue(voice.thinking)
+        self.assertNotIn("barge", [e["event"] for e in self.events])
+        self.assertNotIn("turn", [e["event"] for e in self.events])
+
+    def test_sink_and_source_selection(self):
+        import os
+        import subprocess
+        real_run = voice_module.subprocess.run
+        real_env = {k: os.environ.get(k) for k in ("TOHRU_VOICE_SINK", "TOHRU_VOICE_SOURCE")}
+        outputs = {
+            "sinks": "1\talsa_output.pci\tPipeWire\ts32le\tRUNNING\n2\ttohru-echo-cancel-sink\tPipeWire\tfloat32le\tIDLE\n",
+            "sources": "1\talsa_input.usb\tPipeWire\ts32le\tIDLE\n2\ttohru-echo-cancel-sink.monitor\tPipeWire\tfloat32le\tIDLE\n3\ttohru-echo-cancel-source\tPipeWire\tfloat32le\tIDLE\n",
+        }
+        voice_module.subprocess.run = lambda argv, **kw: subprocess.CompletedProcess(argv, 0, outputs[argv[-1]], "")
+        try:
+            os.environ.pop("TOHRU_VOICE_SINK", None)
+            os.environ.pop("TOHRU_VOICE_SOURCE", None)
+            speaker = object.__new__(voice_module.Speaker)
+            voice = make_voice(FakeRecognizer([""], ""))
+            self.assertEqual(speaker.sink(), "tohru-echo-cancel-sink")
+            self.assertEqual(voice.source(), "tohru-echo-cancel-source")
+            os.environ["TOHRU_VOICE_SINK"] = "custom-sink"
+            os.environ["TOHRU_VOICE_SOURCE"] = "custom-source"
+            self.assertEqual(speaker.sink(), "custom-sink")
+            self.assertEqual(voice.source(), "custom-source")
+            os.environ.pop("TOHRU_VOICE_SINK", None)
+            outputs["sinks"] = "1\talsa_output.pci\tPipeWire\ts32le\tRUNNING\n"
+            self.assertIsNone(speaker.sink())
+        finally:
+            voice_module.subprocess.run = real_run
+            for k, v in real_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
+    def test_speaker_pause_and_resume_events(self):
+        import threading
+        speaker = object.__new__(voice_module.Speaker)
+        speaker.cond = threading.Condition()
+        speaker.stop = threading.Event()
+        speaker.speaking = True
+        speaker.paused = False
+        speaker.conversation = "c1"
+        speaker.level = 0.3
+        speaker.recent = [(1.0, 0.3)]
+        speaker.pause()
+        self.assertTrue(speaker.paused)
+        self.assertEqual(speaker.level, 0.0)
+        self.assertEqual(self.events, [
+            {"event": "mouth", "level": 0, "viseme": voice_module.REST},
+            {"event": "speaking", "on": False, "paused": True, "conversation": "c1"},
+        ])
+        speaker.resume()
+        self.assertFalse(speaker.paused)
+        self.assertEqual(self.events[-1], {"event": "speaking", "on": True, "conversation": "c1"})
 
     def test_speech_outside_a_conversation_is_not_shown_as_heard(self):
         voice = make_voice(FakeRecognizer(["WHAT"], "WHAT"))
