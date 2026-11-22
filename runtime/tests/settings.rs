@@ -825,6 +825,7 @@ fn integrated_assistant_keys_remain_distinct_and_enumerated() {
         Key::AssistantDiscordPost,
         Key::AssistantDiscordTokenFile,
         Key::AssistantDiscordGuildId,
+        Key::AssistantDiscordAllowedUserId,
         Key::AssistantDiscordChannels,
     ] {
         assert!(Key::ALL.contains(&key));
@@ -837,6 +838,10 @@ fn discord_defaults_validation_persistence_and_managed_controls() {
     let files = Fixture::new();
     fs::write(files.managed(), "").unwrap();
     let mut owner = files.owner();
+    assert_eq!(
+        owner.get(Key::AssistantDiscordAllowedUserId).value,
+        Value::Text(String::new())
+    );
     for key in [
         Key::AssistantDiscordEnabled,
         Key::AssistantDiscordRead,
@@ -847,6 +852,7 @@ fn discord_defaults_validation_persistence_and_managed_controls() {
     }
     for (key, valid, invalid) in [
         (Key::AssistantDiscordGuildId, "123456789", "../guild"),
+        (Key::AssistantDiscordAllowedUserId, "123456789", "@user"),
         (Key::AssistantDiscordChannels, "123, 456", "123,,456"),
         (
             Key::AssistantDiscordTokenFile,
@@ -858,6 +864,37 @@ fn discord_defaults_validation_persistence_and_managed_controls() {
         assert!(owner.set(key, Value::Text(invalid.into())).is_err());
         owner.set(key, Value::Text(valid.into())).unwrap();
         assert_eq!(files.owner().get(key).value, Value::Text(valid.into()));
+    }
+    for invalid in [
+        " ",
+        "0",
+        "09",
+        "-1",
+        "9 ",
+        "９",
+        "18446744073709551616",
+        "111111111111111111111",
+    ] {
+        assert!(
+            owner
+                .set(
+                    Key::AssistantDiscordAllowedUserId,
+                    Value::Text(invalid.into())
+                )
+                .is_err()
+        );
+    }
+    for valid in ["18446744073709551615", "9", ""] {
+        owner
+            .set(
+                Key::AssistantDiscordAllowedUserId,
+                Value::Text(valid.into()),
+            )
+            .unwrap();
+        assert_eq!(
+            files.owner().get(Key::AssistantDiscordAllowedUserId).value,
+            Value::Text(valid.into())
+        );
     }
     assert!(
         owner
@@ -881,4 +918,53 @@ fn discord_defaults_validation_persistence_and_managed_controls() {
         files.owner().get(Key::AssistantDiscordPost).value,
         Value::Bool(false)
     );
+}
+
+#[test]
+fn discord_author_id_invalid_disk_and_managed_settings_are_rejected() {
+    let files = Fixture::new();
+    for invalid in [
+        "' '",
+        "'09'",
+        "'@user'",
+        "'18446744073709551616'",
+        "9",
+        "true",
+    ] {
+        fs::write(
+            files.user(),
+            format!("[assistant.discord]\nallowed_user_id = {invalid}\n"),
+        )
+        .unwrap();
+        assert!(Owner::load(files.user(), None).is_err());
+    }
+    fs::write(files.user(), "[assistant.discord]\nallowed_user_id = '9'\n").unwrap();
+    fs::write(
+        files.managed(),
+        "[assistant.discord]\nallowed_user_id = ''\n",
+    )
+    .unwrap();
+    let mut owner = files.owner();
+    assert_eq!(
+        owner.get(Key::AssistantDiscordAllowedUserId).value,
+        Value::Text(String::new())
+    );
+    owner
+        .set(Key::AssistantDiscordAllowedUserId, Value::Text("8".into()))
+        .unwrap();
+    assert!(
+        owner
+            .get(Key::AssistantDiscordAllowedUserId)
+            .runtime_override
+    );
+    assert_eq!(
+        files.owner().get(Key::AssistantDiscordAllowedUserId).value,
+        Value::Text(String::new())
+    );
+    fs::write(
+        files.managed(),
+        "[assistant.discord]\nallowed_user_id = 'malformed'\n",
+    )
+    .unwrap();
+    assert!(Owner::load(files.user(), Some(files.managed())).is_err());
 }

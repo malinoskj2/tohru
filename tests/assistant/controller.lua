@@ -349,6 +349,7 @@ for i, flag in ipairs(discord_run.args) do
     if flag == "--discord-settings" then discord_flags = discord_run.args[i + 1] end
 end
 assert(discord_flags.enabled == false and discord_flags.read == false and discord_flags.post == false)
+assert(discord_flags.allowed_user_id == "")
 local before_discord_change = #killed
 values["assistant.discord.enabled"] = true
 values["assistant.discord.read"] = true
@@ -357,6 +358,22 @@ assert(#killed == before_discord_change + 1 and killed[#killed][2] == "int")
 assistant.configure_discord()
 assert(#killed == before_discord_change + 1, "unchanged configuration must not interrupt a turn")
 discord_run.line(json.encode({event = "stopped", conversation = "v1"}))
+
+-- Changing the required author ID propagates and cancels even if toggles are unchanged.
+values["assistant.discord.allowed_user_id"] = "9"
+assistant.configure_discord()
+assert(assistant.ask("Read only my Discord messages", "v1"))
+local author_run = spawned[#spawned]
+local author_flags
+for i, flag in ipairs(author_run.args) do
+    if flag == "--discord-settings" then author_flags = author_run.args[i + 1] end
+end
+assert(author_flags.allowed_user_id == "9")
+local before_author_change = #killed
+values["assistant.discord.allowed_user_id"] = ""
+assistant.configure_discord()
+assert(#killed == before_author_change + 1 and killed[#killed][2] == "int")
+author_run.line(json.encode({event = "stopped", conversation = "v1"}))
 
 
 -- UUID conversation IDs and proactive alerts (`tohru assistant alert`) set ready mark or reload active chat.

@@ -41,6 +41,7 @@ pub enum Key {
     AssistantDiscordPost,
     AssistantDiscordTokenFile,
     AssistantDiscordGuildId,
+    AssistantDiscordAllowedUserId,
     AssistantDiscordChannels,
     AssistantTtsModel,
     AssistantTtsVoicepack,
@@ -97,7 +98,7 @@ pub const ORCA_VOICE_CHATS: [&str; 2] = ["home", "new"];
 pub const ORCA_OFFLINE_MODES: [&str; 2] = ["error", "local"];
 
 impl Key {
-    pub const ALL: [Self; 50] = [
+    pub const ALL: [Self; 51] = [
         Self::PreferredOutput,
         Self::Mooncoil,
         Self::InfoButton,
@@ -128,6 +129,7 @@ impl Key {
         Self::AssistantDiscordPost,
         Self::AssistantDiscordTokenFile,
         Self::AssistantDiscordGuildId,
+        Self::AssistantDiscordAllowedUserId,
         Self::AssistantDiscordChannels,
         Self::AssistantTtsModel,
         Self::AssistantTtsVoicepack,
@@ -183,6 +185,7 @@ impl Key {
             Self::AssistantDiscordPost => "assistant.discord.post",
             Self::AssistantDiscordTokenFile => "assistant.discord.token_file",
             Self::AssistantDiscordGuildId => "assistant.discord.guild_id",
+            Self::AssistantDiscordAllowedUserId => "assistant.discord.allowed_user_id",
             Self::AssistantDiscordChannels => "assistant.discord.channels",
             Self::AssistantTtsModel => "assistant.tts_model",
             Self::AssistantTtsVoicepack => "assistant.tts_voicepack",
@@ -275,6 +278,7 @@ impl Key {
             Self::AssistantDiscordPost => (&["assistant", "discord"], "post"),
             Self::AssistantDiscordTokenFile => (&["assistant", "discord"], "token_file"),
             Self::AssistantDiscordGuildId => (&["assistant", "discord"], "guild_id"),
+            Self::AssistantDiscordAllowedUserId => (&["assistant", "discord"], "allowed_user_id"),
             Self::AssistantDiscordChannels => (&["assistant", "discord"], "channels"),
             Self::AssistantTtsModel => (&["assistant"], "tts_model"),
             Self::AssistantTtsVoicepack => (&["assistant"], "tts_voicepack"),
@@ -318,6 +322,7 @@ impl Key {
             Self::AssistantVoiceSource
             | Self::AssistantDiscordTokenFile
             | Self::AssistantDiscordGuildId
+            | Self::AssistantDiscordAllowedUserId
             | Self::AssistantDiscordChannels
             | Self::PreferredOutput
             | Self::AssistantProvider
@@ -354,6 +359,14 @@ impl Key {
             }
             Self::NotificationsPosition if NOTIFICATION_POSITIONS.contains(&text) => true,
             Self::AssistantDiscordGuildId if text.is_empty() || valid_discord_id(text) => true,
+            Self::AssistantDiscordAllowedUserId
+                if text.is_empty()
+                    || valid_discord_id(text)
+                        && !text.starts_with('0')
+                        && text.parse::<u64>().is_ok() =>
+            {
+                true
+            }
             Self::AssistantDiscordChannels
                 if text.is_empty()
                     || text.len() <= 704

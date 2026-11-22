@@ -75,7 +75,7 @@ return function(settings)
     local function model_flags(id)
         return {"--model", setting("assistant.models." .. id .. ".model", ""), "--effort", setting("assistant.models." .. id .. ".effort", "")}
     end
-    local DISCORD_KEYS = {"enabled", "read", "post", "token_file", "guild_id", "channels"}
+    local DISCORD_KEYS = {"enabled", "read", "post", "token_file", "guild_id", "channels", "allowed_user_id"}
     local function discord_config()
         local values = {}
         for _, key in ipairs(DISCORD_KEYS) do

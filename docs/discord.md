@@ -8,7 +8,7 @@ Tohru can read text-channel history and send plain text as **your bot**, when yo
 2. To read ordinary message text, enable **Message Content Intent** on the Bot page and obtain approval if Discord requires it for your application. This restriction also affects REST message content. Posting alone needs no privileged intent. Presence and Server Members intents are unnecessary. See Discord's [Message Content guidance](https://docs.discord.com/developers/events/gateway#message-content-intent).
 3. Under OAuth2 URL Generator (or Installation), select **Guild Install** and the **bot** scope, then invite the bot to the server you control. This integration does not need `applications.commands` or slash commands. See [Discord bot authorization](https://docs.discord.com/developers/topics/oauth2#bot-authorization-flow).
 4. Grant **View Channel** and **Read Message History** for reading; add **Send Messages** for posting. For threads, grant **Send Messages in Threads** and ensure the bot has access to the thread. Avoid Administrator. Channel overrides can deny permissions granted by the server role. See [Discord permissions](https://docs.discord.com/developers/topics/permissions).
-5. Enable Developer Mode in Discord's Advanced settings, then copy the server ID and the specific channel IDs. Threads have their own IDs and must be explicitly allowlisted.
+5. Enable Developer Mode in Discord's Advanced settings, then copy the one allowed user's ID, the server ID and the specific channel IDs. Use **Copy User ID** on that user's profile; names and nicknames are not IDs. Threads have their own IDs and must be explicitly allowlisted. Tohru never discovers or fills in the user ID from messages, account lookups or guild membership.
 
 Missing Read Message History can yield an empty list; missing Message Content access can yield messages with empty content. An empty result alone does not prove that the channel is empty. See [Get Channel Messages and message objects](https://docs.discord.com/developers/resources/message#get-channel-messages).
 
@@ -30,16 +30,18 @@ The file contains only the raw token on one line. Example configuration (IDs are
 enabled = true
 read = true
 post = false
+allowed_user_id = "456789012345678901"
 token_file = "/home/me/.config/tohru/discord-token"
 guild_id = "123456789012345678"
 channels = "234567890123456789,345678901234567890"
 ```
 
-All three booleans default to `false`; all strings default to empty. A guild and 1–32 explicit channel IDs are required. No wildcard, DM access, channel discovery or cross-server access is provided. The single-guild scope is intentional.
+All three booleans default to `false`; all strings default to empty. One explicit `allowed_user_id`, a guild and 1–32 explicit channel IDs are required. Missing, blank or malformed `allowed_user_id` disables all Discord functionality, including posting and channel metadata requests, before any API access; ordinary chat and voice keep working. The native setting accepts an empty string to clear setup, or a canonical nonzero unsigned 64-bit decimal ID (ASCII digits, no whitespace or leading zeros); malformed IDs are rejected by `config set`. The REST adapter independently checks this requirement for disk configuration and effective runtime overrides. No wildcard, DM access, channel discovery or cross-server access is provided. The single-guild scope is intentional.
 
 With the bar running, the existing configuration commands persist these settings:
 
 ```sh
+tohru config set assistant.discord.allowed_user_id 456789012345678901
 tohru config set assistant.discord.guild_id 123456789012345678
 tohru config set assistant.discord.channels '234567890123456789,345678901234567890'
 tohru config set assistant.discord.token_file /home/me/.config/tohru/discord-token
@@ -65,7 +67,7 @@ tohru config set assistant.discord.enabled false
 
 Select `assistant.backend = "local"` (the default) for these built-in tools. The opt-in `orca` backend sends requests to a separate Orca bot session, which may run remotely: Tohru does not forward its local Unix socket, tool commands or bot credentials to that session. When Discord is enabled, remote turns include an availability note so the bot can explain the limitation. `assistant.orca` only controls local CLI context and is distinct from the backend setting and Home Manager's `assistant.orcaBot` options. An explicitly configured Orca-offline fallback to local providers uses the same guarded local Discord path.
 
-Examples: “Read the last 20 messages in Discord channel 234567890123456789 and summarize them.” Or, with posting enabled: “Post ‘The release is ready’ in Discord channel 234567890123456789.” No posting is performed as a setup check.
+Examples: “Read a page of my messages in Discord channel 234567890123456789 and summarize them.” Or, with posting enabled and an allowed user ID configured: “Post ‘The release is ready’ in Discord channel 234567890123456789.” No posting is performed as a setup check. Setting the user ID alone grants no posting permission.
 
 The provider uses its actual shell/command tool to invoke the packaged `tohru-discord` command. Tohru gives normal turns a private local Unix socket; the helper sends requests to the assistant process, which loads credentials and contacts Discord. The token is absent from helper arguments, tool descriptions, provider environments and application logs. There is no MCP registration, tool-call JSON emulation or prompt-only replacement for an API action. The available read/post commands are described only when enabled, and the broker independently enforces each toggle and scope on execution. The static CLI can still be invoked with a disabled verb, which returns an error without a network request.
 
@@ -81,7 +83,11 @@ These paths rely on the CLI's shell tool being available in Tohru's normal tool-
 
 ## Reading and posting behavior
 
-Reading is **on demand**, with newest-first results, up to 50 messages per call (default 20), one page at a time. The helper supports `--before ID` for older history or `--after ID` for newer messages; use returned message IDs to request another page. `possibly_more` means the response may need another page; truncated responses retain whole messages. Results contain message IDs, author IDs, timestamps and text, with an explicit untrusted-data label. Attachments, embeds, reactions, rich messages and files are not fetched or sent. There is no Gateway connection, polling loop, unread-message store, incoming-message wake-up, automatic reply or user-configured automation engine. Incoming content cannot itself activate the assistant or authorize tools.
+Reading is **on demand**, examining one REST history page of at most 50 entries per call (default 20). Before any message content reaches tools, provider prompts or logs, the execution boundary discards every entry whose `author.id` does not exactly equal `allowed_user_id`. Missing/malformed authors, other users, and nonmatching bots/webhooks are discarded; names, nicknames, mentions, member data and content never establish identity. Only the matching author's ID, timestamp and text are returned, in newest-first order, with an explicit untrusted-data label. Nested referenced messages and embeds are not forwarded.
+
+The requested limit bounds examined entries, not matching results: mixed pages can return fewer messages, and an all-discarded page can return none while more history remains. There is no automatic scan to fill the result. Continue older history with `--before` and the returned `next_before`, or newer history with `--after` and `next_after`; these ID-only cursors include discarded entries so empty filtered pages can progress without revealing their content. A full page or size truncation sets `possibly_more`; a page without valid message IDs has null cursors. Size truncation keeps whole matching messages and advances only across consumed entries in the requested direction. Each additional page requires another bounded tool call and counts against the turn's call budget.
+
+Attachments, embeds, reactions, rich messages and files are not fetched separately or sent. There is no Gateway connection, live event receiver, polling loop, unread-message store, incoming-message wake-up, automatic reply or user-configured automation engine. This filter covers the integration's sole reception path: on-demand REST history through the local tool broker. Incoming content cannot itself activate the assistant or authorize tools.
 
 Posts accept 1–2000 characters from stdin and disable all parsed mentions, including `@everyone`. Only explicit user requests/authorization should lead to posting. The assistant is instructed never to follow commands embedded in Discord content or let messages authorize a post. The execution boundary enforces feature and channel controls; semantic user intent remains the responsibility of the assistant's existing tool-using policy.
 
@@ -102,4 +108,4 @@ cargo test --locked --manifest-path runtime/Cargo.toml
 bin/tohru-discord status
 ```
 
-The Discord suite uses a local fake HTTP server and fake provider CLIs. It covers feature controls, scoped guild/channel access, credentials/redaction, bounded cursors/results, malformed responses, permissions/auth errors, rate limits, broker shutdown/cancellation and provider shell routing. It sends no live Discord traffic. `status` is a safe local smoke check; a real read requires an enabled integration and a normal assistant turn. Posting requires a separate explicit user request.
+The Discord suite uses a local fake HTTP server and fake provider CLIs. It covers missing/blank/invalid required author setup, exact author filtering and spoofed/missing authors, mixed/all-discarded pages, bounded cursors/results in both directions, live configuration changes, posting gates, scoped guild/channel access, credentials/redaction, malformed responses, permissions/auth errors, rate limits, broker shutdown/cancellation and provider shell routing without discarded content. Native settings and controller fixtures cover validation, persistence, effective settings propagation and cancellation on author-ID changes. It sends no live Discord traffic. `status` is a safe local smoke check; a real read requires an enabled integration, a configured user ID and a normal assistant turn. Posting requires a separate explicit user request.

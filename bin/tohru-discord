@@ -16,7 +16,7 @@ def main():
         command = commands.add_parser(action)
         command.add_argument("channel")
         if action == "read":
-            command.add_argument("--limit", type=int, default=20)
+            command.add_argument("--limit", type=int, default=20, help="Examine 1–50 history entries in one REST page; return only the configured author")
             cursor = command.add_mutually_exclusive_group()
             cursor.add_argument("--before")
             cursor.add_argument("--after")
