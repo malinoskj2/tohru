@@ -1,6 +1,6 @@
 # AI assistant: agreed design
 
-Status: implemented, apart from the Blender sprite atlases (the overlay uses `mascot.png` with a drawn mouth until they exist). Mockups (not in Git): `.tmp/ai-widget-ideas/` in this worktree, with `index.md` describing all ten directions and the services they need. Code: `bin/tohru-assistant` (chats, history, memory, export), `bin/tohru-voice` (voice), `shell/assistant/` (popup, bar entry, overlay, controllers) and [the assistant README](../shell/assistant/README.md).
+Status: implemented. Mockups (not in Git): `.tmp/ai-widget-ideas/` in this worktree, with `index.md` describing all ten directions and the services they need. Code: `bin/tohru-assistant` (chats, history, memory, export), `bin/tohru-voice` (voice), `shell/assistant/` (popup, bar entry, overlay, controllers) and [the assistant README](../shell/assistant/README.md).
 
 ## Chat popup: direction 01, Pocket
 
@@ -90,10 +90,28 @@ The spotter is about five times cheaper but fails the bar for the default (recal
 
 ## Dragon overlay
 
-- As built: `shell/assistant/dragon.plm`, a 210×230 overlay layer (`tohru-dragon`) at the bottom right, shown while she speaks and for five seconds after. Its mouth follows the TTS envelope (`ai_mouth`, 30 levels a second, smoothed over 70 ms). Sprite interface for the Blender atlases: `ai_sprite` is a sheet of `ai_sprite_columns × ai_sprite_rows` cells, cells 0 to 4 being jaw levels closed to open, then blink frames; set `ai_sprite_frames` above 1 and the drawn placeholder mouth disappears.
-- When an answer is ready, the mascot (`shell/brand/mascot.png`) appears floating at the bottom-right of the desktop and speaks it.
-- Clicking it opens the popup on that conversation.
-- It is pre-rendered for now: the mascot modelled and rendered in Blender as sprite atlases (idle float loop, several jaw-open levels, blink). Frames are chosen from the TTS audio envelope for lip-sync. No real-time 3D.
+- As built: `shell/assistant/dragon.plm` is a 210×230 overlay layer (`tohru-dragon`) at the bottom right.
+  - She shows once a voice conversation opens, stays while it lasts, and goes five seconds after her last word once it has ended.
+  - Clicking her opens the popup on that conversation.
+- **Sheets:** pre-rendered 2D, in `shell/assistant/dragon/`; their layout and provenance are in its README.
+  - `body.webp` holds the idle breath, the wing flutter, four drawn moves and the poses.
+  - The eyes and mouths are patches drawn over it.
+  - `glass.wgsl` adds the shimmer of light through the glass.
+  - The sheets are set once the voice service is ready, and drawn unseen for three seconds so they are loaded before she first shows. With voice off nothing is loaded.
+- **Animator:** `shell/assistant/puppet.luau` runs at 24 fps, and only while she is shown.
+  - Idle: she breathes on the loop, blinks every 3–6 s, and every 20–40 s she flutters her wings or looks around.
+  - Listening: while follow-up speech is heard (`hearing` events).
+  - Thinking: from the turn until her answer starts.
+  - Talking: she explains, and changes pose by sentence. `!` gives the wing cheer with two glass hearts, laughter gives the laugh, lists give the scroll, warm words give happy.
+  - Pose changes wait for a dip in her voice (five quiet mouth events) and at least 2.5–4 s since the last change.
+  - Done: pleased for a moment, then back to idle.
+  - Drawn moves go through neutral, except explain↔cheer. Poses without drawn in-betweens swap under a squash.
+- **Lip-sync:** `tohru-voice` maps each sentence's phonemes to eight mouths (rest, M/B/P, AA, EH, EE, OH, OO, F/V).
+  - espeak-ng's IPA (`--ipa`) is spread over the voiced part of the clip.
+  - Kokoro's misaki phonemes are placed by the model's own durations when the ONNX export returns them, and spread by weight otherwise.
+  - Mouths shorter than two frames merge into a neighbour, except a closed M/B/P.
+  - Each `mouth` event carries the `viseme` 40 ms ahead of the audio. Without one, the mouth falls back to the envelope (rest, EE, EH, AA by level).
+  - The jaw drops and the body squashes slightly with the level.
 
 ## Voice of the dragon
 
