@@ -4,19 +4,28 @@ part AssistantDragon {
     let ai_float = if(ai_dg_reduced, 0, 4 * sin(time * 90))
     let ai_dg_x = 30
     let ai_dg_y = 40
-    surface ai_dragon_surface {
-        size: 210, 230; anchor: bottom_right; margin: 0, 18, 18, 0; level: overlay; reserve: -1; keyboard: none
-        // Opened unseen for a moment once the sheets are set, so they are loaded before she first shows.
-        open: ai_dragon_k > 0.01 or ai_dg_warm
-        layer_namespace: "tohru-dragon"
+    fact ai_flying = false
+    fact ai_flight_x = 0
+    fact ai_flight_y = 0
+    fact ai_flight_bank = 0
+    fact ai_flight_alpha = 1
+    fact ai_flight_altitude = 0
+    fact ai_flight_behind = false
+    event dragon_view_width ->
+    event dragon_view_height ->
+    on change ai_dragon_surface.width { emit dragon_view_width(ai_dragon_surface.width) }
+    on change ai_dragon_surface.height { emit dragon_view_height(ai_dragon_surface.height) }
+    fact ai_use_flight_surface = false
+    text ai_flight_trace = ""
+    component DragonActor(dx: number, dy: number) {
         group {
-            opacity: max(ai_dragon_k, if(ai_dg_warm, 0.2%, 0%))
-            move: 0, if(ai_dg_reduced, 0, (1 - ai_dragon_k) * 24)
-            ellipse { at: 105, 214; radius: 46; scale: ai_dg_shadow_s, 0.16; color: #000000; opacity: 18% - 6% * ai_float / 4 }
+            opacity: ai_flight_alpha * max(ai_dragon_k, if(ai_dg_warm, 0.2%, 0%))
+            move: dx, dy
+            ellipse { at: 105, 214; radius: 46; scale: ai_dg_shadow_s, 0.16; color: #000000; opacity: (1 - ai_flight_altitude) * (18% - 6% * ai_float / 4) }
             group {
                 move: 0, ai_float
                 pivot: 105, 190
-                rotate: ai_dg_tilt_s * 1deg
+                rotate: (ai_dg_tilt_s + ai_flight_bank) * 1deg
                 scale: (1 + 0.04 * ai_dg_sq_s) * (1 + if(ai_dg_reduced, 0, 0.012 * ai_mouth_s)), (1 - 0.05 * ai_dg_sq_s) * (1 - if(ai_dg_reduced, 0, 0.008 * ai_mouth_s))
                 group {
                     show: ai_dg_ready
@@ -44,8 +53,24 @@ part AssistantDragon {
                 image ai_dg_heart { at: ai_dg_h2_x - 12 * ai_dg_h2_s, ai_dg_h2_y - 12 * ai_dg_h2_s; size: 24 * max(ai_dg_h2_s, 0.05), 24 * max(ai_dg_h2_s, 0.05); opacity: max(ai_dg_h2_a, 0.001) }
             }
             text ai_transcript { at: 105, 8; anchor: center top; width: 198; lines: 2; align: center; size: 11; family: "SF Pro Text"; color: #cdd6f4 }
-            zone box ai_dragon_hit { from: 30, 30; size: 150, 170; corner: 40; cursor: pointer; active: ai_dragon_open; label: "Open this conversation" }
         }
+    }
+    surface ai_idle_surface {
+        size: 210, 230; anchor: bottom_right; margin: 0, 18, 18, 0; level: overlay; reserve: -1; keyboard: none
+        open: not ai_use_flight_surface and (ai_dragon_k > 0.01 or ai_dg_warm)
+        layer_namespace: "tohru-dragon"
+        zone box ai_idle_hit { from: 30, 30; size: 150, 170; corner: 40; cursor: pointer; active: ai_dragon_open and not ai_use_flight_surface; label: "Open this conversation" }
+        on press ai_idle_hit { emit assistant_dragon }
+        DragonActor(0, if(ai_dg_reduced, 0, (1 - ai_dragon_k) * 24))
+    }
+    surface ai_dragon_surface {
+        size: full, full; anchor: center; level: overlay, bottom while ai_flight_behind; reserve: -1; keyboard: none
+        open: ai_use_flight_surface and (ai_dragon_k > 0.01 or ai_dg_warm)
+        layer_namespace: "tohru-dragon"
+        let flight_left = if(ai_flying, ai_flight_x - 105, ai_dragon_surface.width - 228)
+        let flight_top = if(ai_flying, ai_flight_y - 115, ai_dragon_surface.height - 248 + if(ai_dg_reduced, 0, (1 - ai_dragon_k) * 24))
+        DragonActor(flight_left, flight_top)
+        zone box ai_dragon_hit { from: flight_left + 30, flight_top + 30; size: 150, 170; corner: 40; cursor: pointer; active: ai_use_flight_surface and ai_dragon_open and ai_flight_alpha > 0.5; label: "Open this conversation" }
         on press ai_dragon_hit { emit assistant_dragon }
     }
 }

@@ -1,5 +1,6 @@
 local palettes = {"mocha", "macchiato", "rose_pine", "nord", "gruvbox", "tokyo_night", "dracula", "everforest"}
 local overrides = {
+    ["assistant.contextual_entrances"] = function(value) return "setting_assistant_entrances " .. (value and 1 or 0) end,
     ["assistant.reduced_motion"] = function(value) return "setting_assistant_reduced_motion " .. (value and 1 or 0) end,
     ["bar.mooncoil"] = function(value) return "setting_mooncoil " .. (value and 1 or 0) end,
     ["bar.info_button"] = function(value) return "setting_info_button " .. (value and 1 or 0) end,

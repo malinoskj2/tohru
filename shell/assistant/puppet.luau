@@ -106,6 +106,7 @@ return function(full_body)
     local load_generation = 0
     local reduced, mode = false, "neutral"
     local posture_age, posture_after = 0, 240
+    local flight_pose, after_flight
     local recent = {}
     local function remember(name)
         if recent[#recent] == name then return end
@@ -407,6 +408,19 @@ return function(full_body)
             fact.ai_dg_warm = true
             after(3000, function() if generation == load_generation then fact.ai_dg_warm = false end end)
         end,
+        flight = function(kind)
+            if kind then
+                if talking or reduced or mode == "listening" then return end
+                local name = ({rise="rising_bank",right="left_glide",sweep="right_glide",wrap="forward_bank"})[kind]
+                if name and POSES[name] then
+                    after_flight, flight_pose = target, name
+                    want(name)
+                end
+            elseif flight_pose then
+                if target == flight_pose and not talking then want(after_flight) end
+                flight_pose, after_flight = nil, nil
+            end
+        end,
         visible = function(on)
             if on and not timer then
                 timer = every(TICK, tick)
@@ -447,7 +461,11 @@ return function(full_body)
             end
         end,
         thinking = function()
-            if not talking then mode, hold = "thinking", 0; want(POSES.ponder_hover and "ponder_hover" or "thinking") end
+            if not talking then
+                mode, hold = "thinking", 0
+                local name = POSES.ponder_hover and "ponder_hover" or "thinking"
+                if flight_pose then after_flight = name else want(name) end
+            end
         end,
         speaking = function(on, state)
             talking = on

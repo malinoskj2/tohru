@@ -41,6 +41,9 @@ pub enum Key {
     NotificationsPosition,
     AssistantVoice,
     AssistantReducedMotion,
+    AssistantContextualEntrances,
+    AssistantEntranceSeed,
+    AssistantEntranceVariant,
     AssistantVoiceSource,
     AssistantProvider,
     AssistantVadModel,
@@ -122,7 +125,7 @@ pub const ORCA_VOICE_CHATS: [&str; 2] = ["home", "new"];
 pub const ORCA_OFFLINE_MODES: [&str; 2] = ["error", "local"];
 
 impl Key {
-    pub const ALL: [Self; 91] = [
+    pub const ALL: [Self; 94] = [
         Self::ShortcutsMode,
         Self::ShortcutLauncher,
         Self::ShortcutSession,
@@ -153,6 +156,9 @@ impl Key {
         Self::NotificationsPosition,
         Self::AssistantVoice,
         Self::AssistantReducedMotion,
+        Self::AssistantContextualEntrances,
+        Self::AssistantEntranceSeed,
+        Self::AssistantEntranceVariant,
         Self::AssistantVoiceSource,
         Self::AssistantProvider,
         Self::AssistantVadModel,
@@ -249,6 +255,9 @@ impl Key {
             Self::NotificationsPosition => "notifications.position",
             Self::AssistantVoice => "assistant.voice",
             Self::AssistantReducedMotion => "assistant.reduced_motion",
+            Self::AssistantContextualEntrances => "assistant.contextual_entrances",
+            Self::AssistantEntranceSeed => "assistant.entrance_seed",
+            Self::AssistantEntranceVariant => "assistant.entrance_variant",
             Self::AssistantVoiceSource => "assistant.voice_source",
             Self::AssistantProvider => "assistant.provider",
             Self::AssistantVadModel => "assistant.vad_model",
@@ -388,6 +397,9 @@ impl Key {
             Self::NotificationsPosition => (&["notifications"], "position"),
             Self::AssistantVoice => (&["assistant"], "voice"),
             Self::AssistantReducedMotion => (&["assistant"], "reduced_motion"),
+            Self::AssistantContextualEntrances => (&["assistant"], "contextual_entrances"),
+            Self::AssistantEntranceSeed => (&["assistant"], "entrance_seed"),
+            Self::AssistantEntranceVariant => (&["assistant"], "entrance_variant"),
             Self::AssistantVoiceSource => (&["assistant"], "voice_source"),
             Self::AssistantProvider => (&["assistant"], "provider"),
             Self::AssistantVadModel => (&["assistant"], "vad_model"),
@@ -490,6 +502,7 @@ impl Key {
             Self::IdleLockSeconds | Self::IdleSuspendSeconds => Some((0, 86400)),
             Self::AssistantDiscordDesktopTimeoutSeconds => Some((10, 300)),
             Self::CornerSize => Some((1, 100)),
+            Self::AssistantEntranceSeed => Some((0, 2147483646)),
             Self::AssistantTtsSpeed => Some((50, 200)),
             Self::AssistantTtsPitch => Some((-12, 12)),
             _ => None,
@@ -526,6 +539,7 @@ impl Key {
             | Self::AboutButton
             | Self::PolkitAgent
             | Self::AssistantTtsLoadOnConversation
+            | Self::AssistantContextualEntrances
             | Self::AssistantReducedMotion => Value::Bool(false),
             Self::Corners
             | Self::AssistantVoice
@@ -559,6 +573,8 @@ impl Key {
             Self::AssistantOrcaBot => Value::Text("Tohru".to_owned()),
             Self::AssistantOrcaVoiceChat => Value::Text(ORCA_VOICE_CHATS[0].to_owned()),
             Self::AssistantOrcaOffline => Value::Text(ORCA_OFFLINE_MODES[0].to_owned()),
+            Self::AssistantEntranceSeed => Value::Integer(1),
+            Self::AssistantEntranceVariant => Value::Text("auto".to_owned()),
             Self::AssistantTtsSpeed => Value::Integer(100),
             Self::AssistantTtsPitch => Value::Integer(3),
             Self::CornerSize => Value::Integer(32),
@@ -570,6 +586,11 @@ impl Key {
 
     fn valid_text(self, text: &str) -> bool {
         match self {
+            Self::AssistantEntranceVariant
+                if ["auto", "wrap", "rise", "right", "sweep"].contains(&text) =>
+            {
+                true
+            }
             Self::ShortcutsMode if ["compositor", "portal", "disabled"].contains(&text) => true,
             Self::ShortcutLauncher | Self::ShortcutSession | Self::ShortcutAssistant
                 if text.len() <= 256 && !text.chars().any(char::is_control) =>
@@ -712,6 +733,7 @@ impl Key {
                 | Self::Corners
                 | Self::PolkitAgent
                 | Self::AssistantVoice
+                | Self::AssistantContextualEntrances
                 | Self::AssistantReducedMotion
                 | Self::AssistantPersona
                 | Self::AssistantMemory

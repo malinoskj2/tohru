@@ -1,6 +1,7 @@
 -- Settings ownership is in Rust, outside this reloadable VM.
 local make_rail = require("bar/rail")
-local workspace = require("bar/workspace")(make_rail(0))
+local flight
+local workspace = require("bar/workspace")(make_rail(0), function() if flight then flight.interrupt() end end)
 local close_panels
 local bell = require("bar/bell")(function() if close_panels then close_panels("notifications") end end)
 local PALETTE_INDEX = {mocha=0, macchiato=1, rose_pine=2, nord=3, gruvbox=4, tokyo_night=5, dracula=6, everforest=7}
@@ -43,6 +44,9 @@ end
 publish(tohru_settings.snapshot())
 text.managed_config = tohru_settings.managed_path() or ""
 on("config_reload", function() change(tohru_settings.reload) end)
+on("setting_assistant_entrances", function(n)
+    change(function() return tohru_settings.set("assistant.contextual_entrances", n ~= 0) end)
+end)
 on("setting_assistant_reduced_motion", function(n)
     change(function() return tohru_settings.set("assistant.reduced_motion", n ~= 0) end)
 end)
@@ -91,7 +95,9 @@ on("sound_open_request", osd.hide)
 on("sound_toggle", function() if fact.sound_open then osd.hide() end end)
 
 local media = require("media/controller")()
-require("bar/controller")()
+local puppet = require("assistant/puppet")(require("assistant/full-body"))
+flight = require("assistant/flight")(require("assistant/flight-path"), puppet)
+require("bar/controller")(flight.window)
 require("bar/launcher")()
 local calendar = require("calendar/controller")(make_rail(1, 21))
 local network = require("network/controller")(make_rail(8))
@@ -105,7 +111,7 @@ assistant = require("assistant/controller")({
     value = function(key) local entry = tohru_settings.snapshot()[key]; return entry and entry.value end,
 })
 assistant.configure_discord()
-voice = require("assistant/voice")(assistant, require("assistant/puppet")(require("assistant/full-body")))
+voice = require("assistant/voice")(assistant, puppet, flight)
 voice.configure(tohru_settings.snapshot())
 on("setting_assistant", function()
     local key, raw = text.setting_key or "", text.setting_value or ""

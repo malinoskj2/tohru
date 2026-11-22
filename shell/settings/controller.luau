@@ -102,6 +102,9 @@ return function(applied, publish_corner)
             {page=4, title="Refresh shortcut snapshot", detail="Read current compositor state; no configuration writes", editable=true, choice=true, operation="refresh_shortcuts"},
             {page=3, title="Shell", detail="Tohru · pinned native Pleamar 0.7.27", editable=false},
         }
+        if snapshot["assistant.contextual_entrances"] then
+            catalog[#catalog+1] = switch(2, "assistant.contextual_entrances", "Contextual dragon entrances")
+        end
         if shortcut_report.registration == "portal-session" then
             catalog[#catalog+1] = {page=4, title="Set up Tohru action shortcuts", detail="Request desktop grants; preferred keys are hints", editable=shortcut_report.setup_available, choice=true, operation="shortcut_setup"}
             catalog[#catalog+1] = {page=4, title="Configure granted shortcuts", detail=(shortcut_report.portal_version or 0) >= 2 and "Open the desktop's shortcut configuration dialog" or "Requires portal v2; v1 supports initial setup only", editable=shortcut_report.configure_available, choice=true, operation="shortcut_configure"}

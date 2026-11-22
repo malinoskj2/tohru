@@ -113,3 +113,37 @@ speech. The voice service inherits stderr into the bar's existing journal stream
 Live wake-accepted transcript text is transient UI state above the dragon.
 
 Optional built-in [Discord bot support](../../docs/discord.md) reads bounded channel history and posts through the provider CLI's shell tool. Configure `assistant.discord.*` in Tohru, default off; one explicit valid `allowed_user_id` is required before any Discord API access, and history returns only that author's messages. No MCP, Orca or Nix service is required.
+
+### Desktop entrances
+
+Enable **Contextual dragon entrances** in Settings → Appearance, or use the native settings owner:
+
+```sh
+tohru config set assistant.contextual_entrances true
+tohru config set assistant.entrance_seed 12345
+tohru config set assistant.entrance_variant auto
+```
+
+Entrances are off by default. A fresh appearance can use a short rise from below, a glide from the right, a sweep from the lower left, or a window wrap. The controller selects once, after geometry checks, with weights 3, 2, 1 and 4 respectively. The last route is excluded in automatic mode. At least 30 seconds separate starts. There are no idle excursions. The seed accepts integers from 0 through 2147483646. Use `rise`, `right`, `sweep` or `wrap` in place of `auto` to force an eligible route. An ineligible forced route gives an ordinary appearance. Managed settings follow the same runtime override rules as reduced motion. Reducing motion keeps the compact character and its normal short visibility transition.
+
+The PRNG uses the configured seed and the per-VM eligible event ordinal. Restarting the bar resets the ordinal and history. The last selection can be read with `pleamar --say tohru 'get ai_flight_trace'`. It records seed, ordinal, previous variant, chosen variant and scene geometry. The pure `flight-path.luau` sampler returns a sprite center in output-local logical pixels, heading in radians, bank in degrees, normalized phase and altitude blend. It has no sprite, speech or compositor dependency.
+
+The native output, workspace and focused-window subscriptions own topology and fullscreen signals. Pleamar reports the configured flight surface's logical dimensions; foreign-toplevel does not report global window rectangles. On single-output Hyprland, a short-lived read-only IPC helper also checks the registered display socket, monitor origin, transform, scale, focused window address and rectangle, workspace, visibility and other clients at the landing site. It polls at 180 ms only during an entrance, caps each IPC reply at 256 KiB and caps the client scan at 256. The generic path uses surface dimensions alone and has no window-wrap capability. Multiple outputs, missing geometry, uncertain output ownership and inadequate corner clearance also exclude wrapping. Maximal/fullscreen or special-workspace reports suppress decorative travel when available.
+
+For the wrap, the actor travels inside one native surface below applications throughout the flight. Hyprland composites the actual windows, including their corner shape and translucency; overlapping applications can hide the character too. Only an unobstructed landing is eligible. The same surface returns to overlay at the idle position, with no actor transfer on landing. Layer-shell provides broad levels, so there is no way to choose a precise slot between two application windows. Decorations extending beyond client geometry, other layer-shell overlays, and a window changing between IPC samples can affect the result. Only the character hit rectangle accepts pointer input and the surface requests no keyboard. A new utterance, interaction, DND, geometry or topology change abandons the route; its brief visibility transition brings the actor back to the conversation. Session lock hides normal surfaces at the compositor. The Tohru locker endpoint also suppresses motion during a lock cycle. Third-party lock/unlock transitions have no portable notification in this adapter.
+
+#### Reproducing the native fixtures
+
+From the checkout, run the following with Lua 5.4 and Python 3. The recording command uses a sandbox with its private nested Hyprland output set to 1920×1080, a built Tohru Pleamar 0.7.27 executable, foot, jq and wf-recorder. Set `FLIGHT_RUNTIME` to that executable and `FLIGHT_RECORDER` if wf-recorder is outside PATH. Use the site's resource admission wrapper on Slurm.
+
+```sh
+lua tests/assistant/flight.lua
+python3 tests/assistant/flight-scene.py
+python3 tests/assistant/flight-demo.py
+"$FLIGHT_RUNTIME" --check shell/bar.plm
+"$FLIGHT_RUNTIME" --check .tmp/flight-demo/flight.plm
+sandbox-display up --hyprland
+gpu-run --vram 2GiB --name "Native entrance recordings" -- tests/assistant/record-flight.sh
+```
+
+The fixture starts a fresh native process for each forced route, uses the production puppet, renderer, flight controller and geometry adapter, and gives the interruption case a real terminal window that moves or closes mid-flight. It leaves `.tmp/{wrap,rise,right,sweep,moved,interrupted,reduced}.mp4`, matching `.tmp/trace-*.log` timing/position traces, and the sampled `.tmp/window.json`. It exercises private display behavior without starting the full bar, voice backend or any model.

@@ -1,5 +1,5 @@
 -- Native subscriptions only. Caller owns output placement and settings lifecycle.
-return function()
+return function(window_changed)
     local icons, window = {}, {}
     local function app_icon()
         local class = window.class or ""
@@ -27,6 +27,7 @@ return function()
         app_icon()
     end
     if not sys.watch("window", function(value)
+        if window_changed then window_changed(value) end
         window = value
         text.bar_title = value.title or ""
         app_icon()

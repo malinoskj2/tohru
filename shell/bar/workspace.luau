@@ -1,5 +1,5 @@
 -- Output ownership is independent of the optional window/workspace protocols.
-return function(rail)
+return function(rail, scene_changed)
     local available, report, preferred, outputs = {}, nil, "", {}
     local function publish_outputs()
         local names, present = {}, {}
@@ -47,8 +47,22 @@ return function(rail)
         rail.observe(math.max(0, slots), active)
         text.ws_error = report and (#list > 10 and "Showing active workspace page; use compositor shortcuts for other pages" or "") or "Workspace protocol unavailable"
     end
-    sys.watch("outputs", function(value) outputs = value.list or {}; publish_outputs() end)
-    sys.watch("workspaces", function(value) report = value; publish() end)
+    local topology, active
+    sys.watch("outputs", function(value)
+        outputs = value.list or {}
+        local names = {}
+        for _, output in ipairs(outputs) do names[#names+1] = output.name or "" end
+        table.sort(names)
+        local identity = table.concat(names, "\n")
+        if topology and topology ~= identity and scene_changed then scene_changed() end
+        topology = identity
+        publish_outputs()
+    end)
+    sys.watch("workspaces", function(value)
+        if active ~= nil and active ~= value.active and scene_changed then scene_changed() end
+        active, report = value.active, value
+        publish()
+    end)
     on("workspace_select", function(value)
         if type(value) ~= "number" or value ~= math.floor(value) or not available[value] then
             text.ws_error = "Workspace activation unavailable"; return
