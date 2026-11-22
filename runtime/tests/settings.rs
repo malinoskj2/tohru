@@ -866,10 +866,15 @@ fn discord_defaults_validation_persistence_and_managed_controls() {
     fs::write(files.managed(), "").unwrap();
     let mut owner = files.owner();
     assert_eq!(
+        owner.get(Key::AssistantDiscordDestination).value,
+        Value::Text("channel".into())
+    );
+    assert_eq!(
         owner.get(Key::AssistantDiscordAllowedUserId).value,
         Value::Text(String::new())
     );
     for key in [
+        Key::AssistantDiscordReceive,
         Key::AssistantDiscordEnabled,
         Key::AssistantDiscordRead,
         Key::AssistantDiscordPost,
@@ -879,6 +884,7 @@ fn discord_defaults_validation_persistence_and_managed_controls() {
         owner.set(key, Value::Bool(true)).unwrap();
     }
     for (key, valid, invalid) in [
+        (Key::AssistantDiscordDestination, "dm", "group-dm"),
         (Key::AssistantDiscordGuildId, "123456789", "../guild"),
         (Key::AssistantDiscordAllowedUserId, "123456789", "@user"),
         (Key::AssistantDiscordChannels, "123, 456", "123,,456"),

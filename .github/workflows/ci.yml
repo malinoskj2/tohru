@@ -70,6 +70,7 @@ jobs:
           done <<'EOF'
           tests/assistant/service.py
           tests/assistant/discord.py
+          tests/assistant/discord-dm.py
           tests/assistant/voice.py
           tests/cli.py
           tests/dev.py

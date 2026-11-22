@@ -477,4 +477,102 @@ outputs.sync = json.encode({
 for _ = 1, 16 do every_cbs[1]() end
 assert(fact.ai_ready)
 
+-- Idle DM polling defers during active desktop/voice work and never speaks or
+-- replaces the selected conversation. The same pending ID is offered again.
+values["assistant.backend"] = "local"
+values["assistant.discord.destination"] = "dm"
+values["assistant.discord.receive"] = true
+values["assistant.discord.enabled"] = true
+values["assistant.discord.read"] = true
+values["assistant.discord.allowed_user_id"] = "9"
+outputs.providers = {{id = "claude", name = "Claude", slot = 0, signed_in = true}}
+outputs["reset-receiver"] = {event = "reset"}
+assistant.configure()
+assistant.configure_discord()
+local poll_tick = every_cbs[2]
+local before_poll = #spawned
+poll_tick()
+assert(#spawned == before_poll + 1 and spawned[#spawned].args[1] == "poll")
+local dm_poll = spawned[#spawned]
+fact.ai_voice_conversation = true
+dm_poll.line({event = "incoming", id = "101"})
+assert(#spawned == before_poll + 1, "active voice defers the pending DM")
+fact.ai_voice_conversation = false
+text.ai_prompt = "  unfinished desktop draft  "
+fact.ai_typed = false -- Actual prompt, not a possibly stale flag, gates dispatch.
+dm_poll.line({event = "incoming", id = "101"})
+assert(#spawned == before_poll + 1, "desktop composition must leave the DM unclaimed")
+dm_poll.exit(nil, 0)
+-- The next poll offers the same pending request after the prompt is cleared.
+text.ai_prompt = ""
+poll_tick()
+dm_poll = spawned[#spawned]
+local before_dm = #spawned
+local before_conversation = assistant.status().conversation
+local dm_speech_events = 0
+assistant.on_speech(function() dm_speech_events = dm_speech_events + 1 end)
+dm_poll.line({event = "incoming", id = "101"})
+local dm_turn = spawned[#spawned]
+assert(#spawned == before_dm + 1 and has(dm_turn.args, "--discord-incoming", "101"))
+assert(dm_turn.how.input == "Discord DM request")
+dm_turn.line({event = "start", conversation = "discord-cid"})
+dm_turn.line({event = "delta", text = "DM answer"})
+assert(assistant.status().conversation == before_conversation)
+assert(dm_speech_events == 0, "DM streaming must not invoke speech listeners")
+local before_second = #spawned
+dm_poll.line({event = "incoming", id = "102"})
+assert(#spawned == before_second, "a running DM turn defers the next request")
+dm_turn.line({event = "done", conversation = "discord-cid"})
+assert(not assistant.streaming())
+assert(dm_speech_events == 0)
+dm_poll.exit(nil, 0)
+-- Typing during a DM turn interrupts it once; Submit queues the desktop text
+-- until cancellation settles, then starts the normal desktop turn automatically.
+poll_tick()
+dm_poll = spawned[#spawned]
+dm_poll.line({event = "incoming", id = "102"})
+dm_turn = spawned[#spawned]
+dm_turn.line({event = "start", conversation = "discord-cid"})
+local interrupted_before = #killed
+text.ai_prompt = "My desktop message"
+emit("text:ai_prompt", text.ai_prompt)
+assert(#killed == interrupted_before + 1 and killed[#killed][2] == "int")
+assert(text.ai_error:find("in%-flight delivery"), "interruption must not claim that delivery was undone")
+local queued_before = #spawned
+emit("assistant_send")
+assert(#spawned == queued_before and text.ai_prompt == "My desktop message")
+emit("assistant_send")
+assert(#spawned == queued_before and text.ai_error:find("already queued"), "the one desktop queue slot must reject repeated submissions explicitly")
+assert(#killed == interrupted_before + 1, "repeated desktop interaction must not stack cancellations")
+dm_turn.line({event = "stopped", conversation = "discord-cid"})
+local desktop_turn = spawned[#spawned]
+assert(dm_speech_events == 0, "interrupting Discord must not start speech")
+assert(#spawned == queued_before + 1 and desktop_turn.how.input == "My desktop message")
+assert(not has(desktop_turn.args, "--discord-incoming", "102"))
+assert(text.ai_prompt == "" and not fact.ai_typed)
+assert(assistant.status().conversation == before_conversation)
+desktop_turn.line({event = "done", conversation = before_conversation})
+dm_poll.exit(nil, 0)
+-- Submit also wins if a prompt-change callback has not run yet.
+poll_tick()
+dm_poll = spawned[#spawned]
+dm_poll.line({event = "incoming", id = "103"})
+dm_turn = spawned[#spawned]
+text.ai_prompt = "Submit before typed callback"
+local direct_submit_before = #spawned
+emit("assistant_send")
+assert(#spawned == direct_submit_before)
+dm_turn.line({event = "stopped", conversation = "discord-cid"})
+desktop_turn = spawned[#spawned]
+assert(desktop_turn.how.input == "Submit before typed callback")
+desktop_turn.line({event = "done", conversation = before_conversation})
+dm_poll.exit(nil, 0)
+poll_tick()
+dm_poll = spawned[#spawned]
+local before_revoke = #spawned
+values["assistant.discord.receive"] = false
+assistant.configure_discord()
+dm_poll.line({event = "incoming", id = "103"})
+assert(#spawned == before_revoke, "late polls cannot dispatch after revocation")
+
 print("Assistant provider choice, models, streaming, Stop, ready mark, sign-in, history, voice turn, drafts, memory hand-off, alerts and Orca backend fixtures passed")

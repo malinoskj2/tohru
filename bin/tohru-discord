@@ -5,13 +5,16 @@ import json
 import os
 import socket
 import sys
-from tohru_discord import status
+from tohru_discord import status, Receiver, Client, DiscordError, effective_config
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="action", required=True)
     commands.add_parser("status", help="Validate local setup without contacting Discord")
+    for action in ("poll", "reset-receiver"):
+        command = commands.add_parser(action)
+        command.add_argument("--settings", default="")
     for action in ("read", "post"):
         command = commands.add_parser(action)
         command.add_argument("channel")
@@ -21,6 +24,22 @@ def main():
             cursor.add_argument("--before")
             cursor.add_argument("--after")
     args = parser.parse_args()
+    if args.action in ("poll", "reset-receiver"):
+        client = Client(load=effective_config(args.settings))
+        import signal
+        signal.signal(signal.SIGINT, lambda *_: client.cancel())
+        signal.signal(signal.SIGTERM, lambda *_: client.cancel())
+        try:
+            receiver = Receiver(client)
+            result = receiver.poll() if args.action == "poll" else receiver.reset()
+            print(json.dumps(result or {"event": "reset"}))
+            return 0
+        except DiscordError as error:
+            print(json.dumps({"event": "error", "message": str(error)}))
+            return 1
+        except (OSError, ValueError):
+            print(json.dumps({"event": "error", "message": "Cannot access Discord receiver state; check private state-directory permissions."}))
+            return 1
     if args.action == "status":
         print(json.dumps(status()))
         return 0
