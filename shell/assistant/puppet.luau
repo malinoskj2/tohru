@@ -423,12 +423,12 @@ return function(full_body)
             leased_art = dir or ""
             sync_art()
         end,
-        hold_pose = function(name)
+        hold_pose = function(name, quiet)
             if not name then
                 held_pose = nil
                 return true
             end
-            if reduced or talking or not POSES[name] or not fact.ai_dg_ready or fact.ai_dg_warm then return false end
+            if (reduced and not quiet) or talking or not POSES[name] or not fact.ai_dg_ready or fact.ai_dg_warm then return false end
             held_pose = name
             pose, plan, step, flourish = name, {}, nil, nil
             heart_t = -1

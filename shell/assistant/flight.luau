@@ -27,8 +27,8 @@ return function(paths, puppet, make_actor)
         local use = keep and fact.ai_use_flight_surface or not keep and enabled and not fact.ai_dg_reduced
         text.ai_flight_output = use and selected or ""
     end
-    local function blocked()
-        return fact.ai_dg_reduced
+    local function blocked(quiet)
+        return (fact.ai_dg_reduced and not quiet)
             or fact.notices_dnd
             or fact.ai_open
             or fact.ai_menu_open
@@ -250,8 +250,8 @@ return function(paths, puppet, make_actor)
 
     if make_actor then
         actor, stop_actor, actor_active = make_actor(puppet, {
-            busy = function()
-                return blocked()
+            busy = function(quiet)
+                return blocked(quiet)
                     or pending
                     or plan
                     or fact.ai_dragon_open
@@ -325,7 +325,10 @@ return function(paths, puppet, make_actor)
                 place(false)
                 fact.ai_use_flight_surface = enabled and not fact.ai_dg_reduced and selected ~= ""
             end
-            if fact.ai_dg_reduced or (not enabled and not (actor_active and actor_active())) then
+            if
+                (fact.ai_dg_reduced and not (actor_active and actor_active(true)))
+                or (not enabled and not (actor_active and actor_active()))
+            then
                 interrupt()
             end
         end,

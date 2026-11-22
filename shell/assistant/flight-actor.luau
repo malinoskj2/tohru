@@ -22,7 +22,7 @@ return function(puppet, host)
             kill(lease.process, "term")
         end
         fact.ai_actor_open, fact.ai_actor_skin_open, fact.ai_actor_released = false, false, true
-        fact.ai_actor_closeup_open = false
+        fact.ai_actor_closeup_open, fact.ai_actor_quiet = false, false
         text.ai_actor_closeup_src, text.ai_actor_skin_src = "", ""
         fact.ai_actor_scale, fact.ai_actor_rotation = 1, 0
         puppet.hold_pose(nil)
@@ -36,9 +36,16 @@ return function(puppet, host)
         end
     end
 
-    function api.register_skin(path, rows)
+    local function can_register(token)
+        if not active then
+            return token == nil
+        end
+        return token == active.token and active.ready and active.pose == nil
+    end
+
+    function api.register_skin(path, rows, token)
         if
-            active
+            not can_register(token)
             or type(path) ~= "string"
             or #path > 4096
             or path:sub(1, 1) ~= "/"
@@ -51,16 +58,23 @@ return function(puppet, host)
         return true
     end
 
-    function api.register_closeup(path)
-        if active or type(path) ~= "string" or #path > 4096 or path:sub(1, 1) ~= "/" then
+    function api.register_closeup(path, token)
+        if not can_register(token) or type(path) ~= "string" or #path > 4096 or path:sub(1, 1) ~= "/" then
             return false
         end
         closeup_path = path
         return true
     end
 
-    function api.acquire(ready, stopped)
-        if active or stopping or host.busy() or type(ready) ~= "function" or type(stopped) ~= "function" then
+    function api.acquire(ready, stopped, options)
+        local quiet = type(options) == "table" and options.quiet == true
+        if
+            active
+            or stopping
+            or host.busy(quiet)
+            or type(ready) ~= "function"
+            or type(stopped) ~= "function"
+        then
             return nil
         end
         local output = host.open()
@@ -68,9 +82,11 @@ return function(puppet, host)
             return nil
         end
         generation = generation + 1
-        local lease = { token = generation, output = output, stopped = stopped, started = os.clock() }
+        local lease =
+            { token = generation, output = output, stopped = stopped, started = os.clock(), quiet = quiet }
         active = lease
-        fact.ai_actor_open, fact.ai_flying, fact.ai_actor_released = true, true, false
+        fact.ai_actor_open, fact.ai_flying, fact.ai_actor_released, fact.ai_actor_quiet =
+            true, not quiet, false, quiet
         fact.ai_flight_alpha = 0.002 -- keep the mapped probe and body resident
         local function receive(raw)
             if active ~= lease then
@@ -114,7 +130,7 @@ return function(puppet, host)
             if active ~= lease then
                 return
             end
-            if host.busy() then
+            if host.busy(lease.quiet) then
                 stop("activity")
                 return
             end
@@ -170,7 +186,7 @@ return function(puppet, host)
         if not lease or lease.token ~= token or not lease.ready then
             return false
         end
-        if host.busy() then
+        if host.busy(lease.quiet) then
             stop("activity")
             return false
         end
@@ -204,6 +220,34 @@ return function(puppet, host)
             stop("sample")
             return false
         end
+        if lease.quiet then
+            local rest = lease.rest
+            local calm = skin or pose == "neutral" or pose == "nested_hover" or pose == "reclined_hover"
+            if
+                not calm
+                or scale > 1
+                or rotation ~= 0
+                or bank ~= 0
+                or air ~= 0
+                or s.behind
+                or not finite(s.x, 0, lease.w)
+                or not finite(s.y, 0, lease.h)
+                or (
+                    rest
+                    and (
+                        s.x ~= rest.x
+                        or s.y ~= rest.y
+                        or scale ~= rest.scale
+                        or pose ~= rest.pose
+                        or s.skin_frame ~= rest.frame
+                    )
+                )
+            then
+                stop("quiet")
+                return false
+            end
+            lease.rest = rest or { x = s.x, y = s.y, scale = scale, pose = pose, frame = s.skin_frame }
+        end
         local now = os.clock()
         if pose ~= lease.pose or not lease.prepared_at then
             puppet.flight(nil)
@@ -216,7 +260,11 @@ return function(puppet, host)
                     stop("pose")
                     return false
                 end
-            elseif not skin and not closeup and (type(pose) ~= "string" or not puppet.hold_pose(pose)) then
+            elseif
+                not skin
+                and not closeup
+                and (type(pose) ~= "string" or not puppet.hold_pose(pose, lease.quiet))
+            then
                 stop("pose")
                 return false
             end
@@ -266,7 +314,9 @@ return function(puppet, host)
         stop("released")
         return true
     end
-    return api, stop, function()
-        return active ~= nil
-    end
+    return api,
+        stop,
+        function(quiet_only)
+            return active ~= nil and (not quiet_only or active.quiet)
+        end
 end

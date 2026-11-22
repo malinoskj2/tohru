@@ -353,3 +353,29 @@ end
 print(
     "PASS finite actor ownership, cold assets without voice, skin/rotation/scale, preemption and stale generation rejection"
 )
+
+puppet.reduced(true)
+assert(not actor.acquire(ready, stopped))
+local quiet = assert(actor.acquire(ready, stopped, { quiet = true }))
+assert(not actor.register_skin("/fixture/other.webp", 12, quiet))
+advance(3250)
+assert(actor.register_skin("/fixture/perch.webp", 12, quiet))
+assert(not actor.register_closeup("/fixture/bust.webp", quiet - 1))
+assert(actor.register_closeup("/fixture/bust.webp", quiet))
+local rest = { x = 320, y = 440, pose = "nested_hover", scale = 0.8 }
+assert(actor.play(quiet, rest))
+assert(not actor.register_closeup("/fixture/replacement.webp", quiet))
+advance(250)
+ok, state = actor.play(quiet, rest)
+assert(ok and state == "ready" and fact.ai_actor_quiet and not fact.ai_flying and not fact.ai_flight_art)
+flight.configure(function(_, fallback)
+    return fallback
+end)
+assert(actor.play(quiet, rest))
+rest.x = 319
+assert(not actor.play(quiet, rest) and reason == "quiet" and not fact.ai_actor_open)
+assert(not actor.register_closeup("/fixture/stale.webp", quiet))
+local denied = assert(actor.acquire(ready, stopped, { quiet = true }))
+advance(3250)
+assert(not actor.play(denied, { x = 320, y = 440, pose = "fly-left" }))
+print("PASS token-bound registration and reduced-motion quiet rest without translation or wingbeats")

@@ -1,7 +1,7 @@
 part AssistantDragon {
     // Body cells are 240 px, drawn at 150 logical px; puppet.luau registers the body, face features and hearts.
     shader ai_dg_glass = file "dragon/glass.wgsl"
-    let ai_float = if(ai_dg_reduced, 0, 4 * sin(time * 90))
+    let ai_float = if(ai_dg_reduced or ai_actor_quiet, 0, 4 * sin(time * 90))
     let ai_dg_x = 30
     let ai_dg_y = 40
     image ai_wingbeat = file "dragon/flight.webp", 1800, 450
@@ -16,6 +16,7 @@ part AssistantDragon {
     fact ai_actor_scale = 1
     fact ai_actor_rotation = 0
     fact ai_actor_released = false
+    fact ai_actor_quiet = false
     fact ai_actor_open = false
     fact ai_flight_art = false
     fact ai_flight_cell = 0
@@ -93,8 +94,8 @@ part AssistantDragon {
         open: ai_use_flight_surface and (ai_dragon_k > 0.01 or ai_dg_warm)
         screens: ai_flight_output
         layer_namespace: "tohru-dragon-flight"
-        let flight_left = if(ai_flying, ai_flight_x - 105, ai_dragon_surface.width - 228)
-        let flight_top = if(ai_flying, ai_flight_y - 115, ai_dragon_surface.height - 248 + if(ai_dg_reduced, 0, (1 - ai_dragon_k) * 24))
+        let flight_left = if(ai_flying or ai_actor_open, ai_flight_x - 105, ai_dragon_surface.width - 228)
+        let flight_top = if(ai_flying or ai_actor_open, ai_flight_y - 115, ai_dragon_surface.height - 248 + if(ai_dg_reduced, 0, (1 - ai_dragon_k) * 24))
         DragonActor(flight_left, flight_top)
         zone box ai_dragon_hit { from: flight_left + 30, flight_top + 30; size: 150, 170; corner: 40; cursor: pointer; active: ai_use_flight_surface and ai_dragon_open and ai_flight_alpha > 0.5; label: "Open this conversation" }
         on press ai_dragon_hit { emit assistant_dragon }
