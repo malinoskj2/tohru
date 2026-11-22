@@ -125,6 +125,7 @@ return function(rail)
         end
     end
     sys.watch("clock", function(value)
+        if same(today, value) then return end
         today = {year = value.year, month = value.month, day = value.day}
         if not year then reset() else publish() end
     end)
