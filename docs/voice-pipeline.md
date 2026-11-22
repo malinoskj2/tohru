@@ -46,28 +46,39 @@ None of these events measures a loudspeaker or physical room echo.
 `TOHRU_VOICE_SEMANTIC=on` opts the voice process into experimental semantic gating;
 the default is off. No Nix change, service or model download is required. Claude
 and Codex reuse the existing silent, tool-free speculative call with prior context.
-Only an explicitly requested semantic draft parses the strict whole-output protocol:
-`WAIT` alone, or `RESPOND` followed by a newline and an answer. Ordinary prose and
+Only an explicitly requested semantic draft parses the strict first-line protocol:
+`WAIT` alone (or newline-terminated), or `RESPOND` followed by a newline and an answer. Ordinary prose and
 labels inside user text have no protocol authority. Answers remain behind the
-existing tool-marker validation, commit, cancellation and rollback gates.
+existing tool-marker validation, commit, cancellation and rollback gates. A complete
+first line emits intent immediately; RESPOND schedules handoff, never speech or
+commit. Answer text is withheld until whole-output validation; WAIT stops the
+tool-free provider early when delimited, or is accepted at EOF. Semantic provider
+work has a 30-second deadline; a stopped promoted draft falls back once to the
+ordinary answer path rather than persisting an unvalidated fragment.
 
 WAIT retains the floor. New speech invalidates the token and ASR changes invalidate
-the text match. Final recognition is checked again; a changed final is retained for
-the next utterance instead of speaking an obsolete draft. Four seconds of quiet
-without accepted intent ends capture and cancels the draft, retaining at most 4096
-characters as continuation in the existing conversation window. The 30-second
-capture ceiling and two-draft budget remain. A long pause therefore needs another
-utterance; it does not leave an audio buffer or provider request running forever.
+the text match. Final recognition is checked again; a changed final cancels the old
+draft and uses the ordinary path once. Confirmed WAIT on unchanged final text, or
+a narrow explicit hold (`hold on`, `let me think`, `let me work this out`, `give me
+a moment`, `wait a moment` at the end), retains at most 4096 characters for the next
+utterance. After six quiet seconds capture ends, but a confirmed WAIT never becomes
+RESPOND because of a timer. The 30-second capture ceiling and two-draft budget remain.
 
 Unsupported backends (including Orca), malformed protocol, errors and timeouts
-abstain. Narrow trailing handoffs (`go ahead`, `your turn`, `over to you`, `what do
+fall back once to ordinary acoustic endpointing, with a metadata reason. Unsupported
+backends also display an explicit capability warning once per conversation context.
+Absent decisions get six quiet seconds before fallback; errors and exhausted budgets
+use the ordinary acoustic hold without another classification retry. This can take
+the floor prematurely on unclassified thinking aloud, but avoids silently losing
+requests. Narrow trailing handoffs (`go ahead`, `your turn`, `over to you`, `what do
 you think`) provide an escape to the normal provider path, also checked after final
 ASR. This heuristic can misread quoted language; semantic mode is not enabled by
 default. Backend changes/end discard capture authority. Metadata-only
-`semantic_decision` and `semantic_deferred` events expose decisions and fallback;
+`semantic_decision`, `semantic_deferred` and `semantic_fallback` events expose decisions and fallback;
 existing draft/stream events expose call and playback costs without transcript logs.
 
-Local SQLite schema 2 preserves full assistant text and attaches a separate
+Local SQLite retains schema version 1, adds an optional default-empty delivery
+column, preserves full assistant text and attaches a separate
 `delivery` note to the interrupted answer when the next turn is committed. Fresh
 provider transcript reconstruction includes that note; resumed native sessions
 receive it on the next request. Native sessions still contain the full generated
@@ -76,6 +87,11 @@ Orca receives the same note in its request, but its remote history has no separa
 reconciled delivery field. Metadata is unavailable if no subsequent request is sent.
 Pauses/backchannels retain the playback generation and resume it; only confirmed
 interruption supplies the note. New queued replies clear evidence from old replies.
+Older schema-1 helpers ignore this additive field and can still read/write the
+database; their exports may omit delivery metadata and their prompts ignore it.
+No production database was opened or downgraded. The unshipped earlier candidate's
+schema-2 test databases must be exported with that candidate and imported into a
+fresh database to use this revision; do not change a production schema version by hand.
 
 See [measurement and remaining gates](natural-turn-measurement.md).
 

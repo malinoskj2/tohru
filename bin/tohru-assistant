@@ -317,7 +317,6 @@ MIGRATIONS = [
         updated INTEGER NOT NULL
     );
     """,
-    "ALTER TABLE turns ADD COLUMN delivery TEXT NOT NULL DEFAULT '';",
 ]
 SCHEMA = len(MIGRATIONS)
 
@@ -337,6 +336,11 @@ def connect(path=None):
     db.execute("PRAGMA foreign_keys=ON")
     db.execute("PRAGMA busy_timeout=5000")
     migrate(db)
+    # Additive optional data: schema-1 helpers use explicit INSERT columns and
+    # ignore unknown SELECT columns, so they remain able to open this database.
+    with transaction(db):
+        if 'delivery' not in {r[1] for r in db.execute('PRAGMA table_info(turns)')}:
+            db.execute("ALTER TABLE turns ADD COLUMN delivery TEXT NOT NULL DEFAULT ''")
     for suffix in ("", "-wal", "-shm"):
         try:
             os.chmod(f"{path}{suffix}", 0o600)
@@ -929,6 +933,24 @@ def voice_turn_output(text):
     if text.startswith("RESPOND\n") and text[8:].strip():
         return "respond", text[8:].strip()
     return "error", ""
+
+
+class VoiceTurnDecision:
+    """Only a delimited first line authorizes intent; never answer delivery."""
+    def __init__(self, notify):
+        self.prefix = ""
+        self.decision = None
+        self.notify = notify
+
+    def feed(self, delta):
+        if self.decision is not None:
+            return
+        self.prefix = (self.prefix + delta)[:64]
+        if '\n' not in self.prefix:
+            return
+        first = self.prefix.split('\n', 1)[0]
+        self.decision = {'WAIT': 'wait', 'RESPOND': 'respond'}.get(first, 'error')
+        self.notify(self.decision)
 
 
 def interrupted_note(spoken):
@@ -2056,8 +2078,18 @@ def local_chat(args, prompt):
     signal.signal(signal.SIGINT, run.stop)
     signal.signal(signal.SIGTERM, run.stop)
     stdin_text = place_prompt(provider, argv, sent)
+    semantic = args.draft and getattr(args, "semantic", False)
+    intent = VoiceTurnDecision(lambda decision: emit({"event": "semantic", "decision": decision}))
+    def on_delta(delta):
+        if semantic:
+            intent.feed(delta)
+            if intent.decision == 'wait':
+                run.stop()
+        else:
+            emit({"event": "delta", "text": delta})
     try:
-        parser, code, errors, stopped = run_provider(provider, argv, stdin_text, lambda d: None if args.draft and getattr(args, "semantic", False) else emit({"event": "delta", "text": d}), run,
+        parser, code, errors, stopped = run_provider(provider, argv, stdin_text, on_delta, run,
+                                                      timeout=30 if semantic else None,
                                                       extra_env={"TOHRU_CONVERSATION": conversation["id"], **orca_env, **discord_env})
     except OSError as error:
         emit({"event": "error", "message": str(error)})
@@ -2068,8 +2100,10 @@ def local_chat(args, prompt):
     answer = parser.text.strip()
     failed = not stopped and (parser.error or (code != 0 and not answer))
     if args.draft:
+        if semantic and intent.decision == 'wait':
+            return 0
         if stopped:
-            emit({"event": "stopped", "conversation": conversation["id"]})
+            emit({"event": "error" if semantic else "stopped", "conversation": conversation["id"], "message": "Speculative answer stopped before validation"})
             return 0
         if failed:
             message = parser.error or (errors[-1].strip() if errors else f"{provider.id} exited with {code}")
@@ -2077,8 +2111,11 @@ def local_chat(args, prompt):
             return 1
         if getattr(args, "semantic", False):
             decision, answer = voice_turn_output(answer)
-            emit({"event": "semantic", "decision": decision})
+            if intent.decision != decision:
+                emit({"event": "semantic", "decision": decision})
             if decision != "respond":
+                if intent.decision == 'respond':
+                    emit({"event": "error", "message": "Invalid completed semantic draft"})
                 return 0
             emit({"event": "delta", "text": answer})
         if DRAFT_NEEDS_TOOLS in answer:

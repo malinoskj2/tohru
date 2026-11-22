@@ -56,12 +56,16 @@ WAKE_DECIDE_MS = 1600
 MOUTH_FPS = 30
 SPOKEN_CHARS = 16384
 SEMANTIC = os.environ.get("TOHRU_VOICE_SEMANTIC", "off") == "on"
-SEMANTIC_TIMEOUT_MS = 4000
+SEMANTIC_TIMEOUT_MS = 6000
 
 
 def explicit_handoff(text):
     # A narrow escape for unsupported backends; labels and arbitrary questions do not qualify.
     return bool(re.search(r"\b(?:your turn|over to you|go ahead|what do you think)$", normalize_transcript(text)))
+
+
+def explicit_hold(text):
+    return bool(re.search(r'\b(?:hold on|let me think|let me work this out|give me a moment|wait a moment)$', normalize_transcript(text)))
 
 KWS_SCORE = 2.0
 KWS_THRESHOLD = 0.05
@@ -1462,6 +1466,8 @@ class Voice:
         return request or ""
 
     def maybe_draft(self, partial):
+        if SEMANTIC and self.semantic_decision in ('error', 'unsupported'):
+            return
         if self.rejected or self.spotting or self.barge_pending or self.thinking or self.draft_count >= MAX_DRAFTS:
             return
         if self.draft_text or (not SEMANTIC and self.turn_complete is False):
@@ -1537,24 +1543,23 @@ class Voice:
         if self.quiet_ms >= hold or self.speech_ms >= MAX_UTTERANCE_MS:
             if SEMANTIC and not self.rejected and not self.spotting and not self.barge_pending and self.draft_candidate(partial):
                 request = self.draft_candidate(partial)
-                if explicit_handoff(request):
+                if self.semantic_decision != 'wait' and explicit_handoff(request):
                     self.semantic_decision = "respond"
                     self.semantic_text = normalize_transcript(request)
                 if self.semantic_decision != "respond":
+                    unavailable = self.semantic_decision in ('error', 'unsupported')
+                    exhausted = not self.draft_text and self.draft_count >= MAX_DRAFTS
+                    if unavailable or exhausted:
+                        diagnostic('semantic_fallback', reason=self.semantic_decision or 'budget', policy='ordinary')
+                        self.discard_draft()
+                        self.end_turn()
+                        return
                     if self.quiet_ms < SEMANTIC_TIMEOUT_MS and self.speech_ms < MAX_UTTERANCE_MS:
                         return
-                    # Bound capture and provider work; retain text for a subsequent handoff.
-                    # Failure is abstention, never confident permission to speak.
-                    final = self.recognizer.finish()
-                    request = self.draft_candidate(final)
-                    self.pending_continuation = request[:4096]
-                    if request:
-                        self.extend_conversation()
-                        self.conversation(True)
-                    diagnostic("semantic_deferred", decision=self.semantic_decision or "timeout")
-                    self.discard_draft()
-                    self.reset_utterance()
-                    return
+                    if self.semantic_decision != 'wait':
+                        diagnostic('semantic_fallback', reason='deadline', policy='ordinary')
+                        self.discard_draft()
+                    # end_turn preserves a confirmed WAIT only if final ASR agrees.
             self.end_turn()
 
     def spot(self, window, speech):
@@ -1611,12 +1616,19 @@ class Voice:
         transcript = "" if self.rejected else self.recognizer.finish()
         if SEMANTIC and not pending and not self.rejected:
             final_request = self.draft_candidate(transcript)
-            if final_request and (self.semantic_decision != "respond" or normalize_transcript(final_request) != self.semantic_text) and not explicit_handoff(final_request):
+            same = normalize_transcript(final_request) == self.semantic_text
+            if final_request and ((same and self.semantic_decision == 'wait') or explicit_hold(final_request)):
                 self.pending_continuation = final_request[:4096]
-                diagnostic("semantic_deferred", decision="final_revision")
+                self.extend_conversation()
+                self.conversation(True)
+                diagnostic("semantic_deferred", decision="wait")
                 self.discard_draft()
                 self.reset_utterance()
                 return
+            if final_request and not same:
+                diagnostic('semantic_fallback', reason='final_unclassified', policy='ordinary')
+                self.discard_draft()
+                active_draft = ''
         diagnostic("asr_finalize_end", turn_id=getattr(self, "turn_id", None))
         if pending:
             if is_backchannel(transcript):
@@ -1708,9 +1720,12 @@ class Voice:
                 text = normalize_transcript(str(message.get("text", "")))
                 if text == self.draft_text:
                     decision = message.get("decision")
-                    self.semantic_decision = decision if decision in ("wait", "respond") else "error"
+                    self.semantic_decision = decision if decision in ("wait", "respond", "unsupported") else "error"
                     self.semantic_text = text
                     diagnostic("semantic_decision", decision=self.semantic_decision)
+                    if decision == 'unsupported' and not getattr(self, 'semantic_warned', False):
+                        self.semantic_warned = True
+                        emit('error', message='Semantic turn detection is unavailable on this backend; using ordinary turn detection.')
         elif cmd == "speech_start":
             if self.paused_reason:
                 return
@@ -1770,6 +1785,7 @@ class Voice:
             except Exception as error:
                 emit("error", message=f"speech settings: {error}")
         elif cmd == "end":
+            self.semantic_warned = False
             self.speech_generation = None
             self.speaker.hush()
             self.discard_draft()

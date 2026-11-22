@@ -1,5 +1,10 @@
 # Natural turns: preregistered lightweight gate
 
+**Current revision:** see [decision-first follow-up](natural-turn-revision.md).
+The results below describe the original `25a5c9b` candidate and remain unchanged
+as historical evidence. Its four-second abstention and schema-2 design have been
+superseded; semantic mode is still off by default.
+
 Baseline: `337530073ae51c5f5e5a16c60c99ccd3776d2ddb`. Before runtime edits,
 50 production voice fixture tests passed and the frozen 12-case authored replay
 reported nine premature handoffs and zero missed requests. Source copies and raw

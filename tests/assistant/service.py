@@ -383,7 +383,7 @@ class Assistant(unittest.TestCase):
     def test_migrations_create_the_schema_and_refuse_a_newer_one(self):
         self.invoke("history")
         db = sqlite3.connect(self.data / "assistant.sqlite")
-        self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 2)
+        self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 1)
         self.assertEqual(db.execute("PRAGMA journal_mode").fetchone()[0], "wal")
         tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         self.assertTrue({"conversations", "turns", "turns_fts", "memories", "memories_fts", "summaries", "relationship"} <= tables)
@@ -553,6 +553,32 @@ class Assistant(unittest.TestCase):
         ordinary = self.events(self.invoke("chat", "--provider", "claude", "--voice", "--draft",
                                            stdin="Quote a label", FAKE_ANSWER="WAIT"))
         self.assertFalse(any(e['event'] == 'semantic' for e in ordinary))
+
+    def test_decision_precedes_answer_without_streaming_unvalidated_text(self):
+        env = {**self.env, 'FAKE_ANSWER': 'RESPOND\nFirst second third fourth.', 'FAKE_DELAY': '0.08'}
+        process = subprocess.Popen([str(HELPER), 'chat', '--provider', 'claude', '--voice', '--draft', '--semantic'],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, env=env)
+        process.stdin.write('Explain this please')
+        process.stdin.close()
+        events = [(json.loads(line), time.monotonic()) for line in process.stdout]
+        process.stdout.close()
+        self.assertEqual(process.wait(), 0)
+        intent = next(t for e,t in events if e['event'] == 'semantic')
+        delta = next(t for e,t in events if e['event'] == 'delta')
+        self.assertGreater(delta-intent, .15)
+        self.assertEqual(events[-1][0]['event'], 'done')
+
+    def test_optional_delivery_column_keeps_schema_one_compatible(self):
+        result = self.chat('--provider', 'claude', stdin='Hello')
+        cid = result[0]['conversation']
+        db = sqlite3.connect(self.data / 'assistant.sqlite')
+        self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 1)
+        # The old helper inserts explicit columns and ignores delivery on read.
+        db.execute("INSERT INTO turns(id,conversation_id,seq,role,text,time) VALUES(?,?,?,?,?,?)",
+                   ('a'*32,cid,2,'user','Old writer',1))
+        db.commit()
+        self.assertEqual(db.execute('SELECT delivery FROM turns WHERE id=?', ('a'*32,)).fetchone()[0], '')
+        db.close()
 
     def test_draft_forks_session_without_writing_history_until_committed(self):
         # First turn establishes a Claude session.
