@@ -2,7 +2,7 @@ part WorkspaceRibbon {
     let ws_x = 112 + if(bar_mooncoil, 29, 0)
     shader rail_shader { at: ws_x - 12, -6; size: ws_width + 24, 42; values: rail.x.0, vel(rail.x.0), if(rail.present.0, rail.bead.0, -1), rail.c.0, rail.amp.0, rail.wash.0, rail.wc.0, rail.wave.0; colors: rgb(rail.red.0, rail.green.0, rail.blue.0), #ffffff; show: ws_available }
     repeat i in 1..11 {
-        zone box workspace_cell.$i { from: ws_x + (i - 1) * 16, 4.5; size: 16, 22; active: ws_available and ws_advertised.$i and i * 16 <= ws_width; cursor: pointer; label: "Workspace {i}" }
+        zone box workspace_cell.$i { from: ws_x + (i - 1) * 16, 4.5; size: 16, 22; active: ws_available and ws_advertised.$i and i * 16 <= ws_width; cursor: pointer; label: ws_name.$i }
         on press workspace_cell.$i { emit workspace_select(i) }
     }
 }

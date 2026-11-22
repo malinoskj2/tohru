@@ -1,0 +1,218 @@
+--- a/src/platform/compositor.rs
++++ b/src/platform/compositor.rs
+@@ -1,7 +1,7 @@
+ //! The services that depend on the compositor, spoken through **standard protocols**:
+ //! `wlr-foreign-toplevel-management` for the active window and `ext-workspace` for the
+-//! workspaces. sway, river, niri, Wayfire, COSMIC, Hyprland… understand them, so what
+-//! is here works on any Wayland that ships them, without knowing which one it is.
++//! workspaces. These services are available only when the compositor advertises
++//! their protocols; output discovery is independent of both services.
+ //!
+ //! Hyprland has its own path (`hyprland.rs`), which gives more data and is tried first.
+ //! This is what keeps pleamar from belonging to a single compositor.
+@@ -14,6 +14,10 @@
+ use std::sync::{Arc, Mutex, OnceLock};
+ use wayland_client::protocol::{wl_output, wl_registry, wl_seat};
+ use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
++use wayland_protocols::xdg::xdg_output::zv1::client::{
++    zxdg_output_manager_v1::ZxdgOutputManagerV1,
++    zxdg_output_v1::{self as xdg_output, ZxdgOutputV1},
++};
+ use wayland_protocols::ext::workspace::v1::client::{
+     ext_workspace_group_handle_v1::{self as group_handle, ExtWorkspaceGroupHandleV1},
+     ext_workspace_handle_v1::{self as workspace_handle, ExtWorkspaceHandleV1},
+@@ -52,6 +56,7 @@
+     /// The order in which the compositor reported it: it is the number it is called by.
+     number: i64,
+     monitor: String,
++    can_activate: bool,
+ }
+ 
+ #[derive(Default)]
+@@ -71,6 +76,11 @@
+     group_monitor: HashMap<u32, String>,
+     workspace_group: HashMap<u32, u32>,
+     output_name: HashMap<u32, String>,
++    output_globals: HashMap<u32, u32>,
++    dispatch_outputs: Option<Box<dyn Fn(SysValue) + Send>>,
++    protocols: Vec<String>,
++    outputs: HashMap<u32, wl_output::WlOutput>,
++    xdg_output_manager: Option<ZxdgOutputManagerV1>,
+     dispatch_window: Option<Box<dyn Fn(SysValue) + Send>>,
+     dispatch_workspaces: Option<Box<dyn Fn(SysValue) + Send>>,
+     last_window: String,
+@@ -79,6 +89,16 @@
+ }
+ 
+ impl State {
++    fn report_outputs(&self) {
++        if let Some(dispatch) = &self.dispatch_outputs {
++            let mut names: Vec<_> = self.output_name.values().filter(|n| !n.is_empty()).cloned().collect();
++            names.sort();
++            names.dedup();
++            dispatch(SysValue::Map(vec![("list".into(), SysValue::List(names.into_iter().map(|name|
++                SysValue::Map(vec![("name".into(), SysValue::Text(name))])).collect()))]));
++        }
++    }
++
+     /// What the `window` service reports: the window that has the focus, and
+     /// all of them in the order they came —each with its `id`, for
+     /// `window.restore(id)`—.
+@@ -127,12 +147,14 @@
+         list.sort_by_key(|e| e.number);
+         let active = list.iter().find(|e| e.active).map_or(0, |e| e.number);
+         let v = SysValue::Map(vec![
++            ("backend".into(), SysValue::Text("ext-workspace-v1".into())),
+             ("active".into(), SysValue::Num(active as f64)),
+             ("list".into(), SysValue::List(list.iter().map(|e| SysValue::Map(vec![
+                 ("id".into(), SysValue::Num(e.number as f64)),
+                 ("name".into(), SysValue::Text(e.name.clone())),
+                 // How many windows it has is not something this protocol says.
+-                ("windows".into(), SysValue::Num(0.0)),
++                ("windows_known".into(), SysValue::Bool(false)),
++                ("can_activate".into(), SysValue::Bool(e.can_activate)),
+                 ("monitor".into(), SysValue::Text(e.monitor.clone())),
+                 // Whether it is the active one on its monitor: what a per-screen bar needs.
+                 ("active".into(), SysValue::Bool(e.active)),
+@@ -165,7 +187,15 @@
+ 
+ impl Dispatch<wl_registry::WlRegistry, ()> for State {
+     fn event(e: &mut Self, registry: &wl_registry::WlRegistry, ev: wl_registry::Event, _: &(), _: &Connection, qh: &QueueHandle<Self>) {
++        if let wl_registry::Event::GlobalRemove { name } = &ev {
++            if let Some(id) = e.output_globals.remove(name) {
++                e.output_name.remove(&id);
++                e.outputs.remove(&id);
++                e.report_outputs();
++            }
++        }
+         if let wl_registry::Event::Global { name, interface, version } = ev {
++            e.protocols.push(interface.clone());
+             match interface.as_str() {
+                 "zwlr_foreign_toplevel_manager_v1" => {
+                     e.lists_windows = true;
+@@ -174,8 +204,16 @@
+                 "ext_workspace_manager_v1" => {
+                     e.manager = Some(registry.bind::<ExtWorkspaceManagerV1, _, _>(name, version.min(1), qh, ()));
+                 }
++                "zxdg_output_manager_v1" => {
++                    let manager = registry.bind::<ZxdgOutputManagerV1, _, _>(name, version.min(3), qh, ());
++                    for output in e.outputs.values() { manager.get_xdg_output(output, qh, key(output)); }
++                    e.xdg_output_manager = Some(manager);
++                }
+                 "wl_output" => {
+-                    registry.bind::<wl_output::WlOutput, _, _>(name, version.min(4), qh, ());
++                    let output = registry.bind::<wl_output::WlOutput, _, _>(name, version.min(4), qh, ());
++                    e.output_globals.insert(name, key(&output));
++                    if let Some(manager) = &e.xdg_output_manager { manager.get_xdg_output(&output, qh, key(&output)); }
++                    e.outputs.insert(key(&output), output);
+                 }
+                 "wl_seat" if e.seat.is_none() => {
+                     e.seat = Some(registry.bind::<wl_seat::WlSeat, _, _>(name, version.min(1), qh, ()));
+@@ -190,6 +228,19 @@
+     fn event(e: &mut Self, output: &wl_output::WlOutput, ev: wl_output::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+         if let wl_output::Event::Name { name } = ev {
+             e.output_name.insert(key(output), name);
++            e.report_outputs();
++        }
++    }
++}
++
++impl Dispatch<ZxdgOutputManagerV1, ()> for State {
++    fn event(_: &mut Self, _: &ZxdgOutputManagerV1, _: wayland_protocols::xdg::xdg_output::zv1::client::zxdg_output_manager_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
++}
++
++impl Dispatch<ZxdgOutputV1, u32> for State {
++    fn event(e: &mut Self, _: &ZxdgOutputV1, event: xdg_output::Event, output: &u32, _: &Connection, _: &QueueHandle<Self>) {
++        if let xdg_output::Event::Name { name } = event {
++            if e.outputs.contains_key(output) { e.output_name.insert(*output, name); e.report_outputs(); }
+         }
+     }
+ }
+@@ -269,6 +320,7 @@
+             workspace_manager::Event::Done => {
+                 // Now we know which monitor each one belongs to.
+                 let groups = e.workspace_group.clone();
++                for workspace in e.workspaces.values_mut() { workspace.monitor.clear(); }
+                 for (k, g) in groups {
+                     if let (Some(m), Some(w)) = (e.group_monitor.get(&g).cloned(), e.workspaces.get_mut(&k)) {
+                         w.monitor = m;
+@@ -312,13 +364,13 @@
+         let k = key(w);
+         match ev {
+             workspace_handle::Event::Name { name } => {
+-                // If it is named with a number, that is its number: so `focus(3)` is the "3".
+-                if let Ok(n) = name.parse::<i64>() {
+-                    if let Some(x) = e.workspaces.get_mut(&k) {
+-                        x.number = n;
+-                    }
+-                }
+                 e.workspaces.entry(k).or_default().name = name;
++            }
++            workspace_handle::Event::Capabilities { capabilities } => {
++                e.workspaces.entry(k).or_default().can_activate = match capabilities {
++                    wayland_client::WEnum::Value(v) => v.contains(workspace_handle::WorkspaceCapabilities::Activate),
++                    _ => false,
++                };
+             }
+             workspace_handle::Event::State { state } => {
+                 let active = match state {
+@@ -347,7 +399,17 @@
+     };
+     let mut e = state.lock().unwrap();
+     match name {
++        "outputs" => { e.dispatch_outputs = Some(dispatch); e.report_outputs(); }
++        "compositor" => {
++            dispatch(SysValue::Map(vec![
++                ("backend".into(), SysValue::Text("wayland-protocols".into())),
++                ("window".into(), SysValue::Bool(e.lists_windows)),
++                ("workspaces".into(), SysValue::Bool(e.manager.is_some())),
++                ("protocols".into(), SysValue::List(e.protocols.iter().cloned().map(SysValue::Text).collect())),
++            ]));
++        }
+         "window" => {
++            if !e.lists_windows { return false; }
+             e.dispatch_window = Some(dispatch);
+             e.last_window.clear();
+             e.report_window();
+@@ -398,6 +460,7 @@
+     let e = control.state.lock().unwrap();
+     let found = e.workspaces.iter().find(|(_, x)| x.number == *n as i64).map(|(k, _)| *k);
+     let (Some(k), Some(m)) = (found, e.manager.clone()) else { return Err(format!("there is no workspace {n}")) };
++    if !e.workspaces.get(&k).is_some_and(|w| w.can_activate) { return Err("workspace activation is unsupported".into()); }
+     let Some(h) = e.handles.get(&k) else { return Err(format!("workspace {n} is gone")) };
+     h.activate();
+     m.commit();
+@@ -420,9 +483,6 @@
+     // A compositor that lists its windows is one, even with none open yet:
+     // Marea starts with the session, before any window, and taking «none
+     // yet» for «it cannot» left her following nobody all session long.
+-    if !state.lists_windows && state.manager.is_none() {
+-        return None;
+-    }
+     let state = Arc::new(Mutex::new(state));
+     let _ = CONTROL.set(Control { connection: connection.clone(), state: state.clone() });
+     let shared = state.clone();
+--- a/src/platform/mod.rs
++++ b/src/platform/mod.rs
+@@ -147,6 +147,10 @@
+         "thumbnails" => return thumbnails::service(notify),
+         "gamepad" => return gamepad::service(notify),
+         _ => {}
++    }
++    #[cfg(target_os = "linux")]
++    if matches!(name, "outputs" | "compositor") {
++        return compositor::service(name, notify);
+     }
+     // `PLEAMAR_GENERIC=1` skips the Hyprland path: it's how to test here what
+     // the other compositors will see.
+--- a/src/language/vocabulary.rs
++++ b/src/language/vocabulary.rs
+@@ -140,6 +140,8 @@
+     ("media", &["playing", "title", "artist", "album", "length", "position", "rate", "can_seek", "art", "volume", "player", "players"]),
+     ("window", &["title", "class", "monitor", "fullscreen", "maximized", "list"]),
+     ("thumbnails", &["list", "capturing"]),
++    ("outputs", &["list"]),
++    ("compositor", &["backend", "window", "workspaces", "protocols"]),
+     ("workspaces", &["active", "list"]),
+     ("apps", &["list"]),
+     ("tray", &["list"]),
