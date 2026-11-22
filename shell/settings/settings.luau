@@ -13,15 +13,13 @@ local overrides = {
         return "setting_notifications_position " .. (value == "bottom-right" and 1 or 0)
     end,
 }
-local refresh, corner_size
+local refresh
 local function tell_bar(command)
     local ok, err = pcall(sys.call, "say", "tohru", command)
     if not ok then text.settings_ui_error = "The bar did not take the change: " .. tostring(err) end
 end
 local function applied(settings, warning)
     text.settings_error = warning or ""
-    corner_size.publish(settings)
-    refresh(settings)
     local source = settings["assistant.voice_source"]
     if source and source.runtime_override then
         tell_bar("text setting_key assistant.voice_source")
@@ -35,11 +33,9 @@ local function applied(settings, warning)
         if event then tell_bar("emit " .. event) end
     end
 end
-corner_size = require("corner-size")(function(settings) applied(settings, text.settings_error) end)
-refresh = require("controller")(applied)
-corner_size.publish(tohru_settings.snapshot())
-on("settings_open_request", function()
-    local ok, settings = pcall(tohru_settings.reload)
-    if ok then corner_size.publish(settings); refresh(settings) else text.settings_ui_error = tostring(settings) end
+local corner_size = require("corner-size")(function(settings)
+    refresh(settings)
+    applied(settings, text.settings_error)
 end)
+refresh = require("controller")(applied, corner_size.publish)
 fact.settings_open = true

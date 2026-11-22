@@ -9,14 +9,14 @@ The media popup (Prism Edge), opened from the bar's song label. It runs in the b
 | `state.plm` | Popup facts and texts, up to 8 players in `media_players`, the `media_*` events, icons, the fold and dim springs, and the position clock |
 | `popup.plm` | The `316 × 166 px` compact popup: the artwork strip with its play/pause badge, the player chip, remaining time, title, artist, the elapsed numeral, previous/play-pause/next, the progress rail and the light edge. It unfolds into a header, a row per player (at most five shown) and a volume rail |
 | `lens.wgsl` | The group shader over the artwork: the strip as a chamfered lens, its mean colour bled into the frosted pane, blurred and greyed while paused, empty glass with nothing playing. With `b.w = 1` it draws a player row's colour tab from that row's artwork |
-| `controller.luau` | Turns `media` reports into facts and the player list, keeps the position clock, and turns popup actions into `media.*` calls. Returns `{observe, open, close, toggle}` |
+| `controller.luau` | Turns `media` reports into facts and the player list, keeps the position clock, and turns popup actions into `media.*` calls. Returns `{open, close, toggle}` |
 | `pause.svg`, `previous.svg`, `next.svg`, `music.svg` | Lucide icons (ISC; see `LICENSE.LUCIDE`) |
 
 The play, speaker and muted icons come from `shell/service-assets/`. The label and its `root_media` zone are in `shell/services.plm`.
 
 ## How it is wired
 
-`shell/bar.plm` includes `media/state.plm` and `media/popup.plm`, with the `media` and `media.*` permissions. The bar keeps its one `media` watch in `bar/controller.luau`, which passes each report on to `media.observe`; `shell/bar.luau` closes the other popups when this one opens, so one popup is open at a time. The popup is centred under the label, kept 8 px from the output's edges, and takes the keyboard while open.
+`shell/bar.plm` includes `media/state.plm` and `media/popup.plm`, with the `media` and `media.*` permissions. The headline and popup register separate callbacks on the same native `media` subscription. `shell/bar.luau` closes the other popups when this one opens, so one popup is open at a time. The popup is centred under the label, kept 8 px from the output's edges, and takes the keyboard while open.
 
 The progress bead is rail 5 of `bar/rail-state.plm`, drawn by the workspace ribbon's `rail_shader`: a jump (a seek, another song or player) glides it with the ribbon's wave and a drag stretches it as the ribbon's bead does. The elapsed time is a scene clock that runs while the popup is open and the player plays; each report reseeds it.
 

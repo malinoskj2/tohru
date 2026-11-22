@@ -91,7 +91,7 @@ on("sound_open_request", osd.hide)
 on("sound_toggle", function() if fact.sound_open then osd.hide() end end)
 
 local media = require("media/controller")()
-require("bar/controller")(media.observe)
+require("bar/controller")()
 require("bar/launcher")()
 local calendar = require("calendar/controller")(make_rail(1, 21))
 local network = require("network/controller")(make_rail(8))
