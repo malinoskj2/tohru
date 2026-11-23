@@ -15,13 +15,13 @@ return function(assistant, puppet, flight, service_executable)
     local DRAGON_LINGER = 5000
     local spoken, hide_serial = nil, 0
     local loaded = false
+    local hearing = false
     local barged, cancelling, queued, interrupted_spoken = false, false, nil, nil
     local GREETINGS = {"Yes?", "I'm here.", "Mm? What is it?", "You called?", "Here I am. What do you need?", "Hello again."}
     local greeted = 0
     local greeting_serial = 0
     local send
     local task_clock = 0
-    local hearing = false
     local task_speech = require("assistant/task-speech")(function() return task_clock end,
         function(message, chat)
             turn_generation = turn_generation + 1
@@ -161,6 +161,7 @@ return function(assistant, puppet, flight, service_executable)
                 after(5000, function() if transcript_serial == mine then text.ai_transcript = "" end end)
             end
         elseif event == "listening" then
+            if not message.on then hearing = false end
             text.ai_voice_source = tostring(message.source or "default")
             text.ai_voice_aec = tostring(message.aec or "unknown")
             assistant.listening(message.on == true)
@@ -379,7 +380,7 @@ return function(assistant, puppet, flight, service_executable)
         local visible = (fact.ai_dragon_open or status.open) and (not status.open or status.conversation == text.ai_voice_result_chat)
         local allowed, reason = voice_return.take(text.ai_voice_result_chat, text.ai_voice_result_request,
             text.ai_voice_result_completion, visible == true,
-            fact.ai_voice_paused or fact.notices_dnd or fact.ai_speaking or fact.ai_listening
+            fact.ai_voice_paused or fact.notices_dnd or fact.ai_speaking or hearing
                 or (assistant.streaming and assistant.streaming()))
         send({cmd = "diagnostic", stage = allowed and "continuation_speech" or "continuation_dropped",
             request = text.ai_voice_result_request, completion = text.ai_voice_result_completion, visible = visible == true, reason = reason})

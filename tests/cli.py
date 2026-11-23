@@ -3,6 +3,7 @@
 import fcntl
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -44,6 +45,13 @@ class Cli(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout), ["--say", "tohru", "text ai_voice_result_chat " + chat,
             "text ai_voice_result_request orca:request", "text ai_voice_result_completion turn:final",
             "text ai_voice_result_text Analyzed answer.", "emit assistant_voice_result"])
+        # IPC acceptance alone does not deliver an event the receiving scene never registered.
+        schema = (ROOT / "shell/assistant/state.plm").read_text()
+        declared_events = set(re.findall(r"^\s*event\s+(\w+)\s*->", schema, re.MULTILINE))
+        declared_text = set(re.findall(r"^\s*text\s+(\w+)\s*=", schema, re.MULTILINE))
+        for command in json.loads(result.stdout)[2:]:
+            kind, name, *_ = command.split(" ")
+            self.assertIn(name, declared_events if kind == "emit" else declared_text)
         bad = self.invoke("assistant", "voice-result", "--chat", chat, "--request", "bad\nidentity", "--completion", "final", "--", "Answer")
         self.assertEqual(bad.returncode, 2)
         self.assertEqual(bad.stdout, "")

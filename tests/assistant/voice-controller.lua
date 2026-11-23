@@ -336,6 +336,7 @@ local function background_result(id, visible, chat, request)
     events.assistant_voice_result()
 end
 local before_result = #written
+current_service.line({event="listening", on=true}) -- the microphone stays open between utterances
 background_result("final-summary", true)
 assert(#written == before_result + 2 and written[#written].message.cmd == "speech_end")
 background_result("final-summary", true)
@@ -348,6 +349,14 @@ assistant.status = function() return {open=true, conversation="another-popup-cha
 background_result("other-popup-summary", true)
 assert(#written == before_result + 2)
 assistant.status = nil
+current_service.line({event="hearing", on=true})
+background_result("capturing-summary", true)
+assert(#written == before_result + 2)
+current_service.line({event="hearing", on=false})
+background_result("capturing-summary", true)
+assert(#written == before_result + 2) -- rejected during speech, never replayed afterward
+background_result("idle-listening-summary", true)
+assert(#written == before_result + 4)
 events.assistant_hush()
 before_result = #written
 background_result("interrupted-summary", true)
