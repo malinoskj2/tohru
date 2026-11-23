@@ -1,0 +1,18 @@
+{
+  "orcaVersion": "1.4.268",
+  "patchSha256": "5565c2b2bf651e58f04807e0393011c6209de7d58d8a7c9b3b31ff4b9974de49",
+  "baseFiles": {
+    "src/cli/orchestration/workers/worker-start-agent-view.ts": "45a31087a16474eac747288aa9bc3eb0f20c9bbb580977c547340aa03a81ab65",
+    "src/cli/orchestration/agent-view.test.ts": "ace095b8db5e15b28f640452ab57a45ca256bfec67beeaf55bd970f3259018ad",
+    "src/main/bots/desktop-voice-continuations.ts": "e031ebe904ffee17ad11be0bf05d97d2a2d03a18ece028ff2cf785043797a870",
+    "src/main/bots/bot-preamble.ts": "55028d0b136beffa3d425cdadeeeade6032f4019053bb6ac945582300b537fed",
+    "src/main/runtime/rpc/methods/bots-voice.ts": "af8528fa3fc67566c9dbfb1fa105ede21360a30111557a9c37b19fa83714ad02",
+    "src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-worker-start.test.ts": "c08e945d5cdfe346d01683b69db3472b38b9d3fdce6935657877f94d2793a66e",
+    "src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-coordinator-mail-rig.test-fixture.ts": "016c802d1f882353b16cdadbf85a93873f25cea5dc4868c20f27b21316fc4cbc",
+    "src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-coordinator-fake-codex-fixture.ts": "f0ceff4b450775b59643f2bd6d2ac10c30153b21da06a42ea29be86c1a1c8186",
+    "src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.ts": "7477ddfee6a528bab9a14a147c9b57f2551dbe21dec95ccfd725cd4d07a492a3",
+    "src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.test.ts": "bf33ef9753493c5ce9f2afcf4421488d8023a66c8254510b9521df5e6ede8f11"
+  },
+  "requires": "desktop-voice-background-protocol.patch",
+  "deployedTohruBase": "86a51d8491969b72017d177d55c56926b6790247"
+}

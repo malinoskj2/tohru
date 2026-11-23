@@ -14,6 +14,7 @@ TESTS = [
     'src/main/bots/desktop-voice-continuations.test.ts',
     'src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.test.ts',
     'src/cli/arguments/args.test.ts',
+    'src/cli/orchestration/agent-view.test.ts',
 ]
 
 def main():

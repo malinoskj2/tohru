@@ -3,6 +3,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import patch
+import subprocess
 
 spec = importlib.util.spec_from_file_location('supervisor', Path(__file__).with_name('restart-supervisor.py'))
 supervisor = importlib.util.module_from_spec(spec)
@@ -109,6 +111,53 @@ class SupervisorTests(unittest.TestCase):
         self.assertFalse(self.run_plan(host, ready_timeout=0))
         self.assertEqual(len([x for x in host.actions if x[0] == 'launch']), 1)
         self.assertIn('retained for inspection', self.events[-1][1]['reason'])
+
+    def test_lost_launch_reply_never_duplicates_an_active_or_unknown_unit(self):
+        for unknown in (False, True):
+            host = FakeHost(('pending', 'ready'))
+            launch = host.launch
+            def uncertain(unit, log):
+                launch(unit, log)
+                raise subprocess.CalledProcessError(1, 'systemd-run')
+            host.launch = uncertain
+            if unknown:
+                host.unit = lambda unit: {'pid': 0, 'active': False, 'unknown': True, 'exit_status': None}
+            self.assertFalse(self.run_plan(host))
+            self.assertEqual(len([x for x in host.actions if x[0] == 'launch']), 1)
+            self.assertIn('original unit retained', self.events[-1][1]['reason'])
+
+    def test_unit_inspection_timeout_is_unknown_and_activating_without_pid_is_pending(self):
+        host = supervisor.Host({'systemctl': 'systemctl'})
+        with patch.object(supervisor.subprocess, 'run', side_effect=subprocess.TimeoutExpired('systemctl', 5)):
+            self.assertTrue(host.unit('test')['unknown'])
+        result = subprocess.CompletedProcess([], 0, stdout='MainPID=0\nActiveState=activating\nSubState=start\nLoadState=loaded\n', stderr='')
+        with patch.object(supervisor.subprocess, 'run', return_value=result):
+            self.assertTrue(host.unit('test')['active'])
+
+    def test_proven_failed_launch_reply_can_retry_without_second_shutdown(self):
+        host = FakeHost(('failed', 'ready'))
+        launch = host.launch
+        def first_failed(unit, log):
+            launch(unit, log)
+            if unit.endswith('-1'):
+                raise subprocess.CalledProcessError(1, 'systemd-run')
+        host.launch = first_failed
+        self.assertTrue(self.run_plan(host))
+        self.assertEqual(len([x for x in host.actions if x[0] == 'stop']), 1)
+
+    def test_gui_unit_unsets_unsafe_manager_environment_at_the_service_boundary(self):
+        host = supervisor.Host({'systemd_run': 'systemd-run', 'gui': '/installed/gui',
+              'profile': [], 'env': {'HOME': '/home/test'}})
+        result = subprocess.CompletedProcess([], 0, stdout='', stderr='')
+        with patch.object(supervisor.subprocess, 'run', return_value=result) as run:
+            host.launch('test', Path('/tmp/owned-log'))
+            args = run.call_args.args[0]
+        unset = next(arg for arg in args if arg.startswith('--property=UnsetEnvironment='))
+        self.assertIn('ELECTRON_RUN_AS_NODE', unset)
+        self.assertIn('ORCA_AGENT_SESSION_ID', unset)
+        self.assertIn('NODE_OPTIONS', unset)
+        self.assertIn('LD_LIBRARY_PATH', unset)
+        self.assertEqual(run.call_args.kwargs['timeout'], 10)
 
     def test_explicit_path_and_no_provider_or_node_handoff(self):
         env = supervisor.desktop_environment({'HOME': '/home/test', 'WAYLAND_DISPLAY': 'wayland-1',

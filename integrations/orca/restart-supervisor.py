@@ -21,6 +21,12 @@ DESKTOP_KEYS = {
     'GTK_IM_MODULE', 'QT_IM_MODULE', 'ELECTRON_OZONE_PLATFORM_HINT',
 }
 TRUSTED_PATH = '/run/current-system/sw/bin:/etc/profiles/per-user/jesse/bin'
+DENIED_KEYS = (
+    'ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'LD_LIBRARY_PATH', 'ORCA_CLI_COMMAND',
+    'ORCA_AGENT_SESSION_ID', 'ORCA_TERMINAL_HANDLE', 'ORCA_PANE_KEY', 'ORCA_TAB_ID',
+    'ORCA_WORKTREE_ID', 'ORCA_REPO_ID', 'ORCA_DEV_REPO_ROOT', 'ORCA_ENVIRONMENT',
+    'ORCA_PAIRING_CODE',
+)
 
 
 def digest(value):
@@ -35,6 +41,7 @@ def write(path, value):
 
 
 def checked(command, **kwargs):
+    kwargs.setdefault('timeout', 15)
     return subprocess.run(command, check=True, text=True, stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE, **kwargs).stdout.strip()
 
@@ -98,20 +105,24 @@ class Host:
     def launch(self, unit, log):
         args = [self.plan['systemd_run'], '--user', '--unit=' + unit,
                 '--service-type=exec', '--property=Restart=no', '--property=RemainAfterExit=yes',
+                '--property=UnsetEnvironment=' + ' '.join(DENIED_KEYS),
                 '--property=StandardOutput=append:' + str(log),
                 '--property=StandardError=append:' + str(log)]
         args += ['--setenv=' + k + '=' + v for k, v in self.plan['env'].items()]
-        checked([*args, self.plan['gui'], *self.plan['profile']])
+        checked([*args, self.plan['gui'], *self.plan['profile']], timeout=10)
 
     def unit(self, unit):
-        result = subprocess.run([self.plan['systemctl'], '--user', 'show', unit,
-                                 '-p', 'MainPID', '-p', 'ActiveState', '-p', 'SubState', '-p', 'ExecMainStatus'],
-                                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            result = subprocess.run([self.plan['systemctl'], '--user', 'show', unit,
+                                     '-p', 'MainPID', '-p', 'ActiveState', '-p', 'SubState', '-p', 'ExecMainStatus', '-p', 'LoadState'],
+                                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+        except subprocess.TimeoutExpired:
+            return {'pid': 0, 'active': False, 'unknown': True, 'exit_status': None}
         fields = dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
         pid = int(fields.get('MainPID', '0'))
         return {'pid': pid,
-                'active': fields.get('ActiveState') in ('active', 'activating') and pid > 0,
-                'unknown': result.returncode != 0,
+                'active': fields.get('ActiveState') in ('active', 'activating', 'deactivating') and fields.get('SubState') != 'exited',
+                'unknown': (result.returncode != 0 and fields.get('LoadState') != 'not-found') or 'ActiveState' not in fields,
                 'exit_status': fields.get('ExecMainStatus')}
 
 
@@ -149,7 +160,13 @@ def execute(plan, host, record, stop_timeout=30, ready_timeout=120):
         try:
             host.launch(unit, log)
         except subprocess.SubprocessError as error:
-            record('launch_failed', attempt=attempt, error=type(error).__name__)
+            owned = host.unit(unit)
+            record('launch_unconfirmed', attempt=attempt, error=type(error).__name__, unit=unit)
+            if owned['active'] or owned.get('unknown'):
+                record('failed', reason='launch reply uncertain; original unit retained for inspection', unit=unit)
+                return False
+            record('launch_exited', attempt=attempt, exit_status=owned['exit_status'])
+            host.pause(plan['delay'])
             continue
         end = time.monotonic() + ready_timeout
         while time.monotonic() < end:

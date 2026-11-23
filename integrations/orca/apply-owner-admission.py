@@ -15,12 +15,16 @@ def digest(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', required=True, type=Path)
-    parser.add_argument('--stage', choices=('owner', 'background'), default='owner')
+    parser.add_argument('--stage', choices=('owner', 'background', 'interest'), default='owner')
     args = parser.parse_args()
     source = args.source.resolve()
     if not source.is_relative_to(ROOT / '.tmp'):
         parser.error('--source must be an isolated test tree under this worktree .tmp')
-    manifest, name = ('owner-admission-provenance.json', 'desktop-voice-owner-admission.patch') if args.stage == 'owner' else ('background-protocol-provenance.json', 'desktop-voice-background-protocol.patch')
+    manifest, name = {
+        'owner': ('owner-admission-provenance.json', 'desktop-voice-owner-admission.patch'),
+        'background': ('background-protocol-provenance.json', 'desktop-voice-background-protocol.patch'),
+        'interest': ('current-interest-provenance.json', 'desktop-voice-current-interest.patch'),
+    }[args.stage]
     provenance = json.loads((HERE / manifest).read_text())
     patch = HERE / name
     if digest(patch) != provenance['patchSha256']:
