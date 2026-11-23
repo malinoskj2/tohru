@@ -1,5 +1,11 @@
 # Test the isolated Orca task speech patch
 
+For supported one-call background status from Home, use
+[`tohru-voice-status`](../../docs/voice-status.md). It snapshots the actual owner,
+verifies the worker and calls the existing native producer with that exact
+request; it does not replace native caller admission or create a new origin.
+Run its boundary tests with `python3 tests/voice-status.py`.
+
 This artifact adds the explicit producer and desktop registration handshake to Orca 1.4.268. It depends on the existing desktop routing patch identified in `provenance.json`. It does not install Orca or change a running service.
 
 ## Prepare source
