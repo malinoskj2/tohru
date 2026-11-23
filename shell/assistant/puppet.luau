@@ -1,11 +1,14 @@
 -- The voice dragon's animator. It plays the sheets in dragon/ at 24 frames a second, and only while she is on screen.
 return function(full_body, landing_frames)
     local TICK = 42
-    -- Compact resting silhouettes need more room to match the original neutral.
-    local REST_SCALE = {
+    -- Compact silhouettes need more room to match the original neutral.
+    local POSE_SCALE = {
         loose_hover = 1.10, nested_hover = 1.25, reclined_hover = 1.25,
         high_knee = 1.10, crossed_feet = 1.25, lean_back = 1.20,
         side_float = 1.25, asymmetric_curl = 1.12,
+        ponder_hover = 1.20, attentive_hover = 1.20, right_bank = 1.20,
+        forward_bank = 1.18, hip_twist = 1.18, open_hover = 1.15,
+        bright_hover = 1.20, belly_hover = 1.10, long_hover = 1.10,
     }
     local frame_scale = {}
     local POSES = {
@@ -28,7 +31,7 @@ return function(full_body, landing_frames)
     }
     for _, p in ipairs(full_body or {}) do
         POSES[p.name] = {cell = p.cell, talk = p.cell, full = true, face = p.face, fx = p.fx, fy = p.fy, shadow = p.shadow}
-        local scale = REST_SCALE[p.name]
+        local scale = POSE_SCALE[p.name]
         if scale then
             frame_scale[165 + p.cell] = scale
             for i = 0, p.count - 1 do
@@ -507,6 +510,7 @@ return function(full_body, landing_frames)
             set("ai_landing_y", rect[2] * PIXEL_SCALE)
             set("ai_landing_w", rect[3] * PIXEL_SCALE)
             set("ai_landing_h", rect[4] * PIXEL_SCALE)
+            set("ai_landing_scale", 1 + ((frame_scale[LANDING[target]] or 1) - 1) * t * t * (3 - 2 * t))
             -- Use the live, full-resolution endpoint in each direction.
             set("ai_flight_art", index == 0)
             set("ai_landing_art", index > 0 and index < #strip - 1)

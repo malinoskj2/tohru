@@ -27,6 +27,7 @@ part AssistantDragon {
     fact ai_landing_frame = 0
     fact ai_landing_target = 0
     fact ai_landing_progress = 0
+    fact ai_landing_scale = 1
     fact ai_flight_art = false
     fact ai_flight_cell = 0
     fact ai_flight_phase = 0
@@ -85,6 +86,8 @@ part AssistantDragon {
                 image ai_actor_skin { at: ai_dg_x, ai_dg_y; size: 150, 150; cell: ai_actor_skin_frame, 8, ai_actor_skin_rows; show: ai_actor_skin_open }
                 group {
                     show: ai_landing_art
+                    pivot: 105, 115
+                    scale: ai_landing_scale, ai_landing_scale
                     shader: ai_dg_glass, ai_landing_progress
                     image ai_landing { at: ai_dg_x + ai_landing_x, ai_dg_y + ai_landing_y; size: ai_landing_w, ai_landing_h; cell: ai_landing_frame, 15, 9 }
                 }

@@ -175,7 +175,15 @@ for index, destination in ipairs({"ponder_hover", "attentive_hover", "neutral"})
     if destination == "attentive_hover" then actor.hearing(true) end
     assert(actor.land(0.5))
     assert(fact.ai_landing_art and fact.ai_landing_frame == (index - 1) * 15 + 7)
+    if destination == "neutral" then
+        assert(fact.ai_dg_pose_scale == 1 and fact.ai_landing_scale == 1)
+    else
+        assert(fact.ai_dg_pose_scale >= 1.15, "thinking and listening still shrink below neutral size")
+        assert(fact.ai_landing_scale > 1 and fact.ai_landing_scale < fact.ai_dg_pose_scale,
+            "landing must grow smoothly into the conversational pose")
+    end
     assert(actor.land(1))
+    assert(fact.ai_landing_scale == fact.ai_dg_pose_scale, "landing endpoint changes size")
     local cell = fact.ai_dg_frame
     assert(not fact.ai_landing_art and not fact.ai_flight_art and cell == ({489, 507, 0})[index])
     actor.end_entrance()
