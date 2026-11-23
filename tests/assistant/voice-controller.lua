@@ -303,7 +303,13 @@ print("Voice service gating, turns, spoken answers, barge-in, memory hand-off, s
 -- A backend without deltas still delivers its full final answer exactly once.
 current_service.line({event="turn",text="Ask Orca"})
 local final_generation = asked[#asked][3].voice_generation
-speech_listener("start","orca-chat","",true,final_generation)
+local ready_origins = {}
+assistant.voice_ready = function(chat, request) ready_origins[#ready_origins + 1] = {chat, request} end
+speech_listener("start","orca-chat","",true,final_generation, "")
+assert(#ready_origins == 0, "a queued receipt is not yet an admitted desktop origin")
+speech_listener("origin","orca-chat","orca:canonical",true,final_generation,"orca:queued")
+assert(#ready_origins == 1 and ready_origins[1][2] == "orca:queued")
+assert(diagnostics[#diagnostics].stage == "assistant_origin" and diagnostics[#diagnostics].canonical_request == "orca:canonical")
 listeners[1]("done","orca-chat","The bot finished successfully.",true,final_generation)
 assert(written[#written].message.cmd=="speech_end" and written[#written].message.text=="The bot finished successfully.")
 local final_count = #written

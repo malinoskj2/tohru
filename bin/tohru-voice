@@ -1775,10 +1775,10 @@ class Voice:
         cmd = message.get("cmd")
         if cmd == "diagnostic":
             stage = message.get("stage")
-            if stage in ("ui_visibility_request", "ui_state_observed", "assistant_request", "continuation_speech", "continuation_dropped", "task_update", "task_update_dropped", "waiting_config"):
+            if stage in ("ui_visibility_request", "ui_state_observed", "assistant_request", "assistant_origin", "continuation_speech", "continuation_dropped", "task_update", "task_update_dropped", "waiting_config"):
                 fields = {key: message[key] for key in ("visible", "ui_sequence", "flight_alpha", "generation")
                           if key in message and isinstance(message[key], (bool, int, float))}
-                fields.update({key: str(message[key])[:512] for key in ("turn_id", "request", "completion") if message.get(key)})
+                fields.update({key: str(message[key])[:512] for key in ("turn_id", "request", "canonical_request", "completion") if message.get(key)})
                 if stage in ("task_update", "task_update_dropped"):
                     task = message.get("task")
                     if isinstance(task, str) and re.fullmatch(r"[A-Za-z0-9_:%.-]{1,128}", task):

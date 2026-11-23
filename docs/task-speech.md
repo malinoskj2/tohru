@@ -6,19 +6,15 @@ The [isolated Orca producer patch](../integrations/orca/README.md) implements th
 
 ## Foreground conversation
 
-Orca voice uses `assistant.orca_voice_chat = "foreground"` by default. This selects a separate, persistent bot chat so Home Chat's long tool calls do not occupy the voice provider queue. The microphone, speech scheduler, and background workers keep their existing owners. No additional local model is loaded.
+Voice defaults to `assistant.orca_voice_chat = "home"`. Desktop voice, desktop text and Orca’s Home GUI use the same public conversation and history. Private workers execute long jobs; their histories do not become a second conversation the owner must navigate. Task items, dispatches and approval records remain authoritative in Orca.
 
-Home Chat and its full history remain intact. Each foreground request includes Home's ID, current working state, and up to eight recent text excerpts of 500 characters each. These excerpts are reference material. They can include unfinished commentary and do not authorize actions or establish completion. The foreground bot can read Home and task items for more context. It must check existing task ownership and approvals before starting work. Raw worker mail and tool output are excluded from the excerpts.
+On an Orca runtime supporting this integration, `orca orchestration worker-start --background ... --json` returns durable Task and Dispatch IDs with `state: "accepted"` before setup or readiness. Acceptance means the job was recorded, not that a worker is running. Inspect `worker-show` for current starting, ready, failed or interrupted state. Repeating the same mutation request ID replays its receipt rather than launching another worker. A cancellation during launch fences task delivery and reports cleanup separately from proven exit.
 
-The foreground bot receives instructions to delegate long work to asynchronous Orca workers, acknowledge accepted tasks, and publish verified progress through the task endpoint. Deliberate conversational updates use this endpoint too. Ordinary commentary stays text-only. Each worker belongs to the foreground request that launched it. A newer owner turn retires older speech eligibility, while task results remain in that chat.
+The runtime produces bounded, truthful acceptance and readiness updates independently of the Home model. Deliberate diagnostic/progress summaries still use the explicit task producer, and analyzed completion follows the verified dispatch state. Ordinary commentary and raw worker mail stay text-only. A newer owner turn retires stale speech eligibility while the job and its result remain in Home.
 
-This separation provides independent provider queues. It does not enforce a tool allowlist: a long tool call executed directly by the foreground bot still blocks that actor. Delegation compliance and audible delivery need live verification.
+Home must finish its short conversational turn after delegating. A long tool executed directly in Home still occupies its provider; this design does not run two uncontrolled writers in one history or promise concurrent inference within a single provider turn.
 
-The desktop popup can open the foreground conversation from History. Typed replies in that conversation share its context. A new typed Home conversation stays in Home. Tohru does not copy every message between chats or transfer existing approvals to another task.
-
-The helper retains the foreground chat identity in its private scratch directory, keyed by bot and Home IDs. Worker mail, another wake, or a helper restart does not select a different chat. A missing Home, unreadable handover, invalid identity, or closed foreground chat fails without sending a new request. Restore a closed foreground chat to resume it.
-
-Existing explicit `home` and `new` settings remain authoritative. Switching to `foreground` retires desktop speech for the old route, but leaves Home and its tasks intact. Switching back to `home` restores Home routing; the foreground history remains available. Managed settings take precedence over user settings.
+The earlier `foreground` route remains an explicit compatibility option. It uses a separate saved chat with bounded Home excerpts and does not share the complete history. Switching back to `home` preserves that experimental chat and its registry for reference; no transcript is merged, erased or reset. `new` also remains an explicit option. Managed settings take precedence over local settings.
 
 ## Waiting conversation controls
 

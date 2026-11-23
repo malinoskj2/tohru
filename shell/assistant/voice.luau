@@ -331,13 +331,20 @@ return function(assistant, puppet, flight, service_executable)
             flush_queued()
             return
         end
-        if kind == "start" then
+        if kind == "origin" then
+            voice_return.begin(conv, request)
+            task_speech.begin(conv, request)
+            send({cmd = "diagnostic", stage = "assistant_origin", request = request,
+                canonical_request = answer, generation = turn_generation, turn_id = capture_id})
+            if assistant.voice_ready and request and request ~= "" then assistant.voice_ready(conv, request) end
+            return
+        elseif kind == "start" then
             voice_return.begin(conv, request)
             task_speech.begin(conv, request)
             streaming_speech = true
             streamed_text = false
             send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id, request = request})
-            if assistant.voice_ready then assistant.voice_ready(conv, request) end
+            if assistant.voice_ready and request and request ~= "" then assistant.voice_ready(conv, request) end
             return
         elseif kind == "delta" then
             task_speech.interrupt()

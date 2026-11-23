@@ -1290,9 +1290,9 @@ def resolve_backend_config(args):
     if backend not in ("local", "orca"):
         backend = "local"
     bot = getattr(args, "orca_bot", None) or settings.get("assistant.orca_bot") or "Tohru"
-    voice_chat = getattr(args, "orca_voice_chat", None) or settings.get("assistant.orca_voice_chat") or "foreground"
+    voice_chat = getattr(args, "orca_voice_chat", None) or settings.get("assistant.orca_voice_chat") or "home"
     if voice_chat not in ("home", "new", "foreground"):
-        voice_chat = "foreground"
+        voice_chat = "home"
     offline = getattr(args, "orca_offline", None) or settings.get("assistant.orca_offline") or "error"
     if offline not in ("error", "local"):
         offline = "error"
@@ -1495,8 +1495,12 @@ def orca_read_messages(chat_id, limit=100):
         if not isinstance(item, dict):
             continue
         if item.get("kind") in (None, "message") and item.get("role") in ("user", "assistant"):
+            authority = item.get("interaction")
             entries.append({"role": item["role"], "text": str(item.get("text") or ""),
-                            "id": str(item.get("itemId") or ""), "shortened": bool(item.get("shortened"))})
+                            "id": str(item.get("itemId") or ""), "shortened": bool(item.get("shortened")),
+                            "input_kind": authority.get("kind") if isinstance(authority, dict) else None,
+                            "request_id": authority.get("requestId", "") if isinstance(authority, dict) else "",
+                            "completion_id": authority.get("completionId", "") if isinstance(authority, dict) else ""})
     return entries, str(result.get("state") or ""), ""
 
 
@@ -1554,11 +1558,12 @@ def orca_timeout():
         return 600.0
 
 
-def orca_wait_for_reply(chat_id, before_count, prompt_marker, on_delta=None, stop_flag=None, message_id=""):
+def orca_wait_for_reply(chat_id, before_count, prompt_marker, on_delta=None, stop_flag=None, message_id="", on_origin=None):
     """Poll `orca agent read` until the bot finishes this turn; returns (text, stopped, error)."""
     deadline = time.monotonic() + orca_timeout()
     interval = orca_poll_interval()
     emitted = ""
+    origin_reported = False
     while True:
         if stop_flag and stop_flag():
             return emitted, True, ""
@@ -1573,8 +1578,11 @@ def orca_wait_for_reply(chat_id, before_count, prompt_marker, on_delta=None, sto
         if message_id:
             tail = []
             for idx, item in enumerate(entries):
-                if item.get("id") == message_id and item["role"] == "user":
+                if (item.get("request_id") or item.get("id")) == message_id and item["role"] == "user":
                     tail = entries[idx:]
+                    if not origin_reported and on_origin:
+                        on_origin(message_id, item.get("id") or message_id)
+                        origin_reported = True
                     break
         elif len(entries) < before_count and prompt_marker:
             for idx in range(len(entries) - 1, -1, -1):
@@ -1584,16 +1592,23 @@ def orca_wait_for_reply(chat_id, before_count, prompt_marker, on_delta=None, sto
         # Commentary is useful in Orca, but speech and the popup receive only the
         # last assistant message after an explicitly completed turn.
         current = ""
+        completed = False
         seen_new_user = False
         for item in tail:
             if item["role"] == "user":
+                if item.get("input_kind") == "internal":
+                    continue
                 if seen_new_user:
                     return "", False, "Another user turn arrived before the desktop answer was read"
                 seen_new_user = bool(message_id or (prompt_marker and prompt_marker in item["text"]))
                 current = ""
+                completed = False
             elif item["role"] == "assistant" and seen_new_user:
+                if item.get("input_kind") == "internal" or (item.get("input_kind") == "answer" and item.get("request_id") != message_id):
+                    continue
                 current = "" if item.get("shortened") else item["text"].strip()
-        if state == "done" and current:
+                completed = bool(item.get("completion_id"))
+        if (completed or state == "done") and current:
             if on_delta:
                 on_delta(current)
             return current, False, ""
@@ -1759,7 +1774,7 @@ def orca_chat_turn(args, prompt, bot_name, voice_chat, offline):
                 os.unlink(temporary)
 
     emit({"event": "start", "conversation": chat_id, "provider": f"orca:{actual_bot}", "slot": 0, "title": subject,
-          "voice_request": str((receipt or {}).get("promptItemId") or "") if args.voice else ""})
+          "voice_request": ""})
 
     stopped = False
 
@@ -1777,6 +1792,8 @@ def orca_chat_turn(args, prompt, bot_name, voice_chat, offline):
         on_delta=lambda d: emit({"event": "delta", "text": d}),
         stop_flag=lambda: stopped,
         message_id=str((receipt or {}).get("promptItemId") or ""),
+        on_origin=(lambda request, canonical: emit({"event": "voice_origin", "request": request,
+                                                   "canonical_request": canonical})) if args.voice else None,
     )
     if was_stopped:
         emit({"event": "stopped", "conversation": chat_id})
@@ -2003,6 +2020,9 @@ You are one unified Tohru, reachable both in Orca's Bots panel and from the Tohr
 - When you wake up on your own (from a schedule, an event, a finished worker, or another agent's reply) and have something the user should see on the desktop, alert them with:
   - `tohru assistant alert --chat <your_chat_id> "<brief summary>"` (lights up the bar dragon and posts a desktop notification).
   - Add `--speak` only when it is urgent or the user explicitly asked to be told out loud.
+- Home is the one public conversation for the GUI, desktop text and voice. Query `orca bot item list --bot <your_name> --limit 12 --json` and the linked `orca orchestration worker-show --dispatch <id> --json` for authoritative work status; private worker histories are implementation details, and excerpts or mail are not fresh approvals.
+- Keep Home turns short. Submit long tools, builds, research and implementation to private Orca workers using `orca orchestration worker-start --background ... --json`, then end the turn so Home can answer new input. The durable accepted receipt is not readiness or completion; inspect its stable Dispatch ID and report launch failure honestly. Existing worker-start without --background waits for readiness and can occupy this conversation.
+- `worker-start --background` emits its own bounded acceptance/readiness updates for the current visible voice request; do not duplicate those acknowledgements. Other deliberate spoken updates use `orca bot voice-task` with the actual current owner request and increasing per-task sequence. Acknowledge truthful acceptance and speak useful verified progress/completion while the desktop is visible; never read raw tool output or internal mail. Pending/dispatched does not prove audible output. Owner speech cancels stale playback, not the underlying job.
 - Use `orca automations create --bot <your_name>` for schedules, reminders (`--once --by`), and event waits; use `orca orchestration` to delegate and coordinate workers so their replies wake you automatically.
 """
 

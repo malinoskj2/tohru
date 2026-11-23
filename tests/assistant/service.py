@@ -814,6 +814,25 @@ sys.exit(1)
 
 
 class OrcaBotBackend(unittest.TestCase):
+    def test_queued_request_uses_native_alias_and_internal_mail_does_not_take_owner_authority(self):
+        with patch.object(sys, "path", [str(ROOT / "bin"), *sys.path]):
+            service = runpy.run_path(str(HELPER), run_name="tohru_test")
+        wait = service["orca_wait_for_reply"]
+        owner = {"role": "user", "id": "orca:1133797", "request_id": "orca:0887907",
+                 "input_kind": "owner", "text": "Are you there"}
+        mail = {"role": "user", "id": "mail", "input_kind": "internal", "text": "unrelated status"}
+        answer = {"role": "assistant", "input_kind": "answer", "request_id": "orca:0887907", "completion_id": "answer-final", "text": "Yes, I am here."}
+        internal_answer = {"role": "assistant", "input_kind": "internal", "text": "PRIVATE CONTROL RESPONSE"}
+        pages = [([], "working", ""), ([owner, mail], "working", ""),
+                 ([owner, mail, answer, internal_answer], "working", "")]
+        origins, spoken = [], []
+        with patch.dict(wait.__globals__, orca_read_messages=lambda *_a, **_k: pages.pop(0)), patch("time.sleep"):
+            result = wait("chat", 0, "Are you there", spoken.append, message_id="orca:0887907",
+                          on_origin=lambda stable, canonical: origins.append((stable, canonical)))
+        self.assertEqual(result, ("Yes, I am here.", False, ""))
+        self.assertEqual(origins, [("orca:0887907", "orca:1133797")])
+        self.assertEqual(spoken, ["Yes, I am here."])
+
     def test_foreground_reuses_its_actor_while_home_has_unfinished_work(self):
         state = json.loads(self.orca_state.read_text())
         state["pending"][self.HOME_UUID] = {"polls": 1000, "reply": "Home long tool finished."}
@@ -852,11 +871,11 @@ class OrcaBotBackend(unittest.TestCase):
         self.assertEqual(typed.returncode, 0, typed.stderr)
         self.assertEqual(json.loads(typed.stdout.splitlines()[0])["conversation"], actor)
 
-    def test_foreground_is_the_voice_default_and_explicit_home_is_preserved(self):
+    def test_home_is_the_voice_default_and_explicit_foreground_is_preserved(self):
         args = ("chat", "--backend", "orca", "--orca-bot", "Tohru", "--provider", "orca:Tohru", "--voice")
         default = self.invoke(*args, stdin="Hello foreground")
         self.assertEqual(default.returncode, 0, default.stderr)
-        self.assertNotEqual(json.loads(default.stdout.splitlines()[0])["conversation"], self.HOME_UUID)
+        self.assertEqual(json.loads(default.stdout.splitlines()[0])["conversation"], self.HOME_UUID)
         explicit = self.invoke(*args, "--orca-voice-chat", "home", stdin="Hello Home")
         self.assertEqual(explicit.returncode, 0, explicit.stderr)
         self.assertEqual(json.loads(explicit.stdout.splitlines()[0])["conversation"], self.HOME_UUID)
@@ -1046,7 +1065,8 @@ class OrcaBotBackend(unittest.TestCase):
         self.assertEqual(vres.returncode, 0, vres.stderr)
         vevents = [json.loads(l) for l in vres.stdout.splitlines()]
         new_cid = vevents[0]["conversation"]
-        self.assertTrue(vevents[0]["voice_request"])
+        self.assertEqual(vevents[0]["voice_request"], "")
+        self.assertTrue(next(e for e in vevents if e["event"] == "voice_origin")["request"])
         self.assertNotEqual(new_cid, self.HOME_UUID)
         self.assertEqual("".join(e["text"] for e in vevents if e["event"] == "delta"), "Clear skies.")
 

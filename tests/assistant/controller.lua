@@ -124,7 +124,7 @@ emit("assistant_new")
 assert(#model.ai_turns == 0 and not fact.ai_actions)
 local answers = {}
 local speech_events = {}
-assistant.on_speech(function(kind, conv, text, voice, generation) speech_events[#speech_events + 1] = {kind, text, generation} end)
+assistant.on_speech(function(kind, conv, text, voice, generation, request) speech_events[#speech_events + 1] = {kind, text, generation, request} end)
 assistant.on_answer(function(kind, conversation, answer, voice, generation) answers[#answers + 1] = {kind, conversation, answer, voice, generation} end)
 assistant.close()
 emit("assistant_choose", 0)
@@ -134,6 +134,8 @@ local voiced = false
 for _, a in ipairs(voice.args) do voiced = voiced or a == "--voice" end
 assert(voiced)
 voice.line(json.encode({event = "start", conversation = "v1"}))
+voice.line(json.encode({event = "voice_origin", request = "orca:queued", canonical_request = "orca:canonical"}))
+assert(speech_events[#speech_events][1] == "origin" and speech_events[#speech_events][2] == "orca:canonical" and speech_events[#speech_events][4] == "orca:queued")
 voice.line(json.encode({event = "delta", text = "Why?"}))
 assert(speech_events[#speech_events][1] == "delta" and speech_events[#speech_events][2] == "Why?")
 voice.line(json.encode({event = "done", conversation = "v1"}))

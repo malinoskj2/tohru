@@ -480,6 +480,11 @@ return function(settings)
                 end
                 if conversation == nil and (not voice or fact.ai_open) then conversation = event.conversation end
                 refresh_live()
+            elseif event.event == "voice_origin" then
+                mine.voice_request = event.request
+                for _, listener in ipairs(speech_listeners) do
+                    listener("origin", mine.conversation, event.canonical_request or "", mine.voice, mine.voice_generation, event.request)
+                end
             elseif event.event == "delta" then
                 mine.text = mine.text .. (event.text or "")
                 if incoming then return end
