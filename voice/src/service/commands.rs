@@ -10,12 +10,17 @@ impl Voice {
                     message["conversation"].clone(),
                     message["generation"].clone(),
                 ));
-                self.thinking = true;
+                let background = message["background"] == true;
+                self.thinking = !background;
+                if background {
+                    self.last_turn.clear();
+                    self.pending.clear();
+                }
                 self.cancelled = false;
                 self.first_text = true;
                 diagnostic(
                     "speech_stream_start",
-                    json!({"generation":self.generation,"turn_id":message["turn_id"]}),
+                    json!({"generation":self.generation,"turn_id":message["turn_id"],"background":background,"request":message["request"].as_str().unwrap_or("").chars().take(512).collect::<String>()}),
                 );
             }
             "speech_delta" | "speech_end" => {
@@ -136,36 +141,65 @@ impl Voice {
                 self.conversation(false);
             }
             "diagnostic" => {
-                let stage = message["stage"].as_str().unwrap_or("");
-                if [
-                    "ui_visibility_request",
-                    "ui_state_observed",
-                    "assistant_request",
-                    "continuation_speech",
-                    "continuation_dropped",
-                ]
-                .contains(&stage)
-                {
-                    let mut fields = serde_json::Map::new();
-                    for key in [
-                        "turn_id",
-                        "generation",
-                        "visible",
-                        "ui_sequence",
-                        "flight_alpha",
-                        "request",
-                        "completion",
-                        "reason",
-                    ] {
-                        if !message[key].is_null() {
-                            fields.insert(key.into(), message[key].clone());
-                        }
-                    }
-                    diagnostic(stage, Value::Object(fields));
+                if let Some((stage, fields)) = crate::protocol::diagnostic_message(&message) {
+                    diagnostic(stage, fields);
                 }
             }
             _ => {}
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    #[ignore = "requires the pinned shared voice artifacts and an explicit scheduler reservation"]
+    fn background_admission_releases_the_foreground_before_synthesis() {
+        assert!(
+            std::env::var_os("GPU_LEASE_ID").is_some(),
+            "run this model-backed test inside gpu-run"
+        );
+        crate::acoustic::initialize().unwrap();
+        let root =
+            std::path::PathBuf::from(std::env::var_os("MODEL_ROOT").expect("MODEL_ROOT required"))
+                .join("by-name");
+        let args = crate::Args::parse_from([
+            "native-voice",
+            "--vad-model",
+            root.join("silero-vad/silero-vad-v6.2.3.onnx")
+                .to_str()
+                .unwrap(),
+            "--asr-model",
+            root.join("voice-asr").to_str().unwrap(),
+            "--tts-engine",
+            "espeak-ng",
+            "--tts-load-on-conversation",
+        ]);
+        let (speaker, worker) = Control::spawn(args.settings(), args.assets.clone());
+        let mut voice = Voice::new(&args, speaker.clone()).unwrap();
+        voice.extend();
+        voice.thinking = true;
+        voice.last_turn = "Create a worktree".into();
+        voice.pending = "old cumulative text".into();
+        voice.command(json!({"cmd":"speech_start","generation":2,"background":true,"request":"orca:canonical-id"})).unwrap();
+        assert!(!voice.thinking);
+        assert!(voice.last_turn.is_empty());
+        assert!(voice.pending.is_empty());
+        voice.deliver("ARE YOU STILL THERE", "");
+        assert_eq!(voice.last_turn, "Are you still there");
+        assert!(!voice.cancelled);
+        assert!(voice.pending.is_empty());
+        voice.pending = "genuine continuation".into();
+        voice
+            .command(json!({"cmd":"speech_start","generation":3}))
+            .unwrap();
+        assert!(voice.thinking);
+        assert_eq!(voice.pending, "genuine continuation");
+        speaker.shutdown();
+        worker.join().unwrap();
     }
 }

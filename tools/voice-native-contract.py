@@ -67,9 +67,13 @@ class Helper:
                 except ValueError: self.queue.put(dict(event="invalid_json", line=line))
         self.reader = threading.Thread(target=read, daemon=True)
         self.reader.start()
-        self.wait(lambda e: e.get("event") == "ready")
-        self.startup_ms = (time.monotonic() - self.start) * 1000
-        self.wait(lambda e: e.get("event") == "listening" and e.get("on"))
+        try:
+            self.wait(lambda e: e.get("event") == "ready")
+            self.startup_ms = (time.monotonic() - self.start) * 1000
+            self.wait(lambda e: e.get("event") == "listening" and e.get("on"))
+        except BaseException:
+            self.close()
+            raise
 
     def wait(self, predicate, timeout=30):
         deadline = time.monotonic() + timeout
@@ -113,10 +117,15 @@ def pss_tree(pid):
     return dict(pss_kib=total, processes=len(pids))
 
 
-def exercise(argv, directory, environment):
+def exercise(argv, directory, environment, check_extended=False):
     helper = Helper(argv, directory, environment)
     try:
-        helper.send(cmd="speech_start", generation=9, conversation="isolated")
+        if check_extended:
+            helper.send(cmd="diagnostic",stage="assistant_origin",request="local:request",canonical_request="orca:canonical",generation=9)
+            helper.send(cmd="diagnostic",stage="task_update",task="task:fixture",sequence=7,kind="progress",request="r"*700,canonical_request="orca:canonical",reason="matched")
+            helper.send(cmd="diagnostic",stage="task_update_dropped",task="PRIVATE secret",sequence=2147483647,kind="PRIVATE",reason="PRIVATE",text="PRIVATE")
+            helper.send(cmd="diagnostic",stage="waiting_config",enabled=False)
+        helper.send(cmd="speech_start", generation=9, conversation="isolated",**(dict(background=True,request="orca:canonical") if check_extended else {}))
         helper.send(cmd="speech_delta", generation=8, text="THIS STALE TEXT MUST NOT PLAY. ")
         first = time.monotonic()
         helper.send(cmd="speech_end", generation=9, text="Hello, I'm here. What do you need?")
@@ -162,6 +171,15 @@ def exercise(argv, directory, environment):
         assert helper.process.returncode==0
         diagnostics=[json.loads(line.split("tohru-voice: ",1)[1]) for line in (directory/"stderr.log").read_text().splitlines() if line.startswith("tohru-voice: {")]
         assert any(event.get("stage")=="synthesis_ready" and event.get("generation")==9 for event in diagnostics),"synthesis lost the controller generation"
+        if check_extended:
+            by_stage={event["stage"]:event for event in diagnostics}
+            assert by_stage["assistant_origin"]["canonical_request"]=="orca:canonical"
+            assert any(event.get("stage")=="speech_stream_start" and event.get("background") is True and event.get("request")=="orca:canonical" for event in diagnostics)
+            assert by_stage["task_update"]["sequence"]==7 and by_stage["task_update"]["kind"]=="progress"
+            assert len(by_stage["task_update"]["request"])==512
+            assert "task" not in by_stage["task_update_dropped"] and "sequence" not in by_stage["task_update_dropped"]
+            assert by_stage["waiting_config"]["enabled"] is False
+            assert "PRIVATE" not in json.dumps(diagnostics)
         return dict(startup_ready_ms=helper.startup_ms, first_sentence_ms=first_sentence_ms,process_to_first_sentence_ms=process_to_first_sentence_ms,
                     cancel_event_ms=cancel_event_ms, complete_bytes=len(complete), memory=memory,
                     result="passed", audible_proof=False)
@@ -181,8 +199,9 @@ def main(args):
     common=["--tts-engine",args.engine,"--vad-model",str(MODEL/"silero-vad/silero-vad-v6.2.3.onnx"),"--asr-model",str(MODEL/"voice-asr"),
             "--turn-model",str(MODEL/"voice-turn/smart-turn-v3.2-cpu.onnx"),"--tts-model",str(MODEL/"voice-kokoro")]
     results={}
-    results["python"]=exercise([sys.executable,str(ROOT/"bin/tohru-voice"),*common],out/"python",{})
-    results["native"]=exercise([str(native),*common,"--assets",str(ROOT/"shell/assistant/voice")],out/"native",dict(ORT_DYLIB_PATH=args.ort_library))
+    reference=Path(args.reference).resolve() if args.reference else ROOT/"bin/tohru-voice"
+    results["python"]=exercise([sys.executable,str(reference),*common],out/"python",{},args.new_contracts)
+    results["native"]=exercise([str(native),*common,"--assets",str(ROOT/"shell/assistant/voice")],out/"native",dict(ORT_DYLIB_PATH=args.ort_library),args.new_contracts)
     a=(out/"python/complete.pcm").read_bytes()
     b=(out/"native/complete.pcm").read_bytes()
     results["submitted_pcm_identical"]=a==b
@@ -196,5 +215,7 @@ if __name__=="__main__":
     parser.add_argument("--native",required=True)
     parser.add_argument("--ort-library",required=True)
     parser.add_argument("--engine",choices=("kokoro","espeak-ng"),default="kokoro")
+    parser.add_argument("--reference",help="Explicit committed/reference Python voice helper")
+    parser.add_argument("--new-contracts",action="store_true",help="Verify admitted background speech and bounded task diagnostics")
     parser.add_argument("--output",default=".tmp/docs/rust-voice/contract")
     main(parser.parse_args())

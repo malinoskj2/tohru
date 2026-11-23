@@ -77,7 +77,11 @@ streaming recognition, VAD, and Smart Turn preprocessing. The contract runner
 `tools/voice-native-contract.py` uses the real helpers with fake audio utilities.
 It checks stale generations, submitted PCM, cancellation, and EOF cleanup.
 Its `--ort-library` argument must name the native library supplied by the Nix
-package. `tools/voice-native-replay.py` compares complete wake and turn event
+package. Add `--reference /absolute/path/to/bin/tohru-voice --new-contracts`
+to compare against a helper that supports admitted background tasks. That check
+also verifies canonical request metadata, bounded diagnostics, and foreground
+release before task speech. Diagnostic records exclude arbitrary task payloads.
+`tools/voice-native-replay.py` compares complete wake and turn event
 traces. `tools/voice-native-benchmark.py` repeats the contract runner in
 alternating order and records startup, first-sentence, cancellation, and process
 tree memory observations. `tools/voice-native-warm.py` records five interleaved

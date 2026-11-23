@@ -36,6 +36,91 @@ pub fn closed() -> bool {
     CLOSED.load(Ordering::Relaxed)
 }
 
+/// Accept only bounded metadata from the desktop controller, never arbitrary
+/// task text or nested provider payloads.
+pub fn diagnostic_message(message: &Value) -> Option<(&str, Value)> {
+    let stage = message["stage"].as_str()?;
+    if ![
+        "ui_visibility_request",
+        "ui_state_observed",
+        "assistant_request",
+        "assistant_origin",
+        "continuation_speech",
+        "continuation_dropped",
+        "task_update",
+        "task_update_dropped",
+        "waiting_config",
+    ]
+    .contains(&stage)
+    {
+        return None;
+    }
+    let mut fields = serde_json::Map::new();
+    for key in ["visible", "ui_sequence", "flight_alpha", "generation"] {
+        let value = &message[key];
+        if value.is_boolean() || value.is_number() {
+            fields.insert(key.into(), value.clone());
+        }
+    }
+    for key in ["turn_id", "request", "canonical_request", "completion"] {
+        let value = match &message[key] {
+            Value::String(s) if !s.is_empty() => Some(s.clone()),
+            Value::Number(n) => Some(n.to_string()),
+            Value::Bool(true) => Some("True".into()),
+            _ => None,
+        };
+        if let Some(value) = value {
+            fields.insert(
+                key.into(),
+                value.chars().take(512).collect::<String>().into(),
+            );
+        }
+    }
+    if ["task_update", "task_update_dropped"].contains(&stage) {
+        if let Some(task) = message["task"].as_str().filter(|task| {
+            !task.is_empty()
+                && task.len() <= 128
+                && task
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || b"_:%.-".contains(&c))
+        }) {
+            fields.insert("task".into(), task.into());
+        }
+        if let Some(sequence) = message["sequence"]
+            .as_i64()
+            .filter(|n| (1..=2147483646).contains(n))
+        {
+            fields.insert("sequence".into(), sequence.into());
+        }
+        if let Some(kind) = message["kind"]
+            .as_str()
+            .filter(|kind| ["ack", "progress", "done", "failed", "cancelled"].contains(kind))
+        {
+            fields.insert("kind".into(), kind.into());
+        }
+    }
+    if stage == "waiting_config" && message["enabled"].is_boolean() {
+        fields.insert("enabled".into(), message["enabled"].clone());
+    }
+    if let Some(reason) = message["reason"].as_str().filter(|reason| {
+        [
+            "duplicate",
+            "origin_mismatch",
+            "hidden",
+            "busy",
+            "matched",
+            "hearing",
+            "invalid",
+            "unknown_or_full",
+            "replay",
+        ]
+        .contains(reason)
+    }) {
+        fields.insert("reason".into(), reason.into());
+    }
+    Some((stage, Value::Object(fields)))
+}
+
 pub fn diagnostic(stage: &str, fields: Value) {
     if std::env::var("TOHRU_VOICE_LOG").as_deref() == Ok("off") {
         return;
@@ -94,6 +179,26 @@ pub fn read_command(input: &mut impl BufRead) -> Result<Option<Value>, ReadError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn task_diagnostics_keep_correlation_and_exclude_private_payloads() {
+        let message = json!({"stage":"task_update","request":"r".repeat(700),"canonical_request":"orca:queue-id","task":"task:1","sequence":7,"kind":"progress","reason":"matched","generation":9,"text":"PRIVATE","payload":{"text":"PRIVATE"}});
+        let (stage, fields) = diagnostic_message(&message).unwrap();
+        assert_eq!(stage, "task_update");
+        assert_eq!(fields["request"].as_str().unwrap().len(), 512);
+        assert_eq!(fields["canonical_request"], "orca:queue-id");
+        assert_eq!(fields["sequence"], 7);
+        assert!(!fields.to_string().contains("PRIVATE"));
+        let (_,fields)=diagnostic_message(&json!({"stage":"task_update_dropped","task":"PRIVATE secret","sequence":2147483647_i64,"kind":"PRIVATE","reason":"PRIVATE"})).unwrap();
+        assert_eq!(fields, json!({}));
+        assert_eq!(
+            diagnostic_message(&json!({"stage":"waiting_config","enabled":false}))
+                .unwrap()
+                .1,
+            json!({"enabled":false})
+        );
+        assert!(diagnostic_message(&json!({"stage":"PRIVATE"})).is_none());
+    }
 
     #[test]
     fn rejects_oversize_or_partial_commands_without_reading_unbounded_input() {
