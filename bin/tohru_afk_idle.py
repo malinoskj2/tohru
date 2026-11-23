@@ -71,7 +71,7 @@ def owned_callbacks(values):
     let an old callback impersonate a new observer generation.
     """
     values = effective_config(values)
-    if not values.get("assistant.afk_enabled"):
+    if not values.get("assistant.afk_enabled") or values.get("idle.owner","tohru")!="tohru":
         return []
     try:
         registration = read_registration()
@@ -214,9 +214,10 @@ def serve():
     last_manager=None
     pending_resume=None
     def manager_alive(identity):
-        if child is not None:return child.poll() is None
+        if identity is None:return child is not None and child.poll() is None
         if not isinstance(identity,(list,tuple)) or len(identity)!=2 or any(type(value) is not int for value in identity):return False
-        try:return identity is not None and process_start(identity[0])==identity[1]
+        if child is not None and identity[0]!=child.pid:return False
+        try:return process_start(identity[0])==identity[1]
         except (OSError,ValueError,TypeError,IndexError):return False
     with (address.parent / "afk.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

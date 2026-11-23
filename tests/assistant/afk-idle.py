@@ -89,6 +89,8 @@ class Idle(unittest.TestCase):
         self.assertFalse(values['assistant.afk_enabled'])
         registration.write_text(json.dumps({'schema':1,'generation':99,'seconds':420}))
         self.assertEqual(idle.owned_callbacks(values)[:2],['timeout','420'])
+        effective.write_text(json.dumps({'enabled':True,'seconds':420,'source':'passive','owner':'external'}))
+        self.assertEqual(idle.owned_callbacks(values),[])
         effective.write_text(json.dumps({'enabled':True,'seconds':0,'source':'callbacks','owner':'tohru'}))
         with self.assertRaises(ValueError):idle.effective_config(values)
 
