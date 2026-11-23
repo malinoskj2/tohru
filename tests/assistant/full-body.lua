@@ -160,3 +160,31 @@ callbacks[2]()
 assert(not fact.ai_dg_warm and fact.ai_dg_ready)
 assert(w.pick('Something failed!')~='bright_hover')
 print('Art unload and warm-up generation ownership passed')
+
+-- Landing owns only the displayed key. Test all registered quiet destinations,
+-- including a target change during transit and preemption halfway into a turn.
+local landing = assert(loadfile("shell/assistant/landing-frames.luau"))()
+local actor = create(art, landing)
+actor.load("/fixture")
+fact.ai_dg_warm = false
+actor.visible(true)
+for index, destination in ipairs({"ponder_hover", "attentive_hover", "neutral"}) do
+    actor.calm()
+    assert(actor.begin_entrance("right", -1))
+    if destination == "ponder_hover" then actor.thinking() end
+    if destination == "attentive_hover" then actor.hearing(true) end
+    assert(actor.land(0.5))
+    assert(fact.ai_landing_art and fact.ai_landing_frame == (index - 1) * 15 + 7)
+    assert(actor.land(1))
+    local cell = fact.ai_dg_frame
+    assert(not fact.ai_landing_art and not fact.ai_flight_art and cell == ({489, 507, 0})[index])
+    actor.end_entrance()
+    assert(actor.pose() == destination and fact.ai_dg_frame == cell)
+end
+actor.thinking()
+assert(actor.begin_entrance("rise", 1) and actor.land(0.35))
+actor.hearing(true)
+assert(not actor.land(0.4))
+actor.end_entrance()
+assert(actor.pose() == "attentive_hover" and fact.ai_dg_frame == 507 and not fact.ai_landing_art)
+print("PASS direct landings to current targets and clean release after preemption")

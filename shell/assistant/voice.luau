@@ -1,5 +1,5 @@
 -- Runs tohru-voice only while assistant.voice is on: off means no process, no microphone and no models loaded.
-return function(assistant, puppet)
+return function(assistant, puppet, flight, service_executable)
     local id = nil
     local wanted = false
     local args = {}
@@ -20,6 +20,10 @@ return function(assistant, puppet)
 
     local function show_dragon(on)
         hide_serial = hide_serial + 1
+        if flight then
+            if on and not fact.ai_dragon_open then flight.show()
+            elseif not on then flight.hide() end
+        end
         fact.ai_dragon_open = on
         puppet.visible(on)
     end
@@ -131,6 +135,7 @@ return function(assistant, puppet)
                 local mine = transcript_serial
                 after(500, function() if transcript_serial == mine then text.ai_transcript = "" end end)
             end
+            if flight then flight.hearing(message.on == true) end
             puppet.hearing(message.on == true)
         elseif event == "sentence" then
             puppet.sentence(tostring(message.text or ""))
@@ -223,7 +228,7 @@ return function(assistant, puppet)
     function start()
         generation = generation + 1
         local mine = generation
-        id = spawn("tohru-voice", args, function(raw) if mine == generation then line(raw) end end, function(_, code)
+        id = spawn(service_executable or "tohru-voice", args, function(raw) if mine == generation then line(raw) end end, function(_, code)
             if mine ~= generation then return end
             id = nil
             quiet()
@@ -293,6 +298,7 @@ return function(assistant, puppet)
 
     on("assistant_hush", function() turn_generation = turn_generation + 1; send({cmd = "hush"}) end)
     on("assistant_dragon", function()
+        if not fact.ai_dragon_open then return end
         show_dragon(false)
         if spoken then assistant.show(spoken) end
     end)
@@ -304,6 +310,7 @@ return function(assistant, puppet)
             return row.value
         end
         puppet.reduced(value("assistant.reduced_motion", false) == true)
+        if flight then flight.configure(value) end
         local backend = table.concat({
             tostring(value("assistant.backend", "local")), tostring(value("assistant.orca_bot", "Tohru")),
             tostring(value("assistant.orca_voice_chat", "home")), tostring(value("assistant.orca_offline", "error")),

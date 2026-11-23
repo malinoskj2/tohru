@@ -1,25 +1,66 @@
 part AssistantDragon {
     // Body cells are 240 px, drawn at 150 logical px; puppet.luau registers the body, face features and hearts.
     shader ai_dg_glass = file "dragon/glass.wgsl"
-    let ai_float = if(ai_dg_reduced, 0, 4 * sin(time * 90))
+    let ai_float = if(ai_dg_reduced or ai_actor_quiet, 0, 4 * sin(time * 90))
     let ai_dg_x = 30
     let ai_dg_y = 40
-    surface ai_dragon_surface {
-        size: 210, 230; anchor: bottom_right; margin: 0, 18, 18, 0; level: overlay; reserve: -1; keyboard: none
-        // Opened unseen for a moment once the sheets are set, so they are loaded before she first shows.
-        open: ai_dragon_k > 0.01 or ai_dg_warm
-        layer_namespace: "tohru-dragon"
+    image ai_wingbeat = file "dragon/flight.webp", 1800, 450
+    text ai_actor_skin_src = ""
+    image ai_actor_skin = from ai_actor_skin_src, 0, 0
+    text ai_actor_closeup_src = ""
+    image ai_actor_closeup = from ai_actor_closeup_src, 0, 0
+    fact ai_actor_closeup_open = false
+    fact ai_actor_skin_rows = 1
+    fact ai_actor_skin_frame = 0
+    fact ai_actor_skin_open = false
+    fact ai_actor_scale = 1
+    fact ai_actor_rotation = 0
+    fact ai_actor_released = false
+    fact ai_actor_quiet = false
+    fact ai_actor_open = false
+    image ai_landing = file "dragon/landing.webp", 1470, 882
+    fact ai_landing_x = 0
+    fact ai_landing_y = 0
+    fact ai_landing_w = 0
+    fact ai_landing_h = 0
+    fact ai_landing_art = false
+    fact ai_landing_frame = 0
+    fact ai_landing_target = 0
+    fact ai_landing_progress = 0
+    fact ai_flight_art = false
+    fact ai_flight_cell = 0
+    fact ai_flight_phase = 0
+    fact ai_flying = false
+    fact ai_flight_x = 0
+    fact ai_flight_y = 0
+    fact ai_flight_bank = 0
+    fact ai_flight_alpha = 1
+    fact ai_flight_altitude = 0
+    fact ai_flight_behind = false
+    event dragon_view_width ->
+    event dragon_view_height ->
+    on change ai_dragon_surface.width { emit dragon_view_width(ai_dragon_surface.width) }
+    on change ai_dragon_surface.height { emit dragon_view_height(ai_dragon_surface.height) }
+    fact ai_use_flight_surface = false
+    text ai_flight_output = ""
+    text ai_flight_trace = ""
+    component DragonActor(dx: number, dy: number) {
         group {
-            opacity: max(ai_dragon_k, if(ai_dg_warm, 0.2%, 0%))
-            move: 0, if(ai_dg_reduced, 0, (1 - ai_dragon_k) * 24)
-            ellipse { at: 105, 214; radius: 46; scale: ai_dg_shadow_s, 0.16; color: #000000; opacity: 18% - 6% * ai_float / 4 }
+            opacity: if(ai_actor_released, 0, ai_flight_alpha) * max(ai_dragon_k, if(ai_dg_warm, 0.2%, 0%))
+            move: dx, dy
+            pivot: 105, 115
+            scale: ai_actor_scale, ai_actor_scale
+            rotate: ai_actor_rotation * 1deg
+            ellipse { at: 105, 214; radius: 46; scale: ai_dg_shadow_s, 0.16; color: #000000; opacity: (1 - ai_flight_altitude) * (18% - 6% * ai_float / 4) }
             group {
                 move: 0, ai_float
                 pivot: 105, 190
-                rotate: ai_dg_tilt_s * 1deg
+                rotate: (ai_dg_tilt_s + ai_flight_bank) * 1deg
                 scale: (1 + 0.04 * ai_dg_sq_s) * (1 + if(ai_dg_reduced, 0, 0.012 * ai_mouth_s)), (1 - 0.05 * ai_dg_sq_s) * (1 - if(ai_dg_reduced, 0, 0.008 * ai_mouth_s))
                 group {
                     show: ai_dg_ready
+                    // Keep the registered landing cell resident during the wingbeat.
+                    opacity: if(ai_landing_art or ai_flight_art or ai_actor_skin_open or ai_actor_closeup_open, 0.2%, 100%)
                     // One sheet for every body frame: changing between separate large images blanked her for a few frames.
                     // Light moving through the glass: a slow drift of hue across the body and a highlight now and then.
                     shader: ai_dg_glass, if(ai_dg_reduced, 0, 1)
@@ -38,14 +79,39 @@ part AssistantDragon {
                         cell: max(ai_dg_mouth, 0), 8, 1; opacity: if(ai_dg_mouth >= 0, 100%, 0.1%)
                     }
                 }
+                image ai_actor_closeup { at: ai_dg_x, ai_dg_y; size: 150, 150; show: ai_actor_closeup_open }
+                image ai_actor_skin { at: ai_dg_x, ai_dg_y; size: 150, 150; cell: ai_actor_skin_frame, 8, ai_actor_skin_rows; show: ai_actor_skin_open }
+                group {
+                    show: ai_landing_art
+                    shader: ai_dg_glass, ai_landing_progress
+                    image ai_landing { at: ai_dg_x + ai_landing_x, ai_dg_y + ai_landing_y; size: ai_landing_w, ai_landing_h; cell: ai_landing_frame, 15, 9 }
+                }
+                image ai_wingbeat { at: ai_dg_x, ai_dg_y; size: 150, 150; cell: ai_flight_cell, 12, 3; show: ai_flight_art }
                 image ai_sprite { at: ai_dg_x, ai_dg_y; size: 150, 150; show: not ai_dg_ready }
                 ellipse { at: ai_dg_x + 70.2, ai_dg_y + 46.5; radius: 3.4; scale: 1.15, 0.15 + 0.95 * ai_mouth_s; color: #4a2238; opacity: if(ai_dg_ready, 0%, min(90%, ai_mouth_s * 400%)) }
                 image ai_dg_heart { at: ai_dg_h1_x - 12 * ai_dg_h1_s, ai_dg_h1_y - 12 * ai_dg_h1_s; size: 24 * max(ai_dg_h1_s, 0.05), 24 * max(ai_dg_h1_s, 0.05); opacity: max(ai_dg_h1_a, 0.001) }
                 image ai_dg_heart { at: ai_dg_h2_x - 12 * ai_dg_h2_s, ai_dg_h2_y - 12 * ai_dg_h2_s; size: 24 * max(ai_dg_h2_s, 0.05), 24 * max(ai_dg_h2_s, 0.05); opacity: max(ai_dg_h2_a, 0.001) }
             }
             text ai_transcript { at: 105, 8; anchor: center top; width: 198; lines: 2; align: center; size: 11; family: "SF Pro Text"; color: #cdd6f4 }
-            zone box ai_dragon_hit { from: 30, 30; size: 150, 170; corner: 40; cursor: pointer; active: ai_dragon_open; label: "Open this conversation" }
         }
+    }
+    surface ai_idle_surface {
+        size: 210, 230; anchor: bottom_right; margin: 0, 18, 18, 0; level: overlay; reserve: -1; keyboard: none
+        open: not ai_use_flight_surface and (ai_dragon_k > 0.01 or ai_dg_warm)
+        layer_namespace: "tohru-dragon"
+        zone box ai_idle_hit { from: 30, 30; size: 150, 170; corner: 40; cursor: pointer; active: ai_dragon_open and not ai_use_flight_surface; label: "Open this conversation" }
+        on press ai_idle_hit { emit assistant_dragon }
+        DragonActor(0, if(ai_dg_reduced, 0, (1 - ai_dragon_k) * 24))
+    }
+    surface ai_dragon_surface {
+        size: full, full; anchor: center; level: overlay, bottom while ai_flight_behind; reserve: -1; keyboard: none
+        open: ai_use_flight_surface and (ai_dragon_k > 0.01 or ai_dg_warm)
+        screens: ai_flight_output
+        layer_namespace: "tohru-dragon-flight"
+        let flight_left = if(ai_flying or ai_actor_open, ai_flight_x - 105, ai_dragon_surface.width - 228)
+        let flight_top = if(ai_flying or ai_actor_open, ai_flight_y - 115, ai_dragon_surface.height - 248 + if(ai_dg_reduced, 0, (1 - ai_dragon_k) * 24))
+        DragonActor(flight_left, flight_top)
+        zone box ai_dragon_hit { from: flight_left + 30, flight_top + 30; size: 150, 170; corner: 40; cursor: pointer; active: ai_use_flight_surface and ai_dragon_open and ai_flight_alpha > 0.5; label: "Open this conversation" }
         on press ai_dragon_hit { emit assistant_dragon }
     }
 }

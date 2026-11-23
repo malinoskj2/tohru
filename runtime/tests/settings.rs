@@ -699,6 +699,31 @@ fn voice_and_semantic_models_validate_and_persist_independently() {
 }
 
 #[test]
+fn contextual_entrances_validate_replay_controls_and_preserve_managed_values() {
+    let files = Fixture::new();
+    fs::write(
+        files.managed(),
+        "[assistant]\ncontextual_entrances = false\n",
+    )
+    .unwrap();
+    let mut owner = files.owner();
+    let enabled = Key::parse("assistant.contextual_entrances").unwrap();
+    let seed = Key::parse("assistant.entrance_seed").unwrap();
+    let variant = Key::parse("assistant.entrance_variant").unwrap();
+    assert_eq!(owner.get(enabled).origin, Origin::Nix);
+    owner.set(enabled, Value::Bool(true)).unwrap();
+    owner.set(seed, Value::Integer(12345)).unwrap();
+    owner.set(variant, Value::Text("wrap".into())).unwrap();
+    assert!(owner.set(seed, Value::Integer(-1)).is_err());
+    assert!(owner.set(variant, Value::Text("unknown".into())).is_err());
+    owner.reload().unwrap();
+    assert_eq!(owner.get(enabled).origin, Origin::Runtime);
+    assert_eq!(files.owner().get(enabled).value, Value::Bool(false));
+    assert_eq!(files.owner().get(seed).value, Value::Integer(12345));
+    assert_eq!(files.owner().get(variant).value, Value::Text("wrap".into()));
+}
+
+#[test]
 fn dragon_reduced_motion_persists_and_rejects_non_boolean_values() {
     let files = Fixture::new();
     fs::write(files.managed(), "").unwrap();
@@ -841,12 +866,17 @@ fn integrated_assistant_keys_remain_distinct_and_enumerated() {
     for key in [
         Key::AssistantVoiceSource,
         Key::AssistantReducedMotion,
+        Key::AssistantContextualEntrances,
+        Key::AssistantEntranceSeed,
+        Key::AssistantEntranceVariant,
         Key::AssistantBackend,
         Key::AssistantOrcaBot,
         Key::AssistantOrcaVoiceChat,
         Key::AssistantOrcaOffline,
         Key::AssistantOrca,
         Key::AssistantDiscordEnabled,
+        Key::AssistantDiscordDestination,
+        Key::AssistantDiscordReceive,
         Key::AssistantDiscordRead,
         Key::AssistantDiscordPost,
         Key::AssistantDiscordDesktopFirst,

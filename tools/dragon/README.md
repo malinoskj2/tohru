@@ -65,3 +65,21 @@ WAYLAND_DISPLAY=hyprland-1 pleamar --say dragon-body-review \
 ```
 
 Other harness events: `review_pause`, `review_finish`, `review_interrupt`, `review_calm`, `review_reduced 1`, `review_key 0` through `review_key 19`, and `review_live`. Static key inspection freezes the controller; `review_live` resumes it. These events exist only in the harness.
+
+## Desktop flight wingbeats
+
+After regenerating the body atlas, run `python3 tools/dragon/flight.py` to rebuild `shell/assistant/dragon/flight.webp`. Its three 12-frame rows derive from the registered left glide, right glide and rising bank keys. Frame zero is the original key. The mesh flexes each wing about its root and adds a small tail counterstroke. The flight puppet and sampler own playback and the handoff to the normal registered body sheet.
+
+## Entrance landing artwork
+
+Run `OPENBLAS_NUM_THREADS=1 python3 tools/dragon/landing.py` after the body pack. The optional `--evidence PATH` writes the nine projected joint tracks. The generator reads the installed body atlas and the six hand-marked drawings in `art/landing-rig.json`. Each part has its visible polygon, ordered joint locations and an optional underpainted area at a joint. The three side views are body cells 309, 417 and 327. The endings use the actual conversational keys 489 for pondering, 507 for attention and 0 for the beginning of the neutral cycle.
+
+The belly carries the head, wing roots and hips. Horns and facial features move in head coordinates. Both hands reach to balance before the near hand settles. The tail follows a tapered link chain through a projected curl. The hidden wing reuses the paint of the visible membrane. This is a stylized cutout turn. The far-side anatomy is reconstructed from the visible artwork. The endpoint drawings retain the different proportions of the original registered views.
+
+The native renderer preloads a 15-column, nine-row WebP along with the wing art. Each frame has a transparent gutter. The generated Luau rectangle restores its original projected width, height and location at the existing actor scale. Cropping before packing keeps the single additional decoded source below 5 MiB. The runtime holds the desired puppet key during the turn. Existing speech transitions retain their original keys and interpolation. No model inference is part of the landing pack.
+
+### Human review
+
+The user provisionally accepted all four native landings at `71610d8f331ec8b0542aecc38d8447ec8a5292e8` for integration. The final settle still visibly reads as the dragon morphing into her idle pose. Further landing polish is deferred. The independent Rive puppet exploration will investigate better continuity.
+
+The accepted normal-speed recordings are gallery #23 (wrap), #27 (rise), #31 (right edge) and #35 (sweep). Their paths and checksums are in `.tmp/landing-review-evidence/media-paths.tsv` and `manifest.tsv` in the contextual flight worktree.

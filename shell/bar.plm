@@ -1,6 +1,6 @@
 scene Tohru {
  surface { size: full, 42; anchor: top; margin: 0; reserve: 31; level: top, overlay while bar_launcher >= 2; screens: bar_outputs; keyboard: exclusive while sound_open or media_open or cal_open or net_open or bt_open or info_visible or about_visible or wall_open or tray_open or ai_open or ai_menu_open }
- permissions { services: "outputs", "compositor", "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.default_output", "audio.default_input", "audio.app_volume", "audio.app_mute", "window", "apps", "media", "media.*", "clock", "workspaces", "network.*", "bluetooth.*", "battery", "tray", "tray.*", "say:tohru-notifications", "say:tohru-session", "say:tohru-launcher"; run: "tohru-wallpaper", "tohru-media-art", "tohru-assistant", "tohru-voice", "wl-copy" }
+ permissions { services: "outputs", "compositor", "audio", "audio.step", "audio.volume", "audio.mute", "audio.input", "audio.input_mute", "audio.default", "audio.default_output", "audio.default_input", "audio.app_volume", "audio.app_mute", "window", "apps", "media", "media.*", "clock", "workspaces", "network.*", "bluetooth.*", "battery", "tray", "tray.*", "say:tohru-notifications", "say:tohru-session", "say:tohru-launcher"; run: "tohru-wallpaper", "tohru-media-art", "tohru-assistant", "tohru-voice", "tohru_flight_scene.py", "wl-copy" }
  include "panel-ink.plm"
  include "bar/state.plm"
  include "bar/rail-state.plm"
@@ -35,6 +35,7 @@ scene Tohru {
  text setting_key = ""
  text setting_value = ""
  event setting_assistant ->
+ event setting_assistant_entrances ->
  event setting_assistant_reduced_motion ->
  event config_reload ->
  event setting_mooncoil ->
