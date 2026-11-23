@@ -1,0 +1,31 @@
+{
+  "orcaVersion": "1.4.268",
+  "patchSha256": "ffade43962aef7772894f24375ab054612b8939c815f674457e8a763c0abbf24",
+  "baseFiles": {
+    "src/cli/arguments/args.test.ts": "5d0f79f0057ab5c15490c33ba0d6607881aef0c26f09870ff2ba77f83823f858",
+    "src/cli/discovery/flag-help-text.ts": "45d7b7fc38e5f65cf161a37157ac4cd8ca64e59e7dc6198ead1e5854f0537a06",
+    "src/cli/orchestration/workers/worker-launch-handler.ts": "c43d176059d1c997cae2740a44a27a45c6c9dee8241f2ca690a65db6385e488e",
+    "src/cli/specs/orchestration-worker-specs.ts": "1031e839fae79a0e539aa2bc70348e892cd09b53a2e2d98e841ef99af6d51022",
+    "src/main/bots/bot-structured-session-wiring.ts": "6bfbd8ca2ef9f0dc12f51da5c8cd0df61bc3eed0ecba9dba5ef7f85d47d2ba71",
+    "src/main/bots/desktop-voice-continuations.test.ts": "7bb6a06223a2eec4cd3b7cfe195828d05fcde9f5ee09f8b56b82fb1a285cb663",
+    "src/main/bots/desktop-voice-continuations.ts": "81be86659bacce629bfa6eb00d12b0feb05413e61f1fb52ec57a9edb96fadaaf",
+    "src/main/bots/desktop-voice-task-queue.test.ts": "a41bf75da7ace47322cb563eaee14d97dfa1d4f987c345501c511eec5f5546cf",
+    "src/main/bots/desktop-voice-task-queue.ts": "257f664cc67f572f0c62d9a41fb66fb831a738f9995faee5a106a0722dc87a07",
+    "src/main/native-chat/agent-session-journal/journal-domain-consumer-reads.ts": "09a51d046a236541e69dfdc46170391f42b20fb8d9b2e43e809ddb5e58a1f356",
+    "src/main/native-chat/agent-session-journal/journal-domain-send-and-prompt-reads.ts": "145df782d5822b2269c1494d4e3cd2857e784e77ea259d69edf639b7d4d7742b",
+    "src/main/native-chat/agent-session-journal/journal-sql-reads.ts": "99050cd59ee934ec4b611f5e9ca222a3bb934030544f717d7e9723e213aa12b2",
+    "src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.test.ts": "4cbd7b2ddbf0e374799718cf59025f02828490e5a2cb38a0ecae33898e8881af",
+    "src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.ts": "d54111d38780f3129be048811bbe866c478047418c1ce568e49ba1abd0127ca4",
+    "src/main/runtime/orchestration/db/worker-dispatch/worker-dispatch-stop.ts": "10c10b3d150ce71130904cc5054e2f1529f7e10c64b0e6775f5ee770af66fd2a",
+    "src/main/runtime/orchestration/terminal-authority/legacy-worker-runtime-recovery.ts": "3eb5e5aa577dbe07ad8310999285858b400ee33f748605fe95c207d4aa31a12e",
+    "src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-coordinator-mail-rig.test-fixture.ts": "8e00b716f04ba679281927f1384511053d437fcbc2a5b9e41ea527bd0a0e36d8",
+    "src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-worker-start.test.ts": "6ebf36407200b9c34b80342679a0ee49726ad845c3d636ba3a206b75c9b2e18e",
+    "src/main/runtime/rpc/methods/orchestration/worker/start/local-worker-start-dispatch.ts": "0e9aa429a3f37952c0793e2889e239dc2dae5f227e0508249ddace48f9aa6151",
+    "src/main/runtime/rpc/methods/orchestration/worker/start/local-worker-start.ts": "87aa35e09e41577e827f43e1ec83f5ade5ce6f1441d198a45bdccbe71faabbc7",
+    "src/main/runtime/rpc/methods/orchestration/worker/stop/single-worker-stop.ts": "f003e94760b8a897c21ab21c564b2ddb5463afed9a40f40f39db061e90655a84",
+    "src/main/runtime/rpc/methods/orchestration/worker/worker-start-method.ts": "b4d4a9bd88122f229a0bc4cffb5a04a20464ce8176356ea303d5ac03f2bedab3",
+    "src/shared/agent-conversations/agent-conversation-contracts.ts": "950938208805cb4536c4ca878747282cf88236ad7178c07efae02b7aa3829330",
+    "src/shared/rpc-contract/orchestration/orchestration-worker-start-params.ts": "1181bec2f0408813721c0a79e3d12703ea99a27f1eff2d8f5a7e50a7c9a1df45"
+  },
+  "requires": "The reviewed desktop routing/task-speech and host-native bot patch set; no upstream or live source is mutated."
+}

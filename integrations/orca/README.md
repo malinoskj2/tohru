@@ -74,3 +74,18 @@ Both RPC methods participate in Orca's injected caller resolution. A producer mu
 The integration test uses fake task and speech adapters. It does not prove audible playback, an actual voice-created worktree, or an LLM's compliance with the bot instructions. No installed application or live desktop service was activated. Existing final-only behavior remains the fallback when either side lacks the new handshake.
 
 The source `check:changed` gate passes all 30 checks. The patch removes the obsolete `worker-auto-release.test.ts` entry from the test-runtime list because that file is absent from the pinned upstream source. No exception is added to the check.
+
+## Shared Home owner and background admission corrections
+
+`desktop-voice-owner-admission.patch` applies after the deployed task-speech and host-native bot patches. Its exact base-file hashes are in `owner-admission-provenance.json`. Apply it only to an isolated current integration source tree:
+
+```sh
+python3 integrations/orca/apply-owner-admission.py --source .tmp/current-orca-source
+python3 integrations/orca/verify-owner-admission.py --source .tmp/current-orca-source
+```
+
+The tree needs its pinned dependencies, built workspace packages and the Nix-generated settings modules. The verifier performs real SQLite journal operations, native session admission and independent provider queues through the RPC dispatcher; provider transports and physical audio are fixtures. A real child process records desktop IPC. Tests hold native readiness unresolved, continue Home input, replay durable acceptance, cancel before task delivery, consume a queued draft into its canonical ID, reject invalid task speech, distinguish internal mail, and fence a cleared context. This is stronger boundary coverage than the earlier adapter-only transport fixture; neither establishes physical hearing.
+
+The new optional `worker-start --background` returns a persisted `accepted` receipt, distinct from readiness. Existing calls retain their wait-for-ready behavior. Launch/failure cleanup remains runtime-owned after the RPC returns; shutdown drains it, and a restart exposes the same durable Dispatch rather than relaunching blindly. Automatic acceptance/readiness speech uses that dispatch’s request correlation and the existing visibility/interruption arbiter. Shared work status is read through the existing bot items and worker-show APIs in the one Home conversation; no transcript copy transfers approvals.
+
+With `--ids`, native history now carries typed owner/internal/answer authority and the original queued request alias. Only the final assistant entry of an explicitly successful turn carries its completion identity, so an unrelated later mail turn cannot hide that completed answer. The helper registers desktop speech only after this real admission is observed. Home is the default public route; historical experimental foreground chats remain intact for reference.

@@ -1,0 +1,1478 @@
+--- a/src/cli/arguments/args.test.ts
++++ b/src/cli/arguments/args.test.ts
+@@ -1,8 +1,30 @@
++import { ORCHESTRATION_WORKER_COMMAND_SPECS } from '../specs/orchestration-worker-specs'
+ import { describe, expect, it } from 'vitest'
+ 
+ import { normalizeCommandPositionals, parseArgs } from './args'
+ 
+ describe('parseArgs', () => {
++  it('parses background admission as a switch on the actual worker command', () => {
++    const parsed = parseArgs(
++      [
++        'orchestration',
++        'worker-start',
++        '--background',
++        '--spec',
++        'long work',
++        '--worktree',
++        'current',
++        '--agent',
++        'codex'
++      ],
++      undefined,
++      ORCHESTRATION_WORKER_COMMAND_SPECS
++    )
++    expect(parsed.commandPath).toEqual(['orchestration', 'worker-start'])
++    expect(parsed.flags.get('background')).toBe(true)
++    expect(parsed.flags.get('spec')).toBe('long work')
++  })
++
+   it('preserves a selector value that is also a registered command', () => {
+     const parsed = parseArgs(
+       ['--environment', 'status', 'worktree', 'list'],
+--- a/src/cli/discovery/flag-help-text.ts
++++ b/src/cli/discovery/flag-help-text.ts
+@@ -42,6 +42,7 @@
+   help: '--help                 Show this help message',
+   'include-visual-layouts': '--include-visual-layouts Include tab and pane topology in JSON output',
+   interrupt: '--interrupt            Send as an interrupt-style input when supported',
++  background: '--background          Return durable local job acceptance before readiness',
+   'keep-open': '--keep-open            Keep the worker open after it finishes',
+   'spec-file': '--spec-file <path|->  Read the spec from a file or stdin',
+   id: '--id <id>             Identifier for a target item or permission',
+--- a/src/cli/orchestration/workers/worker-launch-handler.ts
++++ b/src/cli/orchestration/workers/worker-launch-handler.ts
+@@ -26,6 +26,12 @@
+   'orchestration worker-start': async (ctx) => {
+     const { flags, client, cwd, json } = ctx
+     await refuseAgentServerRoute('worker-start', ctx)
++    if (flags.has('background') && flags.has('keep-open')) {
++      throw new RuntimeClientError(
++        'invalid_argument',
++        '--background cannot promise --keep-open before readiness; use worker-keep-open after worker-show reports ready.'
++      )
++    }
+     const terminal = getPresentStringFlag(flags, 'terminal')
+     const model = getOptionalStringFlag(flags, 'model')
+     const effort = getOptionalStringFlag(flags, 'effort')
+@@ -63,6 +69,7 @@
+       next?: string
+     }>(client, flags, 'orchestration.workerStart', {
+       task,
++      ...(flags.has('background') ? { background: true } : {}),
+       ...(spec ? { spec } : {}),
+       ...(taskTitle ? { taskTitle } : {}),
+       ...(deps ? { deps } : {}),
+@@ -89,7 +96,10 @@
+     }).catch(async (error: unknown) => {
+       throw await explainOlderRuntimeRunRequired(client, error)
+     })
+-    if (result.result.state !== 'ready') {
++    if (
++      result.result.state !== 'ready' &&
++      !(flags.has('background') && result.result.state === 'accepted')
++    ) {
+       process.exitCode = 1
+     }
+     const keepOpenState =
+--- a/src/cli/specs/orchestration-worker-specs.ts
++++ b/src/cli/specs/orchestration-worker-specs.ts
+@@ -6,13 +6,14 @@
+     path: ['orchestration', 'worker-start'],
+     summary: 'Start one supervised worker on the Run home or a connected Orca server',
+     usage:
+-      'orca orchestration worker-start (--task <task_id> | --spec <text> | --spec-file <path|->) [--keep-open] [--on <saved-environment>] [--worktree <current|selector|new-child|new-top-level>] (--agent <agent> | --terminal <handle>) [--task-title <text>] [--deps <json_array>] [--parent <task_id>] [--model <id>] [--effort <level>] [--name <name>] [--repo <selector>] [--base-branch <ref>] [--display-name <text>] [--comment <text>] [--setup <run|skip|inherit>] [--retry-of <dispatch_id>] [--timeout-ms <n>] [--run <run_id>] [--from <handle>] [--retry-request <id>] [--item <n>] [--json]',
++      'orca orchestration worker-start (--task <task_id> | --spec <text> | --spec-file <path|->) [--keep-open] [--background] [--on <saved-environment>] [--worktree <current|selector|new-child|new-top-level>] (--agent <agent> | --terminal <handle>) [--task-title <text>] [--deps <json_array>] [--parent <task_id>] [--model <id>] [--effort <level>] [--name <name>] [--repo <selector>] [--base-branch <ref>] [--display-name <text>] [--comment <text>] [--setup <run|skip|inherit>] [--retry-of <dispatch_id>] [--timeout-ms <n>] [--run <run_id>] [--from <handle>] [--retry-request <id>] [--item <n>] [--json]',
+     allowedFlags: [
+       ...GLOBAL_FLAGS,
+       'task',
+       'spec',
+       'spec-file',
+       'keep-open',
++      'background',
+       'task-title',
+       'deps',
+       'parent',
+@@ -35,8 +36,10 @@
+       'retry-request',
+       'item'
+     ],
++    booleanFlags: ['background'],
+     identityFlagRoles: { from: 'caller', terminal: 'target' },
+     notes: [
++      '--background (local only) returns state accepted with durable Task/Dispatch IDs before setup or readiness; it does not mean the worker is running. Inspect worker-show for starting, ready or failure. Retry the same request ID after interruption; never start a replacement merely because launch is slow. Existing calls without this flag still wait for ready. Cannot combine with --keep-open.',
+       "--item <n> (from a bot's own chat) links the worker to that item and moves it to In progress.",
+       'With --spec and no bound Run, a coordinator gets a new Run bound to it, named after the Task title; the receipt names the Run it created or joined.',
+       'Current and existing worktrees never rerun setup; a fresh agent terminal is created unless --terminal is explicit.',
+--- a/src/main/bots/bot-structured-session-wiring.ts
++++ b/src/main/bots/bot-structured-session-wiring.ts
+@@ -5,7 +5,7 @@
+ import type { StructuredAgentSessionRuntimeDeps } from '../runtime/agent-session/installation/structured-agent-session-runtime-contract'
+ import { join } from 'node:path'
+ import { botHomeFolder, localBotHomeFilesystem } from './bot-home'
+-import { desktopVoiceOwnerTurn } from './desktop-voice-continuations'
++import { desktopVoiceOwnerMessage } from './desktop-voice-continuations'
+ import { messageWords } from '../../shared/agent-session/lifecycle/stopping/agent-session-stopped-history'
+ import {
+   botMentionContext,
+@@ -20,7 +20,10 @@
+ import { botToolsEpoch, type BotLaunchedTools } from './bot-tools-revision'
+ import { botOfHomeWorkspace } from '../../shared/bots/bot-homes'
+ import { createBotTurnContext } from './bot-turn-context'
+-import type { TurnEndedVerdict, StructuredAgentSessionTurnContext } from '../native-chat/agent-session-wire/structured-agent-session-turn-context'
++import type {
++  TurnEndedVerdict,
++  StructuredAgentSessionTurnContext
++} from '../native-chat/agent-session-wire/structured-agent-session-turn-context'
+ import type { BotChatJournal } from './bot-turn-rows'
+ import type { BotRecentChatsSection } from './bot-recent-chats'
+ import { BOT_FIRST_RUN_RULES } from './bot-preamble'
+@@ -293,7 +296,7 @@
+         ])
+       },
+       handedOver: (sessionId, message) => {
+-        if (!message.from && !message.origin && !message.memorySource) desktopVoiceOwnerTurn(sessionId)
++        desktopVoiceOwnerMessage(sessionId, message)
+         deps.work.handedOver(sessionId, message)
+         turnContext.handedOver?.(sessionId, message)
+       },
+--- a/src/main/bots/desktop-voice-continuations.test.ts
++++ b/src/main/bots/desktop-voice-continuations.test.ts
+@@ -4,13 +4,38 @@
+ import type { TurnEndedRows } from '../native-chat/agent-session-wire/structured-agent-session-turn-context'
+ 
+ function prompt(text: string, request = 'request'): AgentJournalRenderItem {
+-  return { itemId: request, sequence: 1, revision: 1, observedAt: 1, turnScope: { kind: 'thread' },
+-    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] } }
++  return {
++    itemId: request,
++    sequence: 1,
++    revision: 1,
++    observedAt: 1,
++    turnScope: { kind: 'thread' },
++    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] }
++  }
+ }
+ function mail(...messages: string[]): AgentJournalRenderItem {
+-  return { ...prompt('raw worker report'), body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'raw worker report' }],
+-    from: { kind: 'agent', senders: [], orchestration: { message: 'mail-notice', mailbox: 'chat', dispatchId: null,
+-      messages: messages.map((messageId) => ({ messageId, runId: 'run', from: 'dispatch:worker' })) } } } }
++  return {
++    ...prompt('raw worker report'),
++    body: {
++      kind: 'message',
++      role: 'user',
++      blocks: [{ type: 'text', text: 'raw worker report' }],
++      from: {
++        kind: 'agent',
++        senders: [],
++        orchestration: {
++          message: 'mail-notice',
++          mailbox: 'chat',
++          dispatchId: null,
++          messages: messages.map((messageId) => ({
++            messageId,
++            runId: 'run',
++            from: 'dispatch:worker'
++          }))
++        }
++      }
++    }
++  }
+ }
+ 
+ describe('voice continuation provenance', () => {
+@@ -38,7 +63,10 @@
+     links.ownerTurn('chat')
+     expect(links.origin('chat', mail('done'), () => 'worker')).toBeNull()
+     links.remember('worker', { chat: 'chat', request: 'new-spoken-request' })
+-    expect(links.origin('chat', mail('done'), () => 'worker')).toEqual({ chat: 'chat', request: 'new-spoken-request' })
++    expect(links.origin('chat', mail('done'), () => 'worker')).toEqual({
++      chat: 'chat',
++      request: 'new-spoken-request'
++    })
+   })
+   it('claims a completed summary once and bounds dispatch storage', () => {
+     const links = new DesktopVoiceContinuations()
+@@ -52,20 +80,72 @@
+     const links = new DesktopVoiceContinuations()
+     links.remember('worker', { chat: 'chat', request: 'spoken-request' })
+     const response = (text: string, turnItemId = 'turn'): AgentJournalRenderItem => ({
+-      ...prompt(text), itemId: text, turnScope: { kind: 'turn', turnItemId },
++      ...prompt(text),
++      itemId: text,
++      turnScope: { kind: 'turn', turnItemId },
+       body: { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text }] }
+     })
+-    const turn: AgentJournalRenderItem = { ...prompt(''), itemId: 'turn',
+-      body: { kind: 'turn', turnId: 'provider-turn', userItemId: 'request', state: 'completed', outcome: 'success' } }
+-    const rows: TurnEndedRows = { items: [mail('done'), turn, response('Checking the worker report'), response('My analyzed answer'), response('Another turn', 'other')], openerIds: new Map() }
++    const turn: AgentJournalRenderItem = {
++      ...prompt(''),
++      itemId: 'turn',
++      body: {
++        kind: 'turn',
++        turnId: 'provider-turn',
++        userItemId: 'request',
++        state: 'completed',
++        outcome: 'success'
++      }
++    }
++    const rows: TurnEndedRows = {
++      items: [
++        mail('done'),
++        turn,
++        response('Checking the worker report'),
++        response('My analyzed answer'),
++        response('Another turn', 'other')
++      ],
++      openerIds: new Map()
++    }
+     expect(desktopVoiceSummary(links, 'chat', 'provider-turn', rows, () => 'worker')).toEqual({
+-      origin: { chat: 'chat', request: 'spoken-request' }, completion: 'turn', text: 'My analyzed answer'
++      origin: { chat: 'chat', request: 'spoken-request' },
++      completion: 'turn',
++      text: 'My analyzed answer',
++      task: 'dispatch:worker'
+     })
+-    expect(desktopVoiceSummary(links, 'other-chat', 'provider-turn', rows, () => 'worker')).toBeNull()
+-    const failed: TurnEndedRows = { ...rows, items: [mail('done'), { ...turn, body: { kind: 'turn', turnId: 'provider-turn', userItemId: 'request', state: 'completed', outcome: 'failure' } }, response('Failed output')] }
++    expect(
++      desktopVoiceSummary(links, 'other-chat', 'provider-turn', rows, () => 'worker')
++    ).toBeNull()
++    const failed: TurnEndedRows = {
++      ...rows,
++      items: [
++        mail('done'),
++        {
++          ...turn,
++          body: {
++            kind: 'turn',
++            turnId: 'provider-turn',
++            userItemId: 'request',
++            state: 'completed',
++            outcome: 'failure'
++          }
++        },
++        response('Failed output')
++      ]
++    }
+     expect(desktopVoiceSummary(links, 'chat', 'provider-turn', failed, () => 'worker')).toBeNull()
+-    expect(desktopVoiceSummary(links, 'chat', 'provider-turn', { ...rows, items: [mail('done'), turn, response('NO_REPLY')] }, () => 'worker')).toBeNull()
+-    const direct = { ...rows, items: [prompt('[tohru-desktop:voice]\nQuestion'), turn, response('Direct answer')] }
++    expect(
++      desktopVoiceSummary(
++        links,
++        'chat',
++        'provider-turn',
++        { ...rows, items: [mail('done'), turn, response('NO_REPLY')] },
++        () => 'worker'
++      )
++    ).toBeNull()
++    const direct = {
++      ...rows,
++      items: [prompt('[tohru-desktop:voice]\nQuestion'), turn, response('Direct answer')]
++    }
+     expect(desktopVoiceSummary(links, 'chat', 'provider-turn', direct, () => 'worker')).toBeNull()
+   })
+ })
+--- a/src/main/bots/desktop-voice-continuations.ts
++++ b/src/main/bots/desktop-voice-continuations.ts
+@@ -1,4 +1,7 @@
+-import type { AgentJournalRenderItem } from '../../shared/agent-session/journal/agent-session-journal-types'
++import type {
++  AgentJournalRenderItem,
++  AgentJournalMessageItem
++} from '../../shared/agent-session/journal/agent-session-journal-types'
+ import { orchestrationMailNotice } from '../../shared/agent-session/journal/agent-session-message-source'
+ import { agentJournalTurnOpener } from '../../shared/agent-session/journal/agent-session-journal-turn-opener'
+ import type {
+@@ -11,6 +14,8 @@
+ import { readAgentJournalTurnOutcome } from '../../shared/agent-session/lifecycle/records/agent-session-turn-record'
+ import { isQuietBotResult } from '../../shared/bot-quiet-result'
+ import { desktopVoiceTasks, runDesktopAssistant } from './desktop-voice-task-delivery'
++import { agentJournalSubmissionKey } from '../../shared/agent-session/journal/agent-session-journal-item-key'
++import type { JournalSqlReads } from '../native-chat/agent-session-journal/journal-sql-reads'
+ 
+ type Origin = { chat: string; request: string }
+ const MAX_LINKS = 512
+@@ -43,6 +48,15 @@
+       }
+       this.dispatches.delete(first)
+     }
++  }
++
++  dispatchOrigin(dispatch: string, now = Date.now()): Origin | null {
++    const link = this.dispatches.get(dispatch)
++    return link &&
++      now - link.at <= MAX_AGE &&
++      link.epoch === (this.owners.get(link.origin.chat) ?? 0)
++      ? link.origin
++      : null
+   }
+ 
+   ownerTurn(chat: string): void {
+@@ -120,6 +134,10 @@
+ // A restart deliberately drops speech eligibility; the durable result remains in Orca.
+ const continuations = new DesktopVoiceContinuations()
+ 
++export function desktopVoiceOwnerMessage(chat: string, message: AgentJournalMessageItem): void {
++  if (!message.from && !message.origin && !message.memorySource) desktopVoiceOwnerTurn(chat)
++}
++
+ export function desktopVoiceOwnerTurn(chat: string): void {
+   continuations.ownerTurn(chat)
+   desktopVoiceTasks.ownerTurn(chat)
+@@ -129,13 +147,29 @@
+   runtime: OrcaRuntimeService,
+   chat: string
+ ): Promise<Origin | null> {
+-  const unchanged = desktopVoiceTasks.capture()
++  const unchanged = desktopVoiceTasks.capture(chat)
+   const reads = await (await requireStructuredHost(runtime)).journalReads(chat)
+-  const prompt = await reads.promptItem('last')
++  const origin = await currentDesktopOwnerOrigin(reads, chat)
+   if (!unchanged()) {
+     return null
+   }
+-  return prompt ? continuations.origin(chat, prompt, (id) => workerOf(runtime, id)) : null
++  return origin
++}
++
++export async function currentDesktopOwnerOrigin(
++  reads: Pick<JournalSqlReads, 'promptItem' | 'acceptedSendOfRow'>,
++  chat: string
++): Promise<Origin | null> {
++  const prompt = await reads.promptItem('last', true)
++  const origin = prompt ? continuations.origin(chat, prompt, () => null) : null
++  if (!origin || !prompt) return null
++  const submission = await reads.acceptedSendOfRow(prompt.itemId)
++  return {
++    chat,
++    request: submission?.queuedMessageId
++      ? agentJournalSubmissionKey(submission.queuedMessageId)
++      : origin.request
++  }
+ }
+ 
+ export function desktopVoiceAnswerContext(
+@@ -175,15 +209,51 @@
+     return
+   }
+   const reads = await (await requireStructuredHost(runtime)).journalReads(chat)
+-  const prompt = await reads.promptItem('last')
+-  const origin = prompt ? continuations.origin(chat, prompt, (id) => workerOf(runtime, id)) : null
++  const origin = await currentDesktopOwnerOrigin(reads, chat)
+   continuations.remember(dispatchId, origin)
+   trace('dispatch_origin', {
+     chat,
+     dispatch: dispatchId,
+-    prompt: prompt?.itemId ?? null,
+     request: origin?.request ?? null
+   })
++}
++
++/** Fixed truthful lifecycle updates run outside the Home model turn. No worker mail is read aloud. */
++export async function announceDesktopVoiceWorkerLaunch(
++  dispatch: string,
++  state: 'accepted' | 'ready' | 'failed' | 'cancelled' | 'unknown'
++): Promise<void> {
++  const origin = continuations.dispatchOrigin(dispatch)
++  if (!origin) return
++  const task = `dispatch:${dispatch}`
++  if (state !== 'accepted' && !desktopVoiceTasks.hasTask(origin, task)) return
++  try {
++    await desktopVoiceTasks.publish(origin, {
++      task,
++      sequence: state === 'accepted' ? 1 : 2,
++      kind:
++        state === 'accepted'
++          ? 'ack'
++          : state === 'cancelled'
++            ? 'cancelled'
++            : state === 'failed'
++              ? 'failed'
++              : 'progress',
++      text:
++        state === 'accepted'
++          ? 'I have accepted that work. It is being set up, and we can keep talking.'
++          : state === 'ready'
++            ? 'The background worker is ready and has received the task.'
++            : state === 'unknown'
++              ? 'The launch is not confirmed yet. I have kept its task record for inspection.'
++              : state === 'cancelled'
++                ? 'The background launch was cancelled.'
++                : 'The background worker could not start. The task record has the details.'
++    })
++  } catch {
++    // Speech failure never changes the durable task result or retries an uncertain IPC write.
++    trace('launch_speech_dropped', { dispatch, state })
++  }
+ }
+ 
+ export function desktopVoiceSummary(
+@@ -192,7 +262,7 @@
+   turnId: string,
+   rows: TurnEndedRows,
+   worker: (message: string) => string | null
+-): { origin: Origin; completion: string; text: string } | null {
++): { origin: Origin; completion: string; text: string; task?: string } | null {
+   const turn = rows.items.findLast(
+     (item) => item.body.kind === 'turn' && item.body.turnId === turnId
+   )
+@@ -229,8 +299,18 @@
+     .map((block) => block.text)
+     .join('\n')
+     .trim()
++  const notice = orchestrationMailNotice(prompt.body.from)
++  const dispatches = new Set(
++    notice?.messages.map((message) => worker(message.messageId)).filter((id) => id !== null)
++  )
++  const dispatch = dispatches.size === 1 ? [...dispatches][0] : undefined
+   return text && text.length <= 16384 && !isQuietBotResult(text)
+-    ? { origin, completion: turn.itemId, text }
++    ? {
++        origin,
++        completion: turn.itemId,
++        text,
++        ...(dispatch ? { task: `dispatch:${dispatch}` } : {})
++      }
+     : null
+ }
+ 
+@@ -247,9 +327,30 @@
+   if (!summary) {
+     return
+   }
+-  if (desktopVoiceTasks.taskMode(summary.origin)) {
++  if (summary.task && desktopVoiceTasks.hasTask(summary.origin, summary.task)) {
++    const worker = runtime
++      .getOrchestrationDb()
++      .getWorkerDispatch(summary.task.slice('dispatch:'.length))
++    if (!worker || !['succeeded', 'failed', 'stopped', 'abandoned'].includes(worker.state)) return
++    if (continuations.claim(summary.completion)) {
++      await desktopVoiceTasks.publish(summary.origin, {
++        task: summary.task,
++        sequence: 3,
++        kind:
++          worker.state === 'succeeded'
++            ? 'done'
++            : worker.state === 'failed'
++              ? 'failed'
++              : 'cancelled',
++        text:
++          new TextEncoder().encode(summary.text).length <= 320 && !/\p{Cc}/u.test(summary.text)
++            ? summary.text
++            : 'The background work has finished. The verified result is in this conversation.'
++      })
++    }
+     return
+   }
++  if (desktopVoiceTasks.taskMode(summary.origin)) return
+   if (!continuations.claim(summary.completion)) {
+     trace('completion_duplicate', { chat, completion: summary.completion })
+     return
+--- a/src/main/bots/desktop-voice-task-queue.test.ts
++++ b/src/main/bots/desktop-voice-task-queue.test.ts
+@@ -69,7 +69,7 @@
+   })
+   await queue.publish(origin, event('ack', 1))
+   await queue.publish(origin, event('done', 2))
+-  const unchanged = queue.capture()
++  const unchanged = queue.capture(origin.chat)
+   const ready = queue.ready(origin)
+   queue.ownerTurn(origin.chat)
+   expect(unchanged()).toBe(false)
+--- a/src/main/bots/desktop-voice-task-queue.ts
++++ b/src/main/bots/desktop-voice-task-queue.ts
+@@ -17,7 +17,7 @@
+ 
+ export class DesktopVoiceTaskQueue {
+   private readonly requests = new Map<string, Request>()
+-  private revision = 0
++  private readonly revisions = new Map<string, symbol>()
+ 
+   constructor(
+     private readonly deliver: (
+@@ -28,13 +28,29 @@
+   ) {}
+ 
+   ownerTurn(chat: string): void {
+-    this.revision += 1
++    this.revisions.set(chat, Symbol())
++    if (this.revisions.size > 512) {
++      const oldest = this.revisions.keys().next().value
++      if (oldest !== undefined) this.revisions.delete(oldest)
++    }
+     this.requests.delete(chat)
+   }
+ 
+-  capture(): () => boolean {
+-    const revision = this.revision
+-    return () => this.revision === revision
++  capture(chat: string): () => boolean {
++    if (!this.revisions.has(chat)) {
++      this.revisions.set(chat, Symbol())
++      if (this.revisions.size > 512) {
++        const oldest = this.revisions.keys().next().value
++        if (oldest !== undefined) this.revisions.delete(oldest)
++      }
++    }
++    const revision = this.revisions.get(chat)
++    return () => this.revisions.get(chat) === revision
++  }
++
++  hasTask(origin: DesktopVoiceOrigin, task: string): boolean {
++    const state = this.requests.get(origin.chat)
++    return state?.origin.request === origin.request && state.tasks.has(task)
+   }
+ 
+   taskMode(origin: DesktopVoiceOrigin): boolean {
+--- a/src/main/native-chat/agent-session-journal/journal-domain-consumer-reads.ts
++++ b/src/main/native-chat/agent-session-journal/journal-domain-consumer-reads.ts
+@@ -47,7 +47,7 @@
+   | { kind: 'automation-result-notes' }
+   | { kind: 'operation-window'; anchors: JournalOperationWindowAnchors }
+   | { kind: 'turn-attribution'; turnId: string; through: number }
+-  | { kind: 'prompt-item'; end: 'first' | 'last' }
++  | { kind: 'prompt-item'; end: 'first' | 'last'; ownerOnly?: boolean }
+   | { kind: 'latest-task-list' }
+   | { kind: 'run-mentions'; runId: string }
+   | { kind: 'turn-ran-since'; openedAt: number | null }
+@@ -121,7 +121,10 @@
+         window: readJournalDomainOperationWindow(scope, operation.anchors)
+       }
+     case 'prompt-item':
+-      return { kind: operation.kind, item: readJournalDomainPromptItem(scope, operation.end) }
++      return {
++        kind: operation.kind,
++        item: readJournalDomainPromptItem(scope, operation.end, operation.ownerOnly)
++      }
+     case 'latest-task-list':
+       return { kind: operation.kind, list: readJournalDomainLatestTaskList(scope) }
+     case 'run-mentions':
+--- a/src/main/native-chat/agent-session-journal/journal-domain-send-and-prompt-reads.ts
++++ b/src/main/native-chat/agent-session-journal/journal-domain-send-and-prompt-reads.ts
+@@ -9,12 +9,14 @@
+ /** The oldest or newest root prompt (a user message that is not a command). */
+ export function readJournalDomainPromptItem(
+   scope: JournalSqlScope,
+-  end: 'first' | 'last'
++  end: 'first' | 'last',
++  ownerOnly = false
+ ): AgentJournalRenderItem | null {
+   const order = end === 'first' ? 'ASC' : 'DESC'
+   const row = scope.db
+     .prepare(`SELECT payload_json FROM journal_items INDEXED BY journal_items_status_prompt
+     WHERE session_id=? AND epoch=? AND hidden=0 AND prompt=1
++    ${ownerOnly ? "AND json_extract(payload_json,'$.body.from') IS NULL AND json_extract(payload_json,'$.body.origin') IS NULL AND json_extract(payload_json,'$.body.memorySource') IS NULL AND sequence > COALESCE((SELECT context_boundary FROM journal_chat_state state WHERE state.session_id=journal_items.session_id AND state.epoch=journal_items.epoch),0)" : ''}
+     ORDER BY sequence ${order},sequence_index ${order},ordinal ${order} LIMIT 1`)
+     .get(...scope.prefix)
+   return row ? scope.decode<AgentJournalRenderItem>(scope.examined(row).payload_json) : null
+--- a/src/main/native-chat/agent-session-journal/journal-sql-reads.ts
++++ b/src/main/native-chat/agent-session-journal/journal-sql-reads.ts
+@@ -62,7 +62,7 @@
+   operationWindow(anchors: JournalOperationWindowAnchors): Promise<JournalOperationWindow>
+   /** Whom a turn acts for, by index over the turn's own rows (never the chat's send history). */
+   turnAttribution(turnId: string, through: number): Promise<JournalTurnAttribution>
+-  promptItem(end: 'first' | 'last'): Promise<AgentJournalRenderItem | null>
++  promptItem(end: 'first' | 'last', ownerOnly?: boolean): Promise<AgentJournalRenderItem | null>
+   /** The plan last written in the turn of the chat's newest tool call, or null. */
+   latestTaskList(): Promise<NativeChatTaskList | null>
+   runMentions(
+@@ -167,7 +167,8 @@
+     operationWindow: async (anchors) => (await read({ kind: 'operation-window', anchors })).window,
+     turnAttribution: async (turnId, through) =>
+       (await read({ kind: 'turn-attribution', turnId, through })).attribution,
+-    promptItem: async (end) => (await read({ kind: 'prompt-item', end })).item,
++    promptItem: async (end, ownerOnly) =>
++      (await read({ kind: 'prompt-item', end, ownerOnly })).item,
+     latestTaskList: async () => (await read({ kind: 'latest-task-list' })).list,
+     runMentions: async (runId) => {
+       const { items, sent } = await read({ kind: 'run-mentions', runId })
+--- a/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.test.ts
++++ b/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.test.ts
+@@ -1,14 +1,20 @@
++import type { AgentJournalMessageItem } from '../../../../../shared/agent-session/journal/agent-session-journal-types'
+ import { afterEach, expect, it } from 'vitest'
+ import {
+   messageFixture,
+   target
+ } from '../../../agent-session-journal/journal-sql-message.test-fixture'
+ import { readJournalDomainHistoryFrame } from '../../../agent-session-journal/journal-domain-history-page'
+-import { readJournalDomainItems } from '../../../agent-session-journal/journal-sql-item-reads'
+ import type { SqlAgentSessionJournal } from '../../../agent-session-journal/journal-sql-store'
+ import type { AgentJournalRenderItem } from '../../../../../shared/agent-session/journal/agent-session-journal-types'
+ import { CLIENT_HISTORY_READER } from './agent-session-item-wire-form'
+ import { readAgentJournalPage } from './agent-read-journal-page'
++import { journalSqlReads } from '../../../agent-session-journal/journal-sql-reads'
++import { readJournalSqlPoint } from '../../../agent-session-journal/journal-sql-point-read'
++import type { JournalWriterOperation } from '../../../agent-session-journal/journal-writer-command'
++import { lifecycleFacts } from '../../../agent-session-journal/journal-domain-lifecycle.test-fixture'
++import { agentSessionSendBodyFingerprint } from '../../../../../shared/agent-session/requests/structured-agent-session-send-mutation'
++import { currentDesktopOwnerOrigin } from '../../../../bots/desktop-voice-continuations'
+ 
+ const databases: ReturnType<typeof messageFixture>['db'][] = []
+ afterEach(() => {
+@@ -22,14 +28,12 @@
+   databases.push(f.db)
+   let beforeHistory = () => {}
+   const journal: Pick<SqlAgentSessionJournal, 'history'> & {
+-    reads: Pick<SqlAgentSessionJournal['reads'], 'contextFloor'>
++    reads: SqlAgentSessionJournal['reads']
+   } = {
+-    reads: {
+-      contextFloor: async () => {
+-        const result = readJournalDomainItems(f.db, target, { kind: 'context-floor' })
+-        return result.kind === 'context-floor' ? result.floor : null
+-      }
+-    },
++    reads: journalSqlReads(
++      { point: async (request) => readJournalSqlPoint(f.db, request) },
++      'chat'
++    ),
+     history: async (request) => {
+       beforeHistory()
+       return readJournalDomainHistoryFrame(
+@@ -42,6 +46,10 @@
+   }
+   return {
+     ...f,
++    run: async (operation: JournalWriterOperation) => {
++      const result = await f.commitCommands([{ target, operation, facts: lifecycleFacts }])
++      for (const outcome of result.outcomes) if (!outcome.committed) throw outcome.error
++    },
+     beforeHistory: (run: () => void) => {
+       beforeHistory = run
+     },
+@@ -77,6 +85,129 @@
+   const first = await f.read(20, () => true, true)
+   expect(first.entries[0]).toMatchObject({ itemId: 'orca:1', text: 'same text' })
+   expect(await f.read(20, () => true, true)).toEqual(first)
++})
++
++it('keeps the accepted owner request through actual queued-card consumption and internal mail', async () => {
++  const f = fixture()
++  const body: AgentJournalMessageItem = {
++    kind: 'message',
++    role: 'user',
++    blocks: [{ type: 'text', text: '[tohru-desktop:voice]\nAre you there' }]
++  }
++  const fingerprint = agentSessionSendBodyFingerprint('chat', body)
++  await f.run({ kind: 'queue-insert', input: { messageId: '0887907', body } })
++  await f.run({
++    kind: 'submission',
++    input: {
++      clientMessageId: '1133797',
++      fence: 1,
++      body,
++      payloadFingerprint: fingerprint,
++      handoverRecorded: true
++    },
++    consume: { messageId: '0887907', expect: 'waiting' }
++  })
++  await f.run({
++    kind: 'dispatch',
++    input: {
++      clientMessageId: '1133797',
++      fence: 1,
++      state: 'accepted',
++      providerIdentity: { provider: 'codex', threadId: 'thread', turnId: 'turn', ordinal: 0 }
++    }
++  })
++  f.seedItem({
++    ...message(100, 'Control status'),
++    body: {
++      kind: 'message',
++      role: 'user',
++      blocks: [{ type: 'text', text: 'unrelated control' }],
++      from: { kind: 'agent', senders: [], orchestration: null }
++    }
++  })
++  f.head(100)
++  const page = await f.read(20, () => true, true)
++  const owner = page.entries.find(
++    (entry) =>
++      entry.kind === 'message' && entry.role === 'user' && entry.interaction?.kind === 'owner'
++  )
++  expect(owner).toMatchObject({ interaction: { kind: 'owner', requestId: 'orca:0887907' } })
++  expect(owner?.itemId).not.toBe('orca:0887907')
++  expect(page.entries.at(-1)).toMatchObject({ interaction: { kind: 'internal' } })
++  const queued = await journalSqlReads(
++    { point: async (request) => readJournalSqlPoint(f.db, request) },
++    'chat'
++  ).queue({ kind: 'get', messageId: '0887907', facts: { reopenFloor: null } })
++  expect(queued.kind === 'get' && queued.card?.consumedAs).toBe('1133797')
++  const reads = journalSqlReads(
++    { point: async (request) => readJournalSqlPoint(f.db, request) },
++    'chat'
++  )
++  expect((await reads.promptItem('last'))?.itemId).toBe('orca:100')
++  expect(await currentDesktopOwnerOrigin(reads, 'chat')).toEqual({
++    chat: 'chat',
++    request: 'orca:0887907'
++  })
++  f.seedItem({
++    ...turn(101, 'completed'),
++    body: {
++      kind: 'turn',
++      turnId: 'turn-1',
++      state: 'completed',
++      outcome: 'success',
++      userItemId: owner!.itemId!
++    }
++  })
++  f.seedItem(reply(102, 'Commentary before the final'))
++  f.seedItem(reply(103, 'Yes, I am here.'))
++  f.seedItem({
++    ...message(104, ''),
++    itemId: 'internal-turn',
++    body: { kind: 'turn', turnId: 'internal', state: 'running', userItemId: 'orca:100' }
++  })
++  f.head(104)
++  const answered = await f.read(20, () => true, true)
++  expect(answered.state).toBe('working')
++  expect(
++    answered.entries.find((entry) => entry.kind === 'message' && entry.text === 'Yes, I am here.')
++  ).toMatchObject({
++    interaction: { kind: 'answer', requestId: 'orca:0887907', completionId: 'orca:103' }
++  })
++  expect(
++    answered.entries.find(
++      (entry) => entry.kind === 'message' && entry.text === 'Commentary before the final'
++    )?.interaction
++  ).not.toHaveProperty('completionId')
++  f.seedItem({
++    ...message(105, 'A genuinely newer typed owner turn'),
++    body: {
++      kind: 'message',
++      role: 'user',
++      blocks: [{ type: 'text', text: 'A genuinely newer typed owner turn' }]
++    }
++  })
++  f.head(105)
++  expect(await currentDesktopOwnerOrigin(reads, 'chat')).toBeNull()
++})
++
++it('does not revive a desktop origin across the current context boundary', async () => {
++  const f = fixture()
++  f.seedItem({
++    ...message(1, ''),
++    body: {
++      kind: 'message',
++      role: 'user',
++      blocks: [{ type: 'text', text: '[tohru-desktop:voice]\nOld question' }]
++    }
++  })
++  f.head(1)
++  const reads = journalSqlReads(
++    { point: async (request) => readJournalSqlPoint(f.db, request) },
++    'chat'
++  )
++  expect(await currentDesktopOwnerOrigin(reads, 'chat')).not.toBeNull()
++  clear(f)
++  expect(await currentDesktopOwnerOrigin(reads, 'chat')).toBeNull()
+ })
+ 
+ function clear(f: ReturnType<typeof fixture>) {
+--- a/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.ts
++++ b/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.ts
+@@ -6,6 +6,7 @@
+ } from '../../../../../shared/agent-session/agent-session-wire'
+ import { isAgentSessionContextClear } from '../../../../../shared/agent-session/conversation-context/agent-session-context-clear'
+ import type { AgentJournalRenderItem } from '../../../../../shared/agent-session/journal/agent-session-journal-types'
++import { agentJournalSubmissionKey } from '../../../../../shared/agent-session/journal/agent-session-journal-item-key'
+ import type { AgentStatusState } from '../../../../../shared/agent-status/contracts/agent-status-types'
+ import { readAgentJournalTurnOutcome } from '../../../../../shared/agent-session/lifecycle/records/agent-session-turn-record'
+ import type { SqlAgentSessionJournal } from '../../../agent-session-journal/journal-sql-store'
+@@ -38,7 +39,73 @@
+     { scope: 'own-agent', acceptedUnopened: true }
+   )
+   const { page } = frame.result
+-  const shown = pageEntries(page.items, page.hasOlder, request.limit, waiting, request.includeIds === true)
++  const shown = pageEntries(
++    page.items,
++    page.hasOlder,
++    request.limit,
++    waiting,
++    request.includeIds === true
++  )
++  if (request.includeIds) {
++    for (const entry of shown.entries) {
++      if (entry.kind !== 'message' || !entry.itemId) continue
++      const item = page.items.find((item) => item.itemId === entry.itemId)
++      if (!item || item.body.kind !== 'message') continue
++      if (item.body.role === 'user') {
++        entry.interaction = ownerInput(item)
++          ? { kind: 'owner', requestId: await ownerRequest(journal, item) }
++          : { kind: 'internal' }
++      } else if (item.body.role === 'assistant' && item.turnScope?.kind === 'turn') {
++        const turnId = item.turnScope.turnItemId
++        const turn =
++          page.items.find((row) => row.itemId === turnId) ??
++          (await journal.reads.itemDetail(turnId))
++        if (turn?.body.kind !== 'turn' || !turn.body.userItemId) continue
++        const openerId = turn.body.userItemId
++        const opener =
++          page.items.find((row) => row.itemId === openerId) ??
++          (await journal.reads.itemDetail(openerId))
++        if (!opener) continue
++        if (!ownerInput(opener)) {
++          entry.interaction = { kind: 'internal' }
++          continue
++        }
++        // Steered owner input can join an already-running provider turn. Its final
++        // answers the latest actual owner input before it, never control mail.
++        const owner =
++          page.items.findLast(
++            (row) =>
++              ownerInput(row) && row.sequence >= opener.sequence && row.sequence <= item.sequence
++          ) ?? opener
++        const completed =
++          turn.body.state === 'completed' &&
++          readAgentJournalTurnOutcome(turn.body) === 'success' &&
++          !page.items.some(
++            (row) =>
++              row.sequence > item.sequence &&
++              row.turnScope?.kind === 'turn' &&
++              row.turnScope.turnItemId === turnId &&
++              row.body.kind === 'message' &&
++              row.body.role === 'assistant'
++          )
++        entry.interaction = {
++          kind: 'answer',
++          requestId: await ownerRequest(journal, owner),
++          ...(completed ? { completionId: item.itemId } : {})
++        }
++      }
++    }
++    const budget = new PageBudget(request.limit)
++    const bounded: AgentReadEntry[] = []
++    for (const entry of shown.entries.toReversed()) {
++      if (!budget.admit(entry)) {
++        shown.limited = true
++        break
++      }
++      bounded.push(entry)
++    }
++    shown.entries = bounded.toReversed()
++  }
+   const state = journalTurnState(
+     page.latestTurn,
+     frame.acceptedUnopened === true,
+@@ -50,6 +117,27 @@
+     )
+   )
+   return { entries: shown.entries, limited: shown.limited, ...(state ? { state } : {}) }
++}
++
++function ownerInput(item: AgentJournalRenderItem): boolean {
++  const body = item.body
++  return (
++    body.kind === 'message' &&
++    body.role === 'user' &&
++    !body.from &&
++    !body.origin &&
++    !body.memorySource
++  )
++}
++
++async function ownerRequest(
++  journal: SqlAgentSessionJournal,
++  item: AgentJournalRenderItem
++): Promise<string> {
++  const submission = await journal.reads.acceptedSendOfRow(item.itemId)
++  return submission?.queuedMessageId
++    ? agentJournalSubmissionKey(submission.queuedMessageId)
++    : item.itemId
+ }
+ 
+ type ShownEntries = { entries: AgentReadEntry[]; limited: boolean; newest?: AgentJournalRenderItem }
+@@ -128,7 +216,11 @@
+   if (!entry) {
+     return null
+   }
+-  const shown: AgentReadEntry = { ...entry, ...(includeIds ? { itemId: item.itemId } : {}), ...(item.shortened ? { shortened: true } : {}) }
++  const shown: AgentReadEntry = {
++    ...entry,
++    ...(includeIds ? { itemId: item.itemId } : {}),
++    ...(item.shortened ? { shortened: true } : {})
++  }
+   if (entryBytes(shown) <= HISTORY_PAGE_CONTENT_BUDGET_BYTES) {
+     return shown
+   }
+--- a/src/main/runtime/orchestration/db/worker-dispatch/worker-dispatch-stop.ts
++++ b/src/main/runtime/orchestration/db/worker-dispatch/worker-dispatch-stop.ts
+@@ -89,6 +89,7 @@
+     // A different runtime epoch may retry a stranded stop; this epoch must preserve its in-flight stopping verdict for the exit event.
+     if (
+       !['ready', 'start_unknown'].includes(worker.state) &&
++      !(worker.state === 'starting' && JSON.parse(worker.start_options)?.background === true) &&
+       !isStopStrandedByAnotherRuntime(worker, runtimeEpoch)
+     ) {
+       throw new OrchestrationError(
+--- a/src/main/runtime/orchestration/terminal-authority/legacy-worker-runtime-recovery.ts
++++ b/src/main/runtime/orchestration/terminal-authority/legacy-worker-runtime-recovery.ts
+@@ -132,8 +132,22 @@
+     return this.legacyWorkerRecovery.reconcile(options)
+   }
+ 
+-  stopLegacyWorkerTerminalRecovery(): Promise<void> {
+-    return this.legacyWorkerRecovery.stop()
++  private readonly backgroundWorkerStarts = new Set<Promise<unknown>>()
++
++  trackBackgroundWorkerStart(work: Promise<unknown>): void {
++    this.backgroundWorkerStarts.add(work)
++    void work.then(
++      () => this.backgroundWorkerStarts.delete(work),
++      (error: unknown) => {
++        this.backgroundWorkerStarts.delete(work)
++        console.warn('[orchestration] background worker launch failed', error)
++      }
++    )
++  }
++
++  async stopLegacyWorkerTerminalRecovery(): Promise<void> {
++    await this.legacyWorkerRecovery.stop()
++    await Promise.allSettled(this.backgroundWorkerStarts)
+   }
+ 
+   protected updateLegacyWorkerTerminalRecoveryRetry(
+--- a/src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-coordinator-mail-rig.test-fixture.ts
++++ b/src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-coordinator-mail-rig.test-fixture.ts
+@@ -1,3 +1,5 @@
++import { desktopVoiceOwnerMessage } from '../../../../bots/desktop-voice-continuations'
++import { makeTestBot } from '../../../../bots/bot.test-fixture'
+ import { readTestHostJournal } from '../../../../native-chat/agent-session-journal/journal-observation.test-support'
+ // End-to-end coordinator-mail rig: real session/orchestration state and RPC, fake Codex child. Import registers lifecycle hooks.
+ 
+@@ -48,6 +50,17 @@
+ export let db: OrchestrationDb
+ export let host: StructuredAgentSessionHost
+ export let dispatcher: RpcDispatcher
++export function registerVoiceBot(): void {
++  profile.saveBot(
++    makeTestBot({
++      id: 'tohru',
++      name: 'Tohru',
++      folderWorkspaceId: 'workspace-1',
++      chatSessionId: COORDINATOR
++    })
++  )
++}
++
+ export let requests = 0
+ export const observationClock = createCoordinatorMailObservationClock(() => host, COORDINATOR)
+ 
+@@ -261,6 +274,7 @@
+     resolveClaudeAuthPolicy: () => ({ account: 'managed' }),
+     resolveEnvironment: async () => ({ PATH: '/usr/bin' }),
+     ...scriptedCodexTransport(codex.openConnection),
++    turnContext: { plan: async () => null, handedOver: desktopVoiceOwnerMessage },
+     onRequestFailure: (failure) => runtime.onStructuredRequestFailureForErrorMail(failure),
+     onSessionStatusChanged: (summary) => {
+       runtime.onStructuredSessionStatusForMail(summary)
+@@ -295,6 +309,7 @@
+       firstFailure ??= error
+     }
+   }
++  await cleanup(() => runtime.stopLegacyWorkerTerminalRecovery())
+   await cleanup(() => stopStructuredAgentSessionRuntime())
+   await cleanup(() => db.close())
+   await cleanup(() => observationClock.drainClosedDatabaseRepair())
+--- a/src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-worker-start.test.ts
++++ b/src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-worker-start.test.ts
+@@ -1,3 +1,9 @@
++import { writeFile, chmod, readFile } from 'node:fs/promises'
++import { join } from 'node:path'
++import { RpcDispatcher } from '../../../rpc/dispatcher'
++import { BOT_VOICE_METHODS } from '../../../rpc/methods/bots-voice'
++import { LOCAL_CLI_RPC_CALLER } from '../../../rpc/callers/rpc-caller-identity'
++import { desktopVoiceOrigin } from '../../../../bots/desktop-voice-continuations'
+ // worker-start adopts a chat through its queued send; Stop and failed start must leave the chat intact.
+ 
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+@@ -6,6 +12,8 @@
+ import type { FakeConnection } from './structured-chat-coordinator-fake-codex-fixture'
+ import {
+   COORDINATOR,
++  root,
++  registerVoiceBot,
+   PEER_CHAT,
+   WAIT,
+   call,
+@@ -85,6 +93,173 @@
+   expect(host.deps.store.getVisibleSessionTabIndex().sessionIds).toContain(PEER_CHAT)
+ }
+ 
++describe('worker-start --background durable admission', () => {
++  it('adjudicates real bot/session/schema voice readiness and sends truthful launch events through IPC', async () => {
++    const home = await openChat(COORDINATOR)
++    const worker = await openChat(PEER_CHAT)
++    registerVoiceBot()
++    const { taskId } = await coordinatorRunAndTask()
++    const command = join(root, 'desktop-assistant')
++    const output = join(root, 'desktop-ipc.jsonl')
++    await writeFile(
++      command,
++      '#!/usr/bin/env python3\nimport json,sys\nwith open(' +
++        JSON.stringify(output) +
++        ', "a") as f: f.write(json.dumps(sys.argv[1:])+"\\n")\n'
++    )
++    await chmod(command, 0o700)
++    const previous = process.env.ORCA_DESKTOP_ASSISTANT_COMMAND
++    process.env.ORCA_DESKTOP_ASSISTANT_COMMAND = command
++    try {
++      expect(
++        await sendUserMessage(COORDINATOR, '[tohru-desktop:voice]\nPlease start that work')
++      ).toMatchObject({ ok: true })
++      await vi.waitFor(() => expect(home.turns).toHaveLength(1), WAIT)
++      const origin = await desktopVoiceOrigin(runtime, COORDINATOR)
++      expect(origin).not.toBeNull()
++      const voice = new RpcDispatcher({ runtime, methods: BOT_VOICE_METHODS })
++      const ready = request('bots.voice.ready', origin!)
++      expect(await voice.dispatch(ready, { caller: LOCAL_CLI_RPC_CALLER })).toMatchObject({
++        ok: true,
++        result: { registered: true }
++      })
++      const invalid = request(
++        'bots.voice.task',
++        { callerSessionId: COORDINATOR, task: 'bad', sequence: 0, kind: 'ack', text: 'invalid' },
++        { sessionId: COORDINATOR }
++      )
++      expect(await voice.dispatch(invalid)).toMatchObject({ ok: false })
++      const accepted = await startWorker({ task: taskId, background: true })
++      expect(accepted.state).toBe('accepted')
++      await vi.waitFor(
++        async () =>
++          expect((await readFile(output, 'utf8')).includes('accepted that work')).toBe(true),
++        WAIT
++      )
++      expect(db.getWorkerDispatch(String(accepted.dispatchId))?.state).toBe('starting')
++      await vi.waitFor(() => expect(worker.turns).toHaveLength(1), WAIT)
++      await settleTurn(PEER_CHAT, 0)
++      await vi.waitFor(
++        async () => expect((await readFile(output, 'utf8')).includes('worker is ready')).toBe(true),
++        WAIT
++      )
++      const events = (await readFile(output, 'utf8'))
++        .trim()
++        .split('\n')
++        .map((line) => JSON.parse(line) as string[])
++      expect(events).toHaveLength(2)
++      for (const args of events) {
++        expect(args).toContain(origin!.request)
++        expect(args).toContain('dispatch:' + accepted.dispatchId)
++        expect(args.slice(0, 2)).toEqual(['assistant', 'voice-task'])
++      }
++      await settleTurn(COORDINATOR, 0)
++    } finally {
++      if (previous === undefined) delete process.env.ORCA_DESKTOP_ASSISTANT_COMMAND
++      else process.env.ORCA_DESKTOP_ASSISTANT_COMMAND = previous
++    }
++  })
++
++  it('persists cancellation during delayed launch without handing the task to the native worker', async () => {
++    const home = await openChat(COORDINATOR)
++    const worker = await openChat(PEER_CHAT)
++    const { taskId } = await coordinatorRunAndTask()
++    const command = join(root, 'slow-desktop-assistant')
++    await writeFile(command, '#!/usr/bin/env python3\nimport time\ntime.sleep(1.5)\n')
++    await chmod(command, 0o700)
++    const previous = process.env.ORCA_DESKTOP_ASSISTANT_COMMAND
++    process.env.ORCA_DESKTOP_ASSISTANT_COMMAND = command
++    try {
++      expect(await sendUserMessage(COORDINATOR, '[tohru-desktop:voice]\nStart work')).toMatchObject(
++        { ok: true }
++      )
++      await vi.waitFor(() => expect(home.turns).toHaveLength(1), WAIT)
++      const voice = new RpcDispatcher({ runtime, methods: BOT_VOICE_METHODS })
++      const origin = await desktopVoiceOrigin(runtime, COORDINATOR)
++      expect(origin).not.toBeNull()
++      expect(
++        await voice.dispatch(request('bots.voice.ready', origin!), { caller: LOCAL_CLI_RPC_CALLER })
++      ).toMatchObject({ ok: true })
++      const accepted = await startWorker({ task: taskId, background: true })
++      expect(accepted.state).toBe('accepted')
++      expect(
++        await call('orchestration.workerStop', { dispatch: accepted.dispatchId })
++      ).toMatchObject({ state: 'stopping', processAction: 'none' })
++      await vi.waitFor(
++        () => expect(db.getWorkerDispatch(String(accepted.dispatchId))?.state).toBe('stopped'),
++        WAIT
++      )
++      expect(worker.turns).toHaveLength(0)
++      expect(db.getWorkerTerminalResourceByOwner(String(accepted.dispatchId))).toBeUndefined()
++      expectChatOpen()
++      await settleTurn(COORDINATOR, 0)
++    } finally {
++      if (previous === undefined) delete process.env.ORCA_DESKTOP_ASSISTANT_COMMAND
++      else process.env.ORCA_DESKTOP_ASSISTANT_COMMAND = previous
++    }
++  })
++
++  it('returns accepted before native worker readiness and replays one durable dispatch', async () => {
++    const home = await openChat(COORDINATOR)
++    const worker = await openChat(PEER_CHAT)
++    const { taskId } = await coordinatorRunAndTask()
++    const invocation = request(
++      'orchestration.workerStart',
++      {
++        task: taskId,
++        terminal: WORKER,
++        background: true
++      },
++      { sessionId: COORDINATOR }
++    )
++    const response = await dispatcher.dispatch(invocation)
++    expect(response).toMatchObject({
++      ok: true,
++      result: {
++        state: 'accepted',
++        stage: 'accepted',
++        taskId,
++        dispatchId: expect.any(String)
++      }
++    })
++    if (!response.ok) throw new Error('admission failed')
++    const admitted = response.result as { dispatchId: string }
++    expect(db.getWorkerDispatch(admitted.dispatchId)?.state).toBe('starting')
++    expect(await dispatcher.dispatch(invocation)).toMatchObject({
++      ok: true,
++      result: {
++        state: 'accepted',
++        dispatchId: admitted.dispatchId
++      }
++    })
++    expect(db.db.prepare('SELECT COUNT(*) AS n FROM worker_dispatches').get()).toEqual({ n: 1 })
++    expect(await sendUserMessage(COORDINATOR, 'Can we continue while that starts?')).toMatchObject({
++      ok: true
++    })
++    await vi.waitFor(() => expect(home.turns).toHaveLength(1), WAIT)
++    await vi.waitFor(() => expect(worker.turns).toHaveLength(1), WAIT)
++    expect(turnText(home.turns[0]!)).toContain('Can we continue')
++    expect(turnText(worker.turns[0]!)).toContain(admitted.dispatchId)
++    // Keep the real native readiness boundary unresolved beyond ordinary IPC latency.
++    // Home already owns a different live provider turn, with no worker readiness response.
++    await new Promise((resolve) => setTimeout(resolve, 1500))
++    expect(db.getWorkerDispatch(admitted.dispatchId)?.state).toBe('starting')
++    await settleTurn(PEER_CHAT, 0)
++    await vi.waitFor(
++      () => expect(db.getWorkerDispatch(admitted.dispatchId)?.state).toBe('ready'),
++      WAIT
++    )
++    expect(await dispatcher.dispatch(invocation)).toMatchObject({
++      ok: true,
++      result: {
++        state: 'accepted',
++        dispatchId: admitted.dispatchId
++      }
++    })
++    await settleTurn(COORDINATOR, 0)
++  })
++})
++
+ describe('worker-start --terminal names a chat', () => {
+   it('assigns an idle chat as an external worker and stops or abandons it without closing the chat', async () => {
+     await openChat(COORDINATOR)
+--- a/src/main/runtime/rpc/methods/orchestration/worker/start/local-worker-start-dispatch.ts
++++ b/src/main/runtime/rpc/methods/orchestration/worker/start/local-worker-start-dispatch.ts
+@@ -46,6 +46,7 @@
+ ) {
+   const startOptions = {
+     worktree: requestedWorktree,
++    background: params.background === true,
+     mode,
+     resolvedWorktreeId: resolvedWorktreeId ?? null,
+     name: params.name ?? null,
+--- a/src/main/runtime/rpc/methods/orchestration/worker/start/local-worker-start.ts
++++ b/src/main/runtime/rpc/methods/orchestration/worker/start/local-worker-start.ts
+@@ -1,5 +1,9 @@
++import { closeStructuredAgentSessionChild } from '../../../../../agent-session/lifecycle/structured-agent-session-close'
+ import { createLocalWorkerStartDispatch } from './local-worker-start-dispatch'
+-import { rememberDesktopVoiceDispatch } from '../../../../../../bots/desktop-voice-continuations'
++import {
++  rememberDesktopVoiceDispatch,
++  announceDesktopVoiceWorkerLaunch
++} from '../../../../../../bots/desktop-voice-continuations'
+ import { refuseClaimedWorkerTerminal } from '../../../../../orchestration/db/worker-dispatch/worker-terminal-claim'
+ import { probeWorkerOpenCodeModelLaunchSupport } from './launch/worker-opencode-model-preflight'
+ import { resolveWorkerConfiguredAgentParams } from './launch/worker-configured-agent-preflight'
+@@ -41,7 +45,10 @@
+ import { deliverAndSettleWorkerStartReadiness } from './readiness/worker-start-readiness-settlement'
+ import type { WorkerStartMutation } from './worker-start-mutation'
+ import { prepareWorkerStartCard } from '../../../../../orchestration/workers/launch/worker-start-card'
+-import { rebindReusedStructuredWorker } from '../../structured-workers/orchestration-structured-worker-session'
++import {
++  releaseStructuredWorkerSession,
++  rebindReusedStructuredWorker
++} from '../../structured-workers/orchestration-structured-worker-session'
+ import { placedWorkerParty, type WorkerFollowUp } from '../follow-up/worker-follow-up-placement'
+ 
+ export async function startLocalWorker(args: {
+@@ -60,6 +67,15 @@
+   /** Set when a worker starts its own helper; the helper reports to this Dispatch. */
+   helperCreator?: DispatchContextRow
+   followUp?: WorkerFollowUp
++  onAccepted?: (receipt: {
++    runId: string
++    taskId: string
++    dispatchId: string
++    state: 'accepted'
++    stage: 'accepted'
++    effects: unknown[]
++    residualResources: unknown[]
++  }) => void
+ }): Promise<unknown> {
+   const { runtime, db, coordinator, callerSession, orchestrationMutation } = args
+   const recordStart = prepareWorkerStartCard(runtime, callerSession)
+@@ -145,8 +161,19 @@
+     agent,
+     launchReceipt: launch.receipt
+   })
+-  await rememberDesktopVoiceDispatch(runtime, started.dispatch.id).catch((error: unknown) => console.warn('[desktop-voice] could not correlate worker origin', error))
+-  releaseRetriedWorkerTerminal(runtime, db, params)
++  args.onAccepted?.({
++    runId: run.id,
++    taskId: started.task.id,
++    dispatchId: started.dispatch.id,
++    state: 'accepted',
++    stage: 'accepted',
++    effects: [],
++    residualResources: []
++  })
++  await rememberDesktopVoiceDispatch(runtime, started.dispatch.id).catch((error: unknown) =>
++    console.warn('[desktop-voice] could not correlate worker origin', error)
++  )
++  if (params.background) await announceDesktopVoiceWorkerLaunch(started.dispatch.id, 'accepted')
+   const effects: WorkerEffect[] = []
+   const task = started.task
+   if (resolvedWorktree) {
+@@ -161,8 +188,15 @@
+   const onStage = (stage: string) => {
+     failedStage = stage
+   }
++  const assertLaunchActive = () => {
++    if (params.background && db.getWorkerDispatch(started.dispatch.id)?.state !== 'starting') {
++      throw new Error('Background launch was cancelled before task delivery')
++    }
++  }
+   let result: unknown
+   try {
++    assertLaunchActive()
++    releaseRetriedWorkerTerminal(runtime, db, params)
+     placed = await placeWorkerAgent({
+       runtime,
+       db,
+@@ -180,6 +214,7 @@
+       onStage,
+       followUp: args.followUp
+     })
++    assertLaunchActive()
+     // New worktrees resolve host support after creation, so the final mode receipt may differ from preflight.
+     mode = placed.mode
+     resolvedWorktree = placed.worktree
+@@ -236,6 +271,7 @@
+         )
+       }
+     }
++    assertLaunchActive()
+     const terminalAuthority = authority ?? requireWorkerAuthority(runtime, terminalHandle)
+     db.prepareStartingWorkerAuthority({
+       dispatchId: started.dispatch.id,
+@@ -274,19 +310,60 @@
+       onStage
+     })
+   } catch (error) {
+-    result = await failWorkerStartWithReceipt({
+-      runtime,
+-      structuredSession: placed?.structuredSession ?? null,
+-      db,
+-      runId: run.id,
+-      taskId: task.id,
+-      dispatchId: started.dispatch.id,
+-      failedStage,
+-      error,
+-      setup: placed?.setupReceipt ?? EXISTING_WORKTREE_SETUP,
+-      launch: placed?.launch ?? launch.receipt,
+-      mode
+-    })
++    const interrupted = params.background
++      ? db.getWorkerDispatch(started.dispatch.id)?.state
++      : undefined
++    if (
++      interrupted === 'stopping' ||
++      interrupted === 'stopped' ||
++      interrupted === 'stop_unknown' ||
++      interrupted === 'abandoned'
++    ) {
++      if (placed?.structuredSession) {
++        const sessionId = placed.structuredSession.identity.sessionId
++        const close = await closeStructuredAgentSessionChild(sessionId, { runtime, surface: null })
++        if (close.stopped) {
++          releaseStructuredWorkerSession(sessionId, runtime)
++        } else if (interrupted === 'stopping') {
++          db.markWorkerStopUnknown(
++            started.dispatch.id,
++            close.reason ?? 'Launch cancellation could not prove chat exit.'
++          )
++        }
++      } else if (placed && placedWorkerParty(placed, chat, terminal).created) {
++        const close = await runtime.closeTerminal(placed.terminalHandle)
++        if (!close.ptyKilled && interrupted === 'stopping') {
++          db.markWorkerStopUnknown(
++            started.dispatch.id,
++            'Launch cancellation could not prove terminal exit.'
++          )
++        }
++      }
++      if (db.getWorkerDispatch(started.dispatch.id)?.state === 'stopping')
++        db.settleWorkerStop(started.dispatch.id)
++      result = {
++        runId: run.id,
++        taskId: task.id,
++        dispatchId: started.dispatch.id,
++        state: db.getWorkerDispatch(started.dispatch.id)?.state,
++        effects,
++        residualResources: []
++      }
++    } else {
++      result = await failWorkerStartWithReceipt({
++        runtime,
++        structuredSession: placed?.structuredSession ?? null,
++        db,
++        runId: run.id,
++        taskId: task.id,
++        dispatchId: started.dispatch.id,
++        failedStage,
++        error,
++        setup: placed?.setupReceipt ?? EXISTING_WORKTREE_SETUP,
++        launch: placed?.launch ?? launch.receipt,
++        mode
++      })
++    }
+   }
+   const state = result && typeof result === 'object' && 'state' in result ? result.state : null
+   // An unknown outcome with an agent launched may yet be a running worker: a bot records it, with no
+--- a/src/main/runtime/rpc/methods/orchestration/worker/stop/single-worker-stop.ts
++++ b/src/main/runtime/rpc/methods/orchestration/worker/stop/single-worker-stop.ts
+@@ -145,6 +145,17 @@
+     }
+   }
+   const handle = begun.worker.agent_terminal_handle
++  if (!handle && JSON.parse(begun.worker.start_options)?.background === true) {
++    // Durable stop fence: the launch owner checks it before task delivery and retires
++    // any resources still being placed. Acceptance is not proof of process exit.
++    return {
++      dispatchId,
++      state: 'stopping',
++      alreadySettled: false,
++      processAction: 'none',
++      warning: 'Cancellation accepted; launch cleanup is still pending. Inspect worker-show.'
++    }
++  }
+   if (!handle) {
+     return unknownReceipt(
+       dispatchId,
+--- a/src/main/runtime/rpc/methods/orchestration/worker/worker-start-method.ts
++++ b/src/main/runtime/rpc/methods/orchestration/worker/worker-start-method.ts
+@@ -1,3 +1,4 @@
++import { announceDesktopVoiceWorkerLaunch } from '../../../../../bots/desktop-voice-continuations'
+ import { stopHelperAfterStart } from './worker-stop'
+ import { OrchestrationError } from '../../../../orchestration/orchestration-error'
+ import type { z } from 'zod'
+@@ -55,7 +56,25 @@
+     requires: ['accounts'],
+     permission: 'workspace',
+     params: WorkerStartParams,
+-    handler: async (params, ctx) => startWorker(params, ctx)
++    handler: async (params, ctx) => {
++      if (!params.background) return startWorker(params, ctx)
++      if (params.on) {
++        throw new OrchestrationError(
++          'invalid_argument',
++          '--background supports local workers only. No effects were applied.',
++          { effectsApplied: false }
++        )
++      }
++      let accept!: (receipt: unknown) => void
++      const accepted = new Promise<unknown>((resolve) => {
++        accept = resolve
++      })
++      const work = startWorker(params, ctx, undefined, accept)
++      // The runtime owns the launch after admission, including its normal failure/cleanup path.
++      // Shutdown drains it; restart inspection uses the persisted Dispatch, never a second launch.
++      ctx.runtime.trackBackgroundWorkerStart(work)
++      return Promise.race([accepted, work])
++    }
+   })
+ ]
+ 
+@@ -63,7 +82,8 @@
+ export async function startWorker(
+   startParams: z.infer<typeof WorkerStartParams>,
+   ctx: WorkerStartContext,
+-  startFollowUp?: WorkerFollowUp
++  startFollowUp?: WorkerFollowUp,
++  onAccepted?: Parameters<typeof startLocalWorker>[0]['onAccepted']
+ ): Promise<unknown> {
+   const { runtime, orchestrationMutation, orchestrationCaller } = ctx
+   if (startParams.origin !== undefined && startParams.on) {
+@@ -116,8 +136,25 @@
+     orchestrationMutation,
+     mode,
+     helperCreator,
+-    followUp
++    followUp,
++    onAccepted: onAccepted ? (receipt) => onAccepted(withRun(receipt) as typeof receipt) : undefined
+   })
++  if (
++    params.background &&
++    receipt &&
++    typeof receipt === 'object' &&
++    'dispatchId' in receipt &&
++    typeof receipt.dispatchId === 'string' &&
++    'state' in receipt
++  ) {
++    if (receipt.state === 'ready' || receipt.state === 'failed') {
++      await announceDesktopVoiceWorkerLaunch(receipt.dispatchId, receipt.state)
++    } else if (receipt.state === 'stopped' || receipt.state === 'abandoned') {
++      await announceDesktopVoiceWorkerLaunch(receipt.dispatchId, 'cancelled')
++    } else if (receipt.state === 'outcome_unknown' || receipt.state === 'stop_unknown') {
++      await announceDesktopVoiceWorkerLaunch(receipt.dispatchId, 'unknown')
++    }
++  }
+   await stopHelperAfterStart(runtime, receipt, orchestrationMutation)
+   const started = withRun(withWorkerStartNext(receipt))
+   return checked && started && typeof started === 'object'
+--- a/src/shared/agent-conversations/agent-conversation-contracts.ts
++++ b/src/shared/agent-conversations/agent-conversation-contracts.ts
+@@ -39,7 +39,15 @@
+ export type AgentReadTool = { name: string; state?: string }
+ 
+ /** Every entry may say `shortened`: its text was cut to fit one reply; the app keeps it whole. */
+-export type AgentReadEntry = AgentReadEntryBody & { shortened?: true; itemId?: string }
++export type AgentReadEntry = AgentReadEntryBody & {
++  shortened?: true
++  itemId?: string
++  /** Included with IDs: native input authority, not the model's user/assistant role. */
++  interaction?:
++    | { kind: 'owner'; requestId: string }
++    | { kind: 'answer'; requestId: string; completionId?: string }
++    | { kind: 'internal' }
++}
+ 
+ type AgentReadEntryBody =
+   /** `tools`: the tool calls a transcript message made, folded into its one entry. */
+--- a/src/shared/rpc-contract/orchestration/orchestration-worker-start-params.ts
++++ b/src/shared/rpc-contract/orchestration/orchestration-worker-start-params.ts
+@@ -32,6 +32,8 @@
+     effort: OptionalWorkerLaunchPreference,
+     retryOf: OptionalString,
+     timeoutMs: OptionalFiniteNumber,
++    /** Return durable acceptance before setup/readiness; existing callers still wait for ready. */
++    background: z.boolean().optional(),
+     devMode: z.boolean().optional(),
+     /** What the creator started this worker for (`bot-item:<uid>`), checked by its owner before the
+      *  start and kept on the Dispatch; opaque to orchestration. */
