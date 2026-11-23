@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tohru immutable completion marker v1",
+  "type": "object",
+  "required": ["schema_version", "run_id", "scenario", "collection_id", "action_start_ns", "action_end_ns", "completed_ns", "cursor", "collector_exit", "complete", "hashes"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string", "format": "uuid"},
+    "collection_id": {"type": "string", "format": "uuid"},
+    "scenario": {"type": "string"},
+    "action_start_ns": {"type": "integer", "minimum": 1},
+    "action_end_ns": {"type": "integer", "minimum": 1},
+    "completed_ns": {"type": "integer", "minimum": 1},
+    "cursor": {"type": "integer", "minimum": 0},
+    "collector_exit": {"const": 0},
+    "complete": {"const": true},
+    "hashes": {"type": "object", "minProperties": 9, "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+  },
+  "additionalProperties": false,
+  "$comment": "Runtime validator additionally enforces identity, action freshness, required artifact names, path containment and SHA-256. Artifact contracts are documented in verification/features/README.md. Collector completion never changes scenario outcome."
+}
