@@ -1078,6 +1078,10 @@ return function(settings)
         rollback = rollback_conversation,
         streaming = function() return live ~= nil or pending_commit ~= nil end,
         on_speech = function(listener) speech_listeners[#speech_listeners + 1] = listener end,
+        voice_ready = function(chat, request)
+            if not is_orca() or not request or request == "" then return end
+            run(helper, {"voice-ready", "--conversation", chat, "--request", request})
+        end,
         detach_voice = function(request)
             if not is_orca() or not live or not live.voice or live.voice_request ~= request then return false end
             local poller = live

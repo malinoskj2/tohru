@@ -334,6 +334,7 @@ return function(assistant, puppet, flight, service_executable)
             streaming_speech = true
             streamed_text = false
             send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id})
+            if assistant.voice_ready then assistant.voice_ready(conv, request) end
             return
         elseif kind == "delta" then
             task_speech.interrupt()

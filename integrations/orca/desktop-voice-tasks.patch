@@ -1,0 +1,1090 @@
+diff --git a/src/cli/bots/bot-handler-groups.ts b/src/cli/bots/bot-handler-groups.ts
+index 84eb1e8e..34df3c16 100644
+--- a/src/cli/bots/bot-handler-groups.ts
++++ b/src/cli/bots/bot-handler-groups.ts
+@@ -3,7 +3,15 @@ import type { HandlerGroup } from '../dispatch/handler-group-manifest'
+ export const BOT_HANDLER_GROUPS: HandlerGroup[] = [
+   {
+     name: 'bot',
+-    keys: ['bot list', 'bot chats', 'bot send', 'bot new-chat', 'bot memory forget'],
++    keys: [
++      'bot list',
++      'bot chats',
++      'bot send',
++      'bot voice-ready',
++      'bot voice-task',
++      'bot new-chat',
++      'bot memory forget'
++    ],
+     load: async () => (await import('./bot.js')).BOT_HANDLERS
+   },
+   {
+diff --git a/src/cli/bots/bot.ts b/src/cli/bots/bot.ts
+index 0af668eb..96acc7ff 100644
+--- a/src/cli/bots/bot.ts
++++ b/src/cli/bots/bot.ts
+@@ -75,17 +75,45 @@ export async function findBot(
+ }
+
+ export const BOT_HANDLERS: Record<string, CommandHandler> = {
++  'bot voice-ready': async ({ flags, client, json }) => {
++    const result = await callBots(client, 'bots.voice.ready', {
++      chat: getOptionalStringFlag(flags, 'chat'),
++      request: getOptionalStringFlag(flags, 'request')
++    })
++    printResult(result, json, () => 'Registered desktop voice request.')
++  },
++  'bot voice-task': async ({ flags, client, json, cwd }) => {
++    const result = await callBots(client, 'bots.voice.task', {
++      ...callerChat(),
++      request: getOptionalStringFlag(flags, 'request'),
++      task: getOptionalStringFlag(flags, 'task'),
++      kind: getOptionalStringFlag(flags, 'kind'),
++      sequence: Number(getOptionalStringFlag(flags, 'sequence')),
++      text: await readMessageText(flags, cwd, true)
++    })
++    printResult(
++      result,
++      json,
++      () => 'Task speech update submitted; delivery is subject to desktop visibility.'
++    )
++  },
+   'bot send': async ({ flags, client, json, cwd }) => {
+     const selector = getOptionalStringFlag(flags, 'bot')
+-    if (!selector) throw new RuntimeClientError('invalid_argument', 'Missing --bot')
++    if (!selector) {
++      throw new RuntimeClientError('invalid_argument', 'Missing --bot')
++    }
+     const bot = await findBot(client, selector)
+     const text = await readMessageText(flags, cwd, true)
+-    const result = await callBots<{ sessionId: string; clientMessageId: string }>(client, 'bots.chat.send', {
+-      botId: bot.id,
+-      text,
+-      chat: getOptionalStringFlag(flags, 'chat'),
+-      operationId: getOptionalStringFlag(flags, 'request-id')
+-    })
++    const result = await callBots<{ sessionId: string; clientMessageId: string }>(
++      client,
++      'bots.chat.send',
++      {
++        botId: bot.id,
++        text,
++        chat: getOptionalStringFlag(flags, 'chat'),
++        operationId: getOptionalStringFlag(flags, 'request-id')
++      }
++    )
+     printResult(result, json, (value) => `Sent to ${value.sessionId}`)
+   },
+   'bot new-chat': async ({ flags, client, json }) => {
+diff --git a/src/cli/specs/bot.ts b/src/cli/specs/bot.ts
+index 0f6af598..fad6cbff 100644
+--- a/src/cli/specs/bot.ts
++++ b/src/cli/specs/bot.ts
+@@ -6,12 +6,32 @@ import { SLACK_MARKDOWN, SLACK_MENTION, TEXT_FILE } from './slack'
+ const BOT_NOTES = ['A bot lives on the computer that runs the command, in ~/.orca/bots/<name>.']
+
+ export const BOT_COMMAND_SPECS: CommandSpec[] = [
++  {
++    path: ['bot', 'voice-ready'],
++    hidden: true,
++    summary: 'Register the desktop voice origin after its controller receives start',
++    usage: 'orca bot voice-ready --chat <UUID> --request <prompt item ID> --json',
++    allowedFlags: [...GLOBAL_FLAGS, 'chat', 'request']
++  },
++  {
++    path: ['bot', 'voice-task'],
++    summary: 'Publish an explicit user-facing update for this bot chat’s current voice task',
++    usage:
++      'orca bot voice-task --task <id> --sequence <n> --kind ack|progress|done|failed|cancelled [--request <id>] --text-file <file> --json',
++    allowedFlags: [...GLOBAL_FLAGS, 'task', 'sequence', 'kind', 'request', 'text', 'text-file'],
++    notes: [
++      'Run only from the coordinating bot chat. Start each task with ack; retain its returned request for subsequent updates. A dispatched update is subject to desktop visibility and is not proof it was heard.'
++    ]
++  },
+   {
+     path: ['bot', 'send'],
+     summary: 'Send your own message directly into a bot chat',
+-    usage: 'orca bot send --bot <name> --text-file <path> [--chat <id|new>] --request-id <id> [--json]',
++    usage:
++      'orca bot send --bot <name> --text-file <path> [--chat <id|new>] --request-id <id> [--json]',
+     allowedFlags: [...GLOBAL_FLAGS, 'bot', 'text', 'text-file', 'chat', 'request-id'],
+-    notes: ['Owner only. Continues the Home Chat by default; replies stay in the shared chat history. Reuse --request-id only when retrying the same send.']
++    notes: [
++      'Owner only. Continues the Home Chat by default; replies stay in the shared chat history. Reuse --request-id only when retrying the same send.'
++    ]
+   },
+   {
+     path: ['bot', 'create'],
+diff --git a/src/main/bots/bot-chat-session.test.ts b/src/main/bots/bot-chat-session.test.ts
+index 14a5498f..de7bf3d5 100644
+--- a/src/main/bots/bot-chat-session.test.ts
++++ b/src/main/bots/bot-chat-session.test.ts
+@@ -52,7 +52,7 @@ function setup(initial: Bot = makeBot()) {
+   // Chats the host knows, by session id: the provider each runs, its name, and whether its tab shows.
+   const records = new Map<string, FakeChat>()
+   const host = {
+-    send: vi.fn(async () => ({
++    send: vi.fn(async (..._args: Parameters<BotChatHost['send']>) => ({
+       ok: true as const,
+       value: { clientMessageId: 'm1', queued: { position: 1 } }
+     })),
+diff --git a/src/main/bots/bot-preamble.ts b/src/main/bots/bot-preamble.ts
+index 0f12e7ec..37740bd5 100644
+--- a/src/main/bots/bot-preamble.ts
++++ b/src/main/bots/bot-preamble.ts
+@@ -16,6 +16,7 @@ export const BOT_ORCA_CLI = process.platform === 'win32' ? 'orca' : '"${ORCA_CLI
+ // Which command does which job, ahead of SOUL.md and MEMORY.md so a remembered listing never outranks it.
+ // Workflow only: the soul owns style.
+ const BOT_TOOLS = [
++  `- A task requested by a message starting [tohru-desktop:voice]: promptly publish intent with \`${BOT_ORCA_CLI} bot voice-task --task <stable-id> --sequence 1 --kind ack --text "<short intent>" --json\` before doing slow work. Save its returned request ID. Publish confirmed milestones with the same task ID, increasing --sequence, --request <saved-id>, --kind progress and short --text. Use done only after verifying success, failed for a confirmed failure, or cancelled to retire speech. Never forward tool commentary or raw worker mail. Start long work asynchronously and remain available for owner input; analyze worker results before publishing a completion. Keep the final analyzed answer in shared history. The desktop controls whether updates speak; pending or dispatched is not proof the owner heard them.`,
+   'Which command for which job. What a command prints now is current; an earlier listing, MEMORY.md or what you remember can be out of date, so run it again rather than going by them.',
+   `- GitHub, as your owner: read with \`gh issue view\`, \`gh pr view\`, \`gh pr checks\`, \`gh pr diff\`; write with \`gh issue comment\`, \`gh pr comment\`, \`gh issue edit --add-label --add-assignee\`, \`gh pr review --comment --body\`.`,
+   `- Linear, as your owner: \`${BOT_ORCA_CLI} linear issue <ID>\`, \`${BOT_ORCA_CLI} linear search\`, \`${BOT_ORCA_CLI} linear list-issues --assignee me\`; \`${BOT_ORCA_CLI} linear comment add\`, \`${BOT_ORCA_CLI} linear status set\`, \`${BOT_ORCA_CLI} linear assignee set\`, \`${BOT_ORCA_CLI} linear label add\`, \`${BOT_ORCA_CLI} linear create\`.`,
+diff --git a/src/main/bots/desktop-voice-continuations.ts b/src/main/bots/desktop-voice-continuations.ts
+index 71eea150..b2ad2f31 100644
+--- a/src/main/bots/desktop-voice-continuations.ts
++++ b/src/main/bots/desktop-voice-continuations.ts
+@@ -1,14 +1,16 @@
+-import { execFile } from 'node:child_process'
+-import { promisify } from 'node:util'
+ import type { AgentJournalRenderItem } from '../../shared/agent-session/journal/agent-session-journal-types'
+ import { orchestrationMailNotice } from '../../shared/agent-session/journal/agent-session-message-source'
+ import { agentJournalTurnOpener } from '../../shared/agent-session/journal/agent-session-journal-turn-opener'
+-import type { StructuredAgentSessionTurnContext, TurnEndedRows } from '../native-chat/agent-session-wire/structured-agent-session-turn-context'
++import type {
++  StructuredAgentSessionTurnContext,
++  TurnEndedRows
++} from '../native-chat/agent-session-wire/structured-agent-session-turn-context'
+ import type { OrcaRuntimeService } from '../runtime/orca-runtime'
+ import { readMessageSenderDispatch } from '../runtime/orchestration/db/messages/message-sender-dispatch'
+ import { requireStructuredHost } from './bot-chat-session'
+ import { readAgentJournalTurnOutcome } from '../../shared/agent-session/lifecycle/records/agent-session-turn-record'
+ import { isQuietBotResult } from '../../shared/bot-quiet-result'
++import { desktopVoiceTasks, runDesktopAssistant } from './desktop-voice-task-delivery'
+
+ type Origin = { chat: string; request: string }
+ const MAX_LINKS = 512
+@@ -25,13 +27,20 @@ export class DesktopVoiceContinuations {
+
+   remember(dispatch: string, origin: Origin | null, now = Date.now()): void {
+     for (const [id, link] of this.dispatches) {
+-      if (now - link.at > MAX_AGE) this.dispatches.delete(id)
++      if (now - link.at > MAX_AGE) {
++        this.dispatches.delete(id)
++      }
++    }
++    if (origin) {
++      this.dispatches.set(dispatch, { origin, at: now, epoch: this.owners.get(origin.chat) ?? 0 })
++    } else {
++      this.dispatches.delete(dispatch)
+     }
+-    if (origin) this.dispatches.set(dispatch, { origin, at: now, epoch: this.owners.get(origin.chat) ?? 0 })
+-    else this.dispatches.delete(dispatch)
+     while (this.dispatches.size > MAX_LINKS) {
+       const first = this.dispatches.keys().next().value
+-      if (first === undefined) break
++      if (first === undefined) {
++        break
++      }
+       this.dispatches.delete(first)
+     }
+   }
+@@ -40,42 +49,68 @@ export class DesktopVoiceContinuations {
+     this.owners.set(chat, (this.owners.get(chat) ?? 0) + 1)
+     while (this.owners.size > MAX_LINKS) {
+       const first = this.owners.keys().next().value
+-      if (first === undefined) break
++      if (first === undefined) {
++        break
++      }
+       this.owners.delete(first)
+     }
+   }
+
+-  origin(chat: string, prompt: AgentJournalRenderItem, worker: (message: string) => string | null): Origin | null {
++  origin(
++    chat: string,
++    prompt: AgentJournalRenderItem,
++    worker: (message: string) => string | null
++  ): Origin | null {
+     const body = prompt.body
+-    if (body.kind !== 'message' || body.role !== 'user' || body.origin || body.memorySource) return null
++    if (body.kind !== 'message' || body.role !== 'user' || body.origin || body.memorySource) {
++      return null
++    }
+     if (!body.from) {
+-      const text = body.blocks.filter((block) => block.type === 'text').map((block) => block.text).join('\n')
++      const text = body.blocks
++        .filter((block) => block.type === 'text')
++        .map((block) => block.text)
++        .join('\n')
+       return text.startsWith('[tohru-desktop:voice]\n') ? { chat, request: prompt.itemId } : null
+     }
+     const mail = orchestrationMailNotice(body.from)
+-    if (!mail?.messages.length) return null
++    if (!mail?.messages.length) {
++      return null
++    }
+     let found: Origin | null = null
+     for (const message of mail.messages) {
+       const dispatch = worker(message.messageId)
+       const link = dispatch ? this.dispatches.get(dispatch) : undefined
+-      const reason = !link ? 'dispatch_missing' : Date.now() - link.at > MAX_AGE ? 'expired'
+-        : link.origin.chat !== chat ? 'other_chat' : link.epoch !== (this.owners.get(chat) ?? 0) ? 'superseded' : null
++      const reason = !link
++        ? 'dispatch_missing'
++        : Date.now() - link.at > MAX_AGE
++          ? 'expired'
++          : link.origin.chat !== chat
++            ? 'other_chat'
++            : link.epoch !== (this.owners.get(chat) ?? 0)
++              ? 'superseded'
++              : null
+       if (reason || !link) {
+         trace('origin_dropped', { chat, dispatch, reason })
+         return null
+       }
+-      if (found && found.request !== link.origin.request) return null
++      if (found && found.request !== link.origin.request) {
++        return null
++      }
+       found = link.origin
+     }
+     return found
+   }
+
+   claim(completion: string): boolean {
+-    if (this.delivered.has(completion)) return false
++    if (this.delivered.has(completion)) {
++      return false
++    }
+     this.delivered.add(completion)
+     while (this.delivered.size > MAX_LINKS) {
+       const first = this.delivered.values().next().value
+-      if (first === undefined) break
++      if (first === undefined) {
++        break
++      }
+       this.delivered.delete(first)
+     }
+     return true
+@@ -84,59 +119,152 @@ export class DesktopVoiceContinuations {
+
+ // A restart deliberately drops speech eligibility; the durable result remains in Orca.
+ const continuations = new DesktopVoiceContinuations()
+-const run = promisify(execFile)
+
+-export function desktopVoiceOwnerTurn(chat: string): void { continuations.ownerTurn(chat) }
++export function desktopVoiceOwnerTurn(chat: string): void {
++  continuations.ownerTurn(chat)
++  desktopVoiceTasks.ownerTurn(chat)
++}
++
++export async function desktopVoiceOrigin(
++  runtime: OrcaRuntimeService,
++  chat: string
++): Promise<Origin | null> {
++  const unchanged = desktopVoiceTasks.capture()
++  const reads = await (await requireStructuredHost(runtime)).journalReads(chat)
++  const prompt = await reads.promptItem('last')
++  if (!unchanged()) {
++    return null
++  }
++  return prompt ? continuations.origin(chat, prompt, (id) => workerOf(runtime, id)) : null
++}
+
+-export function desktopVoiceAnswerContext(runtime: Pick<OrcaRuntimeService, 'getOrchestrationDb'>): NonNullable<StructuredAgentSessionTurnContext['answerEnded']> {
++export function desktopVoiceAnswerContext(
++  runtime: Pick<OrcaRuntimeService, 'getOrchestrationDb'>
++): NonNullable<StructuredAgentSessionTurnContext['answerEnded']> {
+   return (chat, turnId, readItems, _writeNote, ended) => {
+-    if (ended?.outcome !== 'success') return
+-    void readItems(null).then((rows) => deliverDesktopVoiceContinuation(runtime, chat, turnId, rows)).catch((error: unknown) =>
+-      console.warn('[desktop-voice] could not deliver analyzed continuation', error)
+-    )
++    if (ended?.outcome !== 'success') {
++      return
++    }
++    void readItems(null)
++      .then((rows) => deliverDesktopVoiceContinuation(runtime, chat, turnId, rows))
++      .catch((error: unknown) =>
++        console.warn('[desktop-voice] could not deliver analyzed continuation', error)
++      )
+   }
+ }
+
+-function workerOf(runtime: Pick<OrcaRuntimeService, 'getOrchestrationDb'>, message: string): string | null {
++function workerOf(
++  runtime: Pick<OrcaRuntimeService, 'getOrchestrationDb'>,
++  message: string
++): string | null {
+   const db = runtime.getOrchestrationDb()
+-  if (db.getMessageById(message)?.type !== 'worker_done') return null
++  if (db.getMessageById(message)?.type !== 'worker_done') {
++    return null
++  }
+   return readMessageSenderDispatch(db, message)?.dispatchId ?? null
+ }
+
+-export async function rememberDesktopVoiceDispatch(runtime: OrcaRuntimeService, dispatchId: string, sender?: string): Promise<void> {
++export async function rememberDesktopVoiceDispatch(
++  runtime: OrcaRuntimeService,
++  dispatchId: string,
++  sender?: string
++): Promise<void> {
+   const dispatch = runtime.getOrchestrationDb().getDispatchContextById(dispatchId)
+   const chat = dispatch?.creator_orca_session_id
+-  if (!chat || (sender !== undefined && sender !== chat)) return
++  if (!chat || (sender !== undefined && sender !== chat)) {
++    return
++  }
+   const reads = await (await requireStructuredHost(runtime)).journalReads(chat)
+   const prompt = await reads.promptItem('last')
+   const origin = prompt ? continuations.origin(chat, prompt, (id) => workerOf(runtime, id)) : null
+   continuations.remember(dispatchId, origin)
+-  trace('dispatch_origin', { chat, dispatch: dispatchId, prompt: prompt?.itemId ?? null, request: origin?.request ?? null })
++  trace('dispatch_origin', {
++    chat,
++    dispatch: dispatchId,
++    prompt: prompt?.itemId ?? null,
++    request: origin?.request ?? null
++  })
+ }
+
+-export function desktopVoiceSummary(links: DesktopVoiceContinuations, chat: string, turnId: string,
+-  rows: TurnEndedRows, worker: (message: string) => string | null): { origin: Origin; completion: string; text: string } | null {
+-  const turn = rows.items.findLast((item) => item.body.kind === 'turn' && item.body.turnId === turnId)
+-  if (!turn || turn.body.kind !== 'turn' || !turn.body.userItemId || turn.body.state !== 'completed' || readAgentJournalTurnOutcome(turn.body) !== 'success') return null
++export function desktopVoiceSummary(
++  links: DesktopVoiceContinuations,
++  chat: string,
++  turnId: string,
++  rows: TurnEndedRows,
++  worker: (message: string) => string | null
++): { origin: Origin; completion: string; text: string } | null {
++  const turn = rows.items.findLast(
++    (item) => item.body.kind === 'turn' && item.body.turnId === turnId
++  )
++  if (
++    !turn ||
++    turn.body.kind !== 'turn' ||
++    !turn.body.userItemId ||
++    turn.body.state !== 'completed' ||
++    readAgentJournalTurnOutcome(turn.body) !== 'success'
++  ) {
++    return null
++  }
+   const prompt = agentJournalTurnOpener(rows, turn.body.userItemId)
+   // Direct replies already return through the desktop request; only analyzed worker follow-ups use this path.
+-  if (!prompt || prompt.body.kind !== 'message' || !prompt.body.from) return null
++  if (!prompt || prompt.body.kind !== 'message' || !prompt.body.from) {
++    return null
++  }
+   const origin = links.origin(chat, prompt, worker)
+-  if (!origin) return null
+-  const reply = rows.items.findLast((item) => item.turnScope?.kind === 'turn' && item.turnScope.turnItemId === turn.itemId && item.body.kind === 'message' && item.body.role === 'assistant')
+-  if (!reply || reply.body.kind !== 'message') return null
+-  const text = reply.body.blocks.filter((block) => block.type === 'text').map((block) => block.text).join('\n').trim()
+-  return text && text.length <= 16384 && !isQuietBotResult(text) ? { origin, completion: turn.itemId, text } : null
++  if (!origin) {
++    return null
++  }
++  const reply = rows.items.findLast(
++    (item) =>
++      item.turnScope?.kind === 'turn' &&
++      item.turnScope.turnItemId === turn.itemId &&
++      item.body.kind === 'message' &&
++      item.body.role === 'assistant'
++  )
++  if (!reply || reply.body.kind !== 'message') {
++    return null
++  }
++  const text = reply.body.blocks
++    .filter((block) => block.type === 'text')
++    .map((block) => block.text)
++    .join('\n')
++    .trim()
++  return text && text.length <= 16384 && !isQuietBotResult(text)
++    ? { origin, completion: turn.itemId, text }
++    : null
+ }
+
+-export async function deliverDesktopVoiceContinuation(runtime: Pick<OrcaRuntimeService, 'getOrchestrationDb'>, chat: string, turnId: string, rows: TurnEndedRows): Promise<void> {
++export async function deliverDesktopVoiceContinuation(
++  runtime: Pick<OrcaRuntimeService, 'getOrchestrationDb'>,
++  chat: string,
++  turnId: string,
++  rows: TurnEndedRows
++): Promise<void> {
+   trace('turn_completed', { chat, turn: turnId })
+-  const summary = desktopVoiceSummary(continuations, chat, turnId, rows, (id) => workerOf(runtime, id))
+-  if (!summary) return
++  const summary = desktopVoiceSummary(continuations, chat, turnId, rows, (id) =>
++    workerOf(runtime, id)
++  )
++  if (!summary) {
++    return
++  }
++  if (desktopVoiceTasks.taskMode(summary.origin)) {
++    return
++  }
+   if (!continuations.claim(summary.completion)) {
+     trace('completion_duplicate', { chat, completion: summary.completion })
+     return
+   }
+-  await run(process.env.ORCA_DESKTOP_ASSISTANT_COMMAND ?? 'tohru', ['assistant', 'voice-result', '--chat', summary.origin.chat, '--request', summary.origin.request, '--completion', summary.completion, '--', summary.text.replace(/[\r\n\t]+/g, ' ')], { timeout: 5000, maxBuffer: 4096 })
++  await runDesktopAssistant([
++    'assistant',
++    'voice-result',
++    '--chat',
++    summary.origin.chat,
++    '--request',
++    summary.origin.request,
++    '--completion',
++    summary.completion,
++    '--',
++    summary.text.replace(/[\r\n\t]+/g, ' ')
++  ])
+   trace('desktop_sent', { chat, request: summary.origin.request, completion: summary.completion })
+ }
+diff --git a/src/main/bots/desktop-voice-task-delivery.ts b/src/main/bots/desktop-voice-task-delivery.ts
+new file mode 100644
+index 00000000..b3b2eb99
+--- /dev/null
++++ b/src/main/bots/desktop-voice-task-delivery.ts
+@@ -0,0 +1,32 @@
++import { runProcess } from '@orca/process-host'
++import { DesktopVoiceTaskQueue } from './desktop-voice-task-queue'
++
++export async function runDesktopAssistant(args: string[]): Promise<void> {
++  const result = await runProcess({
++    program: process.env.ORCA_DESKTOP_ASSISTANT_COMMAND ?? 'tohru',
++    args,
++    timeoutMs: 5000,
++    maxOutputBytes: 4096
++  })
++  if (result.code !== 0) {
++    throw new Error('Desktop voice IPC failed or timed out')
++  }
++}
++export const desktopVoiceTasks = new DesktopVoiceTaskQueue(async (origin, event) => {
++  await runDesktopAssistant([
++    'assistant',
++    'voice-task',
++    '--chat',
++    origin.chat,
++    '--request',
++    origin.request,
++    '--task',
++    event.task,
++    '--sequence',
++    String(event.sequence),
++    '--kind',
++    event.kind,
++    '--',
++    event.text
++  ])
++})
+diff --git a/src/main/bots/desktop-voice-task-queue.test.ts b/src/main/bots/desktop-voice-task-queue.test.ts
+new file mode 100644
+index 00000000..e2855396
+--- /dev/null
++++ b/src/main/bots/desktop-voice-task-queue.test.ts
+@@ -0,0 +1,124 @@
++import { expect, it } from 'vitest'
++import { DesktopVoiceTaskQueue } from './desktop-voice-task-queue'
++import { BotVoiceTask, type DesktopVoiceTask } from '../../shared/rpc-contract/bot-voice-params'
++
++const origin = { chat: '12345678-1234-4234-8234-123456789abc', request: 'orca:voice-request' }
++const event = (
++  kind: DesktopVoiceTask['kind'],
++  sequence: number,
++  task = 'workspace'
++): DesktopVoiceTask => ({
++  task,
++  kind,
++  sequence,
++  text: kind === 'ack' ? "I'll create that workspace now." : `${kind} confirmed`
++})
++
++it('waits for desktop registration in either order without delaying task execution', async () => {
++  const seen: string[] = []
++  const queue = new DesktopVoiceTaskQueue(async (_, update) => {
++    seen.push(update.text)
++  })
++  expect(await queue.publish(origin, event('ack', 1))).toBe('pending')
++  expect(seen).toEqual([])
++  expect(queue.taskMode(origin)).toBe(false)
++  await queue.ready(origin)
++  expect(seen).toEqual(["I'll create that workspace now."])
++  expect(queue.taskMode(origin)).toBe(true)
++  await queue.publish(origin, event('progress', 2))
++  await queue.publish(origin, event('done', 3))
++  expect(seen).toEqual(["I'll create that workspace now.", 'progress confirmed', 'done confirmed'])
++  const other = { ...origin, chat: '22345678-1234-4234-8234-123456789abc' }
++  await queue.ready(other)
++  await queue.publish(other, event('ack', 1))
++  expect(seen[3]).toBe("I'll create that workspace now.")
++})
++
++it('coalesces progress before readiness and never replays terminal events', async () => {
++  const seen: string[] = []
++  const queue = new DesktopVoiceTaskQueue(async (_, update) => {
++    seen.push(update.kind)
++  })
++  await queue.publish(origin, event('ack', 1))
++  await queue.publish(origin, event('progress', 2))
++  await queue.publish(origin, event('failed', 3))
++  expect(await queue.publish(origin, event('done', 4))).toBe('replay')
++  await queue.ready(origin)
++  await queue.ready(origin)
++  expect(seen).toEqual(['ack', 'failed'])
++})
++
++it('drains an acknowledgement that races an empty registration flush', async () => {
++  const seen: string[] = []
++  const queue = new DesktopVoiceTaskQueue(async (_, update) => {
++    seen.push(update.kind)
++  })
++  await Promise.all([queue.ready(origin), queue.publish(origin, event('ack', 1))])
++  expect(seen).toEqual(['ack'])
++})
++
++it('fences in-flight delivery and readiness when the owner supersedes a request', async () => {
++  const seen: string[] = []
++  let release: () => void = () => {}
++  const held = new Promise<void>((resolve) => {
++    release = resolve
++  })
++  const queue = new DesktopVoiceTaskQueue(async (_, update) => {
++    seen.push(update.kind)
++    await held
++  })
++  await queue.publish(origin, event('ack', 1))
++  await queue.publish(origin, event('done', 2))
++  const unchanged = queue.capture()
++  const ready = queue.ready(origin)
++  queue.ownerTurn(origin.chat)
++  expect(unchanged()).toBe(false)
++  release()
++  await ready
++  expect(seen).toEqual(['ack'])
++  expect(queue.taskMode(origin)).toBe(false)
++})
++
++it('bounds requests and task IDs, expires queued speech, and consumes ambiguous failures', async () => {
++  let now = 0
++  const seen: string[] = []
++  const queue = new DesktopVoiceTaskQueue(
++    async (_, update) => {
++      seen.push(update.kind)
++    },
++    () => now
++  )
++  for (let i = 0; i < 8; i++) {
++    await queue.publish(origin, event('ack', 1, String(i)))
++  }
++  await expect(queue.publish(origin, event('ack', 1, 'overflow'))).rejects.toThrow('at most eight')
++  now = 30001
++  await queue.ready(origin)
++  expect(seen).toEqual([])
++  const failed = new DesktopVoiceTaskQueue(async () => {
++    throw new Error('IPC exited after possible delivery')
++  })
++  await failed.ready(origin)
++  await expect(failed.publish(origin, event('ack', 1))).rejects.toThrow('IPC exited')
++  expect(await failed.publish(origin, event('ack', 1))).toBe('replay')
++  for (let i = 0; i < 63; i++) {
++    await queue.ready({ ...origin, chat: `other-${i}` })
++  }
++  await expect(queue.ready({ ...origin, chat: 'overflow' })).rejects.toThrow('capacity')
++})
++
++it('validates the authoring boundary before anything enters the speech channel', () => {
++  const base = { ...event('ack', 1), callerSessionId: origin.chat }
++  expect(BotVoiceTask.safeParse(base).success).toBe(true)
++  for (const patch of [
++    { kind: 'commentary' },
++    { kind: 'worker_done' },
++    { text: '\ninternal' },
++    { text: '🦋'.repeat(81) },
++    { sequence: 0 },
++    { task: 'bad\nidentity' },
++    { kind: 'done' }
++  ]) {
++    expect(BotVoiceTask.safeParse({ ...base, ...patch }).success).toBe(false)
++  }
++})
+diff --git a/src/main/bots/desktop-voice-task-queue.ts b/src/main/bots/desktop-voice-task-queue.ts
+new file mode 100644
+index 00000000..c7715422
+--- /dev/null
++++ b/src/main/bots/desktop-voice-task-queue.ts
+@@ -0,0 +1,142 @@
++import type {
++  DesktopVoiceOrigin,
++  DesktopVoiceTask
++} from '../../shared/rpc-contract/bot-voice-params'
++
++type Pending = { event: DesktopVoiceTask; at: number }
++type Task = { sequence: number; terminal: boolean }
++type Request = {
++  origin: DesktopVoiceOrigin
++  at: number
++  ready: boolean
++  taskMode: boolean
++  tasks: Map<string, Task>
++  pending: Pending[]
++  drain: Promise<void> | null
++}
++
++export class DesktopVoiceTaskQueue {
++  private readonly requests = new Map<string, Request>()
++  private revision = 0
++
++  constructor(
++    private readonly deliver: (
++      origin: DesktopVoiceOrigin,
++      event: DesktopVoiceTask
++    ) => Promise<void>,
++    private readonly clock: () => number = Date.now
++  ) {}
++
++  ownerTurn(chat: string): void {
++    this.revision += 1
++    this.requests.delete(chat)
++  }
++
++  capture(): () => boolean {
++    const revision = this.revision
++    return () => this.revision === revision
++  }
++
++  taskMode(origin: DesktopVoiceOrigin): boolean {
++    const state = this.requests.get(origin.chat)
++    return (
++      state?.origin.request === origin.request &&
++      state.taskMode &&
++      this.clock() - state.at <= 600000
++    )
++  }
++
++  private state(origin: DesktopVoiceOrigin): Request {
++    for (const [chat, state] of this.requests) {
++      if (this.clock() - state.at > 600000) {
++        this.requests.delete(chat)
++      }
++    }
++    let state = this.requests.get(origin.chat)
++    if (state && state.origin.request !== origin.request) {
++      throw new Error('Voice request was superseded')
++    }
++    if (!state) {
++      if (this.requests.size >= 64) {
++        throw new Error('Desktop voice request capacity reached')
++      }
++      state = {
++        origin,
++        at: this.clock(),
++        ready: false,
++        taskMode: false,
++        tasks: new Map(),
++        pending: [],
++        drain: null
++      }
++      this.requests.set(origin.chat, state)
++    }
++    return state
++  }
++
++  async ready(origin: DesktopVoiceOrigin): Promise<void> {
++    const state = this.state(origin)
++    state.ready = true
++    await this.flush(state)
++  }
++
++  async publish(
++    origin: DesktopVoiceOrigin,
++    event: DesktopVoiceTask
++  ): Promise<'pending' | 'dispatched' | 'replay'> {
++    const state = this.state(origin)
++    const task = state.tasks.get(event.task)
++    if (task && (task.terminal || event.sequence <= task.sequence || event.kind === 'ack')) {
++      return 'replay'
++    }
++    if (!task && (event.kind !== 'ack' || state.tasks.size >= 8)) {
++      throw new Error('A task must start with acknowledgement; at most eight tasks per request')
++    }
++    state.tasks.set(event.task, {
++      sequence: event.sequence,
++      terminal: event.kind === 'done' || event.kind === 'failed' || event.kind === 'cancelled'
++    })
++    state.pending = state.pending.filter(
++      ({ event: queued }) => queued.task !== event.task || queued.kind === 'ack'
++    )
++    state.pending.push({ event, at: this.clock() })
++    if (!state.ready) {
++      return 'pending'
++    }
++    await this.flush(state)
++    return 'dispatched'
++  }
++
++  private async flush(state: Request): Promise<void> {
++    if (state.drain) {
++      await state.drain
++      if (state.pending.length > 0 && this.requests.get(state.origin.chat) === state) {
++        await this.flush(state)
++      }
++      return
++    }
++    state.drain = this.drain(state)
++    try {
++      await state.drain
++    } finally {
++      state.drain = null
++    }
++  }
++
++  private async drain(state: Request): Promise<void> {
++    while (state.ready && this.requests.get(state.origin.chat) === state) {
++      const next = state.pending.shift()
++      if (!next) {
++        return
++      }
++      if (this.clock() - next.at > 30000) {
++        continue
++      }
++      // Consume before IPC: a failed process may already have delivered its payload.
++      if (next.event.kind === 'ack') {
++        state.taskMode = true
++      }
++      await this.deliver(state.origin, next.event)
++    }
++  }
++}
+diff --git a/src/main/runtime/rpc/methods/bots-desktop-chat.ts b/src/main/runtime/rpc/methods/bots-desktop-chat.ts
+new file mode 100644
+index 00000000..be92b676
+--- /dev/null
++++ b/src/main/runtime/rpc/methods/bots-desktop-chat.ts
+@@ -0,0 +1,63 @@
++import { BotChatSend } from '../../../../shared/rpc-contract/bots-params'
++import { runtimeBotChats, startBotSession } from '../../../bots/bot-chat-session'
++import { chatThatTookIt } from '../../../bots/bot-automation-sessions'
++import { botChatTakingMail } from './bots-chats'
++import { OWNER_ACTS_FOR } from '../../../../shared/bots/bot-acts-for'
++import { agentJournalSubmissionKey } from '../../../../shared/agent-session/journal/agent-session-journal-item-key'
++import { ownerOnly } from './bots-caller-gates'
++import { defineMethod, InvalidArgumentError } from '../core'
++
++export const BOT_DESKTOP_CHAT_METHOD = defineMethod({
++  name: 'bots.chat.send',
++  permission: 'workspace',
++  params: BotChatSend,
++  handler: async ({ botId, text, chat, operationId }, context) => {
++    // The desktop assistant uses the local owner-token socket without an
++    // agent session. Agent-originated requests keep using orchestration mail.
++    if (context.orchestrationCaller) {
++      throw new InvalidArgumentError('Agent messages use orchestration mail')
++    }
++    if (context.caller?.kind !== 'local-cli') {
++      ownerOnly(context, 'Only the owner can send direct bot messages.')
++    }
++    const { runtime } = context
++    runtime.bots.assertEnabled()
++    const bot = runtime.bots.list().find((entry) => entry.id === botId)
++    if (!bot || bot.paused) {
++      throw new InvalidArgumentError('Bot is missing or paused')
++    }
++    const chats = runtimeBotChats(runtime)
++    const receipt = (sent: ReturnType<typeof chatThatTookIt>) => ({
++      ...sent,
++      promptItemId: agentJournalSubmissionKey(sent.clientMessageId)
++    })
++    if (!chat) {
++      return receipt(
++        chatThatTookIt(await chats.sendToChat(bot.id, text, undefined, undefined, operationId))
++      )
++    }
++    let sessionId = chat
++    if (chat === 'new') {
++      // A retried request addresses the same new chat and the same admission ledger.
++      const hex = operationId.slice(14)
++      sessionId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20)}`
++      if (!(await botChatTakingMail(runtime, bot, sessionId))) {
++        await startBotSession(runtime, bot, {
++          sessionId,
++          actsFor: { actsFor: [...OWNER_ACTS_FOR] }
++        })
++      }
++    } else {
++      const target = await botChatTakingMail(runtime, bot, chat)
++      if (!target) {
++        throw new InvalidArgumentError('Chat is closed or does not belong to this bot')
++      }
++      sessionId = target.sessionId
++    }
++    return receipt(
++      chatThatTookIt(
++        await chats.sendToSession(bot.id, sessionId, text, undefined, undefined, operationId)
++      )
++    )
++  }
++})
+diff --git a/src/main/runtime/rpc/methods/bots-voice.ts b/src/main/runtime/rpc/methods/bots-voice.ts
+new file mode 100644
+index 00000000..28bbc644
+--- /dev/null
++++ b/src/main/runtime/rpc/methods/bots-voice.ts
+@@ -0,0 +1,53 @@
++import { BotVoiceReady, BotVoiceTask } from '../../../../shared/rpc-contract/bot-voice-params'
++import { botOfSession } from '../../../bots/bot-session-tabs'
++import { desktopVoiceOrigin } from '../../../bots/desktop-voice-continuations'
++import { desktopVoiceTasks } from '../../../bots/desktop-voice-task-delivery'
++import { defineMethod, InvalidArgumentError } from '../core'
++
++export const BOT_VOICE_METHODS = [
++  defineMethod({
++    name: 'bots.voice.ready',
++    permission: 'workspace',
++    params: BotVoiceReady,
++    handler: async (origin, context) => {
++      if (
++        context.pairedDeviceId ||
++        context.orchestrationCaller ||
++        context.caller?.kind !== 'local-cli'
++      ) {
++        throw new InvalidArgumentError(
++          'Desktop registration requires the local owner socket without an agent caller'
++        )
++      }
++      const current = await desktopVoiceOrigin(context.runtime, origin.chat)
++      if (current?.request !== origin.request) {
++        throw new InvalidArgumentError('Voice request is not current')
++      }
++      await desktopVoiceTasks.ready(origin)
++      return { registered: true }
++    }
++  }),
++  defineMethod({
++    name: 'bots.voice.task',
++    permission: 'workspace',
++    params: BotVoiceTask,
++    handler: async ({ callerSessionId, request, ...event }, context) => {
++      const caller = context.orchestrationCaller
++      if (
++        context.pairedDeviceId ||
++        caller?.orcaSessionId !== callerSessionId ||
++        !botOfSession(context.runtime.bots, callerSessionId)
++      ) {
++        throw new InvalidArgumentError(
++          'Only the coordinating bot in its own local chat can publish task speech'
++        )
++      }
++      const origin = await desktopVoiceOrigin(context.runtime, callerSessionId)
++      if (!origin || (request !== undefined && request !== origin.request)) {
++        throw new InvalidArgumentError('No matching current desktop voice request')
++      }
++      const delivery = await desktopVoiceTasks.publish(origin, event)
++      return { request: origin.request, delivery }
++    }
++  })
++]
+diff --git a/src/main/runtime/rpc/methods/bots.ts b/src/main/runtime/rpc/methods/bots.ts
+index d2b43a48..115e3965 100644
+--- a/src/main/runtime/rpc/methods/bots.ts
++++ b/src/main/runtime/rpc/methods/bots.ts
+@@ -1,9 +1,9 @@
++import { BOT_DESKTOP_CHAT_METHOD } from './bots-desktop-chat'
+ import {
+   BotActivityRead,
+   BotAvatarRead,
+   BotAvatarUpload,
+   BotChatReset,
+-  BotChatSend,
+   BotDelete,
+   BotRoster,
+   BotSessionStart,
+@@ -28,6 +28,7 @@ import { composioBotsOf } from './bots-composio'
+ import { ownerOnly } from './bots-caller-gates'
+ import { BOT_CREATE_METHOD } from './bots-create'
+ import { BOT_AGENT_CHOICES_METHOD } from './bots-agent-choices'
++import { BOT_VOICE_METHODS } from './bots-voice'
+ import { BOT_CHATS_METHODS, botChatsSummary, readBotChats } from './bots-chats'
+ import { BOT_CHAT_TREE_METHODS } from './bots-chat-tree'
+ import { BOT_MEMORY_METHODS } from './bots-memory'
+@@ -41,10 +42,6 @@ import { botSkillProjectViews, relinkBotSkills } from '../../../bots/bot-skill-p
+ import { listedBotsFacts } from './bots-list-facts'
+ import { normalizeBotSidebarView } from '../../../../shared/bots/bot-sidebar-view'
+ import { orcaSignInServer } from '../../../bots/orca-sign-in-server'
+-import { chatThatTookIt } from '../../../bots/bot-automation-sessions'
+-import { botChatTakingMail } from './bots-chats'
+-import { OWNER_ACTS_FOR } from '../../../../shared/bots/bot-acts-for'
+-import { agentJournalSubmissionKey } from '../../../../shared/agent-session/journal/agent-session-journal-item-key'
+
+ async function updateBot(params: BotUpdateParams, context: RpcContext) {
+   if (params.updates.slackMirror !== undefined) {
+@@ -115,44 +112,8 @@ async function ownerTypedLatest(runtime: RpcContext['runtime'], sessionId: strin
+
+ // Off, nothing creates a bot or opens its Chat; listing, editing and deleting stay.
+ export const BOT_METHODS = [
+-  defineMethod({
+-    name: 'bots.chat.send',
+-    permission: 'workspace',
+-    params: BotChatSend,
+-    handler: async ({ botId, text, chat, operationId }, context) => {
+-      // The desktop assistant uses the local owner-token socket without an
+-      // agent session. Agent-originated requests keep using orchestration mail.
+-      if (context.orchestrationCaller) throw new InvalidArgumentError('Agent messages use orchestration mail')
+-      if (context.caller?.kind !== 'local-cli') {
+-        ownerOnly(context, 'Only the owner can send direct bot messages.')
+-      }
+-      const { runtime } = context
+-      runtime.bots.assertEnabled()
+-      const bot = runtime.bots.list().find((entry) => entry.id === botId)
+-      if (!bot || bot.paused) throw new InvalidArgumentError('Bot is missing or paused')
+-      const chats = runtimeBotChats(runtime)
+-      const receipt = (sent: ReturnType<typeof chatThatTookIt>) => ({
+-        ...sent, promptItemId: agentJournalSubmissionKey(sent.clientMessageId)
+-      })
+-      if (!chat) {
+-        return receipt(chatThatTookIt(await chats.sendToChat(bot.id, text, undefined, undefined, operationId)))
+-      }
+-      let sessionId = chat
+-      if (chat === 'new') {
+-        // A retried request addresses the same new chat and the same admission ledger.
+-        const hex = operationId.slice(14)
+-        sessionId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20)}`
+-        if (!(await botChatTakingMail(runtime, bot, sessionId))) {
+-          await startBotSession(runtime, bot, { sessionId, actsFor: { actsFor: [...OWNER_ACTS_FOR] } })
+-        }
+-      } else {
+-        const target = await botChatTakingMail(runtime, bot, chat)
+-        if (!target) throw new InvalidArgumentError('Chat is closed or does not belong to this bot')
+-        sessionId = target.sessionId
+-      }
+-      return receipt(chatThatTookIt(await chats.sendToSession(bot.id, sessionId, text, undefined, undefined, operationId)))
+-    }
+-  }),
++  ...BOT_VOICE_METHODS,
++  BOT_DESKTOP_CHAT_METHOD,
+   defineMethod({
+     name: 'bots.list',
+     permission: 'workspace',
+diff --git a/src/main/runtime/rpc/orchestration/callers/orchestration-session-caller.ts b/src/main/runtime/rpc/orchestration/callers/orchestration-session-caller.ts
+index b43bb9df..f831f79a 100644
+--- a/src/main/runtime/rpc/orchestration/callers/orchestration-session-caller.ts
++++ b/src/main/runtime/rpc/orchestration/callers/orchestration-session-caller.ts
+@@ -61,6 +61,8 @@ const NEEDS_RUNNING_AGENT: ReadonlySet<string> = new Set([
+
+ /** Non-orchestration methods whose authority depends on the calling session, so it is verified for them too. */
+ const SESSION_CALLER_METHODS: ReadonlySet<string> = new Set([
++  'bots.voice.task',
++  'bots.voice.ready',
+   'automation.create',
+   'automation.update',
+   ...BOT_ITEM_WRITE_METHOD_NAMES,
+diff --git a/src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts b/src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts
+new file mode 100644
+index 00000000..3eca2ddc
+--- /dev/null
++++ b/src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts
+@@ -0,0 +1,26 @@
++import { expect, it } from 'vitest'
++import { needsOrchestrationCallerResolution } from './orchestration-session-caller'
++
++it.each(['bots.voice.task', 'bots.voice.ready'])(
++  '%s resolves injected identity and never trusts a declared session parameter',
++  (method) => {
++    const request = {
++      id: 'request',
++      authToken: 'owner',
++      method,
++      params: { callerSessionId: '12345678-1234-4234-8234-123456789abc' }
++    }
++    expect(needsOrchestrationCallerResolution(request, undefined)).toBe(false)
++    expect(
++      needsOrchestrationCallerResolution(
++        {
++          ...request,
++          orchestrationCompatibilityEvidence: {
++            agentSessionId: '12345678-1234-4234-8234-123456789abc'
++          }
++        },
++        undefined
++      )
++    ).toBe(true)
++  }
++)
+diff --git a/src/shared/rpc-contract/bot-voice-params.ts b/src/shared/rpc-contract/bot-voice-params.ts
+new file mode 100644
+index 00000000..7a0bb299
+--- /dev/null
++++ b/src/shared/rpc-contract/bot-voice-params.ts
+@@ -0,0 +1,28 @@
++import * as z from 'zod'
++
++const Identity = z.string().regex(/^[A-Za-z0-9_:%.-]{1,512}$/)
++export const BotVoiceReady = z.object({ chat: z.uuid(), request: Identity })
++export const BotVoiceTask = z
++  .object({
++    callerSessionId: z.uuid(),
++    request: Identity.optional(),
++    task: z.string().regex(/^[A-Za-z0-9_:%.-]{1,128}$/),
++    sequence: z.number().int().min(1).max(2147483646),
++    kind: z.enum(['ack', 'progress', 'done', 'failed', 'cancelled']),
++    text: z
++      .string()
++      .min(1)
++      .max(320)
++      .refine(
++        (text) =>
++          text.trim().length > 0 &&
++          !/\p{Cc}/u.test(text) &&
++          new TextEncoder().encode(text).length <= 320
++      )
++  })
++  .refine(
++    (event) => event.kind === 'ack' || event.request !== undefined,
++    'After acknowledgement, reuse its returned request identity.'
++  )
++export type DesktopVoiceTask = Omit<z.infer<typeof BotVoiceTask>, 'callerSessionId' | 'request'>
++export type DesktopVoiceOrigin = z.infer<typeof BotVoiceReady>
+diff --git a/src/shared/rpc-contract/rpc-params-catalog.generated.ts b/src/shared/rpc-contract/rpc-params-catalog.generated.ts
+index 3561d4e9..24bce809 100644
+--- a/src/shared/rpc-contract/rpc-params-catalog.generated.ts
++++ b/src/shared/rpc-contract/rpc-params-catalog.generated.ts
+@@ -1,7 +1,6 @@
+ // GENERATED by config/scripts/generate-rpc-params-catalog.mjs. Do not edit;
+ // run `pnpm run generate:rpc-params-catalog`.
+ import type { z } from 'zod'
+-import { BotChatSend } from './bots-params'
+ import { AntigravityChatAuthConfigSchema } from '../agent-accounts/antigravity/antigravity-chat-auth-config'
+ import { HostAccountLaunchEnvParams } from '../agent-launch/startup/host-account-launch-env'
+ import {
+@@ -125,6 +124,7 @@ import {
+   AutomationRuns,
+   AutomationUpdate
+ } from './automations/automation-params'
++import { BotVoiceReady, BotVoiceTask } from './bot-voice-params'
+ import {
+   ComposioApp,
+   ComposioApps,
+@@ -196,6 +196,7 @@ import {
+   BotChat,
+   BotChatReset,
+   BotChatSearch,
++  BotChatSend,
+   BotChatTreeRead,
+   BotChats,
+   BotChatsOwn,
+@@ -1320,6 +1321,8 @@ export const RPC_PARAMS_BY_METHOD = {
+   'bots.upNext.seen': BotUpNextSeen,
+   'bots.upNext.unseen': null,
+   'bots.update': BotUpdate,
++  'bots.voice.ready': BotVoiceReady,
++  'bots.voice.task': BotVoiceTask,
+   'bots.work.forget': BotWorkForget,
+   'bots.work.list': BotWorkList,
+   'browser.back': ExpectUrlBrowserTarget,

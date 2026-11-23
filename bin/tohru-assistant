@@ -2648,6 +2648,9 @@ def main(argv=None):
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("sync")
     add_backend_args(p)
+    p = sub.add_parser("voice-ready")
+    p.add_argument("--conversation", required=True)
+    p.add_argument("--request", required=True)
     p = sub.add_parser("orca")
     orca_sub = p.add_subparsers(dest="orca_command", required=True)
     oi = orca_sub.add_parser("init")
@@ -2665,6 +2668,16 @@ def main(argv=None):
     p.add_argument("--yes", action="store_true")
     p.add_argument("--only", action="append", choices=SECTIONS)
     args = parser.parse_args(argv)
+
+    if args.command == "voice-ready":
+        cid = check_id(args.conversation)
+        if not re.fullmatch(r"[A-Za-z0-9_:%.-]{1,512}", args.request):
+            emit({"event": "error", "message": "Invalid voice request identity"})
+            return 2
+        ok, result, error = orca_call(["bot", "voice-ready", "--chat", cid, "--request", args.request, "--json"], timeout=10)
+        emit({"event": "voice_ready", "registered": ok and result.get("registered") is True,
+              "message": error if not ok else ""})
+        return 0 if ok else 1
 
     if args.command == "orca":
         if args.orca_command == "init":

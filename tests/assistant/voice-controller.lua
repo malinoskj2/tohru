@@ -361,11 +361,17 @@ print("Visible, hidden, duplicate, cross-chat and interrupted background deliver
 -- Explicit task speech is independent of final-only answer streaming. It retires
 -- the poller, never the Orca task, and the microphone can remain open.
 local detached = {}
+local registered = {}
+assistant.voice_ready = function(chat, request)
+    assert(written[#written].message.cmd == "speech_start")
+    registered[#registered+1] = {chat, request}
+end
 assistant.detach_voice = function(request) detached[#detached+1] = request; return true end
 fact.ai_voice_paused, fact.notices_dnd, fact.ai_speaking, fact.ai_listening = false, false, false, true
 fact.ai_dragon_open = true
 current_service.line({event="turn", text="Create an independent workspace"})
 speech_listener("start", "task-chat", "", true, asked[#asked][3].voice_generation, "task-request")
+assert(registered[#registered][1] == "task-chat" and registered[#registered][2] == "task-request")
 local function task_update(kind, sequence, message, task_request)
     text.ai_voice_task_chat, text.ai_voice_task_request = "task-chat", task_request or "task-request"
     text.ai_voice_task_id, text.ai_voice_task_sequence = "workspace", tostring(sequence)

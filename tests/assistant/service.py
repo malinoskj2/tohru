@@ -750,6 +750,10 @@ if args[:2] == ["bot", "list"]:
     print(json.dumps({"ok": True, "result": {"bots": state["bots"], "unreachable": []}}))
     sys.exit(0)
 
+if args[:2] == ["bot", "voice-ready"]:
+    print(json.dumps({"ok": True, "result": {"registered": True}}))
+    sys.exit(0)
+
 if args[:2] == ["bot", "chats"]:
     print(json.dumps({"ok": True, "result": {"bot": state["bots"][0]["name"] if state["bots"] else "Tohru", "chats": state["chats"]}}))
     sys.exit(0)
@@ -914,6 +918,18 @@ class OrcaBotBackend(unittest.TestCase):
         providers = json.loads(self.invoke("providers").stdout)
         self.assertEqual([p["id"] for p in providers], ["claude"])
         self.assertEqual(self.orca_calls(), [])
+
+    def test_voice_ready_registration_strips_agent_scope_and_rejects_invalid_identity(self):
+        registered = self.invoke("voice-ready", "--conversation", self.HOME_UUID, "--request", "orca:prompt")
+        self.assertEqual(registered.returncode, 0, registered.stderr)
+        self.assertEqual(json.loads(registered.stdout), {"event": "voice_ready", "registered": True, "message": ""})
+        self.assertEqual(self.orca_calls()[-1]["argv"], ["bot", "voice-ready", "--chat", self.HOME_UUID,
+                                                       "--request", "orca:prompt", "--json"])
+        self.assertTrue(self.orca_calls()[-1]["stripped_env"])
+        calls = len(self.orca_calls())
+        invalid = self.invoke("voice-ready", "--conversation", self.HOME_UUID, "--request", "bad\nidentity")
+        self.assertEqual(invalid.returncode, 2)
+        self.assertEqual(len(self.orca_calls()), calls)
 
     def test_orca_providers_online_paused_missing_and_offline(self):
         online = json.loads(self.invoke("providers", "--backend", "orca", "--orca-bot", "Tohru").stdout)

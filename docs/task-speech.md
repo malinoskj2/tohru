@@ -2,7 +2,7 @@
 
 Tohru accepts explicit task acknowledgements, progress, and verified completion separately from ordinary assistant replies. An acknowledgement can speak while the task runs. It releases the desktop reply poller so you can ask another question. The task continues in Orca and its messages remain in the shared conversation history.
 
-Automatic delivery requires an Orca producer for the task-update protocol below. The existing final-result route continues to work without that producer. Tohru does not interpret tool commentary or raw worker messages as task updates.
+The [isolated Orca producer patch](../integrations/orca/README.md) implements the task-update protocol and desktop registration handshake. This checkout does not install or activate that patch. The existing final-result route continues to work without it. Tohru does not interpret tool commentary or raw worker messages as task updates.
 
 ## Waiting conversation controls
 
@@ -20,7 +20,9 @@ The host-local endpoint is:
 tohru assistant voice-task --chat CHAT --request REQUEST --task TASK --sequence N --kind KIND -- TEXT
 ```
 
-The producer supplies the current voice conversation and its stable Orca prompt item ID. Each task has a stable ID and strictly increasing sequence numbers. `TEXT` is a user-facing statement of at most 320 characters without control characters. Shell arguments must remain separate arguments. A successful CLI exit means the update reached desktop IPC, not that the user heard it.
+The producer supplies the current voice conversation and its stable Orca prompt item ID. Each task has a stable ID and strictly increasing sequence numbers. `TEXT` is a user-facing statement of at most 320 UTF-8 bytes without control characters. Shell arguments must remain separate arguments. A successful CLI exit means the update reached desktop IPC, not that the user heard it.
+
+After the voice controller registers a request, it invokes the separate `tohru-assistant voice-ready --conversation CHAT --request REQUEST` helper. The helper calls the patched Orca readiness endpoint without inherited agent identity. This callback releases queued task acknowledgements. It does not depend on a timer or the task finishing.
 
 | Kind | Meaning |
 | --- | --- |
