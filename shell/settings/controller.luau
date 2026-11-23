@@ -133,7 +133,7 @@ return function(applied, publish_corner)
                     detail=tostring(entry.value).." · "..(entry.managed and "Managed; edits are temporary" or "Saved in config.toml")}
             end
             catalog[#catalog+1]={page=5,title="AFK native playback",editable=false,
-                detail="Inactive until shared actor integration and supported scene art are installed; see tohru doctor"}
+                detail="Desktop idle source and per-output scene availability: tohru doctor / tohru afk status --json"}
         end
         for i=shortcut_offset+1,math.min(shortcut_offset+10,#bindings) do
             local binding = bindings[i]
@@ -201,6 +201,8 @@ return function(applied, publish_corner)
             editing=row.key
             text.settings_model_edit=(snapshot[row.key] and snapshot[row.key].value) or ""
             text.settings_model_label=row.title.." (empty restores inheritance)"
+            if row.key=="assistant.afk_seed" then text.settings_model_label="AFK replay seed (empty uses the session seed)" end
+            if row.key=="assistant.afk_scenes" then text.settings_model_label="Enabled AFK scenes (all, none, or comma-separated IDs)" end
             fact.settings_model_editing=true
             return
         end

@@ -1,6 +1,6 @@
 -- Settings ownership is in Rust, outside this reloadable VM.
 local make_rail = require("bar/rail")
-local flight
+local flight, afk
 local flight_outputs = {}
 local workspace = require("bar/workspace")(make_rail(0), function() if flight then flight.interrupt() end end, function(names)
     flight_outputs = names
@@ -34,6 +34,7 @@ local function publish(settings)
     text.settings_status = json.encode({schema = 7, settings = settings})
     if assistant then assistant.configure() end
     if voice then voice.configure(settings) end
+    if afk then afk.configure(settings) end
     if needs_you then needs_you.configure() end
     if assistant then assistant.configure_discord() end
 end
@@ -103,6 +104,8 @@ local media = require("media/controller")()
 local puppet = require("assistant/puppet")(require("assistant/full-body"), require("assistant/landing-frames"))
 flight = require("assistant/flight")(require("assistant/flight-path"), puppet, require("assistant/flight-actor"))
 flight.outputs(flight_outputs)
+afk = require("assistant/afk-native")(flight.actor)
+afk.configure(tohru_settings.snapshot())
 require("bar/controller")(flight.window)
 require("bar/launcher")()
 local calendar = require("calendar/controller")(make_rail(1, 21))

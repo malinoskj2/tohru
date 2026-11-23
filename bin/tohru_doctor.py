@@ -22,7 +22,9 @@ def required_checks(values):
     if values.get("idle.owner") == "tohru":
         core.update(("executable.swayidle","protocol.idle-notify","protocol.session-lock","locker.pam","service.lock"))
     if values.get("assistant.afk_enabled"):
-        core.add("assistant.afk")
+        core.update(("assistant.afk","service.afk","protocol.idle-notify"))
+        if values.get("idle.owner")=="tohru" or values.get("assistant.afk_idle_source")=="passive":
+            core.add("executable.swayidle")
     if values.get("assistant.voice"):
         core.update(("voice.dependencies","voice.vad_model","voice.asr_model"))
         core.update("executable."+name for name in ("parec","pacat","pactl","espeak-ng"))
@@ -68,9 +70,17 @@ def doctor(as_json=False):
     except (OSError,ValueError):
         add("config","invalid","Configuration cannot be read or validated","Check TOML types, absolute paths and managed-file readability; contents withheld")
         values={};managed=set()
-    add("assistant.afk", "unsupported" if values.get("assistant.afk_enabled") else "disabled",
-        "Policy/choreography available; shared native actor and authored AFK poses are not integrated",
-        "Keep AFK disabled until native composition and capture acceptance gates pass; no synthetic idle fallback")
+    afk_state=None
+    if values.get("assistant.afk_enabled"):
+        afk_state,_=json_probe([os.environ.get("TOHRU_RUNTIME","pleamar"),"--say","tohru","get ai_afk_status"])
+    observed=isinstance(afk_state,dict) and afk_state.get("source") is True
+    add("assistant.afk", "observed" if observed else "unknown" if values.get("assistant.afk_enabled") else "disabled",
+        str(afk_state.get("state","Unknown")) if isinstance(afk_state,dict) else "Default-off; source/geometry not observed" if not values.get("assistant.afk_enabled") else "Native AFK source/geometry unavailable; no synthetic idle fallback",
+        "Install the optional AFK service and inspect tohru afk status --json; unknown session/protocol state remains inactive")
+    availability=afk_state.get("availability") if isinstance(afk_state,dict) else None
+    if isinstance(availability,dict):
+        for scene,reason in sorted(availability.items()):
+            add("assistant.afk.scene."+scene,"unsupported",str(reason),"Normal-size eligible scenes remain available; no tiny substitute for an unavailable closeup")
     from tohru_discord import status as discord_status
     discord = discord_status()
     add("discord.configuration", "disabled" if not values.get("assistant.discord.enabled") else "configured" if discord.get("enabled") else "invalid",
@@ -141,7 +151,7 @@ def doctor(as_json=False):
     add("polkit.conflicts","possible-conflict" if agents else "unknown",
         "Another known polkit agent process was observed" if agents else "No known competing process observed; registration ownership is not universally enumerable",
         "Run only one polkit agent per session")
-    for component in ("bar","session","launcher","notifications","polkit","idle","wallpaper","lock"):
+    for component in ("bar","session","launcher","notifications","polkit","idle","afk","wallpaper","lock"):
         out,state=probe(["systemctl","--user","show",f"tohru-{component}.service","-p","LoadState","-p","ActiveState","--value"],timeout=1)
         unit_states=set(out.split()) if out else set()
         unit_state="present" if "loaded" in unit_states else "missing" if "not-found" in unit_states else "unavailable" if "masked" in unit_states else "unknown"

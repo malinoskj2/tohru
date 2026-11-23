@@ -94,6 +94,14 @@ assert(p.source(102).reason=='source')
 assert(p.idle(101)==nil and p.idle(102)==nil)
 p.resume(102);assert(p.idle(102).kind=='start')
 p.configure({enabled=false,probability=100,seed=17});assert(p.idle(102)==nil)
+p=configured(100,'screen_window')
+assert(p.idle(101,42).episode==42)
+assert(p.idle(101,42)==nil)
+p.source(102)
+assert(p.idle(102,42)==nil)
+-- A higher persisted sequence proves the maintained helper observed a resume
+-- even if the VM missed that callback during reload; replay keeps its index.
+assert(p.idle(102,43).episode==43)
 
 -- Scene timelines are bounded and require their actual authored actions.
 assert(#scenes.catalog==12)

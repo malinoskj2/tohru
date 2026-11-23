@@ -1,0 +1,225 @@
+{
+  "cell": 320,
+  "columns": 8,
+  "rows": 12,
+  "frames": 96,
+  "poses": {
+    "fly_left": {
+      "first": 0,
+      "count": 8,
+      "occupied": [
+        22,
+        75,
+        298,
+        244
+      ],
+      "original_source_cell": 240
+    },
+    "head_tilt": {
+      "first": 8,
+      "count": 8,
+      "occupied": [
+        41,
+        37,
+        278,
+        286
+      ],
+      "original_source_cell": null
+    },
+    "fly_right": {
+      "first": 16,
+      "count": 8,
+      "occupied": [
+        26,
+        57,
+        294,
+        263
+      ],
+      "original_source_cell": 240
+    },
+    "wing_straighten": {
+      "first": 24,
+      "count": 8,
+      "occupied": [
+        76,
+        41,
+        262,
+        286
+      ],
+      "original_source_cell": null
+    },
+    "fly_up": {
+      "first": 32,
+      "count": 8,
+      "occupied": [
+        55,
+        36,
+        264,
+        283
+      ],
+      "original_source_cell": 240
+    },
+    "horn_polish": {
+      "first": 40,
+      "count": 8,
+      "occupied": [
+        77,
+        38,
+        247,
+        286
+      ],
+      "original_source_cell": null
+    },
+    "chin_on_paws": {
+      "first": 48,
+      "count": 8,
+      "occupied": [
+        77,
+        42,
+        246,
+        286
+      ],
+      "original_source_cell": null
+    },
+    "hopeful_wave": {
+      "first": 56,
+      "count": 8,
+      "occupied": [
+        77,
+        42,
+        247,
+        286
+      ],
+      "original_source_cell": null
+    },
+    "curled_sleep": {
+      "first": 64,
+      "count": 8,
+      "occupied": [
+        59,
+        80,
+        272,
+        272
+      ],
+      "original_source_cell": null
+    },
+    "perch_tail_dangle": {
+      "first": 72,
+      "count": 8,
+      "occupied": [
+        89,
+        20,
+        220,
+        308
+      ],
+      "original_source_cell": null
+    },
+    "tail_follow_left": {
+      "first": 80,
+      "count": 8,
+      "occupied": [
+        33,
+        29,
+        297,
+        269
+      ],
+      "original_source_cell": null
+    },
+    "tail_follow_right": {
+      "first": 88,
+      "count": 8,
+      "occupied": [
+        35,
+        25,
+        288,
+        268
+      ],
+      "original_source_cell": null
+    }
+  },
+  "sources": {
+    "nap-perch-tail-source.png": {
+      "size": [
+        1254,
+        1254
+      ],
+      "sha256": "d65c454c9d4179f4d9770802661fa7e8257028265786b5e769c2d6bd3754c16c"
+    },
+    "source.png": {
+      "size": [
+        1774,
+        887
+      ],
+      "sha256": "971098c9b3e192aa2537d56c53780787c55d6f502075ad8698cc028230496804"
+    },
+    "closeup-source.png": {
+      "size": [
+        1254,
+        1254
+      ],
+      "sha256": "f9138dc2ace9d0d46b4275a13e93bf7e42f283ce01320c5a3a56582ca07635d6"
+    },
+    "bust-source.png": {
+      "size": [
+        1254,
+        1254
+      ],
+      "sha256": "226332852e4ec8f384c5a767b8ef46b23c5168160f9171bfd87b26cb8ff2f3f9"
+    }
+  },
+  "closeup": {
+    "source": [
+      1254,
+      1254
+    ],
+    "occupied": [
+      169,
+      49,
+      1048,
+      1160
+    ],
+    "rgba_bytes": 6290064,
+    "decode": "native 0,0",
+    "head_detail_budget": [
+      580,
+      610
+    ],
+    "head_annotation": [
+      340,
+      40,
+      930,
+      655
+    ]
+  },
+  "bust": {
+    "source": [
+      1254,
+      1254
+    ],
+    "occupied": [
+      3,
+      6,
+      1251,
+      1253
+    ],
+    "rgba_bytes": 6290064,
+    "decode": "native 0,0",
+    "head_detail_budget": [
+      1020,
+      1000
+    ],
+    "head_annotation": [
+      110,
+      0,
+      1220,
+      1000
+    ]
+  },
+  "annotation_note": "Conservative manually registered head bounds (including horns/frill); transparent sheet size is not head detail.",
+  "atlas_rgba_bytes": 39321600,
+  "reused_flight_source": {
+    "path": "shell/assistant/dragon/flight.webp",
+    "cell": 240,
+    "sha256": "2266f2641e863de774209fe553e79c422faa6bdd592198a9c8dce18c789f1213"
+  }
+}

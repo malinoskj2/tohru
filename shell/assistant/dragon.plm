@@ -56,8 +56,8 @@ part AssistantDragon {
             group {
                 move: 0, ai_float
                 pivot: 105, 190
-                rotate: (ai_dg_tilt_s + ai_flight_bank) * 1deg
-                scale: (1 + 0.04 * ai_dg_sq_s) * (1 + if(ai_dg_reduced, 0, 0.012 * ai_mouth_s)), (1 - 0.05 * ai_dg_sq_s) * (1 - if(ai_dg_reduced, 0, 0.008 * ai_mouth_s))
+                rotate: (if(ai_actor_open, 0, ai_dg_tilt_s) + ai_flight_bank) * 1deg
+                scale: (1 + if(ai_actor_open, 0, 0.04 * ai_dg_sq_s)) * (1 + if(ai_dg_reduced, 0, 0.012 * ai_mouth_s)), (1 - if(ai_actor_open, 0, 0.05 * ai_dg_sq_s)) * (1 - if(ai_dg_reduced, 0, 0.008 * ai_mouth_s))
                 group {
                     show: ai_dg_ready
                     pivot: 105, 115
@@ -82,8 +82,24 @@ part AssistantDragon {
                         cell: max(ai_dg_mouth, 0), 8, 1; opacity: if(ai_dg_mouth >= 0, 100%, 0.1%)
                     }
                 }
-                image ai_actor_closeup { at: ai_dg_x, ai_dg_y; size: 150, 150; show: ai_actor_closeup_open }
-                image ai_actor_skin { at: ai_dg_x, ai_dg_y; size: 150, 150; cell: ai_actor_skin_frame, 8, ai_actor_skin_rows; show: ai_actor_skin_open }
+                group {
+                    move: ai_dg_x + 2.585512, ai_dg_y + 26.779307
+                    pivot: 70.060577, 50.052537
+                    scale: 1.924510, 1.924510
+                    rotate: 4.256904deg
+                    shader: ai_afk_detail, 0, ai_afk_action, ai_afk_phase, 0
+                    image ai_afk_body { at: 0, 0; size: 150, 150; show: ai_afk_body_open and (ai_afk_preparing or ai_afk_bust_mix < 0.9999); opacity: if(ai_afk_preparing, 100%, 1 - ai_afk_bust_mix * ai_afk_bust_mix * ai_afk_bust_mix * ai_afk_bust_mix) }
+                }
+                group {
+                    move: ai_dg_x, ai_dg_y
+                    shader: ai_afk_detail, ai_afk_art_kind, ai_afk_action, ai_afk_phase, ai_afk_fog
+                    image ai_actor_closeup { at: 0, 0; size: 150, 150; show: ai_actor_closeup_open; opacity: if(ai_afk_preparing or not ai_afk_body_open, 100%, ai_afk_bust_mix) }
+                }
+                group {
+                    move: ai_dg_x, ai_dg_y
+                    shader: ai_afk_detail, ai_afk_art_kind, ai_afk_action, ai_afk_phase, ai_afk_fog
+                    image ai_actor_skin { at: 0, 0; size: 150, 150; cell: ai_actor_skin_frame, 8, ai_actor_skin_rows; show: ai_actor_skin_open }
+                }
                 group {
                     show: ai_landing_art
                     pivot: 105, 115

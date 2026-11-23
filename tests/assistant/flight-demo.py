@@ -25,6 +25,7 @@ text test_output = ""
 event test_show ->
 event test_interrupt ->
 include "state.plm"
+include "assistant/afk-render.plm"
 include "assistant/dragon.plm"
 }
 """)

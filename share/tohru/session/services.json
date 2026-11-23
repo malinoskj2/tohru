@@ -31,6 +31,7 @@
   "afk": {
     "program": "tohru_afk_idle.py serve",
     "description": "Tohru passive desktop idle notifications",
+    "kill_mode": "mixed",
     "install": false
   },
   "lock": {

@@ -1,0 +1,16 @@
+{
+  "canvas": [1254, 1254],
+  "method": "Centroids of the two opaque dark-purple pupil components; same canonical source identity, similarity transform about their midpoint",
+  "body_eyes": [[489.741353, 450.250376], [681.671494, 386.628045]],
+  "bust_eyes": [[418.600749, 689.657250], [796.041854, 594.971185]],
+  "body_mouth": [603.2, 458.0],
+  "bust_mouth": [631.2, 723.3],
+  "body_scale": 1.9245097100019937,
+  "body_rotation_degrees": 4.25690376819537,
+  "body_pivot_at_150": [70.06057702079379, 50.05253712357317],
+  "body_move_at_150": [2.585511714600535, 26.779307056244203],
+  "handoff_physical_canvas_start": 350,
+  "handoff_physical_canvas_end": 651.59,
+  "maximum_visible_body_physical_canvas": 1254,
+  "note": "Both full-resolution sources are staged before approach; full-body is hidden before its physical extent exceeds its native source. Only the selected glass episode retains both live bindings, and cancellation clears both. No source resolution is inferred from transparent padding or the motion atlas."
+}

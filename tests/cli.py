@@ -76,10 +76,17 @@ class Cli(unittest.TestCase):
             self.assertEqual(result.stdout, "")
 
     def test_portable_config_keys_route_to_native_schema(self):
-        for key,value in [('appearance.font_text','Noto Sans'),('appearance.font_mono','DejaVu Sans Mono'),('wallpaper.enabled','true'),('idle.lock_seconds','600'),('assistant.voice_python','/opt/voice/bin/python'),('assistant.contextual_entrances','true'),('assistant.contextual_entrances','false'),('assistant.entrance_variant','auto'),('assistant.entrance_seed','12345')]:
+        for key,value in [('appearance.font_text','Noto Sans'),('appearance.font_mono','DejaVu Sans Mono'),('wallpaper.enabled','true'),('idle.lock_seconds','600'),('assistant.voice_python','/opt/voice/bin/python'),('assistant.contextual_entrances','true'),('assistant.contextual_entrances','false'),('assistant.entrance_variant','auto'),('assistant.entrance_seed','12345'),('assistant.afk_enabled','true'),('assistant.afk_seed','17'),('assistant.afk_scene','wing_grooming')]:
             result=self.invoke('config','set',key,value)
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertEqual(json.loads(result.stdout),['--say','tohru','text setting_key '+key,'text setting_value '+value,'emit setting_assistant'])
+
+    def test_afk_status_reads_native_observation_without_starting_helpers(self):
+        result=self.invoke('afk','status','--json')
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(json.loads(result.stdout),['--say','tohru','get ai_afk_status'])
+        for args in (('afk',),('afk','start'),('afk','status'),('afk','status','--json','extra')):
+            self.assertEqual(self.invoke(*args).returncode,2)
 
     def test_session_menu_routes_never_start_a_role(self):
         for action in ['open','close','toggle']:

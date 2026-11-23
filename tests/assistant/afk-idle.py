@@ -77,6 +77,32 @@ class Idle(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'inactive'):idle.serve()
             spawn.assert_not_called()
 
+    def test_effective_managed_source_and_owned_callback_generation(self):
+        values={'assistant.afk_enabled':False,'assistant.afk_idle_seconds':300,'idle.owner':'external'}
+        address,registration=idle.endpoint()
+        effective=address.parent/'afk-effective.json'
+        effective.write_text(json.dumps({'enabled':True,'seconds':420,'source':'callbacks','owner':'tohru'}))
+        actual=idle.effective_config(values)
+        self.assertTrue(actual['assistant.afk_enabled'])
+        self.assertEqual(actual['assistant.afk_idle_seconds'],420)
+        self.assertEqual(actual['idle.owner'],'tohru')
+        self.assertFalse(values['assistant.afk_enabled'])
+        registration.write_text(json.dumps({'schema':1,'generation':99,'seconds':420}))
+        self.assertEqual(idle.owned_callbacks(values)[:2],['timeout','420'])
+        effective.write_text(json.dumps({'enabled':True,'seconds':0,'source':'callbacks','owner':'tohru'}))
+        with self.assertRaises(ValueError):idle.effective_config(values)
+
+    def test_control_effective_override_and_stop_survives_invalid_config(self):
+        with patch.object(sys,'argv',['tohru_afk_idle.py','control','start','--idle-seconds','420','--source','passive','--owner','external']),patch.object(idle,'probe',return_value=('','ok')) as probe:
+            self.assertEqual(idle.main(),0)
+        self.assertEqual(probe.call_args.args[0],['systemctl','--user','restart','tohru-afk.service'])
+        actual=idle.effective_config(portability.config()[0])
+        self.assertTrue(actual['assistant.afk_enabled']);self.assertEqual(actual['assistant.afk_idle_seconds'],420)
+        self.config.write_text('invalid TOML !!!')
+        with patch.object(sys,'argv',['tohru_afk_idle.py','control','stop']),patch.object(idle,'probe',return_value=('','ok')):
+            self.assertEqual(idle.main(),0)
+        self.assertFalse((idle.endpoint()[0].parent/'afk-effective.json').exists())
+
     def wait_for(self,condition):
         deadline=time.monotonic()+3
         while time.monotonic()<deadline:
@@ -88,8 +114,10 @@ class Idle(unittest.TestCase):
     def test_real_socket_generation_lifecycle_and_callback_delivery(self):
         self.config.write_text('[assistant]\nafk_enabled=true\n')
         client=self.root/'swayidle'
-        client.write_text('#!'+sys.executable+'\nimport os,time,json\nfrom pathlib import Path\n'
+        client.write_text('#!'+sys.executable+'\nimport os,time,json,signal,subprocess,shlex,sys\nfrom pathlib import Path\n'
                           +'Path('+repr(str(self.root/'client.json'))+').write_text(json.dumps({"pid":os.getpid(),"args":__import__("sys").argv[1:]}))\n'
+                          +'def shutdown(*_):\n subprocess.run(shlex.split(sys.argv[-1]),timeout=1);raise SystemExit(0)\n'
+                          +'signal.signal(signal.SIGTERM,shutdown)\n'
                           +'time.sleep(30)\n')
         client.chmod(0o755)
         events=self.root/'events.jsonl'
@@ -117,11 +145,32 @@ class Idle(unittest.TestCase):
         idle.notify('idle',generation)
         idle.notify('resume',generation)
         observed=self.wait_for(lambda:[json.loads(line) for line in events.read_text().splitlines()] if 'resume' in events.read_text() else None)
-        self.assertEqual([name for name,token in observed if name not in ('source','unsafe')],['idle','resume'])
+        self.assertEqual([name for name,token in observed if name not in ('source','unsafe','threshold','seed','episode')],['idle','resume'])
+        idle.notify('idle',generation)
+        self.wait_for(lambda:idle.episode_state(idle.endpoint()[0].parent)['idle'])
         process.terminate();self.assertEqual(process.wait(timeout=4),0)
         self.assertFalse(idle.endpoint()[0].exists());self.assertFalse(idle.endpoint()[1].exists())
         self.assertEqual(json.loads(events.read_text().splitlines()[-1]),['lost',generation])
+        # Maintained swayidle executes resume commands on SIGTERM. Shutdown
+        # callbacks must never impersonate physical activity or rearm a roll.
+        self.assertTrue(idle.episode_state(idle.endpoint()[0].parent)['idle'])
+        specs=json.loads((ROOT/'share/tohru/session/services.json').read_text())
+        self.assertIn('KillMode=mixed',portability.unit_text('afk',specs['afk'],ROOT/'bin','graphical-session.target'))
         with self.assertRaises(ProcessLookupError):os.kill(child_info['pid'],0)
+
+    def test_episode_state_survives_helper_restart_without_another_roll(self):
+        directory=idle.endpoint()[0].parent
+        state=idle.episode_state(directory)
+        seed=state['seed']
+        self.assertTrue(idle.episode_event(directory,state,'idle'))
+        self.assertEqual(state['episode'],1)
+        restored=idle.episode_state(directory)
+        self.assertEqual(restored['seed'],seed)
+        self.assertFalse(idle.episode_event(directory,restored,'idle'))
+        self.assertEqual(restored['episode'],1)
+        self.assertTrue(idle.episode_event(directory,restored,'resume'))
+        self.assertTrue(idle.episode_event(directory,restored,'idle'))
+        self.assertEqual(idle.episode_state(directory)['episode'],2)
 
 
 if __name__=='__main__':unittest.main()

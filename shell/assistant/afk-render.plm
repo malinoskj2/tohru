@@ -1,0 +1,24 @@
+part AssistantAfk {
+    shader ai_afk_detail = file "dragon/afk-detail.wgsl"
+    fact ai_afk_art_kind = 0
+    fact ai_afk_action = 0
+    fact ai_afk_phase = 0
+    fact ai_afk_fog = 0
+    fact ai_afk_active = false
+    text ai_afk_body_src = ""
+    image ai_afk_body = from ai_afk_body_src, 0, 0
+    fact ai_afk_body_open = false
+    fact ai_afk_preparing = false
+    fact ai_afk_bust_mix = 1
+    text ai_afk_status = "Disabled"
+    text ai_afk_trace = ""
+    event afk_source ->
+    event afk_seed ->
+    event afk_episode ->
+    event afk_threshold ->
+    event afk_safe ->
+    event afk_unsafe ->
+    event afk_idle ->
+    event afk_resume ->
+    event afk_lost ->
+}

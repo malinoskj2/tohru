@@ -3,7 +3,8 @@
 return function(scenes)
     local settings = {enabled=false, probability=50, seed=1, force="auto", quiet=false}
     local generation, episode, idle, last = nil, 0, false, nil
-    local active, observations = nil, {}
+    local active, observations, decision = nil, {}, nil
+    local function decided(value)decision=value;return value end
 
     local function blocked(s)
         -- Unknown session/lock/inhibition/output state is unsafe. Conversation
@@ -36,11 +37,27 @@ return function(scenes)
         end
         return result
     end
-    -- Park-Miller products remain exact in Luau's double numbers. Domain-separated
-    -- streams keep the chance independent of eligibility/list ordering.
+    local function xor(a,b)
+        if bit32 then return bit32.bxor(a,b) end
+        -- Lua 5.4 policy fixtures lack Luau's built-in bit32. This bounded
+        -- arithmetic equivalent operates only once per idle decision.
+        local result,place=0,1
+        while a>0 or b>0 do
+            if a%2~=b%2 then result=result+place end
+            a,b,place=math.floor(a/2),math.floor(b/2),place*2
+        end
+        return result
+    end
+    -- Products remain exact in Luau's doubles. XOR folding prevents the keyed
+    -- episode counter from becoming an arithmetic progression of chance rolls.
+    -- Domain-separated streams keep chance independent of eligible-list length.
     local function random(stream)
         local n = (settings.seed + episode * 104729 + stream * 13007) % 2147483646 + 1
-        for _=1,4 do n = n * 16807 % 2147483647 end
+        for _=1,4 do
+            n=xor(n,math.floor(n/65536))
+            n=n*48271%2147483647
+            n=xor(n,math.floor(n/128))
+        end
         return n / 2147483647
     end
     local function observe(s)
@@ -72,16 +89,23 @@ return function(scenes)
             return changed
         end,
         observe = observe,
-        idle = function(token)
-            if generation == nil or token ~= generation or idle then return nil end
-            idle, episode = true, episode + 1
-            if not settings.enabled then return nil end
+        idle = function(token,sequence)
+            if generation == nil or token ~= generation then return nil end
+            if sequence~=nil then
+                if type(sequence)~="number" or sequence%1~=0 or sequence<=episode or sequence>2147483646 then return nil end
+                episode=sequence
+            else
+                if idle then return nil end
+                episode=episode+1
+            end
+            idle = true
+            if not settings.enabled then return decided({kind="skip",reason="disabled",episode=episode}) end
             local choices = eligible()
-            if #choices == 0 then return {kind="skip", reason="ineligible", episode=episode} end
+            if #choices == 0 then return decided({kind="skip", reason="ineligible", episode=episode}) end
             if settings.force ~= "auto" then
                 local found = false
                 for _, id in ipairs(choices) do if id == settings.force then found=true end end
-                if not found then return {kind="skip",reason="forced-ineligible",episode=episode} end
+                if not found then return decided({kind="skip",reason="forced-ineligible",episode=episode}) end
                 choices = {settings.force}
             elseif #choices > 1 then
                 local alternatives = {}
@@ -90,12 +114,12 @@ return function(scenes)
             end
             local roll = random(1) * 100
             -- Force selects a scene but never bypasses probability or safety.
-            if roll >= settings.probability then return {kind="skip",reason="chance",roll=roll,episode=episode} end
+            if roll >= settings.probability then return decided({kind="skip",reason="chance",roll=roll,episode=episode,seed=settings.seed}) end
             local id = choices[math.floor(random(2) * #choices) + 1]
             active = {kind="start",scene=id,output=observations.output,episode=episode,
                 generation=generation,seed=settings.seed,roll=roll}
             last = id
-            return active
+            return decided(active)
         end,
         resume = function(token)
             if generation == nil or token ~= generation then return nil end
@@ -105,7 +129,7 @@ return function(scenes)
         finished = function(token, sequence)
             if token == generation and active and active.episode == sequence then active=nil end
         end,
-        state = function() return {episode=episode,idle=idle,last=last,active=active,generation=generation} end,
+        state = function() return {episode=episode,idle=idle,last=last,active=active,generation=generation,decision=decision} end,
         eligible = eligible,
     }
 end

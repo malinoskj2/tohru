@@ -1,11 +1,10 @@
--- Composition seam for the existing single native actor. Not loaded by bar.luau
--- until the entrance owner supplies this contract; never writes ai_flight facts.
+-- Composition seam for the single native actor; never writes ai_flight facts.
 -- actor: supported(), observe(), prepare(sample,ready), play(sample), release(stop)
 -- source: start(callback)->handle, stop(handle). The systemd-owned source reports
 -- {kind=ready|idle|resume|lost, generation=..., seed=...}; ready is NOT current idle.
 return function(choreography, make_policy, actor, source, clock)
     local policy = make_policy(choreography.catalog)
-    local handle, subscription, scene, timer, generation
+    local handle, subscription, scene, timer, generation, source_seed
     local serial, elapsed, last_time, beat = 0, 0, 0, nil
     local ready, preparing, started = false, false, false
     local prepare_at, pose_generation = 0, 0
@@ -14,12 +13,13 @@ return function(choreography, make_policy, actor, source, clock)
     local function stop(reason)
         serial = serial + 1
         if timer then cancel(timer);timer=nil end
-        if scene then actor.release(reason) end
+        local previous=scene
         scene, beat, ready, preparing, started = nil, nil, false, false, false
+        if previous then actor.release(reason) end
     end
     local function observations()
         local state = actor.observe()
-        state.supported = choreography.supported(actor.supported())
+        state.supported = state.supported or choreography.supported(actor.supported())
         return state
     end
     local function apply(event)
@@ -70,11 +70,20 @@ return function(choreography, make_policy, actor, source, clock)
         if event.kind == "ready" then
             if event.generation == generation then return end
             generation = event.generation
+            source_seed = event.seed
             apply(policy.source(generation))
             local values = {}
             for key,value in pairs(configuration) do values[key]=value end
             values.seed = values.seed or event.seed
             policy.configure(values)
+        elseif event.kind == "seed" then
+            if event.generation~=generation then return end
+            if source_seed==event.seed then return end
+            source_seed=event.seed
+            local values={}
+            for key,value in pairs(configuration) do values[key]=value end
+            values.seed=configuration.seed or source_seed
+            apply(policy.configure(values))
         elseif event.kind == "lost" then
             if event.generation ~= generation then return end
             apply(policy.source(nil))
@@ -83,7 +92,7 @@ return function(choreography, make_policy, actor, source, clock)
             apply(policy.resume(event.generation))
         elseif event.kind == "idle" then
             apply(policy.observe(observations()))
-            local decision = policy.idle(event.generation)
+            local decision = policy.idle(event.generation,event.episode)
             if decision and decision.kind == "start" then
                 scene, elapsed, last_time = decision, 0, clock()
                 serial = serial + 1
@@ -94,13 +103,21 @@ return function(choreography, make_policy, actor, source, clock)
     end
     return {
         configure=function(values)
+            local previous=configuration
             configuration = values
-            subscription=(subscription or 0)+1
             stop({reason="config",immediate=true})
+            local policy_values={}
+            for key,value in pairs(values) do policy_values[key]=value end
+            policy_values.seed=values.seed or source_seed or generation
+            policy.configure(policy_values)
+            local keep_source=previous and previous.enabled and values.enabled
+                and previous.source_signature==values.source_signature
+            if keep_source then return end
+            subscription=(subscription or 0)+1
             if handle then source.stop(handle);handle=nil end
             generation=nil
+            source_seed=nil
             policy.source(nil)
-            policy.configure(values)
             if values.enabled then
                 -- A separate source generation guards helper callbacks across
                 -- scene cancellation as well as configuration/reload teardown.
