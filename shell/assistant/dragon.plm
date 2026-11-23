@@ -59,6 +59,8 @@ part AssistantDragon {
                 scale: (1 + 0.04 * ai_dg_sq_s) * (1 + if(ai_dg_reduced, 0, 0.012 * ai_mouth_s)), (1 - 0.05 * ai_dg_sq_s) * (1 - if(ai_dg_reduced, 0, 0.008 * ai_mouth_s))
                 group {
                     show: ai_dg_ready
+                    pivot: 105, 115
+                    scale: ai_dg_pose_scale, ai_dg_pose_scale
                     // Keep the registered landing cell resident during the wingbeat.
                     opacity: if(ai_landing_art or ai_flight_art or ai_actor_skin_open or ai_actor_closeup_open, 0.2%, 100%)
                     // One sheet for every body frame: changing between separate large images blanked her for a few frames.

@@ -117,6 +117,7 @@ part AssistantState {
     image ai_dg_heart = from ai_dg_heart_src, 24, 24
     fact ai_dg_reduced = false
     fact ai_dg_shadow = 1
+    fact ai_dg_pose_scale = 1
     prop ai_dg_shadow_s = 1 ~300ms
     follow ai_dg_shadow_s = ai_dg_shadow
     fact ai_dg_travel = -1

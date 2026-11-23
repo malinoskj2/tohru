@@ -1,6 +1,13 @@
 -- The voice dragon's animator. It plays the sheets in dragon/ at 24 frames a second, and only while she is on screen.
 return function(full_body, landing_frames)
     local TICK = 42
+    -- Compact resting silhouettes need more room to match the original neutral.
+    local REST_SCALE = {
+        loose_hover = 1.10, nested_hover = 1.25, reclined_hover = 1.25,
+        high_knee = 1.10, crossed_feet = 1.25, lean_back = 1.20,
+        side_float = 1.25, asymmetric_curl = 1.12,
+    }
+    local frame_scale = {}
     local POSES = {
         neutral = {cell = 0, talk = 12, mx = 0, my = 0, ex = 0, ey = 0},
         explain = {cell = 4, talk = 13, mx = 0.59, my = 3.16},
@@ -21,6 +28,14 @@ return function(full_body, landing_frames)
     }
     for _, p in ipairs(full_body or {}) do
         POSES[p.name] = {cell = p.cell, talk = p.cell, full = true, face = p.face, fx = p.fx, fy = p.fy, shadow = p.shadow}
+        local scale = REST_SCALE[p.name]
+        if scale then
+            frame_scale[165 + p.cell] = scale
+            for i = 0, p.count - 1 do
+                local t = i / (p.count - 1)
+                frame_scale[p.first + i] = 1 + (scale - 1) * t * t * (3 - 2 * t)
+            end
+        end
     end
     -- Drawn transitions (first cell among the moves, frames), played backwards for the way back.
     local MOVES = {
@@ -185,6 +200,7 @@ return function(full_body, landing_frames)
         set("ai_dg_travel", -1)
         set("ai_dg_cell", cell)
         set("ai_dg_frame", FIRST[sheet] + cell)
+        set("ai_dg_pose_scale", frame_scale[FIRST[sheet] + cell] or 1)
         set("ai_dg_eye", eye)
         set("ai_dg_ex", ex or 0)
         set("ai_dg_ey", ey or 0)
