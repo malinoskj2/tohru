@@ -1468,7 +1468,7 @@ def orca_providers(bot_name, models, offline):
 
 
 def orca_read_messages(chat_id, limit=100):
-    ok, result, err = orca_call(["agent", "read", f"orca_session_id:{chat_id}", "--limit", str(limit), "--json"], timeout=10)
+    ok, result, err = orca_call(["agent", "read", f"orca_session_id:{chat_id}", "--limit", str(limit), "--ids", "--json"], timeout=10)
     if not ok:
         return None, "", err
     entries = []
