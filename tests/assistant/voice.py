@@ -780,6 +780,49 @@ class StreamingTests(unittest.TestCase):
         stream.feed(" there. Next", final=True); worker.join(1)
         self.assertEqual(out, ["Hello there.", "Next"])
 
+    def test_punctuation_at_live_chunk_boundary_waits_without_repeating(self):
+        for first, rest, expected in (
+            ("Hello.", " Next sentence!", ["Hello.", "Next sentence!"]),
+            ("The value is 3.", "14. Next sentence!", ["The value is 3.14.", "Next sentence!"]),
+            ("First. Second.", " Last sentence!", ["First.", "Second.", "Last sentence!"]),
+        ):
+            with self.subTest(first=first):
+                waiting = threading.Event()
+                class ObservedCondition(threading.Condition):
+                    def wait(self, timeout=None):
+                        waiting.set()
+                        return super().wait(timeout)
+                stream = voice_module.SpeechStream()
+                stream.cond = ObservedCondition()
+                stream.feed(first)
+                stop, finished = threading.Event(), threading.Event()
+                out, errors = [], []
+                def consume():
+                    try:
+                        out.extend(stream.parts(stop))
+                    except Exception as error:
+                        errors.append(error)
+                    finally:
+                        finished.set()
+                        waiting.set()
+                worker = threading.Thread(target=consume)
+                worker.start()
+                try:
+                    self.assertTrue(waiting.wait(1), "speech reader did not wait for more text")
+                    if errors:
+                        raise errors[0]
+                    self.assertFalse(finished.is_set(), "speech ended before the provider finished")
+                    self.assertEqual(out, expected[:1] if first.startswith("First.") else [])
+                    stream.feed(rest, final=True)
+                    self.assertTrue(finished.wait(1), "speech did not finish")
+                    if errors:
+                        raise errors[0]
+                    self.assertEqual(out, expected)
+                finally:
+                    stop.set()
+                    stream.feed("", final=True)
+                    worker.join(1)
+
     def test_markdown_code_and_links_across_chunks(self):
         stream = voice_module.SpeechStream()
         for text in ["See [the ", "guide](https://host/path). ", "```py\nprint('bad. ')", "\n``` Final words"]:

@@ -167,7 +167,9 @@ class SpeechStream:
                 match = re.search(r"[.!?…](?:[\"')]*)(?:\s+|$)", self.pending)
                 # A terminal punctuation at the chunk boundary may be a decimal,
                 # URL or abbreviation: require following whitespace until final.
-                if match and (self.closed or match.end() < len(self.pending) or self.pending[-1:].isspace()):
+                if match and not (self.closed or match.end() < len(self.pending) or self.pending[-1:].isspace()):
+                    match = None
+                if match:
                     end = match.end()
                     prefix = self.pending[:end]
                     if prefix.count("```") % 2 or prefix.count("~~~") % 2 or prefix.count("`") % 2 or prefix.count("[") != prefix.count("]") or prefix.count("(") != prefix.count(")"):
