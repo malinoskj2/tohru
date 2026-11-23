@@ -72,4 +72,4 @@ Both RPC methods participate in Orca's injected caller resolution. A producer mu
 
 The integration test uses fake task and speech adapters. It does not prove audible playback, an actual voice-created worktree, or an LLM's compliance with the bot instructions. No installed application or live desktop service was activated. Existing final-only behavior remains the fallback when either side lacks the new handshake.
 
-The source `check:changed` gate passes all relevant checks except an existing orphan path in `config/scripts/test-runtime/sqlite-admission/vitest-node-runtime-files.mjs`. It references the absent `worker-auto-release.test.ts` file at the routing baseline. This patch adds no exception to that check.
+The source `check:changed` gate passes all 30 checks. The patch removes the obsolete `worker-auto-release.test.ts` entry from the test-runtime list because that file is absent from the pinned upstream source. No exception is added to the check.

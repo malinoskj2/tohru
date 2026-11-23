@@ -1,3 +1,15 @@
+diff --git a/config/scripts/test-runtime/sqlite-admission/vitest-node-runtime-files.mjs b/config/scripts/test-runtime/sqlite-admission/vitest-node-runtime-files.mjs
+index 11456815..56eb7084 100644
+--- a/config/scripts/test-runtime/sqlite-admission/vitest-node-runtime-files.mjs
++++ b/config/scripts/test-runtime/sqlite-admission/vitest-node-runtime-files.mjs
+@@ -120,7 +120,6 @@ const NODE_RUNTIME_INCLUDE = [
+   'config/scripts/test-runtime/node-worker/vitest-node-runtime-pool.test.ts',
+   // Restarts a file-backed database; Bun's SQLite close keeps the file open until its statements are
+   // collected, so Windows cannot delete it afterwards.
+-  'src/main/runtime/rpc/methods/orchestration/worker/release/worker-auto-release.test.ts',
+   // Reopen WAL-backed row caches read-only, which Bun on macOS cannot.
+   'tests/e2e/desktop/electron-fixtures/persisted-profile-state.unit.test.ts',
+   'src/main/runtime/push/notifications/mobile-notification-dismissal-store.test.ts'
 diff --git a/src/cli/bots/bot-handler-groups.ts b/src/cli/bots/bot-handler-groups.ts
 index 84eb1e8e..34df3c16 100644
 --- a/src/cli/bots/bot-handler-groups.ts

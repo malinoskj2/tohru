@@ -11,6 +11,7 @@
     "src/main/bots/desktop-voice-continuations.ts": "56cbd4025b0b932546ee87857645f652df9088a35f33fbae8ec25af6de5f683f",
     "src/main/runtime/rpc/methods/bots.ts": "b1461d23635bdc8f998ff90e75bc1aca3a063a751e23d51b438ea8da10d37a61",
     "src/main/runtime/rpc/orchestration/callers/orchestration-session-caller.ts": "04023237e0bd0e0b28d57dadc1df8947e42b10280c9dc006c033ff3d1cad3aeb",
-    "src/shared/rpc-contract/rpc-params-catalog.generated.ts": "e898409cdfcd5f22b37e30467e84dfba9894fd0f96ec6438edec348837b6b8bd"
+    "src/shared/rpc-contract/rpc-params-catalog.generated.ts": "e898409cdfcd5f22b37e30467e84dfba9894fd0f96ec6438edec348837b6b8bd",
+    "config/scripts/test-runtime/sqlite-admission/vitest-node-runtime-files.mjs": "05389c9bc423efd439955e54712762f83c548930b350a71482b1c4e3cc9d0808"
   }
 }
