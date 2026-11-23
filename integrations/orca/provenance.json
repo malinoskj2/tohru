@@ -1,0 +1,16 @@
+{
+  "orcaVersion": "1.4.268",
+  "upstreamPackageSha256": "06e90b38b6b7155b36a40e9b7ebd9e6c0b41e030e7e69106732824ea3a3f7420",
+  "routingPatchSha256": "1515daf979c18380b1d374b7a0149885d8c05e06c45f88869133ca504c3e36bd",
+  "baseFiles": {
+    "src/cli/bots/bot-handler-groups.ts": "3facff97aa1763b1a1f8958b4f564a9f3aec4a2c76b19e466b96a81547459686",
+    "src/cli/bots/bot.ts": "16bf113f0bb30621390ee4a03f8ba768d7d0e2b83fdbf758259117f6db829c4e",
+    "src/cli/specs/bot.ts": "3746bc6b46833e4e18ed9059764daa8bb05e85eecef86e7420f4f00c83fcd3d8",
+    "src/main/bots/bot-chat-session.test.ts": "8a0683eb4048593584600ca633ba88be6eab051dfea0c6aa23398dc3357cb151",
+    "src/main/bots/bot-preamble.ts": "5f4a923e714a609842d575b604bfca0542e940f1f1e2d0239274cbb31f2f9a12",
+    "src/main/bots/desktop-voice-continuations.ts": "56cbd4025b0b932546ee87857645f652df9088a35f33fbae8ec25af6de5f683f",
+    "src/main/runtime/rpc/methods/bots.ts": "b1461d23635bdc8f998ff90e75bc1aca3a063a751e23d51b438ea8da10d37a61",
+    "src/main/runtime/rpc/orchestration/callers/orchestration-session-caller.ts": "04023237e0bd0e0b28d57dadc1df8947e42b10280c9dc006c033ff3d1cad3aeb",
+    "src/shared/rpc-contract/rpc-params-catalog.generated.ts": "e898409cdfcd5f22b37e30467e84dfba9894fd0f96ec6438edec348837b6b8bd"
+  }
+}

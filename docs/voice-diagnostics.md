@@ -21,3 +21,5 @@ An Orca worker completion can return the coordinating bot's final analyzed answe
 Tohru speaks a matching result only when it is already visible, the result belongs to its current voice request, and capture or another reply is not active. A popup showing another conversation blocks delivery. Hidden, superseded and duplicate results remain in Orca; they do not open Tohru or become a later spoken notification. Diagnostics record `continuation_speech` or `continuation_dropped` without logging the answer.
 
 The return path uses live host-local completion events. Correlation is bounded and resets when Orca restarts; results missed during a restart remain in Orca. It does not poll chats or replay a backlog of speech.
+
+Explicit [conversational task updates](task-speech.md) have a separate acknowledgement, progress, and completion endpoint. They require a producer that opts into that protocol. `task_update` and `task_update_dropped` diagnostics record the task ID, sequence, kind, and rejection reason without logging spoken content.

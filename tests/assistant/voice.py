@@ -623,6 +623,7 @@ class VoiceTests(unittest.TestCase):
         speaker = object.__new__(voice_module.Speaker)
         speaker.cond = threading.Condition()
         speaker.stop = threading.Event()
+        speaker.stop.turn = 41
         speaker.speaking = True
         speaker.paused = False
         speaker.conversation = "c1"
@@ -633,11 +634,11 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(speaker.level, 0.0)
         self.assertEqual(self.events, [
             {"event": "mouth", "level": 0, "viseme": voice_module.REST},
-            {"event": "speaking", "on": False, "paused": True, "conversation": "c1"},
+            {"event": "speaking", "on": False, "paused": True, "conversation": "c1", "generation": 41},
         ])
         speaker.resume()
         self.assertFalse(speaker.paused)
-        self.assertEqual(self.events[-1], {"event": "speaking", "on": True, "conversation": "c1"})
+        self.assertEqual(self.events[-1], {"event": "speaking", "on": True, "conversation": "c1", "generation": 41})
 
     def test_speech_outside_a_conversation_is_not_shown_as_heard(self):
         voice = make_voice(FakeRecognizer(["WHAT"], "WHAT"))

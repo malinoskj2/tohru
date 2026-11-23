@@ -1035,7 +1035,7 @@ class Speaker:
             conversation = self.conversation
             self.cond.notify_all()
             emit("mouth", level=0, viseme=REST)
-            emit("speaking", on=False, paused=True, conversation=conversation)
+            emit("speaking", on=False, paused=True, conversation=conversation, generation=getattr(self.stop, "turn", None))
 
     def resume(self):
         with self.cond:
@@ -1043,7 +1043,7 @@ class Speaker:
                 return
             self.paused = False
             conversation = self.conversation
-            emit("speaking", on=True, conversation=conversation)
+            emit("speaking", on=True, conversation=conversation, generation=getattr(self.stop, "turn", None))
             self.cond.notify_all()
 
     def hush(self):
@@ -1079,7 +1079,7 @@ class Speaker:
                     self.recent = []
                     self.quiet_after = self.last_audio + ECHO_TAIL_S if self.last_audio else 0.0
                     self.cond.notify_all()
-                fields = {"on": False, "conversation": conversation}
+                fields = {"on": False, "conversation": conversation, "generation": stop.turn}
                 if interrupted:
                     fields["interrupted"] = True
                 emit("speaking", **fields)
@@ -1117,7 +1117,7 @@ class Speaker:
                     self.speaking = True
                     self.voice.thinking = False
                     self.conversation = conversation
-                    emit("speaking", on=True, conversation=conversation)
+                    emit("speaking", on=True, conversation=conversation, generation=stop.turn)
             with self.cond:
                 self.current_part = part
                 self.current_fraction = 0.0

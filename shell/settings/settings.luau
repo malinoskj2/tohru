@@ -21,11 +21,13 @@ local function tell_bar(command)
 end
 local function applied(settings, warning)
     text.settings_error = warning or ""
-    local source = settings["assistant.voice_source"]
-    if source and source.runtime_override then
-        tell_bar("text setting_key assistant.voice_source")
-        tell_bar("text setting_value " .. source.value)
-        tell_bar("emit setting_assistant")
+    for _, key in ipairs({"assistant.voice_source", "assistant.waiting_chatter", "assistant.waiting_seed"}) do
+        local setting = settings[key]
+        if setting and setting.runtime_override then
+            tell_bar("text setting_key " .. key)
+            tell_bar("text setting_value " .. tostring(setting.value))
+            tell_bar("emit setting_assistant")
+        end
     end
     tell_bar("emit config_reload")
     for key, command in pairs(overrides) do

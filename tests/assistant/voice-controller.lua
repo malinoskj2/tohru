@@ -87,14 +87,14 @@ assert(#written == 1)
 service.line({event = "turn", text = "And tomorrow"})
 assert(asked[2][2] == "v1")
 service.line({event = "speaking", on = true, conversation = "v1"})
-assert(fact.ai_dragon_open and fact.ai_speaking and #ticking == 1)
+assert(fact.ai_dragon_open and fact.ai_speaking and #ticking == 2)
 service.line({event = "mouth", level = 0.6, viseme = 5})
 assert(fact.ai_mouth == 0.6)
 -- In a conversation she stays on screen, listening for the next turn; a click opens what she said.
 service.line({event = "speaking", on = false, conversation = "v1"})
 assert(fact.ai_mouth == 0 and fact.ai_dragon_open and #timers == 0)
 events.assistant_dragon()
-assert(shown == "v1" and not fact.ai_dragon_open and next(ticking) == nil)
+assert(shown == "v1" and not fact.ai_dragon_open and ticking[1] and ticking[2] == nil)
 service.line({event = "barge"})
 assert(stopped == 1)
 
@@ -336,6 +336,7 @@ local function background_result(id, visible, chat, request)
     events.assistant_voice_result()
 end
 local before_result = #written
+current_service.line({event="listening", on=true}) -- the microphone stays open between utterances
 background_result("final-summary", true)
 assert(#written == before_result + 2 and written[#written].message.cmd == "speech_end")
 background_result("final-summary", true)
@@ -348,6 +349,14 @@ assistant.status = function() return {open=true, conversation="another-popup-cha
 background_result("other-popup-summary", true)
 assert(#written == before_result + 2)
 assistant.status = nil
+current_service.line({event="hearing", on=true})
+background_result("capturing-summary", true)
+assert(#written == before_result + 2)
+current_service.line({event="hearing", on=false})
+background_result("capturing-summary", true)
+assert(#written == before_result + 2) -- rejected during speech, never replayed afterward
+background_result("idle-listening-summary", true)
+assert(#written == before_result + 4)
 events.assistant_hush()
 before_result = #written
 background_result("interrupted-summary", true)
@@ -357,6 +366,60 @@ speech_listener("start", "typed-chat", "", false)
 background_result("typed-superseded", true, nil, "orca:new-request")
 assert(#written == before_result + 1) -- only the preceding voice stream start
 print("Visible, hidden, duplicate, cross-chat and interrupted background delivery passed")
+
+-- Explicit task speech is independent of final-only answer streaming. It retires
+-- the poller, never the Orca task, and the microphone can remain open.
+local detached = {}
+local registered = {}
+assistant.voice_ready = function(chat, request)
+    assert(written[#written].message.cmd == "speech_start")
+    registered[#registered+1] = {chat, request}
+end
+assistant.detach_voice = function(request) detached[#detached+1] = request; return true end
+fact.ai_voice_paused, fact.notices_dnd, fact.ai_speaking, fact.ai_listening = false, false, false, true
+fact.ai_dragon_open = true
+current_service.line({event="turn", text="Create an independent workspace"})
+speech_listener("start", "task-chat", "", true, asked[#asked][3].voice_generation, "task-request")
+assert(registered[#registered][1] == "task-chat" and registered[#registered][2] == "task-request")
+local function task_update(kind, sequence, message, task_request)
+    text.ai_voice_task_chat, text.ai_voice_task_request = "task-chat", task_request or "task-request"
+    text.ai_voice_task_id, text.ai_voice_task_sequence = "workspace", tostring(sequence)
+    text.ai_voice_task_kind, text.ai_voice_task_text = kind, message
+    events.assistant_voice_task()
+end
+task_update("ack", 1, "I'll create that workspace now.")
+assert(detached[#detached] == "task-request")
+assert(written[#written].message.cmd == "speech_end" and written[#written].message.text == "I'll create that workspace now.")
+local ack_generation = written[#written].message.generation
+local after_ack = #written
+task_update("ack", 1, "Replay")
+assert(#written == after_ack)
+current_service.line({event="speaking", on=true, generation=ack_generation, conversation="task-chat"})
+task_update("progress", 2, "The workspace exists; the agent is starting.")
+current_service.line({event="speaking", on=false, generation=ack_generation})
+ticking[1]()
+assert(written[#written].message.text == "The workspace exists; the agent is starting.")
+local progress_generation = written[#written].message.generation
+current_service.line({event="speaking", on=true, generation=progress_generation})
+task_update("done", 3, "The agent session is attached and verified.")
+assert(written[#written].message.text == "The agent session is attached and verified.")
+local completion_generation = written[#written].message.generation
+current_service.line({event="speaking", on=false, generation=progress_generation})
+assert(completion_generation ~= progress_generation)
+current_service.line({event="turn", text="Another question while that task finishes"})
+local after_new_turn = #written
+task_update("done", 4, "Late replay")
+assert(#written == after_new_turn)
+current_service.line({event="speaking", on=true, generation=completion_generation})
+assert(not fact.ai_speaking)
+speech_listener("start", "task-chat", "", true, asked[#asked][3].voice_generation, "next-task-request")
+fact.ai_dragon_open = true
+task_update("ack", 1, "I'll check it now.", "next-task-request")
+events.assistant_dragon()
+local hidden_count = #written
+task_update("progress", 2, "Hidden progress", "next-task-request")
+assert(#written == hidden_count and not fact.ai_dragon_open)
+print("Task updates: prompt acknowledgement, microphone open, progress, completion priority, replay, follow-up input and hide passed")
 
 -- Switching backends invalidates old audio and never reuses a local conversation ID.
 local before_switch = #spawned

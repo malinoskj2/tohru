@@ -740,6 +740,24 @@ fn dragon_reduced_motion_persists_and_rejects_non_boolean_values() {
 }
 
 #[test]
+fn waiting_chatter_defaults_off_and_seed_is_bounded() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    let chatter = Key::parse("assistant.waiting_chatter").unwrap();
+    let seed = Key::parse("assistant.waiting_seed").unwrap();
+    let mut owner = files.owner();
+    assert_eq!(owner.get(chatter).value, Value::Bool(false));
+    assert_eq!(owner.get(seed).value, Value::Integer(1));
+    owner.set(chatter, Value::Bool(true)).unwrap();
+    owner.set(seed, Value::Integer(12345)).unwrap();
+    assert!(owner.set(seed, Value::Integer(-1)).is_err());
+    assert!(owner.set(seed, Value::Integer(2147483647)).is_err());
+    assert!(owner.set(chatter, Value::Text("true".into())).is_err());
+    assert_eq!(files.owner().get(chatter).value, Value::Bool(true));
+    assert_eq!(files.owner().get(seed).value, Value::Integer(12345));
+}
+
+#[test]
 fn managed_dragon_motion_override_survives_reload_without_writing_user_config() {
     let files = Fixture::new();
     fs::write(files.managed(), "[assistant]\nreduced_motion = true\n").unwrap();
