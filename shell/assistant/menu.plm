@@ -18,8 +18,8 @@ part AssistantMenu {
             let m_y = 8 + 30 * p.index
             let m_colour = pick(p.slot, ink_peach, ink_yellow, ink_green, ink_lavender, ink_mauve)
             let m_on = p.index == ai_current
-            zone box ai_mrow.$p.index { from: 18, m_y; size: ai_menu_w - 12 - if(p.signed_in, 0, 78), 28; corner: 7; cursor: pointer; active: ai_menu_open; label: "Use {p.name}"; selected: m_on }
-            box { from: 18, m_y; size: ai_menu_w - 12, 28; corner: 7; color: ink_white; opacity: max(if(m_on, 12%, 0%), max(ai_mrow.$p.index.hover * 10%, ai_mrow.$p.index.pressed * 16%)) }
+            zone box ai_mrow { from: 18, m_y; size: ai_menu_w - 12 - if(p.signed_in, 0, 78), 28; corner: 7; cursor: pointer; active: ai_menu_open; label: "Use {p.name}"; selected: m_on }
+            box { from: 18, m_y; size: ai_menu_w - 12, 28; corner: 7; color: ink_white; opacity: max(if(m_on, 12%, 0%), max(ai_mrow.hover * 10%, ai_mrow.pressed * 16%)) }
             group {
                 show: p.signed_in
                 glow: 4, 40%, m_colour
@@ -27,15 +27,15 @@ part AssistantMenu {
             }
             ellipse { at: 30, m_y + 14; radius: 2.4; stroke: 1.2; color: m_colour; show: not p.signed_in }
             text p.name { at: 42, m_y + 14; anchor: left center; width: 110; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(p.signed_in, 92%, 62%) }
-            zone box ai_msign.$p.index { from: ai_menu_w - 68, m_y + 4; size: 74, 20; corner: 6; cursor: pointer; active: ai_menu_open and not p.signed_in; label: "Sign in to {p.name}" }
+            zone box ai_msign { from: ai_menu_w - 68, m_y + 4; size: 74, 20; corner: 6; cursor: pointer; active: ai_menu_open and not p.signed_in; label: "Sign in to {p.name}" }
             group {
                 show: not p.signed_in
-                box { from: ai_menu_w - 68, m_y + 4; size: 74, 20; corner: 6; color: ink_white; opacity: 12% + max(ai_msign.$p.index.hover * 6%, ai_msign.$p.index.pressed * 12%) }
+                box { from: ai_menu_w - 68, m_y + 4; size: 74, 20; corner: 6; color: ink_white; opacity: 12% + max(ai_msign.hover * 6%, ai_msign.pressed * 12%) }
                 image ai_terminal_icon { at: ai_menu_w - 61, m_y + 8; size: 12, 12; tint: ink_white; opacity: 80% }
                 text "Sign in…" { at: ai_menu_w - 45, m_y + 14; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
             }
-            on press ai_mrow.$p.index { emit assistant_choose(p.index); emit assistant_menu_close }
-            on press ai_msign.$p.index { emit assistant_signin(p.index); emit assistant_menu_close }
+            on press ai_mrow { emit assistant_choose(p.index); emit assistant_menu_close }
+            on press ai_msign { emit assistant_signin(p.index); emit assistant_menu_close }
         }
         text "No AI CLIs found" { at: 30, 22; anchor: left center; size: 12; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: ai_providers.count == 0 }
         let ai_menu_sep = 8 + 30 * ai_menu_rows + 4

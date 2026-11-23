@@ -62,27 +62,27 @@ part AssistantPopup {
                 let p_y = 40 + 30 * p.index
                 let p_colour = pick(p.slot, ink_peach, ink_yellow, ink_green, ink_lavender, ink_mauve)
                 let p_on = p.index == ai_current
-                zone box ai_prow.$p.index { from: ai_ox + 8, p_y; size: ai_w - 16 - if(p.signed_in, 0, 78), 28; corner: 7; cursor: pointer; active: ai_picker; label: "Use {p.name}"; selected: p_on }
-                box { from: ai_ox + 8, p_y; size: ai_w - 16, 28; corner: 7; color: ink_white; opacity: max(if(p_on, 12%, 0%), max(ai_prow.$p.index.hover * 10%, ai_prow.$p.index.pressed * 16%)) }
+                zone box ai_prow { from: ai_ox + 8, p_y; size: ai_w - 16 - if(p.signed_in, 0, 78), 28; corner: 7; cursor: pointer; active: ai_picker; label: "Use {p.name}"; selected: p_on }
+                box { from: ai_ox + 8, p_y; size: ai_w - 16, 28; corner: 7; color: ink_white; opacity: max(if(p_on, 12%, 0%), max(ai_prow.hover * 10%, ai_prow.pressed * 16%)) }
                 group {
                     show: p.signed_in
                     glow: 4, 40%, p_colour
                     ellipse { at: ai_ox + 20, p_y + 14; radius: 3; color: if(p_on, ink_white, p_colour) }
                 }
                 ellipse { at: ai_ox + 20, p_y + 14; radius: 2.4; stroke: 1.2; color: p_colour; show: not p.signed_in }
-                measure ai_pname.$p.index
-                text p.name { at: ai_ox + 32, p_y + 14; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(p.signed_in, 92%, 62%); measure: ai_pname.$p.index }
-                text p.id { at: ai_ox + 38 + ai_pname.$p.index.width, p_y + 15; anchor: left center; size: 10.5; family: "SF Pro Text"; color: ink_white; opacity: 42% }
+                measure ai_pname
+                text p.name { at: ai_ox + 32, p_y + 14; anchor: left center; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: if(p.signed_in, 92%, 62%); measure: ai_pname }
+                text p.id { at: ai_ox + 38 + ai_pname.width, p_y + 15; anchor: left center; size: 10.5; family: "SF Pro Text"; color: ink_white; opacity: 42% }
                 text p.meta { at: ai_right - 6, p_y + 14; anchor: right center; width: 90; lines: 1; align: right; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: p.signed_in }
-                zone box ai_psign.$p.index { from: ai_right - 74, p_y + 4; size: 68, 20; corner: 6; cursor: pointer; active: ai_picker and not p.signed_in; label: "Sign in to {p.name}" }
+                zone box ai_psign { from: ai_right - 74, p_y + 4; size: 68, 20; corner: 6; cursor: pointer; active: ai_picker and not p.signed_in; label: "Sign in to {p.name}" }
                 group {
                     show: not p.signed_in
-                    box { from: ai_right - 74, p_y + 4; size: 68, 20; corner: 6; color: ink_white; opacity: 12% + max(ai_psign.$p.index.hover * 6%, ai_psign.$p.index.pressed * 12%) }
+                    box { from: ai_right - 74, p_y + 4; size: 68, 20; corner: 6; color: ink_white; opacity: 12% + max(ai_psign.hover * 6%, ai_psign.pressed * 12%) }
                     image ai_signin_icon { at: ai_right - 67, p_y + 8; size: 12, 12; tint: ink_white; opacity: 80% }
                     text "Sign in" { at: ai_right - 50, p_y + 14; anchor: left center; size: 11; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
                 }
-                on press ai_prow.$p.index { emit assistant_choose(p.index) }
-                on press ai_psign.$p.index { emit assistant_signin(p.index) }
+                on press ai_prow { emit assistant_choose(p.index) }
+                on press ai_psign { emit assistant_signin(p.index) }
             }
             text if(ai_providers.count == 0, "No AI CLIs found on PATH", "Installed AI CLIs on this machine") { at: ai_ox + 14, ai_picker_h - 18; anchor: left center; size: 10.5; family: "SF Pro Text"; color: ink_white; opacity: 42% }
         }
@@ -183,17 +183,17 @@ part AssistantPopup {
                 for h in ai_history {
                     group { size: ai_w - 12, if(h.header, 20, 28)
                         text h.group { at: 8, 12; anchor: left center; size: 10.5; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 55%; show: h.header }
-                        zone box ai_hrow.$h.index { from: 0, 0; size: ai_w - 12, 28; corner: 7; cursor: pointer; active: not h.header and ai_view == 1; label: "Open {h.title}"; selected: h.index == ai_history_sel }
+                        zone box ai_hrow { from: 0, 0; size: ai_w - 12, 28; corner: 7; cursor: pointer; active: not h.header and ai_view == 1; label: "Open {h.title}"; selected: h.index == ai_history_sel }
                         group {
                             show: not h.header
-                            box { from: 0, 0; size: ai_w - 12, 28; corner: 7; color: ink_white; opacity: max(if(h.index == ai_history_sel, 12%, 0%), max(ai_hrow.$h.index.hover * 10%, ai_hrow.$h.index.pressed * 16%)) }
+                            box { from: 0, 0; size: ai_w - 12, 28; corner: 7; color: ink_white; opacity: max(if(h.index == ai_history_sel, 12%, 0%), max(ai_hrow.hover * 10%, ai_hrow.pressed * 16%)) }
                             ellipse { at: 14, 14; radius: 3; color: pick(h.slot, ink_peach, ink_yellow, ink_green, ink_lavender, ink_mauve) }
                             text h.title { at: 25, if(h.matched, 9, 14); anchor: left center; width: ai_w - 110; lines: 1; size: 13; weight: 500; family: "SF Pro Text"; color: ink_white; opacity: 92% }
                             text h.match { at: 25, 21; anchor: left center; width: ai_w - 80; lines: 1; size: 10; family: "SF Pro Text"; color: ink_white; opacity: 50%; show: h.matched }
                             text "voice" { at: ai_w - 22, 22; anchor: right center; size: 9; family: "SF Pro Text"; color: ink_white; opacity: 42%; show: h.voice }
                             text h.when { at: ai_w - 22, if(h.voice, 10, 14); anchor: right center; size: 10.5; family: "SF Pro Text:tnum"; color: ink_white; opacity: 55% }
                         }
-                        on press ai_hrow.$h.index { emit assistant_pick(h.index) }
+                        on press ai_hrow { emit assistant_pick(h.index) }
                     }
                 }
             }
@@ -210,12 +210,12 @@ part AssistantPopup {
                 gap: 0
                 for m in ai_memories {
                     group { size: ai_w - 12, 40
-                        box { from: 0, 0; size: ai_w - 12, 38; corner: 7; color: ink_white; opacity: max(ai_mforget.$m.index.hover * 4%, 0%) }
+                        box { from: 0, 0; size: ai_w - 12, 38; corner: 7; color: ink_white; opacity: max(ai_mforget.hover * 4%, 0%) }
                         text m.text { at: 10, 19; anchor: left center; width: ai_w - 60; lines: 0; size: 12; family: "SF Pro Text"; color: ink_white; opacity: 88% }
-                        zone box ai_mforget.$m.index { from: ai_w - 42, 8; size: 24, 22; corner: 7; cursor: pointer; active: ai_view == 2; label: "Forget {m.text}" }
-                        box { from: ai_w - 42, 8; size: 24, 22; corner: 7; color: ink_white; opacity: max(ai_mforget.$m.index.hover * 10%, ai_mforget.$m.index.pressed * 16%) }
+                        zone box ai_mforget { from: ai_w - 42, 8; size: 24, 22; corner: 7; cursor: pointer; active: ai_view == 2; label: "Forget {m.text}" }
+                        box { from: ai_w - 42, 8; size: 24, 22; corner: 7; color: ink_white; opacity: max(ai_mforget.hover * 10%, ai_mforget.pressed * 16%) }
                         text "×" { at: ai_w - 30, 19; anchor: center; size: 15; family: "SF Pro Text"; color: ink_white; opacity: 70% }
-                        on press ai_mforget.$m.index { emit assistant_memory_forget(m.index) }
+                        on press ai_mforget { emit assistant_memory_forget(m.index) }
                     }
                 }
             }
