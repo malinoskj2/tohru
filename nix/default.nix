@@ -2,7 +2,7 @@
 , fontconfig, wayland, jq, socat, ffmpeg-headless, findutils, gnugrep, curl, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3, dbus
 , libnotify, util-linux, systemd, procps, coreutils, espeak-ng, pulseaudio, wayland-utils, swayidle, mpvpaper, wl-clipboard, xdg-terminal-exec
   # Without the voice service nothing for speech is installed; the setting then has nothing to start.
-, withVoice ? true }:
+, withVoice ? true, voiceRuntime ? "python" }:
 let
   pin = builtins.fromJSON (builtins.readFile ../runtime/pleamar/pin.json);
   # Keep documentation/flake/test changes from rebuilding the full runtime.
@@ -58,7 +58,8 @@ let
   voicePython = python3.withPackages (p: [
     p.numpy p.onnxruntime p.sherpa-onnx p.misaki p.num2words p.phonemizer p.spacy-models.en_core_web_sm
   ]);
-in stdenvNoCC.mkDerivation {
+  nativeVoice = callPackage ./voice-native.nix { };
+in assert lib.asserts.assertOneOf "voiceRuntime" voiceRuntime [ "python" "rust" ]; stdenvNoCC.mkDerivation {
   pname = "tohru-shell";
   version = "0.1.0";
   src = source;
@@ -120,7 +121,7 @@ in stdenvNoCC.mkDerivation {
       --add-flags $out/share/tohru/libexec/tohru-shortcuts \
       --set TOHRU_BIN_DIR $out/bin \
       --prefix PATH : "$out/bin:${lib.makeBinPath [ systemd coreutils ]}"
-    ${lib.optionalString withVoice ''
+    ${lib.optionalString (withVoice && voiceRuntime == "python") ''
       install -Dm755 bin/tohru-voice $out/share/tohru/libexec/tohru-voice
       cp bin/tohru_portability.py $out/share/tohru/libexec/
       makeWrapper ${voicePython}/bin/python3 $out/bin/tohru-voice \
@@ -129,6 +130,10 @@ in stdenvNoCC.mkDerivation {
         --set TOHRU_BIN_DIR $out/bin \
         --set OPENBLAS_NUM_THREADS 1 \
         --set HF_HUB_OFFLINE 1
+    ''}
+    ${lib.optionalString (withVoice && voiceRuntime == "rust") ''
+      makeWrapper ${nativeVoice}/bin/tohru-voice-native $out/bin/tohru-voice \
+        --add-flags "--dragon-art $out/share/tohru/shell/assistant/dragon"
     ''}
     wrapProgram $out/bin/tohru-polkit-run \
       --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
@@ -139,6 +144,6 @@ in stdenvNoCC.mkDerivation {
     done
     runHook postInstall
   '';
-  passthru = { inherit runtime voicePython withVoice; };
+  passthru = { inherit runtime voicePython withVoice voiceRuntime; };
   meta = { license = lib.licenses.mit; platforms = lib.platforms.linux; mainProgram = "tohru-run"; };
 }
