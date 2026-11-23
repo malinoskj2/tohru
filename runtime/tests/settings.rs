@@ -701,13 +701,16 @@ fn voice_and_semantic_models_validate_and_persist_independently() {
 #[test]
 fn contextual_entrances_validate_replay_controls_and_preserve_managed_values() {
     let files = Fixture::new();
+    let enabled = Key::parse("assistant.contextual_entrances").unwrap();
+    assert_eq!(files.owner().get(enabled).value, Value::Bool(true));
+    files.owner().set(enabled, Value::Bool(false)).unwrap();
+    assert_eq!(files.owner().get(enabled).value, Value::Bool(false));
     fs::write(
         files.managed(),
         "[assistant]\ncontextual_entrances = false\n",
     )
     .unwrap();
     let mut owner = files.owner();
-    let enabled = Key::parse("assistant.contextual_entrances").unwrap();
     let seed = Key::parse("assistant.entrance_seed").unwrap();
     let variant = Key::parse("assistant.entrance_variant").unwrap();
     assert_eq!(owner.get(enabled).origin, Origin::Nix);

@@ -156,4 +156,11 @@ fact.ai_dg_reduced = true
 now = now + 31
 f.show()
 assert(not receive)
+fact.ai_dg_reduced = false
+f.configure(function(key, default)
+    if key == "assistant.contextual_entrances" then return false end
+    return default
+end)
+f.show()
+assert(not receive and not fact.ai_use_flight_surface, "explicit opt-out keeps the compact appearance")
 print("PASS flight selection, geometry, trajectory, interruption, reduced motion and cooldown")

@@ -38,7 +38,7 @@ class Cli(unittest.TestCase):
             self.assertEqual(result.stdout,'')
 
     def test_portable_config_keys_route_to_native_schema(self):
-        for key,value in [('appearance.font_text','Noto Sans'),('appearance.font_mono','DejaVu Sans Mono'),('wallpaper.enabled','true'),('idle.lock_seconds','600'),('assistant.voice_python','/opt/voice/bin/python')]:
+        for key,value in [('appearance.font_text','Noto Sans'),('appearance.font_mono','DejaVu Sans Mono'),('wallpaper.enabled','true'),('idle.lock_seconds','600'),('assistant.voice_python','/opt/voice/bin/python'),('assistant.contextual_entrances','true'),('assistant.contextual_entrances','false'),('assistant.entrance_variant','auto'),('assistant.entrance_seed','12345')]:
             result=self.invoke('config','set',key,value)
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertEqual(json.loads(result.stdout),['--say','tohru','text setting_key '+key,'text setting_value '+value,'emit setting_assistant'])

@@ -320,7 +320,7 @@ return function(paths, puppet, make_actor)
             end
         end,
         configure = function(value)
-            enabled = value("assistant.contextual_entrances", false)
+            enabled = value("assistant.contextual_entrances", true)
             seed = value("assistant.entrance_seed", 1)
             force = value("assistant.entrance_variant", "auto")
             if not fact.ai_dragon_open and not (actor_active and actor_active()) then

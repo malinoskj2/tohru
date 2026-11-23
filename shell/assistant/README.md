@@ -116,7 +116,7 @@ Optional built-in [Discord bot support](../../docs/discord.md) reads bounded cha
 
 ### Desktop entrances
 
-Enable **Contextual dragon entrances** in Settings → Appearance, or use the native settings owner:
+**Contextual dragon entrances** are enabled by default. Settings → Appearance controls them; an explicit saved or managed `false` remains respected. To enable them again or choose their deterministic sequence, use the native settings owner:
 
 ```sh
 tohru config set assistant.contextual_entrances true
@@ -124,7 +124,7 @@ tohru config set assistant.entrance_seed 12345
 tohru config set assistant.entrance_variant auto
 ```
 
-Entrances are off by default. A fresh appearance can use a short rise from below, a glide from the right, a sweep from the lower left, or a window wrap. The controller selects once, after geometry checks, with weights 3, 2, 1 and 4 respectively. The last route is excluded in automatic mode. At least 30 seconds separate starts. There are no idle excursions. The seed accepts integers from 0 through 2147483646. Use `rise`, `right`, `sweep` or `wrap` in place of `auto` to force an eligible route. An ineligible forced route gives an ordinary appearance. Managed settings follow the same runtime override rules as reduced motion. Reducing motion keeps the compact character and its normal short visibility transition.
+An eligible fresh appearance can use a short rise from below, a glide from the right, a sweep from the lower left, or a window wrap. The controller selects once, after geometry checks, with weights 3, 2, 1 and 4 respectively. The last route is excluded in automatic mode. At least 30 seconds separate starts. There are no idle excursions. The seed accepts integers from 0 through 2147483646. Use `rise`, `right`, `sweep` or `wrap` in place of `auto` to force an eligible route. An ineligible forced route gives an ordinary appearance. Managed settings follow the same runtime override rules as reduced motion. Reducing motion keeps the compact character and its normal short visibility transition.
 
 The PRNG uses the configured seed and the per-VM eligible event ordinal. Restarting the bar resets the ordinal and history. The last selection can be read with `pleamar --say tohru 'get ai_flight_trace'`. It records seed, ordinal, previous variant, chosen variant and scene geometry. The pure `flight-path.luau` sampler returns a sprite center in output-local logical pixels, heading in radians, bank in degrees, normalized phase and altitude blend. It has no sprite, speech or compositor dependency.
 

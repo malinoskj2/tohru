@@ -14,11 +14,13 @@ _G.require=function(name)
     return function(callback) applied=callback;return function() end end
 end
 assert(loadfile('shell/settings/settings.luau'))()
-for _,value in ipairs({true,false}) do
-    commands={}
-    applied({['assistant.reduced_motion']={value=value,managed=true,runtime_override=true}},nil)
-    assert(#commands==2 and commands[1]=='emit config_reload')
-    assert(commands[2]=='emit setting_assistant_reduced_motion '..(value and '1' or '0'))
+for key,event in pairs({['assistant.reduced_motion']='setting_assistant_reduced_motion', ['assistant.contextual_entrances']='setting_assistant_entrances'}) do
+    for _,value in ipairs({true,false}) do
+        commands={}
+        applied({[key]={value=value,managed=true,runtime_override=true}},nil)
+        assert(#commands==2 and commands[1]=='emit config_reload')
+        assert(commands[2]=='emit '..event..' '..(value and '1' or '0'))
+    end
 end
 commands={}
 applied({['assistant.reduced_motion']={value=true,managed=false,runtime_override=false}},nil)

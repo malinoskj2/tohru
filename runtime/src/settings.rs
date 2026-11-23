@@ -549,10 +549,10 @@ impl Key {
             | Self::AboutButton
             | Self::PolkitAgent
             | Self::AssistantTtsLoadOnConversation
-            | Self::AssistantContextualEntrances
             | Self::AssistantReducedMotion => Value::Bool(false),
             Self::Corners
             | Self::AssistantVoice
+            | Self::AssistantContextualEntrances
             | Self::AssistantPersona
             | Self::AssistantMemory => Value::Bool(true),
             Self::AssistantVoiceSource

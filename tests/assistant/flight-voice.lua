@@ -98,7 +98,6 @@ local flight = dofile("shell/assistant/flight.luau")(
 local voice = dofile("shell/assistant/voice.luau")(assistant, puppet, flight)
 local settings = {
     ["assistant.voice"] = { value = true },
-    ["assistant.contextual_entrances"] = { value = true },
     ["assistant.entrance_variant"] = { value = "rise" },
     ["assistant.entrance_seed"] = { value = 42 },
 }
@@ -282,7 +281,7 @@ print(
 -- The same flight controller lends the actor to finite idle scenes, even when
 -- voice and contextual entrances are disabled. Start with cold shared artwork.
 settings["assistant.voice"].value = false
-settings["assistant.contextual_entrances"].value = false
+settings["assistant.contextual_entrances"] = { value = false }
 voice.configure(settings)
 flight.outputs({ "LEFT", "RIGHT" })
 flight.window({ monitor = "LEFT" })
