@@ -88,7 +88,13 @@ declared source, patches, Cargo lock and upstream archive against this checkout:
 ```
 
 Require exit zero and `result: passed` before claiming declared runtime inputs
-match this checkout. This needs `nix`, `nix-store` and surviving derivation/input
+match this checkout. Both file sets are checked using the derivation's selectors:
+Rust files under `runtime/src`, all files under tests/bindings, and explicit
+manifest/license/role-test inputs. A removed checkout file retained in the build
+inputs is a mismatch. Exit 1 (`failed`) identifies differing files or pins and
+recommends selecting/rebuilding a matching runtime; exit 2 (`unavailable`) names
+missing tools, paths or metadata and how to restore the check. This needs `nix`,
+`nix-store` and surviving derivation/input
 paths. Missing metadata is a provenance gap, not a reason to rebuild/install
 without admission. The helper does not perform an independent rebuild. The
 native preflight records both a wrapper hash and its `.pleamar-wrapped` payload
