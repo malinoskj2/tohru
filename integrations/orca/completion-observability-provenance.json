@@ -1,0 +1,11 @@
+{
+  "orcaVersion": "1.4.268",
+  "patchSha256": "7da8bb9d87d99c8e1ab40950995c4c5f195924ae79f850640f1acb1a0664b189",
+  "baseFiles": {
+    "src/main/bots/desktop-voice-continuations.ts": "66cad9a592bd56f933cab3e6ddbf1d4f798318128153396ad494ebfc83c37d0b",
+    "src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-worker-start.test.ts": "6ef60e2e5aa8b2158717b8de7173b640537c47eb3573bdce2c43d9be9391b712",
+    "src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-coordinator-mail-rig.test-fixture.ts": "397d0647c9c6940b66d78b938c555234197a5ec099e4f1ca1d04ba59dab234bb"
+  },
+  "requires": "desktop-voice-current-interest.patch",
+  "deployedTohruBase": "a283ae706e4d329b4ae819dbd148eb7f7e4bfe06"
+}

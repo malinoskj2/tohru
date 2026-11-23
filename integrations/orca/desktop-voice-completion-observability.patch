@@ -1,0 +1,178 @@
+--- a/src/main/bots/desktop-voice-continuations.ts
++++ b/src/main/bots/desktop-voice-continuations.ts
+@@ -77,6 +77,7 @@
+   ): Origin | null {
+     const body = prompt.body
+     if (body.kind !== 'message' || body.role !== 'user' || body.origin || body.memorySource) {
++      trace('origin_dropped', { chat, reason: 'prompt_ineligible' })
+       return null
+     }
+     if (!body.from) {
+@@ -276,15 +277,24 @@
+     turn.body.state !== 'completed' ||
+     readAgentJournalTurnOutcome(turn.body) !== 'success'
+   ) {
++    trace('summary_dropped', {
++      chat,
++      turn: turnId,
++      reason: 'turn_not_success',
++      state: turn?.body.kind === 'turn' ? turn.body.state : null,
++      outcome: turn?.body.kind === 'turn' ? readAgentJournalTurnOutcome(turn.body) : null
++    })
+     return null
+   }
+   const prompt = agentJournalTurnOpener(rows, turn.body.userItemId)
+   // Direct replies already return through the desktop request; only analyzed worker follow-ups use this path.
+   if (!prompt || prompt.body.kind !== 'message' || !prompt.body.from) {
++    trace('summary_dropped', { chat, turn: turnId, reason: 'opener_not_mail' })
+     return null
+   }
+   const origin = links.origin(chat, prompt, worker)
+   if (!origin) {
++    trace('summary_dropped', { chat, turn: turnId, reason: 'origin_ineligible' })
+     return null
+   }
+   const reply = rows.items.findLast(
+@@ -295,6 +305,7 @@
+       item.body.role === 'assistant'
+   )
+   if (!reply || reply.body.kind !== 'message') {
++    trace('summary_dropped', { chat, turn: turnId, reason: 'answer_missing' })
+     return null
+   }
+   const text = reply.body.blocks
+@@ -307,7 +318,14 @@
+     notice?.messages.map((message) => worker(message.messageId)).filter((id) => id !== null)
+   )
+   const dispatch = dispatches.size === 1 ? [...dispatches][0] : undefined
+-  return text && text.length <= 16384 && !isQuietBotResult(text)
++  const eligible = text && text.length <= 16384 && !isQuietBotResult(text)
++  if (!eligible)
++    trace('summary_dropped', {
++      chat,
++      turn: turnId,
++      reason: !text ? 'answer_empty' : text.length > 16384 ? 'answer_too_long' : 'answer_quiet'
++    })
++  return eligible
+     ? {
+         origin,
+         completion: turn.itemId,
+@@ -330,13 +348,30 @@
+   if (!summary) {
+     return
+   }
++  trace('summary_selected', {
++    chat,
++    turn: turnId,
++    request: summary.origin.request,
++    task: summary.task ?? null,
++    task_mode: desktopVoiceTasks.taskMode(summary.origin),
++    exact_task: summary.task ? desktopVoiceTasks.hasTask(summary.origin, summary.task) : false
++  })
+   if (summary.task && desktopVoiceTasks.hasTask(summary.origin, summary.task)) {
+     const worker = runtime
+       .getOrchestrationDb()
+       .getWorkerDispatch(summary.task.slice('dispatch:'.length))
+-    if (!worker || !['succeeded', 'failed', 'stopped', 'abandoned'].includes(worker.state)) return
++    if (!worker || !['succeeded', 'failed', 'stopped', 'abandoned'].includes(worker.state)) {
++      trace('completion_dropped', {
++        chat,
++        request: summary.origin.request,
++        task: summary.task,
++        reason: 'worker_not_terminal',
++        state: worker?.state ?? null
++      })
++      return
++    }
+     if (continuations.claim(summary.completion)) {
+-      await desktopVoiceTasks.publish(summary.origin, {
++      const delivery = await desktopVoiceTasks.publish(summary.origin, {
+         task: summary.task,
+         sequence: 3,
+         kind:
+@@ -350,10 +385,26 @@
+             ? summary.text
+             : 'The background work has finished. The verified result is in this conversation.'
+       })
++      trace('task_completion_sent', {
++        chat,
++        request: summary.origin.request,
++        task: summary.task,
++        completion: summary.completion,
++        delivery
++      })
++    } else {
++      trace('completion_duplicate', { chat, completion: summary.completion })
+     }
+     return
+   }
+-  if (desktopVoiceTasks.taskMode(summary.origin)) return
++  if (desktopVoiceTasks.taskMode(summary.origin)) {
++    trace('completion_dropped', {
++      chat,
++      request: summary.origin.request,
++      reason: 'task_mode_without_matching_task'
++    })
++    return
++  }
+   if (!continuations.claim(summary.completion)) {
+     trace('completion_duplicate', { chat, completion: summary.completion })
+     return
+--- a/src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-worker-start.test.ts
++++ b/src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-worker-start.test.ts
+@@ -3,10 +3,7 @@
+ import { RpcDispatcher } from '../../../rpc/dispatcher'
+ import { BOT_VOICE_METHODS } from '../../../rpc/methods/bots-voice'
+ import { LOCAL_CLI_RPC_CALLER } from '../../../rpc/callers/rpc-caller-identity'
+-import {
+-  desktopVoiceOrigin,
+-  deliverDesktopVoiceContinuation
+-} from '../../../../bots/desktop-voice-continuations'
++import { desktopVoiceOrigin } from '../../../../bots/desktop-voice-continuations'
+ import { readTurnEndedItems } from '../../../../native-chat/agent-session-wire/structured-agent-session-turn-context'
+ import { WORKER_START_VIEW } from '../../../../../cli/orchestration/workers/worker-start-agent-view'
+ // worker-start adopts a chat through its queued send; Stop and failed start must leave the chat intact.
+@@ -301,8 +298,17 @@
+             (row) => row.body.kind === 'message' && row.body.role === 'assistant'
+           )
+         ).toBe(true)
+-        await deliverDesktopVoiceContinuation(runtime, COORDINATOR, turnId, completed)
+-        await deliverDesktopVoiceContinuation(runtime, COORDINATOR, turnId, completed)
++        if (!unrelated && !revisionRace) {
++          await vi.waitFor(
++            async () =>
++              expect((await readFile(output, 'utf8')).trim().split('\n')).toHaveLength(before + 1),
++            WAIT
++          )
++          home.handlers.onNotification?.('turn/completed', {
++            turn: { id: turnId, status: 'completed', error: null }
++          })
++          await host.flushStreamedEvents(COORDINATOR)
++        }
+         const events = (await readFile(output, 'utf8'))
+           .trim()
+           .split('\n')
+--- a/src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-coordinator-mail-rig.test-fixture.ts
++++ b/src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-coordinator-mail-rig.test-fixture.ts
+@@ -1,4 +1,7 @@
+-import { desktopVoiceOwnerMessage } from '../../../../bots/desktop-voice-continuations'
++import {
++  desktopVoiceOwnerMessage,
++  desktopVoiceAnswerContext
++} from '../../../../bots/desktop-voice-continuations'
+ import { makeTestBot } from '../../../../bots/bot.test-fixture'
+ import { readTestHostJournal } from '../../../../native-chat/agent-session-journal/journal-observation.test-support'
+ // End-to-end coordinator-mail rig: real session/orchestration state and RPC, fake Codex child. Import registers lifecycle hooks.
+@@ -277,7 +280,11 @@
+     resolveClaudeAuthPolicy: () => ({ account: 'managed' }),
+     resolveEnvironment: async () => ({ PATH: '/usr/bin' }),
+     ...scriptedCodexTransport(codex.openConnection),
+-    turnContext: { plan: async () => null, handedOver: desktopVoiceOwnerMessage },
++    turnContext: {
++      plan: async () => null,
++      handedOver: desktopVoiceOwnerMessage,
++      answerEnded: desktopVoiceAnswerContext(runtime)
++    },
+     onRequestFailure: (failure) => runtime.onStructuredRequestFailureForErrorMail(failure),
+     onSessionStatusChanged: (summary) => {
+       runtime.onStructuredSessionStatusForMail(summary)
