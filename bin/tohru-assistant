@@ -1476,7 +1476,8 @@ def orca_read_messages(chat_id, limit=100):
         if not isinstance(item, dict):
             continue
         if item.get("kind") in (None, "message") and item.get("role") in ("user", "assistant"):
-            entries.append({"role": item["role"], "text": str(item.get("text") or "")})
+            entries.append({"role": item["role"], "text": str(item.get("text") or ""),
+                            "id": str(item.get("itemId") or ""), "shortened": bool(item.get("shortened"))})
     return entries, str(result.get("state") or ""), ""
 
 
@@ -1499,15 +1500,16 @@ def orca_extract_chat_id(receipt):
 
 
 def orca_send_to_bot(bot_name, body, subject, chat_arg=None):
-    """Write body to a private temp file and send via `orca orchestration send --to bot:<name> --type handoff`."""
+    """Submit one owner turn; the shared chat history is the only answer path."""
     scratch = private_dir(SCRATCH)
     fd, tmp = tempfile.mkstemp(dir=scratch, prefix=".orca-body-")
     try:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(body)
-        argv = ["orchestration", "send", "--to", f"bot:{bot_name}", "--from", "tohru-desktop",
-                "--type", "handoff", "--subject", subject or "Desktop", "--body-file", tmp, "--json"]
+        operation_id = f"{int(time.time() * 1000):013d}-{uuid.uuid4().hex}"
+        argv = ["bot", "send", "--bot", bot_name, "--text-file", tmp,
+                "--request-id", operation_id, "--json"]
         if chat_arg:
             argv += ["--chat", chat_arg]
         return orca_call(argv, timeout=30)
@@ -1533,14 +1535,11 @@ def orca_timeout():
         return 600.0
 
 
-def orca_wait_for_reply(chat_id, before_count, prompt_marker, on_delta=None, stop_flag=None):
+def orca_wait_for_reply(chat_id, before_count, prompt_marker, on_delta=None, stop_flag=None, message_id=""):
     """Poll `orca agent read` until the bot finishes this turn; returns (text, stopped, error)."""
     deadline = time.monotonic() + orca_timeout()
     interval = orca_poll_interval()
     emitted = ""
-    saw_working = False
-    saw_activity = False
-    grace = 0
     while True:
         if stop_flag and stop_flag():
             return emitted, True, ""
@@ -1550,46 +1549,35 @@ def orca_wait_for_reply(chat_id, before_count, prompt_marker, on_delta=None, sto
                 return emitted, False, err or "Could not read Orca bot chat"
             time.sleep(interval)
             continue
-        # Slice messages from this turn: after before_count, or after the matching user entry if window shifted.
+        # Stable journal IDs survive a full or shifted history window and repeated reads.
         tail = entries[before_count:] if len(entries) >= before_count else entries
-        if len(entries) < before_count and prompt_marker:
+        if message_id:
+            tail = []
+            for idx, item in enumerate(entries):
+                if item.get("id") == message_id and item["role"] == "user":
+                    tail = entries[idx:]
+                    break
+        elif len(entries) < before_count and prompt_marker:
             for idx in range(len(entries) - 1, -1, -1):
                 if entries[idx]["role"] == "user" and prompt_marker in entries[idx]["text"]:
                     tail = entries[idx:]
                     break
-        # Find assistant replies that appear after our new user entry (or any new assistant entries in tail).
-        assistant_parts = []
-        seen_new_user = (before_count == 0 and not prompt_marker)
+        # Commentary is useful in Orca, but speech and the popup receive only the
+        # last assistant message after an explicitly completed turn.
+        current = ""
+        seen_new_user = False
         for item in tail:
             if item["role"] == "user":
-                seen_new_user = True
-                assistant_parts = []
-            elif item["role"] == "assistant" and (seen_new_user or len(entries) > before_count):
-                if item["text"]:
-                    assistant_parts.append(item["text"])
-        current = "\n\n".join(assistant_parts).strip()
-        if current:
-            if current.startswith(emitted) and len(current) > len(emitted):
-                delta = current[len(emitted):]
-                emitted = current
-                if on_delta:
-                    on_delta(delta)
-            elif not emitted:
-                emitted = current
-                if on_delta:
-                    on_delta(current)
-        if state == "working":
-            saw_working = True
-            saw_activity = True
-            grace = 0
-        elif len(entries) > before_count or current:
-            saw_activity = True
-        if saw_activity and state != "working":
-            if current:
-                return emitted, False, ""
-            grace += 1
-            if grace >= 3:
-                return emitted, False, ""
+                if seen_new_user:
+                    return "", False, "Another user turn arrived before the desktop answer was read"
+                seen_new_user = bool(message_id or (prompt_marker and prompt_marker in item["text"]))
+                current = ""
+            elif item["role"] == "assistant" and seen_new_user:
+                current = "" if item.get("shortened") else item["text"].strip()
+        if state == "done" and current:
+            if on_delta:
+                on_delta(current)
+            return current, False, ""
         if time.monotonic() >= deadline:
             return emitted, False, "Timed out waiting for Orca bot response"
         time.sleep(interval)
@@ -1690,6 +1678,7 @@ def orca_chat(args, prompt, bot_name, voice_chat, offline):
         prompt[:80],
         on_delta=lambda d: emit({"event": "delta", "text": d}),
         stop_flag=lambda: stopped,
+        message_id=str((receipt or {}).get("promptItemId") or ""),
     )
     if was_stopped:
         emit({"event": "stopped", "conversation": chat_id})

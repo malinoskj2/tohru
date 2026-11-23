@@ -3,6 +3,7 @@
 import json
 import os
 import runpy
+import sys
 import sqlite3
 from pathlib import Path
 import signal
@@ -11,6 +12,7 @@ import tempfile
 import time
 import threading
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 HELPER = ROOT / "bin/tohru-assistant"
@@ -778,8 +780,8 @@ if args[:2] == ["agent", "read"]:
     print(json.dumps({"ok": True, "result": {"orcaSessionId": sid, "state": "done", "entries": state["entries"].get(sid, [])}}))
     sys.exit(0)
 
-if args[:2] == ["orchestration", "send"]:
-    body_file = args[args.index("--body-file") + 1]
+if args[:2] == ["bot", "send"]:
+    body_file = args[args.index("--text-file") + 1]
     body = Path(body_file).read_text(encoding="utf-8")
     subject = args[args.index("--subject") + 1] if "--subject" in args else "Desktop"
     chat_arg = args[args.index("--chat") + 1] if "--chat" in args else None
@@ -791,15 +793,15 @@ if args[:2] == ["orchestration", "send"]:
     else:
         chat = next((c for c in state["chats"] if c["id"] == chat_arg), None) or next(c for c in state["chats"] if c.get("home"))
         cid = chat["id"]
-    wrapped = f"──── From: TOHRU-DESKTOP (tohru-desktop) (handoff) ────\nSubject: {subject}\n{body}\n────────────────────────────────────────────────────────────"
-    state["entries"].setdefault(cid, []).append({"kind": "message", "role": "user", "text": wrapped})
+    message_id = str(uuid.uuid4())
+    state["entries"].setdefault(cid, []).append({"kind": "message", "role": "user", "text": body, "itemId": message_id})
     chat["lastAsked"] = body
     reply = os.environ.get("FAKE_ORCA_REPLY", "Eight fluid ounces from Orca.")
     polls = int(os.environ.get("FAKE_ORCA_POLLS", "2"))
     partial = os.environ.get("FAKE_ORCA_PARTIAL", "")
     state.setdefault("pending", {})[cid] = {"polls": polls, "reply": reply, "partial": partial}
     save()
-    print(json.dumps({"ok": True, "result": {"id": "msg_1", "chatId": cid}}))
+    print(json.dumps({"ok": True, "result": {"promptItemId": message_id, "sessionId": cid}}))
     sys.exit(0)
 
 print(json.dumps({"ok": False, "error": {"code": "unknown", "message": "unexpected args"}}))
@@ -808,6 +810,25 @@ sys.exit(1)
 
 
 class OrcaBotBackend(unittest.TestCase):
+    def test_replayed_commentary_and_full_history_window_emit_only_completed_final(self):
+        with patch.object(sys, "path", [str(ROOT / "bin"), *sys.path]):
+            service = runpy.run_path(str(HELPER), run_name="tohru_test")
+        wait = service["orca_wait_for_reply"]
+        prompt = {"role": "user", "text": "same prompt", "id": "our-turn"}
+        commentary = {"role": "assistant", "text": "I will check that."}
+        final = {"role": "assistant", "text": "The answer is eight."}
+        # The bounded page remains the same length as before sending; repeated
+        # commentary and an unknown state must never become speech.
+        page = [prompt, commentary, commentary]
+        replies = [(page, "working", ""), (page, "", ""),
+                   ([prompt, commentary, final], "working", ""),
+                   ([prompt, commentary, final], "done", "")]
+        spoken = []
+        with patch.dict(wait.__globals__, orca_read_messages=lambda *_a, **_k: replies.pop(0)), patch("time.sleep"):
+            answer, stopped, error = wait("chat", 3, "same prompt", spoken.append, message_id="our-turn")
+        self.assertEqual((answer, stopped, error), ("The answer is eight.", False, ""))
+        self.assertEqual(spoken, ["The answer is eight."])
+
     HOME_UUID = "4f71ebb6-db33-43e9-af8f-e5bc79a11077"
 
     def setUp(self):
@@ -929,9 +950,10 @@ class OrcaBotBackend(unittest.TestCase):
         self.assertEqual("".join(e["text"] for e in events if e["event"] == "delta"), "Eight fluid ounces.")
         self.assertEqual(events[-1], {"event": "done", "conversation": self.HOME_UUID})
 
-        send_call = next(c for c in self.orca_calls() if c["argv"][:2] == ["orchestration", "send"])
-        self.assertIn("bot:Tohru", send_call["argv"])
-        self.assertIn("handoff", send_call["argv"])
+        send_call = next(c for c in self.orca_calls() if c["argv"][:2] == ["bot", "send"])
+        self.assertIn("Tohru", send_call["argv"])
+        self.assertIn("--request-id", send_call["argv"])
+        self.assertNotIn("--from", send_call["argv"])
         self.assertIn(self.HOME_UUID, send_call["argv"])
 
         # Voice turn in a new chat when --orca-voice-chat new.
@@ -993,9 +1015,9 @@ class OrcaBotBackend(unittest.TestCase):
         self.assertEqual(mem["relationship"]["source"], "orca")
         self.assertEqual(mem["summaries"][0]["conversation_id"], "projects")
         self.assertEqual(self.invoke("memory", "forget", mem["memories"][0]["id"][:8], "--backend", "orca", "--orca-bot", "Tohru").returncode, 0)
-        sends = [c for c in self.orca_calls() if c["argv"][:2] == ["orchestration", "send"]]
+        sends = [c for c in self.orca_calls() if c["argv"][:2] == ["bot", "send"]]
         self.assertEqual(len(sends), 1)
-        self.assertIn("Forget memory", sends[0]["argv"])
+        self.assertIn("Tohru", sends[0]["argv"])
 
         # remember is a no-op in orca mode.
         self.assertEqual(self.invoke("remember", self.HOME_UUID, "--backend", "orca", "--orca-bot", "Tohru").returncode, 0)
