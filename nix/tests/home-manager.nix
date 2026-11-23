@@ -76,6 +76,12 @@ let
     };
   } ]).config;
   orcaManaged = builtins.readFile orcaBot.home.sessionVariables.TOHRU_MANAGED_CONFIG;
+  foregroundBot = (home tohru.homeManagerModules.tohru [ {
+    programs.tohru = {
+      enable = true;
+      assistant.orcaBot = { enable = true; voiceChat = "foreground"; };
+    };
+  } ]).config;
   servicesOnly = (home tohru.homeManagerModules.tohru [ { programs.tohru.systemd.enable = true; } ]).config;
   roles = {
     tohru-bar = "tohru-run";
@@ -144,6 +150,7 @@ assert pkgs.lib.hasInfix "[assistant.semantic_models.codex]\neffort = \"medium\"
 assert pkgs.lib.hasInfix "[assistant.models.codex]\neffort = \"high\"\nmodel = \"gpt-6.2-sol\"" quietManaged;
 assert pkgs.lib.hasInfix "[assistant.models.claude]\neffort = \"low\"" quietManaged;
 assert pkgs.lib.hasInfix "[assistant]\nbackend = \"orca\"\norca = \"auto\"\norca_bot = \"Tohru\"\norca_offline = \"error\"\norca_voice_chat = \"home\"\nvoice_source = \"usb-integration-mic\"" orcaManaged;
+assert pkgs.lib.hasInfix "orca_voice_chat = \"foreground\"" (builtins.readFile foregroundBot.home.sessionVariables.TOHRU_MANAGED_CONFIG);
 assert !(pkgs.lib.hasInfix "orca_bot" quietManaged) && !(pkgs.lib.hasInfix "backend =" quietManaged);
 assert serviced.systemd.user.services.tohru-launcher.Service.KillMode == "process";
 assert serviced.systemd.user.services.tohru-lock.Service.Type == "notify";

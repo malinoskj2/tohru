@@ -8,6 +8,8 @@ import unittest
 import threading
 import time
 import json
+import io
+from contextlib import redirect_stderr
 from unittest.mock import patch
 
 try:
@@ -168,6 +170,49 @@ class VoiceTests(unittest.TestCase):
             voice.command({"cmd": "diagnostic", "stage": "ui_state_observed", "visible": True, "text": "private", "turn_id": "capture"})
             voice.command({"cmd": "diagnostic", "stage": "arbitrary", "text": "private"})
         logged.assert_called_once_with("ui_state_observed", visible=True, turn_id="capture")
+
+    def test_task_diagnostics_cross_real_json_admission_without_spoken_content(self):
+        voice = make_voice(FakeRecognizer([""], ""))
+        output = io.StringIO()
+        with redirect_stderr(output):
+            for message in (
+                {"stage": "task_update", "task": "job-1", "sequence": 2, "kind": "progress", "request": "orca:owner", "generation": 7, "text": "PRIVATE SPOKEN TEXT"},
+                {"stage": "task_update_dropped", "task": "job-1", "sequence": 3, "kind": "done", "reason": "hearing"},
+                {"stage": "task_update_dropped", "task": "PRIVATE\nTEXT", "sequence": True, "kind": "commentary", "reason": "PRIVATE"},
+                {"stage": "waiting_config", "enabled": False},
+            ):
+                # Production JSON and command admission, including the metadata allowlist.
+                voice.command(json.loads(json.dumps(dict(cmd="diagnostic", **message))))
+        rows = [json.loads(line.split(": ", 1)[1]) for line in output.getvalue().splitlines()]
+        self.assertEqual(len(rows), 4)
+        self.assertEqual((rows[0]["task"], rows[0]["sequence"], rows[0]["request"]), ("job-1", 2, "orca:owner"))
+        self.assertEqual(rows[1]["reason"], "hearing")
+        self.assertNotIn("task", rows[2])
+        self.assertNotIn("sequence", rows[2])
+        self.assertNotIn("kind", rows[2])
+        self.assertNotIn("PRIVATE", output.getvalue())
+        self.assertIs(rows[3]["enabled"], False)
+
+    def test_background_synthesis_releases_foreground_capture_before_audio_is_ready(self):
+        voice = make_voice(FakeRecognizer(["CREATE A WORKTREE"], "CREATE A WORKTREE"))
+        voice.extend_conversation()
+        self.speak(voice, 10, 25)
+        self.assertTrue(voice.thinking)
+        self.assertEqual(voice.last_turn_text, "Create a worktree")
+        # An accepted async task is a different owner, even before its first TTS
+        # sample. Exercise real command admission and the active capture machine.
+        voice.command(json.loads('{"cmd":"speech_start","generation":2,"background":true}'))
+        voice.command(json.loads('{"cmd":"speech_end","generation":2,"text":"I will start that work."}'))
+        self.assertFalse(voice.thinking)
+        self.assertEqual(voice.last_turn_text, "")
+        voice.recognizer = FakeRecognizer(["ARE YOU STILL THERE"], "ARE YOU STILL THERE")
+        self.events.clear()
+        self.speak(voice, 10, 25)
+        self.assertEqual(self.events[-1], {"event": "turn", "text": "Are you still there"})
+        self.assertFalse(any(e.get("continuation") for e in self.events))
+        # Ordinary foreground replies still merge genuine continued utterances.
+        voice.command({"cmd": "speech_start", "generation": 3})
+        self.assertTrue(voice.thinking)
 
     def setUp(self):
         self.events = []

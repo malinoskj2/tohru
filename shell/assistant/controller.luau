@@ -57,7 +57,7 @@ return function(settings)
         return table.concat({
             tostring(setting("assistant.backend", "local")),
             tostring(setting("assistant.orca_bot", "Tohru")),
-            tostring(setting("assistant.orca_voice_chat", "home")),
+            tostring(setting("assistant.orca_voice_chat", "foreground")),
             tostring(setting("assistant.orca_offline", "error")),
         }, "|")
     end
@@ -68,7 +68,7 @@ return function(settings)
         args[#args + 1] = "--orca-bot"
         args[#args + 1] = tostring(setting("assistant.orca_bot", "Tohru"))
         args[#args + 1] = "--orca-voice-chat"
-        args[#args + 1] = tostring(setting("assistant.orca_voice_chat", "home"))
+        args[#args + 1] = tostring(setting("assistant.orca_voice_chat", "foreground"))
         args[#args + 1] = "--orca-offline"
         args[#args + 1] = tostring(setting("assistant.orca_offline", "error"))
         return args

@@ -126,7 +126,7 @@ Orca `1.4.268` intentionally requires human approval to create a bot (no headles
   - Default active chat = Tohru's **Home Chat** (`home: true` from `orca bot chats --bot Tohru --json`) so opening the popup or speaking continues the same thread visible in Orca's Bots panel.
   - Clicking **+** (New chat) sets `conversation = null`; the next send passes `--chat new --subject "<title>"`, creating a new chat under Tohru in Orca's Bots panel.
   - Clicking a row in **History** loads that Orca chat UUID and sends follow-ups with `--chat <uuid>`.
-  - **Voice routing:** Configurable via `assistant.orca_voice_chat = "home" | "new"` (recommended default: `"home"` so voice and the Bots panel immediately share context).
+  - **Voice routing:** `assistant.orca_voice_chat` defaults to `"foreground"`: a persistent voice conversation with bounded Home context. `"home"` retains shared Home routing; `"new"` starts a fresh voice session. Existing explicit settings remain authoritative.
 - **Sending via `--type handoff` (not `--type question`):**
   ```sh
   orca orchestration send --to bot:Tohru [--chat <id|new>] --from tohru-desktop --type handoff --subject "<label>" --body-file <tmp> --json
@@ -173,7 +173,7 @@ Create the `Tohru` bot once in Orca's Bots panel and verify four behaviors on `1
 - Add settings in [`runtime/src/settings.rs`](../runtime/src/settings.rs), [`nix/home-manager.nix`](../nix/home-manager.nix), and [`docs/configuration.md`](configuration.md):
   - `assistant.backend`: `"local"` (default) | `"orca"`
   - `assistant.orca_bot`: `"Tohru"` (bot name when `backend = "orca"`)
-  - `assistant.orca_voice_chat`: `"home"` | `"new"` (default `"home"`)
+  - `assistant.orca_voice_chat`: `"foreground"` | `"home"` | `"new"` (default `"foreground"`)
   - `assistant.orca_offline`: `"error"` (default, prevents split-brain) | `"local"` (optional local fallback)
 - Add `tohru assistant orca init [--bot Tohru]` to seed `SOUL.md` and offer one-time migration of SQLite memories/summaries/relationship notes into `~/.orca/bots/<slug>/MEMORY.md` + `memory/imported-tohru-sqlite.md`.
 
@@ -202,7 +202,7 @@ Create the `Tohru` bot once in Orca's Bots panel and verify four behaviors on `1
 
 ## 6. Open Decisions Before Implementation
 
-1. **Voice thread routing (`orca` mode):** Land voice turns in Tohru's **Home Chat** by default (100% shared context with Orca's Bots panel) or start a new chat per voice session (`--chat new`)?
+1. **Voice thread routing (`orca` mode), resolved:** Voice defaults to a persistent foreground chat with Home context. Explicit Home routing and fresh chats remain available.
 2. **Offline behavior when `backend = "orca"` and Orca is closed:** Default to `"error"` (clear prompt to open Orca / run `orca serve`, guaranteeing memory & history never split) or fall back to `"local"` with an offline badge?
 3. **Pocket popup header picker in `orca` mode:** Stay locked to **Tohru** (agent/model configured in Orca), or allow switching among Orca bots (e.g., Tohru / Chad) and local CLIs?
 4. **Proactive spoken alerts:** Default to **bar unread dot + notification toast only** (speaking only when explicitly requested with `--speak`), or allow Tohru to speak high-priority completions automatically when unlocked and not in DND?

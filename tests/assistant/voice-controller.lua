@@ -391,6 +391,8 @@ task_update("ack", 1, "I'll create that workspace now.")
 assert(detached[#detached] == "task-request")
 assert(written[#written].message.cmd == "speech_end" and written[#written].message.text == "I'll create that workspace now.")
 local ack_generation = written[#written].message.generation
+assert(written[#written - 1].message.cmd == "speech_start" and written[#written - 1].message.background == true)
+assert(diagnostics[#diagnostics].stage == "task_update" and diagnostics[#diagnostics].request == "task-request")
 local after_ack = #written
 task_update("ack", 1, "Replay")
 assert(#written == after_ack)
@@ -419,6 +421,12 @@ events.assistant_dragon()
 local hidden_count = #written
 task_update("progress", 2, "Hidden progress", "next-task-request")
 assert(#written == hidden_count and not fact.ai_dragon_open)
+assert(diagnostics[#diagnostics].stage == "task_update_dropped" and diagnostics[#diagnostics].reason == "hidden")
+fact.ai_dragon_open = true
+current_service.line({event="hearing", on=true})
+task_update("progress", 3, "Owner has the floor", "next-task-request")
+assert(diagnostics[#diagnostics].stage == "task_update_dropped" and diagnostics[#diagnostics].reason == "hearing")
+current_service.line({event="hearing", on=false})
 print("Task updates: prompt acknowledgement, microphone open, progress, completion priority, replay, follow-up input and hide passed")
 
 -- Switching backends invalidates old audio and never reuses a local conversation ID.

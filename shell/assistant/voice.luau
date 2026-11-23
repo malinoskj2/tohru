@@ -22,10 +22,11 @@ return function(assistant, puppet, flight, service_executable)
     local greeting_serial = 0
     local send
     local task_clock = 0
+    local waiting_chatter = false
     local task_speech = require("assistant/task-speech")(function() return task_clock end,
         function(message, chat)
             turn_generation = turn_generation + 1
-            send({cmd = "speech_start", generation = turn_generation, conversation = chat})
+            send({cmd = "speech_start", generation = turn_generation, conversation = chat, background = true})
             send({cmd = "speech_end", generation = turn_generation, text = message})
             return turn_generation
         end,
@@ -146,6 +147,7 @@ return function(assistant, puppet, flight, service_executable)
         if message.turn_id then capture_id = message.turn_id end
         if event == "ready" then
             failures = 0
+            send({cmd = "diagnostic", stage = "waiting_config", enabled = waiting_chatter})
             local art = tostring(message.dragon or "")
             -- The sheets load with the service, while she is hidden: a sheet arriving blanks her for a frame or two.
             if not loaded and art ~= "" then
@@ -334,7 +336,7 @@ return function(assistant, puppet, flight, service_executable)
             task_speech.begin(conv, request)
             streaming_speech = true
             streamed_text = false
-            send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id})
+            send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id, request = request})
             if assistant.voice_ready then assistant.voice_ready(conv, request) end
             return
         elseif kind == "delta" then
@@ -397,11 +399,19 @@ return function(assistant, puppet, flight, service_executable)
         local event = {chat = text.ai_voice_task_chat, request = text.ai_voice_task_request,
             task = text.ai_voice_task_id, sequence = tonumber(text.ai_voice_task_sequence),
             kind = text.ai_voice_task_kind, text = text.ai_voice_task_text}
-        if not task_visible(event.chat) then task_speech.interrupt(); return end
-        if hearing then task_speech.interrupt(); return end
-        local accepted, reason = task_speech.update(event)
+        local accepted, reason
+        if not task_visible(event.chat) then
+            task_speech.interrupt()
+            accepted, reason = false, "hidden"
+        elseif hearing then
+            task_speech.interrupt()
+            accepted, reason = false, "hearing"
+        else
+            accepted, reason = task_speech.update(event)
+        end
         send({cmd = "diagnostic", stage = accepted and "task_update" or "task_update_dropped",
-            task = event.task, sequence = event.sequence, kind = event.kind, reason = reason})
+            task = event.task, sequence = event.sequence, kind = event.kind, reason = reason,
+            request = event.request, generation = turn_generation, turn_id = capture_id})
         if not accepted then return end
         if event.kind == "ack" then
             -- The bot owns the asynchronous task; retire only the desktop poller.
@@ -428,11 +438,14 @@ return function(assistant, puppet, flight, service_executable)
             return row.value
         end
         puppet.reduced(value("assistant.reduced_motion", false) == true)
-        task_speech.configure(value("assistant.waiting_chatter", false), value("assistant.waiting_seed", 1))
+        local chatter = value("assistant.waiting_chatter", false) == true
+        if chatter ~= waiting_chatter then send({cmd = "diagnostic", stage = "waiting_config", enabled = chatter}) end
+        waiting_chatter = chatter
+        task_speech.configure(waiting_chatter, value("assistant.waiting_seed", 1))
         if flight then flight.configure(value) end
         local backend = table.concat({
             tostring(value("assistant.backend", "local")), tostring(value("assistant.orca_bot", "Tohru")),
-            tostring(value("assistant.orca_voice_chat", "home")), tostring(value("assistant.orca_offline", "error")),
+            tostring(value("assistant.orca_voice_chat", "foreground")), tostring(value("assistant.orca_offline", "error")),
         }, "|")
         if backend_signature and backend_signature ~= backend then
             task_speech.interrupt()

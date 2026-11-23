@@ -256,9 +256,9 @@ in {
           description = "The Orca bot name Tohru routes through, written to `assistant.orca_bot`; `null` leaves it to the user's config (`Tohru`).";
         };
         voiceChat = lib.mkOption {
-          type = lib.types.nullOr (lib.types.enum [ "home" "new" ]);
+          type = lib.types.nullOr (lib.types.enum [ "home" "new" "foreground" ]);
           default = null;
-          description = "Where voice turns land in Orca bot mode (`home` for the bot's Home Chat, or `new` for a fresh chat), written to `assistant.orca_voice_chat`.";
+          description = "Where voice turns land in Orca bot mode: `home` uses Home Chat, `new` starts a fresh conversation, and `foreground` reuses a separate voice chat with bounded Home context while background work continues. Written to `assistant.orca_voice_chat`.";
         };
         offline = lib.mkOption {
           type = lib.types.nullOr (lib.types.enum [ "error" "local" ]);

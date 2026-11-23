@@ -788,7 +788,7 @@ fn assistant_backend_defaults_to_local_and_validates_opt_in_orca_settings() {
     );
     assert_eq!(
         owner.get(Key::AssistantOrcaVoiceChat).value,
-        Value::Text("home".into())
+        Value::Text("foreground".into())
     );
     assert_eq!(
         owner.get(Key::AssistantOrcaOffline).value,
@@ -818,6 +818,16 @@ fn assistant_backend_defaults_to_local_and_validates_opt_in_orca_settings() {
     assert_eq!(
         restarted.get(Key::AssistantOrcaVoiceChat).value,
         Value::Text("new".into())
+    );
+    owner
+        .set(
+            Key::AssistantOrcaVoiceChat,
+            Value::Text("foreground".into()),
+        )
+        .unwrap();
+    assert_eq!(
+        files.owner().get(Key::AssistantOrcaVoiceChat).value,
+        Value::Text("foreground".into())
     );
     assert_eq!(
         restarted.get(Key::AssistantOrcaOffline).value,

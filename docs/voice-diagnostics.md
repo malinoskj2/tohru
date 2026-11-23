@@ -23,3 +23,5 @@ Tohru speaks a matching result only when it is already visible, the result belon
 The return path uses live host-local completion events. Correlation is bounded and resets when Orca restarts; results missed during a restart remain in Orca. It does not poll chats or replay a backlog of speech.
 
 Explicit [conversational task updates](task-speech.md) have a separate acknowledgement, progress, and completion endpoint. They require a producer that opts into that protocol. `task_update` and `task_update_dropped` diagnostics record the task ID, sequence, kind, and rejection reason without logging spoken content.
+
+Task records also include the request, speech generation, and capture ID. Hidden and active-hearing rejections are logged before admission. `speech_stream_start.request` links direct provider speech to its Orca request. `waiting_config.enabled` records whether optional chatter is configured when voice starts or the setting changes. These records establish scheduling and pipe submission, not audible delivery.

@@ -814,6 +814,73 @@ sys.exit(1)
 
 
 class OrcaBotBackend(unittest.TestCase):
+    def test_foreground_reuses_its_actor_while_home_has_unfinished_work(self):
+        state = json.loads(self.orca_state.read_text())
+        state["pending"][self.HOME_UUID] = {"polls": 1000, "reply": "Home long tool finished."}
+        self.orca_state.write_text(json.dumps(state))
+        def foreground(prompt, **env):
+            return self.invoke("chat", "--backend", "orca", "--orca-bot", "Tohru", "--provider", "orca:Tohru",
+                               "--orca-voice-chat", "foreground", "--voice", stdin=prompt, **env)
+        first = foreground("Are you available?", FAKE_ORCA_REPLY="I am here while that work continues.")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        events = [json.loads(line) for line in first.stdout.splitlines()]
+        actor = events[0]["conversation"]
+        self.assertNotEqual(actor, self.HOME_UUID)
+        state = json.loads(self.orca_state.read_text())
+        self.assertGreater(state["pending"][self.HOME_UUID]["polls"], 900)
+        body = state["entries"][actor][0]["text"]
+        self.assertIn("Home Chat and its existing tasks/history/approvals remain intact", body)
+        self.assertIn("Hello from Orca UI", body)
+        self.assertIn('"state": "working"', body)
+        self.assertIn("asynchronous Orca workers", body)
+        # Worker mail can become lastAsked. Registry ownership survives that and
+        # a fresh helper process, so another wake does not silently create a chat.
+        next(c for c in state["chats"] if c["id"] == actor)["lastAsked"] = "worker result notification"
+        self.orca_state.write_text(json.dumps(state))
+        second = foreground("And now?", FAKE_ORCA_REPLY="Still available.")
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(json.loads(second.stdout.splitlines()[0])["conversation"], actor)
+        state = json.loads(self.orca_state.read_text())
+        self.assertEqual(len(state["chats"]), 2)
+        self.assertIn(self.HOME_UUID, state["pending"])
+        shown = json.loads(self.invoke("show", "--backend", "orca", "--orca-bot", "Tohru", actor).stdout)
+        self.assertEqual(shown["turns"][0]["text"], "Are you available?")
+        # The popup can type into the same actor explicitly. A new typed Home
+        # request still goes to Home; selecting foreground never moves it.
+        typed = self.invoke("chat", "--backend", "orca", "--orca-bot", "Tohru", "--provider", "orca:Tohru",
+                            "--conversation", actor, stdin="Typed follow-up", FAKE_ORCA_REPLY="Same conversation.")
+        self.assertEqual(typed.returncode, 0, typed.stderr)
+        self.assertEqual(json.loads(typed.stdout.splitlines()[0])["conversation"], actor)
+
+    def test_foreground_is_the_voice_default_and_explicit_home_is_preserved(self):
+        args = ("chat", "--backend", "orca", "--orca-bot", "Tohru", "--provider", "orca:Tohru", "--voice")
+        default = self.invoke(*args, stdin="Hello foreground")
+        self.assertEqual(default.returncode, 0, default.stderr)
+        self.assertNotEqual(json.loads(default.stdout.splitlines()[0])["conversation"], self.HOME_UUID)
+        explicit = self.invoke(*args, "--orca-voice-chat", "home", stdin="Hello Home")
+        self.assertEqual(explicit.returncode, 0, explicit.stderr)
+        self.assertEqual(json.loads(explicit.stdout.splitlines()[0])["conversation"], self.HOME_UUID)
+
+    def test_foreground_fails_closed_for_missing_home_or_retired_actor(self):
+        args = ("chat", "--backend", "orca", "--orca-bot", "Tohru", "--provider", "orca:Tohru",
+                "--orca-voice-chat", "foreground", "--voice")
+        state = json.loads(self.orca_state.read_text())
+        state["chats"] = []
+        self.orca_state.write_text(json.dumps(state))
+        missing = self.invoke(*args, stdin="Hello")
+        self.assertNotEqual(missing.returncode, 0)
+        self.assertFalse(any(c["argv"][:2] == ["bot", "send"] for c in self.orca_calls()))
+        self.write_orca_state()
+        first = self.invoke(*args, stdin="Hello")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        state = json.loads(self.orca_state.read_text())
+        next(c for c in state["chats"] if not c.get("home"))["closed"] = True
+        self.orca_state.write_text(json.dumps(state))
+        sends = sum(c["argv"][:2] == ["bot", "send"] for c in self.orca_calls())
+        retired = self.invoke(*args, stdin="Hello again")
+        self.assertNotEqual(retired.returncode, 0)
+        self.assertEqual(sum(c["argv"][:2] == ["bot", "send"] for c in self.orca_calls()), sends)
+
     def test_replayed_commentary_and_full_history_window_emit_only_completed_final(self):
         with patch.object(sys, "path", [str(ROOT / "bin"), *sys.path]):
             service = runpy.run_path(str(HELPER), run_name="tohru_test")
