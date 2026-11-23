@@ -88,6 +88,45 @@ index 0af668eb..96acc7ff 100644
      printResult(result, json, (value) => `Sent to ${value.sessionId}`)
    },
    'bot new-chat': async ({ flags, client, json }) => {
+diff --git a/src/cli/orchestration/identity/orchestration-compatibility-envelope.test.ts b/src/cli/orchestration/identity/orchestration-compatibility-envelope.test.ts
+index cb65e8f9..fc8f3821 100644
+--- a/src/cli/orchestration/identity/orchestration-compatibility-envelope.test.ts
++++ b/src/cli/orchestration/identity/orchestration-compatibility-envelope.test.ts
+@@ -15,3 +15,17 @@ describe('OrchestrationRequestEvidence', () => {
+     }
+   )
+ })
++
++describe('desktop voice caller transport', () => {
++  it.each(['bots.voice.task', 'bots.voice.ready'])(
++    'carries a local coordinator identity for %s',
++    (method) => {
++      const evidence = new OrchestrationRequestEvidence({ ORCA_AGENT_SESSION_ID: SESSION })
++      expect(evidence.envelopeFor(method, local)).toEqual({
++        orchestrationCompatibilityEvidence: { agentSessionId: SESSION }
++      })
++      expect(evidence.envelopeFor(method, { ...local, remote: true })).toEqual({})
++      expect(new OrchestrationRequestEvidence({}).envelopeFor(method, local)).toEqual({})
++    }
++  )
++})
+diff --git a/src/cli/orchestration/identity/orchestration-compatibility-envelope.ts b/src/cli/orchestration/identity/orchestration-compatibility-envelope.ts
+index cc90fdc9..371f2c8d 100644
+--- a/src/cli/orchestration/identity/orchestration-compatibility-envelope.ts
++++ b/src/cli/orchestration/identity/orchestration-compatibility-envelope.ts
+@@ -1,3 +1,4 @@
++import { BOT_VOICE_SESSION_METHOD_NAMES } from '../../../shared/bots/bot-voice-methods'
+ import { randomUUID } from 'node:crypto'
+ import { readInjectedAgentSessionId } from '../../../shared/agent-session/lifecycle/launch/agent-session-caller-env'
+ import { readOrchestrationCompatibilityEvidence } from '../../../shared/orchestration/orchestration-compatibility-evidence'
+@@ -37,6 +38,7 @@ const SESSION_EVIDENCE_METHODS: ReadonlySet<string> = new Set([
+   'agent.launchReplay',
+   'automation.create',
+   'automation.update',
++  ...BOT_VOICE_SESSION_METHOD_NAMES,
+   ...BOT_ITEM_WRITE_METHOD_NAMES,
+   ...CONNECTOR_POST_METHOD_NAMES
+ ])
 diff --git a/src/cli/specs/bot.ts b/src/cli/specs/bot.ts
 index 0f6af598..fad6cbff 100644
 --- a/src/cli/specs/bot.ts
@@ -985,18 +1024,22 @@ index d2b43a48..115e3965 100644
      name: 'bots.list',
      permission: 'workspace',
 diff --git a/src/main/runtime/rpc/orchestration/callers/orchestration-session-caller.ts b/src/main/runtime/rpc/orchestration/callers/orchestration-session-caller.ts
-index b43bb9df..f831f79a 100644
+index b43bb9df..6778df6d 100644
 --- a/src/main/runtime/rpc/orchestration/callers/orchestration-session-caller.ts
 +++ b/src/main/runtime/rpc/orchestration/callers/orchestration-session-caller.ts
-@@ -61,6 +61,8 @@ const NEEDS_RUNNING_AGENT: ReadonlySet<string> = new Set([
-
- /** Non-orchestration methods whose authority depends on the calling session, so it is verified for them too. */
+@@ -1,3 +1,4 @@
++import { BOT_VOICE_SESSION_METHOD_NAMES } from '../../../../../shared/bots/bot-voice-methods'
+ /** Resolve session identity before params, compatibility, receipts and dispatch branching; ids identify same-user callers, not credentials.
+  * Refuse paired/SSH/WSL claims, provider ids that rotate on /clear, and non-live leases; a released (sleeping) one may act except as NEEDS_RUNNING_AGENT lists. Session identity overrides declarations and maps workers to minted handles/panes.
+  * Without session evidence, a declared orca_session_id: may resolve a worker handle; a chat address alone identifies no caller. */
+@@ -63,6 +64,7 @@ const NEEDS_RUNNING_AGENT: ReadonlySet<string> = new Set([
  const SESSION_CALLER_METHODS: ReadonlySet<string> = new Set([
-+  'bots.voice.task',
-+  'bots.voice.ready',
    'automation.create',
    'automation.update',
++  ...BOT_VOICE_SESSION_METHOD_NAMES,
    ...BOT_ITEM_WRITE_METHOD_NAMES,
+   ...CONNECTOR_POST_METHOD_NAMES
+ ])
 diff --git a/src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts b/src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts
 new file mode 100644
 index 00000000..3eca2ddc
@@ -1029,6 +1072,14 @@ index 00000000..3eca2ddc
 +    ).toBe(true)
 +  }
 +)
+diff --git a/src/shared/bots/bot-voice-methods.ts b/src/shared/bots/bot-voice-methods.ts
+new file mode 100644
+index 00000000..1d8b5912
+--- /dev/null
++++ b/src/shared/bots/bot-voice-methods.ts
+@@ -0,0 +1,2 @@
++/** Voice RPCs whose local agent session must be carried and verified together. */
++export const BOT_VOICE_SESSION_METHOD_NAMES = ['bots.voice.task', 'bots.voice.ready'] as const
 diff --git a/src/shared/rpc-contract/bot-voice-params.ts b/src/shared/rpc-contract/bot-voice-params.ts
 new file mode 100644
 index 00000000..7a0bb299

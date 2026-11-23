@@ -6,6 +6,9 @@ import { BOT_HANDLERS } from './src/cli/bots/bot'
 import { desktopVoiceOwnerTurn, deliverDesktopVoiceContinuation, rememberDesktopVoiceDispatch } from './src/main/bots/desktop-voice-continuations'
 import { desktopVoiceTasks } from './src/main/bots/desktop-voice-task-delivery'
 
+import { OrchestrationRequestEvidence } from './src/cli/orchestration/identity/orchestration-compatibility-envelope'
+import { needsOrchestrationCallerResolution } from './src/main/runtime/rpc/orchestration/callers/orchestration-session-caller'
+
 const chat = '12345678-1234-4234-8234-123456789abc'
 let request = 'orca:voice-request'
 let promptText = '[tohru-desktop:voice]\nCreate a workspace'
@@ -28,8 +31,14 @@ async function rpc(method, params, options = {}) {
   if (!entry) throw new Error(`Unknown test method ${method}`)
   const parsed = entry.params.parse(params)
   const producer = method === 'bots.voice.task'
+  const evidence = new OrchestrationRequestEvidence(producer
+    ? { ORCA_AGENT_SESSION_ID: options.caller ?? chat } : {})
+  const envelope = evidence.envelopeFor(method, {remote: !!options.paired, mutation: true, requestId: undefined})
+  const request = {method, params, ...envelope}
+  // Replace only host session-record lookup; actual CLI evidence and server admission choose the caller.
   const context = { runtime, caller: {kind: 'local-cli'},
-    ...(producer ? { orchestrationCaller: {orcaSessionId: options.caller ?? chat} } : {}),
+    ...(needsOrchestrationCallerResolution(request, undefined)
+      ? { orchestrationCaller: {orcaSessionId: envelope.orchestrationCompatibilityEvidence.agentSessionId} } : {}),
     ...(options.paired ? {pairedDeviceId: 'remote'} : {}) }
   return { result: await entry.handler(parsed, context) }
 }

@@ -24,6 +24,7 @@ cd .tmp/orca-progress/review
 pnpm install --frozen-lockfile --ignore-scripts
 pnpm run build:packages
 node node_modules/vitest/vitest.mjs run --config config/vitest.config.ts \
+  src/cli/orchestration/identity/orchestration-compatibility-envelope.test.ts \
   src/main/bots/desktop-voice-task-queue.test.ts \
   src/main/bots/desktop-voice-continuations.test.ts \
   src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts \
@@ -42,7 +43,7 @@ python3 integrations/orca/verify-transport.py \
   --lua lua5.4
 ```
 
-The test bundles the patched Orca CLI handlers, RPC handlers, origin correlation, queue, and process delivery. It invokes the real Tohru registration helper and `tohru assistant voice-task` endpoint, then drives the production voice controller. Fake host/journal/database and desktop IPC adapters isolate the test. A fake speech adapter records text instead of playing audio.
+The test bundles the patched Orca CLI evidence envelope, server caller-admission selection, CLI handlers, RPC handlers, origin correlation, queue, and process delivery. Host session-record lookup remains an adapter; the fixture never inserts a caller unless the actual envelope and admission code request resolution. It invokes the real Tohru registration helper and `tohru assistant voice-task` endpoint, then drives the production voice controller. Fake host/journal/database and desktop IPC adapters isolate the test. A fake speech adapter records text instead of playing audio.
 
 The test verifies acknowledgement before completion, both sides of the registration handshake, progress, worker-origin correlation, analyzed completion, suppression of the legacy spoken final, replay rejection, caller and remote rejection, raw-mail rejection, supersession, hiding, and text-origin exclusion. The trace and producer log are saved under `.tmp/orca-progress/integration/`.
 
