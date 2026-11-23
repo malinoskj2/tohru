@@ -101,6 +101,7 @@ impl Control {
         let mut state = lock(&self.state.0);
         let speaking = state.speaking;
         let conversation = state.active.as_ref().map(|j| j.conversation.clone());
+        let generation = state.active.as_ref().map(|j| j.generation.clone());
         state.generation = state.generation.wrapping_add(1);
         state.pending = None;
         state.active = None;
@@ -116,7 +117,7 @@ impl Control {
         if speaking {
             emit(json!({"event":"mouth","level":0,"viseme":0}));
             emit(
-                json!({"event":"speaking","on":false,"interrupted":true,"conversation":conversation}),
+                json!({"event":"speaking","on":false,"interrupted":true,"conversation":conversation,"generation":generation}),
             );
         }
         diagnostic("audio_cancel_requested", json!({}));
@@ -154,9 +155,12 @@ impl Control {
             state.paused = true;
             state.recent.clear();
             let conversation = state.active.as_ref().map(|j| j.conversation.clone());
+            let generation = state.active.as_ref().map(|j| j.generation.clone());
             drop(state);
             emit(json!({"event":"mouth","level":0,"viseme":0}));
-            emit(json!({"event":"speaking","on":false,"paused":true,"conversation":conversation}));
+            emit(
+                json!({"event":"speaking","on":false,"paused":true,"conversation":conversation,"generation":generation}),
+            );
         }
     }
 
@@ -165,8 +169,11 @@ impl Control {
         if state.paused {
             state.paused = false;
             let conversation = state.active.as_ref().map(|j| j.conversation.clone());
+            let generation = state.active.as_ref().map(|j| j.generation.clone());
             drop(state);
-            emit(json!({"event":"speaking","on":true,"conversation":conversation}));
+            emit(
+                json!({"event":"speaking","on":true,"conversation":conversation,"generation":generation}),
+            );
             self.state.1.notify_all();
         }
     }
@@ -294,7 +301,9 @@ impl Control {
                 state.infer = None;
                 drop(state);
                 emit(json!({"event":"mouth","level":0,"viseme":0}));
-                emit(json!({"event":"speaking","on":false,"conversation":job.conversation}));
+                emit(
+                    json!({"event":"speaking","on":false,"conversation":job.conversation,"generation":job.generation}),
+                );
             }
         }
     }
@@ -474,7 +483,9 @@ impl Control {
                 }
                 if !state.speaking {
                     state.speaking = true;
-                    emit(json!({"event":"speaking","on":true,"conversation":job.conversation}));
+                    emit(
+                        json!({"event":"speaking","on":true,"conversation":job.conversation,"generation":job.generation}),
+                    );
                 }
             }
             emit(json!({"event":"sentence","text":text}));

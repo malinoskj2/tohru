@@ -124,7 +124,8 @@ def exercise(argv, directory, environment):
         first_sentence_ms = (time.monotonic()-first)*1000
         process_to_first_sentence_ms = (time.monotonic()-helper.start)*1000
         assert "STALE" not in sentence["text"]
-        helper.wait(lambda e: e.get("event") == "speaking" and not e.get("on"))
+        completed=helper.wait(lambda e: e.get("event") == "speaking" and not e.get("on"))
+        assert completed.get("generation")==9,"completion lost the controller generation"
         pcm = directory / "submitted.pcm"
         complete = pcm.read_bytes()
         assert len(complete)>2400 and len(complete)%2==0
@@ -146,7 +147,8 @@ def exercise(argv, directory, environment):
         helper.wait(lambda e: e.get("event") == "sentence")
         cancel = time.monotonic()
         helper.send(cmd="hush")
-        helper.wait(lambda e: e.get("event") == "speaking" and not e.get("on"))
+        interrupted=helper.wait(lambda e: e.get("event") == "speaking" and not e.get("on"))
+        assert interrupted.get("generation")==10,"interruption lost the controller generation"
         cancel_event_ms = (time.monotonic()-cancel)*1000
         time.sleep(.15)
         size = pcm.stat().st_size
