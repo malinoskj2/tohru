@@ -2,12 +2,14 @@
 """Drive bin/tohru-assistant against fake provider CLIs; nothing reaches a real provider."""
 import json
 import os
+import runpy
 import sqlite3
 from pathlib import Path
 import signal
 import subprocess
 import tempfile
 import time
+import threading
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -192,6 +194,29 @@ class Assistant(unittest.TestCase):
         self.assertEqual(codex[1]["stdin"], "Quart?")
         self.assertIn("--dangerously-bypass-approvals-and-sandbox", codex[0]["argv"])
         self.assertNotIn("read-only", codex[0]["argv"])
+
+    def test_completed_codex_message_is_speakable_before_turn_end(self):
+        voice = runpy.run_path(str(ROOT / "bin/tohru-voice"))
+        stream = voice["SpeechStream"]()
+        result = self.invoke("chat", "--provider", "codex", stdin="How many cups?")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for event in self.events(result):
+            if event["event"] == "delta":
+                stream.feed(event["text"])
+        spoken, ready, stop = [], threading.Event(), threading.Event()
+        def consume():
+            for part in stream.parts(stop):
+                spoken.append(part)
+                ready.set()
+        worker = threading.Thread(target=consume)
+        worker.start()
+        try:
+            self.assertTrue(ready.wait(1), "completed message waited for the turn to end")
+            self.assertEqual(spoken, ["Sixteen cups."])
+        finally:
+            stop.set()
+            stream.feed("", final=True)
+            worker.join(1)
 
     def test_stop_interrupts_and_keeps_the_partial_answer(self):
         env = {**self.env, "FAKE_DELAY": "0.4", "FAKE_ANSWER": "one two three four five six seven eight nine ten"}

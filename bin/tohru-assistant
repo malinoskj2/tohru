@@ -1113,7 +1113,9 @@ class StreamParser:
             item = event.get("item") or {}
             if item.get("type") == "agent_message":
                 text = item.get("text", "")
-                return ("\n\n" if self.text else "") + text
+                # A completed message is a safe speech boundary even while the
+                # turn continues with tools. Keep two newlines between messages.
+                return (("\n" if self.text else "") + text + "\n") if text else ""
         elif kind in ("turn.failed", "error"):
             error = event.get("error") or event.get("message") or "error"
             self.error = error.get("message", str(error)) if isinstance(error, dict) else str(error)
