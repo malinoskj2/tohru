@@ -268,11 +268,19 @@ impl Engine {
 }
 
 pub fn timeline(samples: &[f32], rate: u32, phonemes: &str) -> Vec<(f64, f64, u8)> {
-    let start = samples.iter().position(|s| s.abs() > 0.01).unwrap_or(0) as f64 / rate as f64;
-    let end = samples
-        .iter()
-        .rposition(|s| s.abs() > 0.01)
-        .map_or(samples.len(), |i| i + 1) as f64
+    let step = (rate as usize / 100).max(1);
+    let loud: Vec<usize> = samples
+        .chunks(step)
+        .enumerate()
+        .filter_map(|(i, frame)| {
+            let rms = (frame.iter().map(|s| s * s).sum::<f32>() / frame.len() as f32).sqrt();
+            (rms > 0.01).then_some(i * step)
+        })
+        .collect();
+    let start = loud.first().copied().unwrap_or(0) as f64 / rate as f64;
+    let end = loud
+        .last()
+        .map_or(samples.len(), |i| (i + step).min(samples.len())) as f64
         / rate as f64;
     let mut sounds: Vec<(u8, f64)> = Vec::new();
     for c in phonemes.chars() {
@@ -381,6 +389,14 @@ fn espeak_pcm(bytes: Vec<u8>) -> Result<(u32, Vec<f32>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mouth_timing_uses_voiced_windows_instead_of_isolated_peaks() {
+        let mut audio = vec![0.; 720];
+        audio[0] = 0.02;
+        audio[240..480].fill(0.02);
+        assert_eq!(timeline(&audio, 24000, "k"), vec![(0.01, 0.02, 3)]);
+    }
 
     #[test]
     fn streaming_wav_placeholder_length_uses_only_captured_pcm() {
