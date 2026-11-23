@@ -475,7 +475,7 @@ return function(settings)
                 if incoming then refresh_live(); return end
                 want_new_chat = false
                 for _, listener in ipairs(speech_listeners) do
-                    listener("start", mine.conversation, "", mine.voice, mine.voice_generation)
+                    listener("start", mine.conversation, "", mine.voice, mine.voice_generation, event.voice_request)
                 end
                 if conversation == nil and (not voice or fact.ai_open) then conversation = event.conversation end
                 refresh_live()

@@ -33,6 +33,10 @@ part AssistantState {
     text ai_show_request = ""
     text ai_alert_chat = ""
     text ai_alert_text = ""
+    text ai_voice_result_chat = ""
+    text ai_voice_result_request = ""
+    text ai_voice_result_completion = ""
+    text ai_voice_result_text = ""
     fact ai_can_signin = true
     text ai_offline_title = ""
     text ai_offline_body = ""

@@ -101,8 +101,8 @@ UNFINISHED_TAIL = {
 
 def emit(event, **fields):
     fields["event"] = event
-    if event in ("turn", "barge", "draft", "draft_cancel", "error", "paused"):
-        diagnostic(event, turn_id=fields.get("turn_id"))
+    if event in ("turn", "barge", "draft", "draft_cancel", "error", "paused", "wake", "conversation", "listening", "hearing"):
+        diagnostic(event, turn_id=fields.get("turn_id"), on=fields.get("on"), reason=str(fields.get("reason", ""))[:64])
     try:
         sys.stdout.write(json.dumps(fields, ensure_ascii=False) + "\n")
         sys.stdout.flush()
@@ -118,7 +118,7 @@ def diagnostic(stage, **fields):
     # Metadata only; never include prompt, answer, transcript or audio.
     if os.environ.get("TOHRU_VOICE_LOG", "info") == "off":
         return
-    log(json.dumps(dict(stage=stage, session=SESSION, mono_ns=time.monotonic_ns(), **fields), separators=(",", ":")))
+    log(json.dumps(dict(stage=stage, session=SESSION, mono_ns=time.monotonic_ns(), wall_ms=int(time.time() * 1000), **fields), separators=(",", ":")))
 
 
 class SpeechStream:
@@ -1309,7 +1309,7 @@ class Voice:
             self.spotter.drop()
 
     def conversation(self, on):
-        emit("conversation", on=on)
+        emit("conversation", on=on, turn_id=getattr(self, "turn_id", None))
         if self.load_on_conversation:
             engine = self.speaker.engine
             threading.Thread(target=engine.load if on else engine.unload, daemon=True).start()
@@ -1426,16 +1426,23 @@ class Voice:
         np = self.np
         probability = self.silero(window)
         rms = float(np.sqrt(np.mean(window * window)))
+        self.last_vad = (probability, rms)
         if self.speaker.speaking and not self.barge_pending:
+            if probability >= SPEECH_START:
+                self.suppression("playback", probability, rms)
             self.listen_for_barge(window, probability, rms)
             return
         if self.speaker.deaf() and not self.in_speech:
+            if probability >= SPEECH_START:
+                self.suppression("echo_cooldown", probability, rms)
             self.start_run = 0
             return
         if not self.in_speech:
             self.preroll.append(window)
             self.preroll = self.preroll[-max(1, round(PREROLL_MS / WINDOW_MS)):]
             above = probability >= SPEECH_START and (not self.thinking or rms > BARGE_FLOOR)
+            if not above and rms >= BARGE_FLOOR:
+                self.suppression("vad_below_start" if probability < SPEECH_START else "thinking_floor", probability, rms)
             self.start_run = self.start_run + 1 if above else 0
             if self.start_run >= SPEECH_START_WINDOWS:
                 self.begin(self.preroll)
@@ -1445,9 +1452,31 @@ class Voice:
             return
         self.hear(window, probability >= SPEECH_CONTINUE)
 
+    def suppression(self, reason, probability, rms):
+        now = time.monotonic()
+        seen = getattr(self, "suppression_seen", {})
+        last, count = seen.get(reason, (-10.0, 0))
+        count += 1
+        if now - last >= 5:
+            diagnostic("capture_suppressed", reason=reason, windows=count,
+                       vad_probability=round(float(probability), 3), rms=round(rms, 4))
+            last, count = now, 0
+        seen[reason] = (last, count)
+        self.suppression_seen = seen
+
+    def wake_decision(self, accepted, reason, candidate=""):
+        tokens = words(candidate)
+        # Only the bounded wake candidate, never the request or a full transcript.
+        leading = [re.sub("[^a-z]", "", token.lower())[:16] for token in tokens[:(2 if tokens and tokens[0] in WAKE_SPLIT_FIRST else 1)]]
+        diagnostic("wake_decision", turn_id=getattr(self, "turn_id", None), accepted=accepted,
+                   reason=reason, candidate=leading, speech_ms=round(getattr(self, "final_speech_ms", 0) if accepted else getattr(self, "speech_ms", 0)),
+                   mode="kws" if self.spotter is not None else "asr")
+
     def begin(self, preroll):
         self.turn_id = str(time.monotonic_ns())
-        diagnostic("utterance_start", turn_id=self.turn_id)
+        probability, rms = getattr(self, "last_vad", (None, None))
+        diagnostic("utterance_start", turn_id=self.turn_id, vad_probability=probability, rms=rms,
+                   conversation=self.in_conversation())
         self.in_speech = True
         self.quiet_ms = 0.0
         self.speech_ms = 0.0
@@ -1536,7 +1565,9 @@ class Voice:
             if not is_backchannel(partial):
                 self.cancel_thinking()
         if not self.rejected and not self.spotting and not self.in_conversation() and self.speech_ms >= 320:
-            if not wake_possible(partial) or (self.speech_ms >= WAKE_DECIDE_MS and wake_split(partial) is None):
+            prefix_rejected = not wake_possible(partial)
+            if prefix_rejected or (self.speech_ms >= WAKE_DECIDE_MS and wake_split(partial) is None):
+                self.wake_decision(False, "prefix_mismatch" if prefix_rejected else "decision_timeout", partial)
                 self.discard_draft()
                 self.rejected = True
                 self.recognizer.drop()
@@ -1589,6 +1620,7 @@ class Voice:
         if not heard and (self.speech_ms >= WAKE_DECIDE_MS or self.quiet_ms >= PAUSE_MS):
             heard = self.spotter.flush()
             if not heard:
+                self.wake_decision(False, "kws_no_match")
                 self.rejected = True
         if heard or self.rejected:
             self.spotting = False
@@ -1634,6 +1666,7 @@ class Voice:
     def end_turn(self):
         pending = self.barge_pending
         active_draft = self.draft_text
+        self.final_speech_ms = self.speech_ms
         diagnostic("asr_finalize_start", turn_id=getattr(self, "turn_id", None), last_speech_ns=getattr(self, "last_speech_ns", None))
         transcript = "" if self.rejected else self.recognizer.finish()
         if SEMANTIC and not pending and not self.rejected:
@@ -1651,7 +1684,7 @@ class Voice:
                 diagnostic('semantic_fallback', reason='final_unclassified', policy='ordinary')
                 self.discard_draft()
                 active_draft = ''
-        diagnostic("asr_finalize_end", turn_id=getattr(self, "turn_id", None))
+        diagnostic("asr_finalize_end", turn_id=getattr(self, "turn_id", None), result_chars=len(transcript), rejected=self.rejected)
         if pending:
             if is_backchannel(transcript):
                 self.resume_barge()
@@ -1662,6 +1695,7 @@ class Voice:
 
     def deliver(self, transcript, active_draft=""):
         if not transcript.strip():
+            if not self.in_conversation(): self.wake_decision(False, "empty_final")
             self.pending_continuation = ""
             if active_draft:
                 emit("draft_cancel")
@@ -1692,9 +1726,11 @@ class Voice:
             return
         request = wake_split(transcript)
         if request is None:
+            self.wake_decision(False, "final_name_mismatch", transcript)
             if active_draft:
                 emit("draft_cancel")
             return
+        self.wake_decision(True, "name_and_request" if request else "name_only", transcript)
         self.extend_conversation()
         self.conversation(True)
         if request:
@@ -1708,7 +1744,7 @@ class Voice:
         else:
             if active_draft:
                 emit("draft_cancel")
-            emit("wake")
+            emit("wake", turn_id=getattr(self, "turn_id", None))
 
     def listen_for_barge(self, window, probability, rms):
         playback = self.speaker.echo_level()
@@ -1737,7 +1773,16 @@ class Voice:
 
     def command(self, message):
         cmd = message.get("cmd")
-        if cmd == "semantic":
+        if cmd == "diagnostic":
+            stage = message.get("stage")
+            if stage in ("ui_visibility_request", "ui_state_observed", "assistant_request", "continuation_speech", "continuation_dropped"):
+                fields = {key: message[key] for key in ("visible", "ui_sequence", "flight_alpha", "generation")
+                          if key in message and isinstance(message[key], (bool, int, float))}
+                fields.update({key: str(message[key])[:512] for key in ("turn_id", "request", "completion") if message.get(key)})
+                if message.get("reason") in ("duplicate", "origin_mismatch", "hidden", "busy", "matched"):
+                    fields["reason"] = message["reason"]
+                diagnostic(stage, **fields)
+        elif cmd == "semantic":
             if SEMANTIC and self.in_speech and self.semantic_token and message.get("token") == self.semantic_token:
                 text = normalize_transcript(str(message.get("text", "")))
                 if text == self.draft_text:

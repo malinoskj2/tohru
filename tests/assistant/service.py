@@ -947,6 +947,7 @@ class OrcaBotBackend(unittest.TestCase):
         events = [json.loads(l) for l in res.stdout.splitlines()]
         self.assertEqual(events[0]["event"], "start")
         self.assertEqual(events[0]["conversation"], self.HOME_UUID)
+        self.assertEqual(events[0]["voice_request"], "")
         self.assertEqual("".join(e["text"] for e in events if e["event"] == "delta"), "Eight fluid ounces.")
         self.assertEqual(events[-1], {"event": "done", "conversation": self.HOME_UUID})
 
@@ -962,6 +963,7 @@ class OrcaBotBackend(unittest.TestCase):
         self.assertEqual(vres.returncode, 0, vres.stderr)
         vevents = [json.loads(l) for l in vres.stdout.splitlines()]
         new_cid = vevents[0]["conversation"]
+        self.assertTrue(vevents[0]["voice_request"])
         self.assertNotEqual(new_cid, self.HOME_UUID)
         self.assertEqual("".join(e["text"] for e in vevents if e["event"] == "delta"), "Clear skies.")
 

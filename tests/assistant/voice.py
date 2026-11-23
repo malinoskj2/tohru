@@ -8,6 +8,7 @@ import unittest
 import threading
 import time
 import json
+from unittest.mock import patch
 
 try:
     import numpy
@@ -143,6 +144,31 @@ def make_voice(recognizer, spotter=None):
 
 
 class VoiceTests(unittest.TestCase):
+    def test_wake_rejection_logs_bounded_candidate_and_reason_without_request(self):
+        voice = make_voice(FakeRecognizer(["TOTALLY PRIVATE REQUEST CONTENT"], ""))
+        with patch.object(voice_module, "diagnostic") as logged:
+            self.speak(voice, 20, 40)
+        decisions = [call.kwargs for call in logged.call_args_list if call.args[0] == "wake_decision"]
+        self.assertEqual(len(decisions), 1)
+        self.assertEqual(decisions[0]["reason"], "prefix_mismatch")
+        self.assertEqual(decisions[0]["candidate"], ["totally"])
+        self.assertNotIn("PRIVATE", repr(logged.call_args_list))
+
+    def test_suppression_logging_is_rate_limited_and_records_vad(self):
+        voice = make_voice(FakeRecognizer([""], ""))
+        with patch.object(voice_module.time, "monotonic", return_value=10), patch.object(voice_module, "diagnostic") as logged:
+            for _ in range(1000): voice.suppression("echo_cooldown", 0.8, 0.1)
+        logged.assert_called_once()
+        self.assertEqual(logged.call_args.kwargs["reason"], "echo_cooldown")
+        self.assertEqual(logged.call_args.kwargs["vad_probability"], 0.8)
+
+    def test_ui_diagnostic_command_filters_text_and_unknown_stages(self):
+        voice = make_voice(FakeRecognizer([""], ""))
+        with patch.object(voice_module, "diagnostic") as logged:
+            voice.command({"cmd": "diagnostic", "stage": "ui_state_observed", "visible": True, "text": "private", "turn_id": "capture"})
+            voice.command({"cmd": "diagnostic", "stage": "arbitrary", "text": "private"})
+        logged.assert_called_once_with("ui_state_observed", visible=True, turn_id="capture")
+
     def setUp(self):
         self.events = []
         self.transcripts = []

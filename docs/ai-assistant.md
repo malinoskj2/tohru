@@ -1,5 +1,7 @@
 # AI assistant: agreed design
 
+See [voice diagnostics and background results](voice-diagnostics.md) for log inspection and correlated spoken follow-ups.
+
 Status: implemented. Mockups (not in Git): `.tmp/ai-widget-ideas/` in this worktree, with `index.md` describing all ten directions and the services they need. Code: `bin/tohru-assistant` (chats, history, memory, export), `bin/tohru-voice` (voice), `shell/assistant/` (popup, bar entry, overlay, controllers) and [the assistant README](../shell/assistant/README.md).
 
 ## Chat popup: direction 01, Pocket

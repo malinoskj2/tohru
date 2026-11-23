@@ -1661,7 +1661,8 @@ def orca_chat(args, prompt, bot_name, voice_chat, offline):
         emit({"event": "error", "message": "Orca accepted the message, but the bot chat ID could not be resolved"})
         return 1
 
-    emit({"event": "start", "conversation": chat_id, "provider": f"orca:{actual_bot}", "slot": 0, "title": subject})
+    emit({"event": "start", "conversation": chat_id, "provider": f"orca:{actual_bot}", "slot": 0, "title": subject,
+          "voice_request": str((receipt or {}).get("promptItemId") or "") if args.voice else ""})
 
     stopped = False
 

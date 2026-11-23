@@ -1,5 +1,6 @@
 -- Runs tohru-voice only while assistant.voice is on: off means no process, no microphone and no models loaded.
 return function(assistant, puppet, flight, service_executable)
+    local voice_return = require("assistant/voice-return")()
     local id = nil
     local wanted = false
     local args = {}
@@ -18,6 +19,7 @@ return function(assistant, puppet, flight, service_executable)
     local GREETINGS = {"Yes?", "I'm here.", "Mm? What is it?", "You called?", "Here I am. What do you need?", "Hello again."}
     local greeted = 0
     local greeting_serial = 0
+    local send
 
     local function show_dragon(on)
         hide_serial = hide_serial + 1
@@ -27,6 +29,15 @@ return function(assistant, puppet, flight, service_executable)
             elseif not on then flight.hide() end
         end
         fact.ai_dragon_open = on
+        local mine = hide_serial
+        local requested_capture = capture_id
+        send({cmd = "diagnostic", stage = "ui_visibility_request", turn_id = requested_capture, visible = on, ui_sequence = mine})
+        after(16, function()
+            if mine == hide_serial then
+                send({cmd = "diagnostic", stage = "ui_state_observed", turn_id = requested_capture,
+                    visible = fact.ai_dragon_open, ui_sequence = mine, flight_alpha = fact.ai_flight_alpha or 1})
+            end
+        end)
         puppet.visible(on)
     end
 
@@ -39,11 +50,12 @@ return function(assistant, puppet, flight, service_executable)
         end)
     end
 
-    local function send(message)
+    send = function(message)
         if id then write(id, json.encode(message) .. "\n") end
     end
 
     local function quiet()
+        voice_return.interrupt()
         barged, cancelling, queued, interrupted_spoken = false, false, nil, nil
         turn_generation = turn_generation + 1
         streaming_speech = false
@@ -59,12 +71,14 @@ return function(assistant, puppet, flight, service_executable)
     end
 
     local function ask_turn(prompt, opts)
+        voice_return.interrupt()
         turn_generation = turn_generation + 1
         streaming_speech = false
         barged = false
         opts = opts or {}
         opts.voice_generation = turn_generation
         capture_id = opts.capture_id
+        send({cmd = "diagnostic", stage = "assistant_request", turn_id = capture_id, generation = turn_generation})
         puppet.thinking()
         if not assistant.ask(prompt, conversation, opts) then
             if assistant.streaming and assistant.streaming() then
@@ -97,6 +111,7 @@ return function(assistant, puppet, flight, service_executable)
         local ok, message = pcall(json.decode, raw)
         if not ok or type(message) ~= "table" then return end
         local event = message.event
+        if message.turn_id then capture_id = message.turn_id end
         if event == "ready" then
             failures = 0
             local art = tostring(message.dragon or "")
@@ -201,6 +216,7 @@ return function(assistant, puppet, flight, service_executable)
             fact.ai_mouth = tonumber(message.level) or 0
             puppet.mouth(fact.ai_mouth, tonumber(message.viseme))
         elseif event == "barge" then
+            voice_return.interrupt()
             turn_generation = turn_generation + 1
             streaming_speech = false
             send({cmd = "hush"})
@@ -255,9 +271,10 @@ return function(assistant, puppet, flight, service_executable)
         end, {stdin = "open", stderr = "inherit"})
     end
 
-    local function answer_event(kind, conv, answer, voice, turn)
+    local function answer_event(kind, conv, answer, voice, turn, request)
         if not id then return end
         if not voice then
+            if kind == "start" then voice_return.interrupt() end
             if queued then flush_queued() end
             return
         end
@@ -272,6 +289,7 @@ return function(assistant, puppet, flight, service_executable)
             return
         end
         if kind == "start" then
+            voice_return.begin(conv, request)
             streaming_speech = true
             streamed_text = false
             send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id})
@@ -311,8 +329,26 @@ return function(assistant, puppet, flight, service_executable)
         end)
     end
 
-    on("assistant_hush", function() turn_generation = turn_generation + 1; send({cmd = "hush"}) end)
+    on("assistant_voice_result", function()
+        local status = assistant.status and assistant.status() or {}
+        local visible = (fact.ai_dragon_open or status.open) and (not status.open or status.conversation == text.ai_voice_result_chat)
+        local allowed, reason = voice_return.take(text.ai_voice_result_chat, text.ai_voice_result_request,
+            text.ai_voice_result_completion, visible == true,
+            fact.ai_voice_paused or fact.notices_dnd or fact.ai_speaking or fact.ai_listening
+                or (assistant.streaming and assistant.streaming()))
+        send({cmd = "diagnostic", stage = allowed and "continuation_speech" or "continuation_dropped",
+            request = text.ai_voice_result_request, completion = text.ai_voice_result_completion, visible = visible == true, reason = reason})
+        if not allowed then return end
+        local result = text.ai_voice_result_text or ""
+        if result == "" then return end
+        turn_generation = turn_generation + 1
+        streaming_speech, streamed_text = false, false
+        send({cmd = "speech_start", generation = turn_generation, conversation = text.ai_voice_result_chat})
+        send({cmd = "speech_end", generation = turn_generation, text = result})
+    end)
+    on("assistant_hush", function() voice_return.interrupt(); turn_generation = turn_generation + 1; send({cmd = "hush"}) end)
     on("assistant_dragon", function()
+        voice_return.interrupt()
         if not fact.ai_dragon_open then return end
         show_dragon(false)
         if spoken then assistant.show(spoken) end

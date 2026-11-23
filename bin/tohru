@@ -304,6 +304,25 @@ case ${1:-help} in
                 [[ $# -le 3 ]] && conv_id_ok "$id" || fail 'Usage: tohru assistant show [ID]   (ID defaults to $TOHRU_CONVERSATION)'
                 exec "$pleamar" --say tohru "text ai_show_request $id" 'emit assistant_open' 'emit assistant_show_request'
                 ;;
+            voice-result)
+                shift 2
+                chat_id= request_id= completion_id=
+                while [[ $# -gt 0 ]]; do
+                    case $1 in
+                        --chat|--request|--completion)
+                            [[ $# -ge 2 ]] || fail 'Missing voice-result argument'
+                            case $1 in --chat) chat_id=$2 ;; --request) request_id=$2 ;; --completion) completion_id=$2 ;; esac
+                            shift 2 ;;
+                        --) shift; break ;;
+                        *) fail 'Invalid voice-result option' ;;
+                    esac
+                done
+                conv_id_ok "$chat_id" || fail 'Invalid conversation ID'
+                [[ $request_id =~ ^[A-Za-z0-9_:%.-]{1,512}$ && $completion_id =~ ^[A-Za-z0-9_:%.-]{1,512}$ ]] || fail 'Invalid voice-result identity'
+                [[ $# == 1 && -n $1 && ${#1} -le 16384 && $1 != *[[:cntrl:]]* ]] || fail 'Invalid voice-result text'
+                exec "$pleamar" --say tohru "text ai_voice_result_chat $chat_id" "text ai_voice_result_request $request_id" \
+                    "text ai_voice_result_completion $completion_id" "text ai_voice_result_text $1" 'emit assistant_voice_result'
+                ;;
             alert)
                 shift 2
                 chat_id=

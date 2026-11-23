@@ -1,3 +1,4 @@
+package.path = "shell/?.luau;" .. package.path
 local encoded = {__concat = function(a) return a end}
 local json = {encode = function(value) return setmetatable({value = value}, encoded) end, decode = function(value) return value end}
 _G.json = json
@@ -5,12 +6,18 @@ local events, spawned, killed, written, timers = {}, {}, {}, {}, {}
 _G.fact = {}
 _G.text = {}
 _G.on = function(name, handler) events[name] = handler end
-_G.after = function(seconds, f) timers[#timers + 1] = f end
+_G.after = function(seconds, f)
+    if seconds == 16 then f() else timers[#timers + 1] = f end
+end
 local ticking = {}
 _G.every = function(ms, f) ticking[#ticking + 1] = f; return #ticking end
 _G.cancel = function(t) ticking[t] = nil end
 _G.kill = function(id, how) killed[#killed + 1] = {id, how} end
-_G.write = function(id, line) written[#written + 1] = {id = id, message = line.value} end
+local diagnostics = {}
+_G.write = function(id, line)
+    if line.value.cmd == "diagnostic" then diagnostics[#diagnostics + 1] = line.value
+    else written[#written + 1] = {id = id, message = line.value} end
+end
 _G.spawn = function(command, args, line, exit, how)
     spawned[#spawned + 1] = {command = command, args = args, line = line, exit = exit, how = how}
     return #spawned
@@ -310,6 +317,46 @@ alert_listeners[1]("orca-chat","Wait for the current answer",true)
 assert(#written==final_count)
 assistant.streaming=real_stream
 print("Cross-feature final-only replies, alert generations and busy suppression passed")
+
+-- An analyzed continuation uses the current visible voice origin, without opening a popup.
+refusing = false
+fact.ai_voice_paused, fact.notices_dnd, fact.ai_speaking, fact.ai_listening = false, false, false, false
+current_service.line({event="turn", text="Inspect in the background"})
+local background_generation = asked[#asked][3].voice_generation
+speech_listener("start", "voice-origin-chat", "", true, background_generation, "orca:spoken-request")
+listeners[1]("done", "voice-origin-chat", "I will inspect it.", true, background_generation)
+fact.ai_dragon_open = true
+local popup_shown = shown
+local function background_result(id, visible, chat, request)
+    fact.ai_dragon_open = visible
+    text.ai_voice_result_chat = chat or "voice-origin-chat"
+    text.ai_voice_result_request = request or "orca:spoken-request"
+    text.ai_voice_result_completion = id
+    text.ai_voice_result_text = "The analyzed result."
+    events.assistant_voice_result()
+end
+local before_result = #written
+background_result("final-summary", true)
+assert(#written == before_result + 2 and written[#written].message.cmd == "speech_end")
+background_result("final-summary", true)
+assert(#written == before_result + 2)
+background_result("hidden-summary", false)
+background_result("hidden-summary", true)
+background_result("foreign-summary", true, "other-chat")
+assert(#written == before_result + 2 and shown == popup_shown)
+assistant.status = function() return {open=true, conversation="another-popup-chat"} end
+background_result("other-popup-summary", true)
+assert(#written == before_result + 2)
+assistant.status = nil
+events.assistant_hush()
+before_result = #written
+background_result("interrupted-summary", true)
+assert(#written == before_result)
+speech_listener("start", "voice-origin-chat", "", true, nil, "orca:new-request")
+speech_listener("start", "typed-chat", "", false)
+background_result("typed-superseded", true, nil, "orca:new-request")
+assert(#written == before_result + 1) -- only the preceding voice stream start
+print("Visible, hidden, duplicate, cross-chat and interrupted background delivery passed")
 
 -- Switching backends invalidates old audio and never reuses a local conversation ID.
 local before_switch = #spawned

@@ -37,6 +37,17 @@ class Cli(unittest.TestCase):
             self.assertEqual(result.returncode,2)
             self.assertEqual(result.stdout,'')
 
+    def test_voice_results_only_emit_correlated_desktop_event(self):
+        chat = "12345678-1234-4234-8234-123456789abc"
+        result = self.invoke("assistant", "voice-result", "--chat", chat, "--request", "orca:request", "--completion", "turn:final", "--", "Analyzed answer.")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), ["--say", "tohru", "text ai_voice_result_chat " + chat,
+            "text ai_voice_result_request orca:request", "text ai_voice_result_completion turn:final",
+            "text ai_voice_result_text Analyzed answer.", "emit assistant_voice_result"])
+        bad = self.invoke("assistant", "voice-result", "--chat", chat, "--request", "bad\nidentity", "--completion", "final", "--", "Answer")
+        self.assertEqual(bad.returncode, 2)
+        self.assertEqual(bad.stdout, "")
+
     def test_portable_config_keys_route_to_native_schema(self):
         for key,value in [('appearance.font_text','Noto Sans'),('appearance.font_mono','DejaVu Sans Mono'),('wallpaper.enabled','true'),('idle.lock_seconds','600'),('assistant.voice_python','/opt/voice/bin/python'),('assistant.contextual_entrances','true'),('assistant.contextual_entrances','false'),('assistant.entrance_variant','auto'),('assistant.entrance_seed','12345')]:
             result=self.invoke('config','set',key,value)
