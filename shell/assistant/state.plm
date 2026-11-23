@@ -93,6 +93,7 @@ part AssistantState {
     event assistant_dragon ->
     event assistant_show_request ->
     event assistant_alert ->
+    event assistant_voice_result ->
 
     image ai_history_icon = file "history.svg", 14, 14
     image ai_plus_icon = file "plus.svg", 14, 14
