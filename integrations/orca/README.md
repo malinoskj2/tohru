@@ -91,3 +91,20 @@ The new optional `worker-start --background` returns a persisted `accepted` rece
 With `--ids`, native history now carries typed owner/internal/answer authority and the original queued request alias. Only the final assistant entry of an explicitly successful turn carries its completion identity, so an unrelated later mail turn cannot hide that completed answer. The helper registers desktop speech only after this real admission is observed. Home is the default public route; historical experimental foreground chats remain intact for reference.
 
 The follow-up `desktop-voice-background-protocol.patch` makes the native bot instructions explicitly choose nonblocking admission and uses the pinned Node executable for IPC recorders inside a Nix build sandbox. Apply it after the owner correction with `apply-owner-admission.py --stage background --source .tmp/current-orca-source`, then rerun the same verifier. A failed full Nix build exposed the original recorder’s unavailable `/usr/bin/env` shebang; no delivery success is inferred from that failed test.
+
+## Independently supervised host reload
+
+`restart-supervisor.py` separates the installed CLI launcher from the GUI executable and queues a controller plus a separate GUI systemd user unit. It never stops the persistent PTY daemon. It verifies the prepared PID/runtime/process birth, preserves the desktop/profile, supplies an explicit essential-tool PATH, and records shutdown, launch exit, ownership and readiness separately. A ready process from manual recovery does not count as an automatic launch. A failed launch gets at most one retry; an active launch with uncertain readiness is retained for inspection.
+
+Prepare and rehearse without stopping the running app:
+
+```sh
+python3 integrations/orca/restart-supervisor.py prepare \
+  --cli /etc/profiles/per-user/jesse/bin/orca-ide --output .tmp/orca-reload-plan
+python3 integrations/orca/restart-supervisor.py rehearse --plan .tmp/orca-reload-plan/plan.json
+python3 integrations/orca/test-restart-supervisor.py
+```
+
+The read-only rehearsal reproduces the historical missing-`dirname` failure under an insufficient PATH, then checks the installed CLI with the corrected environment and confirms the current app is unchanged. It does not claim a live GUI relaunch. GUI processes may scrub their environment, so preparation uses the user manager’s desktop environment and uid identity when original variables are absent, preserving explicit process values and profile arguments.
+
+`queue --plan ...` prints the independent systemd command. Only an explicitly coordinated `queue --plan ... --execute` submits it, and the controller rechecks the exact rehearsed plan before any signal. Keep the prepared private directory and its logs through recovery. Do not queue another reload to diagnose an already failed one.
