@@ -1,0 +1,36 @@
+--- a/src/main/bots/bot-preamble.ts
++++ b/src/main/bots/bot-preamble.ts
+@@ -16,7 +16,7 @@
+ // Which command does which job, ahead of SOUL.md and MEMORY.md so a remembered listing never outranks it.
+ // Workflow only: the soul owns style.
+ const BOT_TOOLS = [
+-  `- A task requested by a message starting [tohru-desktop:voice]: promptly publish intent with \`${BOT_ORCA_CLI} bot voice-task --task <stable-id> --sequence 1 --kind ack --text "<short intent>" --json\` before doing slow work. Save its returned request ID. Publish confirmed milestones with the same task ID, increasing --sequence, --request <saved-id>, --kind progress and short --text. Use done only after verifying success, failed for a confirmed failure, or cancelled to retire speech. Never forward tool commentary or raw worker mail. Start long work asynchronously and remain available for owner input; analyze worker results before publishing a completion. Keep the final analyzed answer in shared history. The desktop controls whether updates speak; pending or dispatched is not proof the owner heard them.`,
++  `- A message starting [tohru-desktop:voice] is an owner turn in the same public Home conversation as desktop text and the GUI. Keep this conversation responsive: submit long local work with \`${BOT_ORCA_CLI} orchestration worker-start --background ... --json\`, then finish the short turn instead of waiting or polling. Its durable accepted Task/Dispatch receipt means recorded, not starting, ready or completed; inspect \`${BOT_ORCA_CLI} orchestration worker-show --dispatch <id> --json\` for current truth. Existing worker-start without --background waits for readiness and can occupy this actor. Background launch produces its own bounded acceptance/readiness/failure speech and analyzed completion, so do not duplicate its ack or final. For other deliberate useful spoken updates use \`${BOT_ORCA_CLI} bot voice-task\` with a stable task ID, actual returned request ID and increasing sequence. Verify results before done; never forward raw commentary, tool text or worker mail. Pending/dispatched is not proof of hearing. Owner input and visibility control audio, not the lifetime of accepted work. Query the bot's shared item/dispatch/worktree/approval records for status; never tell the owner to ask a different internal chat or infer permission from copied excerpts.`,
+   'Which command for which job. What a command prints now is current; an earlier listing, MEMORY.md or what you remember can be out of date, so run it again rather than going by them.',
+   `- GitHub, as your owner: read with \`gh issue view\`, \`gh pr view\`, \`gh pr checks\`, \`gh pr diff\`; write with \`gh issue comment\`, \`gh pr comment\`, \`gh issue edit --add-label --add-assignee\`, \`gh pr review --comment --body\`.`,
+   `- Linear, as your owner: \`${BOT_ORCA_CLI} linear issue <ID>\`, \`${BOT_ORCA_CLI} linear search\`, \`${BOT_ORCA_CLI} linear list-issues --assignee me\`; \`${BOT_ORCA_CLI} linear comment add\`, \`${BOT_ORCA_CLI} linear status set\`, \`${BOT_ORCA_CLI} linear assignee set\`, \`${BOT_ORCA_CLI} linear label add\`, \`${BOT_ORCA_CLI} linear create\`.`,
+--- a/src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-worker-start.test.ts
++++ b/src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-worker-start.test.ts
+@@ -103,9 +103,11 @@
+     const output = join(root, 'desktop-ipc.jsonl')
+     await writeFile(
+       command,
+-      '#!/usr/bin/env python3\nimport json,sys\nwith open(' +
++      '#!' +
++        process.execPath +
++        '\nrequire("node:fs").appendFileSync(' +
+         JSON.stringify(output) +
+-        ', "a") as f: f.write(json.dumps(sys.argv[1:])+"\\n")\n'
++        ', JSON.stringify(process.argv.slice(2))+"\\n")\n'
+     )
+     await chmod(command, 0o700)
+     const previous = process.env.ORCA_DESKTOP_ASSISTANT_COMMAND
+@@ -165,7 +167,7 @@
+     const worker = await openChat(PEER_CHAT)
+     const { taskId } = await coordinatorRunAndTask()
+     const command = join(root, 'slow-desktop-assistant')
+-    await writeFile(command, '#!/usr/bin/env python3\nimport time\ntime.sleep(1.5)\n')
++    await writeFile(command, '#!' + process.execPath + '\nsetTimeout(() => {}, 1500)\n')
+     await chmod(command, 0o700)
+     const previous = process.env.ORCA_DESKTOP_ASSISTANT_COMMAND
+     process.env.ORCA_DESKTOP_ASSISTANT_COMMAND = command

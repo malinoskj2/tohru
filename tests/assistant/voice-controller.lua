@@ -381,7 +381,13 @@ assistant.voice_ready = function(chat, request)
     assert(written[#written].message.cmd == "speech_start")
     registered[#registered+1] = {chat, request}
 end
-assistant.detach_voice = function(request) detached[#detached+1] = request; return true end
+local retired_pollers = {}
+assistant.detach_voice = function(request)
+    if retired_pollers[request] then return false end
+    retired_pollers[request] = true
+    detached[#detached+1] = request
+    return true
+end
 fact.ai_voice_paused, fact.notices_dnd, fact.ai_speaking, fact.ai_listening = false, false, false, true
 fact.ai_dragon_open = true
 current_service.line({event="turn", text="Create an independent workspace"})
@@ -433,6 +439,64 @@ current_service.line({event="hearing", on=true})
 task_update("progress", 3, "Owner has the floor", "next-task-request")
 assert(diagnostics[#diagnostics].stage == "task_update_dropped" and diagnostics[#diagnostics].reason == "hearing")
 current_service.line({event="hearing", on=false})
+-- Durable task acceptance must release foreground continuation even when speech
+-- is ineligible. This is a work-state transition, not permission to play audio.
+speech_listener("start", "task-chat", "", true, nil, "hidden-accepted-request")
+local pending_poll_request = "hidden-accepted-request"
+assistant.detach_voice = function(request)
+    if request ~= pending_poll_request then return false end
+    pending_poll_request = nil
+    return true
+end
+fact.ai_dragon_open = false
+local hidden_accept_before = #written
+task_update("ack", 1, "Accepted but hidden", "hidden-accepted-request")
+assert(written[hidden_accept_before + 1] and written[hidden_accept_before + 1].message.cmd == "task_accepted", "hidden admission must release foreground thinking before the speech gate")
+assert(written[#written].message.cmd == "hush")
+assert(diagnostics[#diagnostics].reason == "hidden")
+fact.ai_dragon_open = true
+speech_listener("start", "task-chat", "", true, nil, "hearing-accepted-request")
+pending_poll_request = "hearing-accepted-request"
+current_service.line({event="hearing", on=true})
+local hearing_accept_before = #written
+task_update("ack", 1, "Accepted while owner speaks", "hearing-accepted-request")
+assert(written[hearing_accept_before + 1].message.cmd == "task_accepted")
+assert(#written == hearing_accept_before + 2 and written[#written].message.cmd == "hush")
+assert(diagnostics[#diagnostics].reason == "hearing")
+current_service.line({event="hearing", on=false})
+speech_listener("start", "task-chat", "", true, nil, "new-question-request")
+pending_poll_request = "new-question-request"
+local stale_ack_before = #written
+task_update("ack", 1, "Stale accepted event", "hearing-accepted-request")
+assert(#written == stale_ack_before and pending_poll_request == "new-question-request", "late admission must not retire a new owner poller")
+-- A completed follow-up can queue before the acceptance event arrives. Retire
+-- old authority first, drain once, and do not play the old ack over the new turn.
+for _, visible in ipairs({false, true}) do
+    local request = visible and "visible-queued-request" or "hidden-queued-request"
+    local poller_busy = true
+    assistant.streaming = function() return poller_busy end
+    assistant.detach_voice = function(candidate)
+        if candidate ~= request or not poller_busy then return false end
+        poller_busy = false
+        return true
+    end
+    speech_listener("start", "task-chat", "", true, nil, request)
+    fact.ai_dragon_open = visible
+    local queued_before, release_before = #asked, #written
+    current_service.line({event="turn", text="Follow up before acknowledgement", turn_id="capture-queued"})
+    assert(#asked == queued_before)
+    task_update("ack", 1, "An obsolete acknowledgement", request)
+    assert(#asked == queued_before + 1 and asked[#asked][1] == "Follow up before acknowledgement")
+    assert(asked[#asked][3].capture_id == "capture-queued")
+    assert(written[release_before + 1].message.cmd == "task_accepted")
+    assert(written[release_before + 2].message.cmd == "hush")
+    assert(#written == release_before + 2 and diagnostics[#diagnostics].stage == "assistant_request")
+    local submitted = #asked
+    task_update("ack", 1, "Replayed obsolete acknowledgement", request)
+    assert(#asked == submitted and #written == release_before + 2)
+end
+assistant.streaming = real_stream
+fact.ai_dragon_open = true
 print("Task updates: prompt acknowledgement, microphone open, progress, completion priority, replay, follow-up input and hide passed")
 
 -- Switching backends invalidates old audio and never reuses a local conversation ID.

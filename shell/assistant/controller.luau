@@ -1088,7 +1088,7 @@ return function(settings)
             run(helper, {"voice-ready", "--conversation", chat, "--request", request})
         end,
         detach_voice = function(request)
-            if not is_orca() or not live or not live.voice or live.voice_request ~= request then return false end
+            if not is_orca() or not live or not live.voice or live.discard or live.voice_request ~= request then return false end
             local poller = live
             live = nil
             refresh_live()

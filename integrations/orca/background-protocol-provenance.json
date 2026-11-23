@@ -1,0 +1,9 @@
+{
+  "orcaVersion": "1.4.268",
+  "patchSha256": "7d818a5fac614c929522a965f934aa6956a54dab8561efd66466cb5838498b11",
+  "baseFiles": {
+    "src/main/bots/bot-preamble.ts": "34f93c8bc25cd959fe0a79a54e02d0883bc1eed515f5bd594a03d085d3246802",
+    "src/main/runtime/orchestration/terminal-authority/structured-sessions/structured-chat-worker-start.test.ts": "72ba73d722ab1dbbc23510a3a634829738a9da09dcf02d2e010f3285da76e935"
+  },
+  "requires": "desktop-voice-owner-admission.patch"
+}

@@ -4,6 +4,16 @@ impl Voice {
     pub fn command(&mut self, message: Value) -> Result<()> {
         let text = message["text"].as_str().unwrap_or("");
         match message["cmd"].as_str().unwrap_or("") {
+            "task_accepted" => {
+                self.thinking = false;
+                self.last_turn.clear();
+                self.pending.clear();
+                self.cancelled = false;
+                diagnostic(
+                    "foreground_released",
+                    json!({"generation":message["generation"],"turn_id":message["turn_id"],"request":message["request"].as_str().unwrap_or("").chars().take(512).collect::<String>()}),
+                );
+            }
             "speech_start" if !self.paused => {
                 self.generation = message["generation"].clone();
                 self.speech_job = Some(self.speaker.start(
@@ -193,6 +203,18 @@ mod tests {
         assert_eq!(voice.last_turn, "Are you still there");
         assert!(!voice.cancelled);
         assert!(voice.pending.is_empty());
+        voice.thinking = true;
+        voice.pending = "admitted work continuation".into();
+        voice.begin();
+        voice.audio.extend_from_slice(&[0.1, 0.2]);
+        let capture = voice.turn_id.clone();
+        voice
+            .command(json!({"cmd":"task_accepted","request":"orca:hidden","generation":2}))
+            .unwrap();
+        assert!(!voice.thinking && voice.pending.is_empty() && voice.last_turn.is_empty());
+        assert!(voice.in_speech);
+        assert_eq!(voice.audio, vec![0.1, 0.2]);
+        assert_eq!(voice.turn_id, capture);
         voice.pending = "genuine continuation".into();
         voice
             .command(json!({"cmd":"speech_start","generation":3}))

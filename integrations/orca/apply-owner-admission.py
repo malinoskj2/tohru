@@ -15,12 +15,14 @@ def digest(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', required=True, type=Path)
+    parser.add_argument('--stage', choices=('owner', 'background'), default='owner')
     args = parser.parse_args()
     source = args.source.resolve()
     if not source.is_relative_to(ROOT / '.tmp'):
         parser.error('--source must be an isolated test tree under this worktree .tmp')
-    provenance = json.loads((HERE / 'owner-admission-provenance.json').read_text())
-    patch = HERE / 'desktop-voice-owner-admission.patch'
+    manifest, name = ('owner-admission-provenance.json', 'desktop-voice-owner-admission.patch') if args.stage == 'owner' else ('background-protocol-provenance.json', 'desktop-voice-background-protocol.patch')
+    provenance = json.loads((HERE / manifest).read_text())
+    patch = HERE / name
     if digest(patch) != provenance['patchSha256']:
         parser.error('Patch differs from its reviewed provenance')
     for name, expected in provenance['baseFiles'].items():

@@ -488,6 +488,7 @@ assert(runs[#runs].args[1] == "voice-ready" and has(runs[#runs].args, "--convers
     and has(runs[#runs].args, "--request", "task-request"))
 assert(not assistant.detach_voice("other-request") and assistant.streaming())
 assert(assistant.detach_voice("task-request") and not assistant.streaming())
+assert(not assistant.detach_voice("task-request"), "a detached poller cannot be retired twice")
 assert(killed[#killed][2] == "int")
 assert(assistant.ask("A follow-up question", uuid, {voice_generation=18}))
 task_poller.line({event="delta", text="Late original answer"})
@@ -592,5 +593,14 @@ values["assistant.discord.receive"] = false
 assistant.configure_discord()
 dm_poll.line({event = "incoming", id = "103"})
 assert(#spawned == before_revoke, "late polls cannot dispatch after revocation")
+
+assert(assistant.ask("A cancellation owned turn", uuid, {voice_generation=99}))
+local cancelled_poller = spawned[#spawned]
+cancelled_poller.line({event="start", conversation=uuid, voice_request="cancel-owned-request"})
+local cancellation_finished = false
+assistant.cancel(function() cancellation_finished = true end)
+assert(not assistant.detach_voice("cancel-owned-request"), "admission must not fence a pending cancellation callback")
+cancelled_poller.line({event="stopped", conversation=uuid})
+assert(cancellation_finished and not assistant.streaming())
 
 print("Assistant provider choice, models, streaming, Stop, ready mark, sign-in, history, voice turn, drafts, memory hand-off, alerts and Orca backend fixtures passed")

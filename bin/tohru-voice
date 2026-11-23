@@ -1804,6 +1804,15 @@ class Voice:
                     if decision == 'unsupported' and not getattr(self, 'semantic_warned', False):
                         self.semantic_warned = True
                         emit('error', message='Semantic turn detection is unavailable on this backend; using ordinary turn detection.')
+        elif cmd == "task_accepted":
+            # Work admission releases foreground continuation without resetting
+            # an utterance or requiring permission to synthesize/play speech.
+            self.thinking = False
+            self.last_turn_text = ""
+            self.pending_continuation = ""
+            self.cancelled_thinking = False
+            diagnostic("foreground_released", request=str(message.get("request") or "")[:512],
+                       generation=message.get("generation"), turn_id=message.get("turn_id"))
         elif cmd == "speech_start":
             if self.paused_reason:
                 return

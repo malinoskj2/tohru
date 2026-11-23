@@ -27,6 +27,10 @@ avoid the upstream crate's automatic native-library download. Set
 The tested Nix runtime is ONNX Runtime 1.27.1. A library from a newer glibc
 environment cannot be loaded into an older manually compiled executable.
 
+## Task admission and capture
+
+The desktop sends `task_accepted` only after detaching the matching current voice poller. This clears foreground thinking and old cumulative continuation without resetting the active utterance or starting audio. Visibility and owner speech still gate later playback. A queued completed follow-up is drained after retiring the old request; late acknowledgement and cancellation callbacks cannot take over the new request. `speech_start` with `background=true` retains the same foreground release behavior when actual task speech starts.
+
 ## Verify without microphone access
 
 Use the same configured model paths as the Python helper. Nothing downloads

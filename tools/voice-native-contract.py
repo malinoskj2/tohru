@@ -125,6 +125,7 @@ def exercise(argv, directory, environment, check_extended=False):
             helper.send(cmd="diagnostic",stage="task_update",task="task:fixture",sequence=7,kind="progress",request="r"*700,canonical_request="orca:canonical",reason="matched")
             helper.send(cmd="diagnostic",stage="task_update_dropped",task="PRIVATE secret",sequence=2147483647,kind="PRIVATE",reason="PRIVATE",text="PRIVATE")
             helper.send(cmd="diagnostic",stage="waiting_config",enabled=False)
+            helper.send(cmd="task_accepted",request="orca:hidden-accepted",generation=9)
         helper.send(cmd="speech_start", generation=9, conversation="isolated",**(dict(background=True,request="orca:canonical") if check_extended else {}))
         helper.send(cmd="speech_delta", generation=8, text="THIS STALE TEXT MUST NOT PLAY. ")
         first = time.monotonic()
@@ -179,6 +180,8 @@ def exercise(argv, directory, environment, check_extended=False):
             assert len(by_stage["task_update"]["request"])==512
             assert "task" not in by_stage["task_update_dropped"] and "sequence" not in by_stage["task_update_dropped"]
             assert by_stage["waiting_config"]["enabled"] is False
+            assert by_stage["foreground_released"]["request"]=="orca:hidden-accepted"
+            assert by_stage["foreground_released"]["generation"]==9
             assert "PRIVATE" not in json.dumps(diagnostics)
         return dict(startup_ready_ms=helper.startup_ms, first_sentence_ms=first_sentence_ms,process_to_first_sentence_ms=process_to_first_sentence_ms,
                     cancel_event_ms=cancel_event_ms, complete_bytes=len(complete), memory=memory,

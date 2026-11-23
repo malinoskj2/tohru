@@ -44,7 +44,7 @@ After the voice controller registers a request, it invokes the separate `tohru-a
 | `failed` | A confirmed failure, with a useful next step when available. |
 | `cancelled` | Retires pending speech for this task. The endpoint does not cancel the underlying task. |
 
-The first accepted acknowledgement detaches the matching desktop poller. It does not send a cancellation to the Orca bot. Task completion then uses this task-update channel exclusively. The producer must suppress a second spoken final result for that request. The final analyzed answer still belongs in shared Orca history.
+The first accepted acknowledgement detaches the matching desktop poller and releases foreground continuation even when speech is hidden or the owner is speaking. This state transition preserves an active capture. If a completed follow-up is already queued, it is submitted once after the old request is retired, and the old acknowledgement does not speak over it. An in-progress cancellation retains its own completion callback. It does not send a cancellation to the Orca bot. Task completion then uses this task-update channel exclusively. The producer must suppress a second spoken final result for that request. The final analyzed answer still belongs in shared Orca history.
 
 ## Speech ordering and lifetime
 

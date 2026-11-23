@@ -406,6 +406,21 @@ return function(assistant, puppet, flight, service_executable)
         local event = {chat = text.ai_voice_task_chat, request = text.ai_voice_task_request,
             task = text.ai_voice_task_id, sequence = tonumber(text.ai_voice_task_sequence),
             kind = text.ai_voice_task_kind, text = text.ai_voice_task_text}
+        -- Admission retires the matching direct reply even when the owner has
+        -- the floor or the desktop is hidden. Audio eligibility is a later gate.
+        if event.kind == "ack" and assistant.detach_voice and assistant.detach_voice(event.request) then
+            send({cmd = "task_accepted", request = event.request, generation = turn_generation, turn_id = capture_id})
+            send({cmd = "hush"})
+            voice_return.interrupt()
+            streaming_speech, streamed_text = false, false
+            if queued then
+                send({cmd = "diagnostic", stage = "task_update_dropped", task = event.task,
+                    sequence = event.sequence, kind = event.kind, reason = "busy", request = event.request,
+                    generation = turn_generation, turn_id = capture_id})
+                flush_queued()
+                return
+            end
+        end
         local accepted, reason
         if not task_visible(event.chat) then
             task_speech.interrupt()
@@ -423,7 +438,6 @@ return function(assistant, puppet, flight, service_executable)
         if event.kind == "ack" then
             -- The bot owns the asynchronous task; retire only the desktop poller.
             -- Its final answer remains in shared history, not a second speech path.
-            if assistant.detach_voice and assistant.detach_voice(event.request) then send({cmd = "hush"}) end
             voice_return.interrupt()
             streaming_speech, streamed_text = false, false
         end

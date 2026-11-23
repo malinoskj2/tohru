@@ -214,6 +214,29 @@ class VoiceTests(unittest.TestCase):
         voice.command({"cmd": "speech_start", "generation": 3})
         self.assertTrue(voice.thinking)
 
+    def test_hidden_task_admission_releases_thinking_without_resetting_active_capture(self):
+        voice = make_voice(FakeRecognizer(["CREATE A WORKTREE"], "CREATE A WORKTREE"))
+        voice.extend_conversation()
+        self.speak(voice, 10, 25)
+        self.assertTrue(voice.thinking)
+        voice.pending_continuation = "Create a worktree"
+        voice.recognizer = FakeRecognizer(["ARE YOU STILL THERE"], "ARE YOU STILL THERE")
+        voice.begin([])
+        capture, utterance = voice.turn_id, voice.utterance
+        voice.command(json.loads('{"cmd":"task_accepted","request":"orca:hidden","generation":2}'))
+        self.assertFalse(voice.thinking)
+        self.assertEqual(voice.last_turn_text, "")
+        self.assertEqual(voice.pending_continuation, "")
+        self.assertTrue(voice.in_speech)
+        self.assertEqual(voice.turn_id, capture)
+        self.assertIs(voice.utterance, utterance)
+        self.events.clear()
+        for _ in range(10): voice.hear(b"", True)
+        for _ in range(25):
+            if not voice.in_speech: break
+            voice.hear(b"", False)
+        self.assertEqual(self.events[-1], {"event":"turn", "text":"Are you still there"})
+
     def setUp(self):
         self.events = []
         self.transcripts = []
