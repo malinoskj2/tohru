@@ -61,5 +61,12 @@
     "implemented": false,
     "status": "unverified: executable runner not implemented",
     "prerequisites": "Authentic typed retirement before routing restoration, independent expiry, owned routing ledger and hashes, external-edit conflict checks, completed fresh post-restoration observation"
+  },
+  "session-units": {
+    "tier": "C",
+    "feature": "verification/features/install-recovery.md",
+    "implemented": true,
+    "status": "supported isolated shipped CLI file-generation journey; not package or desktop proof",
+    "prerequisites": "Executable shipped bin/tohru, Python 3.11+, bash, dirname, readlink and shipped session specification; private output/XDG state; no display, caller, service manager or model"
   }
 }

@@ -1,8 +1,10 @@
 """Exercise actual failure boundaries; fixtures here are not native admission proof."""
 import json
+import fcntl
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -10,10 +12,12 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
+(ROOT / '.tmp').mkdir(exist_ok=True)
 sys.path.insert(0, str(ROOT / 'tools/verify'))
 from evidence import REQUIRED, atomic, jsonl, publish, read, validate
 from process import execute
 import verify
+import session_units
 
 
 class ProcessTests(unittest.TestCase):
@@ -50,7 +54,11 @@ class ProcessTests(unittest.TestCase):
         descendant = int((self.root / 'child.log').read_text())
         status = Path(f'/proc/{descendant}/stat')
         for _ in range(100):
-            if not status.exists() or status.read_text().split(') ')[1].startswith('Z'):
+            try:
+                exited = status.read_text().split(') ')[1].startswith('Z')
+            except (FileNotFoundError, ProcessLookupError):
+                exited = True
+            if exited:
                 break
             time.sleep(.01)
         else:
@@ -159,7 +167,7 @@ class ContractTests(unittest.TestCase):
 
     def test_feature_and_source_references_exist(self):
         scenarios = read(ROOT / 'tools/verify/scenarios.json')
-        self.assertEqual(len(scenarios), 9)
+        self.assertEqual(len(scenarios), 10)
         for scenario, specification in scenarios.items():
             path = ROOT / specification['feature']
             self.assertTrue(path.is_file())
@@ -169,7 +177,7 @@ class ContractTests(unittest.TestCase):
             self.assertIn(scenario, content)
             for reference in re.findall(r'\b(?:tools|tests|integrations|bin)/[\w/.-]+\.(?:py|sh|md|mjs|json)', content):
                 self.assertTrue((ROOT / reference).is_file(), reference)
-        self.assertEqual([k for k, v in scenarios.items() if v['implemented']], ['native-authority'])
+        self.assertEqual([k for k, v in scenarios.items() if v['implemented']], ['native-authority', 'session-units'])
 
     def test_host_scenario_fails_closed_without_caller_or_effects(self):
         report = verify.doctor('job-conversation', 'host', None)
@@ -180,6 +188,59 @@ class ContractTests(unittest.TestCase):
         report = verify.doctor('native-authority', 'sandbox', ROOT / '.tmp/missing-source')
         self.assertEqual(report['outcome'], 'blocked')
         self.assertIsNone(report['source_identity'])
+
+
+class PublicJourneyTests(unittest.TestCase):
+    def test_real_cli_effects_and_negatives_survive_cleanup(self):
+        result = subprocess.run([sys.executable, str(ROOT / 'tools/verify/verify.py'),
+                                 'run', 'session-units', '--target', 'sandbox'],
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        receipt = json.loads(result.stdout)
+        run = Path(receipt['evidence'])
+        self.assertEqual(receipt['proof_level'], 'shipped source CLI with actual private file effects')
+        assertions = read(run / 'assertions.json')['checks']
+        self.assertEqual(len(assertions), 3)
+        self.assertTrue(all(a['passed'] for a in assertions))
+        self.assertEqual(len(session_units.snapshot(run / 'units')), 3)
+        self.assertTrue(read(run / 'after.json')['generated_files_unchanged'])
+        self.assertEqual(verify.cleanup(run), 'passed')
+        self.assertEqual(validate(run)['outcome'], 'passed')
+        self.assertFalse((run / 'rejected-units').exists())
+
+    def test_content_assertion_rejects_wrong_exec_and_missing_files(self):
+        files = {name: {'text': '[Unit]\n[Service]\n', 'sha256': 'irrelevant'}
+                 for name in ['tohru-bar.service', 'tohru-launcher.service', 'tohru-lock.service']}
+        self.assertFalse(session_units.generated_units_valid(files, ROOT / 'bin'))
+        self.assertFalse(session_units.generated_units_valid({}, ROOT / 'bin'))
+
+    def test_successful_exit_without_generated_files_cannot_pass(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.tmp') as directory:
+            run = Path(directory)
+            with patch('session_units.execute', return_value={'exit': 0, 'reason': None}):
+                outcome, _, observations, assertions = session_units.drive(ROOT, run, 1)
+            self.assertEqual(outcome, 'failed')
+            self.assertEqual(observations[0]['files'], {})
+            self.assertFalse(assertions[0]['passed'])
+
+    def test_contending_command_does_not_write_or_recover_active_owner(self):
+        parent = ROOT / '.tmp/verify'
+        parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=parent) as directory:
+            run = Path(directory)
+            atomic(run / 'state.json', {'run_id': run.name, 'phase': 'driving',
+                                       'scenario': 'session-units', 'outcome': 'passed'})
+            before = (run / 'state.json').read_bytes()
+            with (run / 'lock').open('a') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                for operation in ('cleanup', 'drive', 'collect', 'validate'):
+                    with self.subTest(operation=operation):
+                        result = subprocess.run([sys.executable, str(ROOT / 'tools/verify/verify.py'),
+                                                 operation, '--run', str(run)],
+                                                capture_output=True, text=True, timeout=5)
+                        self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+                        self.assertEqual((run / 'state.json').read_bytes(), before)
+                        self.assertEqual(set(p.name for p in run.iterdir()), {'state.json', 'lock'})
 
 
 if __name__ == '__main__':

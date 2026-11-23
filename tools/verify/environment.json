@@ -1,15 +1,43 @@
 {
   "schema_version": 1,
   "native_authority": {
-    "required_tools": ["python3", "node", "git", "flock", "setsid", "dirname", "readlink"],
+    "required_tools": [
+      "python3",
+      "node",
+      "git",
+      "flock",
+      "setsid",
+      "dirname",
+      "readlink"
+    ],
     "python": ">=3.11 (hashlib.file_digest, Linux fcntl and /proc)",
     "orca": "1.4.268 with the reviewed Tohru integration patch stack",
     "node_and_pnpm": "Use the selected Orca derivation nativeBuildInputs, not global package installation",
     "dependencies": "Existing pinned offline pnpmDeps archive; writable private v11 SQLite index; built workspace packages",
-    "preparation_tools": ["tar", "zstd", "pnpm (explicit store executable)"],
+    "preparation_tools": [
+      "tar",
+      "zstd",
+      "pnpm (explicit store executable)"
+    ],
     "gpu": "none; no models imported or loaded",
-    "private_environment": ["HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR", "TMPDIR"],
+    "private_environment": [
+      "HOME",
+      "XDG_CONFIG_HOME",
+      "XDG_DATA_HOME",
+      "XDG_CACHE_HOME",
+      "XDG_RUNTIME_DIR",
+      "TMPDIR"
+    ],
     "diagnostic": "Inspect saved derivation env.nativeBuildInputs and supply their existing /nix/store/.../bin directories in a command-scoped PATH. Never modify global settings or download automatically."
   },
-  "higher_tiers": "See scenarios.json and verification/features for separately blocked prerequisites."
+  "higher_tiers": "See scenarios.json and verification/features for separately blocked prerequisites.",
+  "session_units": {
+    "required_tools": [
+      "bash",
+      "python3",
+      "dirname",
+      "readlink"
+    ],
+    "diagnostic": "Provide bash, Python >=3.11 and coreutils in the command-scoped development PATH; no service manager, model or native-source preparation required"
+  }
 }

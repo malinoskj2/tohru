@@ -6,6 +6,14 @@ import subprocess
 import time
 
 
+def private_environment(run):
+    return {'PATH': os.environ.get('PATH', ''), 'HOME': str(run / 'home'),
+            'XDG_CONFIG_HOME': str(run / 'config'), 'XDG_DATA_HOME': str(run / 'data'),
+            'XDG_STATE_HOME': str(run / 'state'), 'XDG_CACHE_HOME': str(run / 'cache'),
+            'XDG_RUNTIME_DIR': str(run / 'runtime'), 'TMPDIR': str(run / 'tmp'),
+            'CI': '1', 'ELECTRON_RUN_AS_NODE': '1', 'SCCACHE_DISABLE': '1'}
+
+
 def execute(argv, cwd, env, log, timeout=180, limit=2 * 1024 * 1024):
     wall_start_ns = time.time_ns()
     started = time.monotonic()

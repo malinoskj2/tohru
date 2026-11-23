@@ -1,9 +1,10 @@
 # Tohru verification
 
 Start with `python3 tools/verify/verify.py --help` from the selected checkout.
-Both project `verify` skills use this same runner. Only `native-authority` has
-an executable journey today; all other scenarios return blocked (3) without
-effects. A native pass proves the pinned test fixture's real CLI envelope,
+Both project `verify` skills use this same runner. `session-units` invokes the
+actual shipped CLI and verifies persisted private files plus negative cases;
+`native-authority` is the distinct native engineering suite. Other scenarios
+return blocked (3) without effects. A native pass proves the pinned test fixture's real CLI envelope,
 schema, queue, RPC, SQLite journal and child IPC boundaries. Provider transports
 and audio are scripted. It does not prove live Home, desktop UX or hearing.
 
@@ -13,7 +14,7 @@ and audio are scripted. It does not prove live Home, desktop UX or hearing.
 | [Background work](background-work.md) | Native background admission, Home status, completion, visibility | Native fixture supported; actual Home unverified |
 | [Capture and playback](voice-capture-playback.md) | Python/Rust replay, capture, player, retirement | Existing drivers; unified model/host journey unverified |
 | [Desktop controls](desktop-controls.md) | Settings CLI/window, launcher, sound, session | Existing runners; unified journey unverified |
-| [Install and recovery](install-recovery.md) | Packaged CLI, supervisor, GUI startup | Existing checks; package/live recovery unverified |
+| [Install and recovery](install-recovery.md) | Shipped session-units CLI, packaged CLI, supervisor, GUI startup | Private CLI file effects supported; package/live recovery unverified |
 
 ## Launch, Doctor, Drive, Evidence, Cleanup
 
@@ -53,6 +54,9 @@ The runner does not acquire GPU leases for these CPU-only tests and disables
 persistent sccache startup. It does not stop shared caches or leases.
 Run locks prevent concurrent lifecycle changes; a source lock prevents two runs
 from sharing writable native indexes/caches. Separate prepared trees can run apart.
+An operation that cannot acquire the run lock returns incomplete without writing
+recovery evidence or changing the owner's state. Exception recovery reacquires
+the run lock before any state write or cleanup.
 
 Cleanup is repeatable after a completed drive, preserves private files and all
 attempts, and touches no host settings. An interrupted driver without durable

@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Verify Tohru through scoped user journeys, isolated native admission, truthful prerequisites and immutable evidence. Use after relevant changes or when asked to verify Tohru behavior; live Home, model, desktop and recovery gates remain separately unverified.
+description: Verify Tohru through the shipped session-units CLI in private state, isolated native admission, truthful prerequisites and immutable evidence. Use after relevant changes or when asked to verify Tohru behavior; live Home, model, desktop and recovery gates remain separately unverified.
 ---
 
 # Verify Tohru
@@ -10,6 +10,14 @@ Use the checkout's shared runner; load only the relevant feature map from
 establish host UX, physical hearing or owner acceptance.
 
 ## Launch
+
+For the supported shipped command journey, follow
+[installation and recovery](../../../verification/features/install-recovery.md).
+Run `python3 tools/verify/verify.py doctor --scenario session-units --target sandbox --json`,
+then `python3 tools/verify/verify.py run session-units --target sandbox` to launch,
+generate actual private session files with bin/tohru, inspect effects, exercise
+refusal/invalid-target negatives, clean up owned processes and collect evidence.
+No native source, caller identity, display or service manager is needed.
 
 Select the exact checkout/source. Follow
 [background work](../../../verification/features/background-work.md) for pinned
@@ -27,7 +35,9 @@ caller environment, weaken isolation, download models or restart the host.
 `python3 tools/verify/verify.py drive --run ABSOLUTE_RUN` runs the declared native
 actions with streaming limits/deadlines. Or compose every phase with
 `python3 tools/verify/verify.py run native-authority --target sandbox --orca-source .tmp/native/source`.
-Other declared scenarios currently block; read their maps for remaining prerequisites.
+The distinct native-authority journey remains an engineering test suite; its pass
+does not replace session-units command-effect proof. Other declared scenarios
+currently block; read their maps for remaining prerequisites.
 
 ## Evidence
 

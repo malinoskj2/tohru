@@ -15,8 +15,9 @@ import sys
 import time
 import uuid
 
-from evidence import atomic, digest, jsonl, publish, read, validate
-from process import execute
+from evidence import atomic, digest, jsonl, publish, read, records, validate
+from process import execute, private_environment
+import session_units
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -50,11 +51,17 @@ def doctor(scenario, target, source):
 
     check('implemented', scenarios[scenario]['implemented'], scenarios[scenario]['prerequisites'])
     check('target', target == 'sandbox', 'Only isolated sandbox execution is implemented; no caller override exists')
-    requirements = read(HERE / 'environment.json')['native_authority']
+    requirements = read(HERE / 'environment.json')['session_units' if scenario == 'session-units' else 'native_authority']
     tools = {name: shutil.which(name) for name in requirements['required_tools']}
     for name, path in tools.items():
         check(name, bool(path), path or requirements['diagnostic'])
     identity = None
+    if scenario == 'session-units':
+        files = ['bin/tohru', 'bin/tohru_portability.py', 'share/tohru/session/services.json']
+        for name in files:
+            check(name, (ROOT / name).is_file(), 'Required shipped source command/data')
+        check('executable_cli', os.access(ROOT / 'bin/tohru', os.X_OK), 'Invoke actual bin/tohru through its shebang')
+        identity = {name: digest(ROOT / name) for name in files if (ROOT / name).is_file()}
     if scenario == 'native-authority':
         check('private_source', source is not None and source.is_dir()
               and source.is_relative_to(ROOT / '.tmp'), 'Prepared writable Orca source must resolve under this checkout .tmp')
@@ -91,7 +98,9 @@ def doctor(scenario, target, source):
                              'sha256': digest(source.parent / 'preparation.json')}
                             if source and (source.parent / 'preparation.json').is_file() else None),
             'environment_keys': sorted(os.environ), 'running_host_identity': 'unverified; no host access required',
-            'authority': 'native test fixture, not coordinating Home', 'effects': 'private files and owned CPU process groups only'}
+            'authority': ('ordinary local CLI, no Home caller required' if scenario == 'session-units'
+                          else 'native test fixture, not coordinating Home'),
+            'effects': 'private files and owned CPU process groups only'}
 
 
 def launch(args):
@@ -102,7 +111,7 @@ def launch(args):
     state = {'schema_version': 1, 'run_id': run.name, 'scenario': args.scenario,
              'source': report['source'], 'phase': 'launched', 'doctor': report,
              'action_start_ns': 0, 'action_end_ns': 0, 'outcome': report['outcome']}
-    for directory in ('home', 'config', 'data', 'cache', 'runtime', 'tmp'):
+    for directory in ('home', 'config', 'data', 'state', 'cache', 'runtime', 'tmp'):
         (run / directory).mkdir(mode=0o700)
     atomic(run / 'state.json', state)
     atomic(run / 'before.json', {'host_touched': False, 'source_identity': report['source_identity']})
@@ -118,8 +127,19 @@ def drive(run, timeout):
     state['action_start_ns'] = time.time_ns()
     atomic(run / 'state.json', state)
     actions = []
+    observations, assertions = [], []
     outcome = state['outcome']
-    if outcome == 'passed':
+    if outcome == 'passed' and state['scenario'] == 'session-units':
+        current = {name: digest(ROOT / name) for name in state['doctor']['source_identity']}
+        if current != state['doctor']['source_identity']:
+            outcome = 'blocked'
+        else:
+            outcome, actions, observations, assertions = session_units.drive(ROOT, run, timeout)
+            atomic(run / 'resources.json', {'run_id': run.name, 'phase': 'children-reaped',
+                                           'processes': actions, 'lease': None})
+            if current != {name: digest(ROOT / name) for name in current}:
+                outcome = 'incomplete'
+    elif outcome == 'passed':
         source = Path(state['source'])
         if fingerprint(source) != state['doctor']['source_identity']:
             outcome = 'blocked'
@@ -130,11 +150,7 @@ def drive(run, timeout):
                          *tests, '--maxWorkers=2'],
                         [node, 'node_modules/typescript/bin/tsc', '--noEmit', '-p', 'config/tsconfig.node.json', '--composite', 'false'],
                         [node, 'node_modules/typescript/bin/tsc', '--noEmit', '-p', 'config/tsconfig.tc.cli.json', '--composite', 'false']]
-            env = {'PATH': os.environ.get('PATH', ''), 'HOME': str(run / 'home'),
-                   'XDG_CONFIG_HOME': str(run / 'config'), 'XDG_DATA_HOME': str(run / 'data'),
-                   'XDG_CACHE_HOME': str(run / 'cache'), 'XDG_RUNTIME_DIR': str(run / 'runtime'),
-                   'TMPDIR': str(run / 'tmp'), 'CI': '1', 'ELECTRON_RUN_AS_NODE': '1',
-                   'SCCACHE_DISABLE': '1'}
+            env = private_environment(run)
             outcome = 'passed'
             for index, command in enumerate(commands):
                 action = execute(command, source, env, run / f'action-{index}.log', timeout)
@@ -150,14 +166,16 @@ def drive(run, timeout):
     state.update(phase='driven', outcome=outcome, action_end_ns=time.time_ns())
     atomic(run / 'state.json', state)
     jsonl(run / 'actions.jsonl', actions)
-    jsonl(run / 'observations.jsonl', [{'native_test_logs': [a['log'] for a in actions],
+    jsonl(run / 'observations.jsonl', observations or [{'native_test_logs': [a['log'] for a in actions],
                                       'scripted_boundaries': ['provider transport', 'physical audio'],
                                       'host_observation': None}])
-    atomic(run / 'assertions.json', {'outcome': outcome, 'required': '9 native files plus both typechecks',
+    atomic(run / 'assertions.json', {'outcome': outcome, 'checks': assertions,
+                                   'required': 'real CLI generation, persisted content and negative cases' if state['scenario'] == 'session-units' else '9 native files plus both typechecks',
                                    'actual_commands': len(actions), 'omitted_boundaries': OMITTED})
     atomic(run / 'timings.json', {'started_ns': state['action_start_ns'], 'ended_ns': state['action_end_ns'],
                                 'durations': [a['duration_seconds'] for a in actions], 'performance_claim': None})
-    atomic(run / 'manifest.json', {**state['doctor'], 'run_id': run.name, 'tier': 'N',
+    atomic(run / 'manifest.json', {**state['doctor'], 'run_id': run.name,
+                                 'tier': read(HERE / 'scenarios.json')[state['scenario']]['tier'],
                                  'scenario': state['scenario'], 'argv': [a['argv'] for a in actions]})
     return outcome
 
@@ -179,15 +197,23 @@ def cleanup(run):
         return 'cleanup_failed'
     # The foreground runner has already killed its session and waited. Keep private
     # files for diagnostics; no recursive deletion, host routing or PID guessing.
-    atomic(run / 'after.json', {'host_touched': False, 'owned_children_reaped': True,
-                               'private_files_retained': True})
+    after = {'host_touched': False, 'owned_children_reaped': True, 'private_files_retained': True}
+    if state['scenario'] == 'session-units' and state['outcome'] in ('passed', 'failed'):
+        after['generated_files'] = session_units.snapshot(run / 'units')
+        observed = records(run / 'observations.jsonl')
+        after['generated_files_unchanged'] = bool(observed) and after['generated_files'] == observed[-1].get('files')
+        if not after['generated_files_unchanged']:
+            state['outcome'] = 'cleanup_failed'
+    atomic(run / 'after.json', after)
     resources = read(run / 'resources.json')
     resources['phase'] = 'cleaned'
     atomic(run / 'resources.json', resources)
     state['phase'] = 'cleaned'
     atomic(run / 'state.json', state)
     atomic(run / 'result.json', {'schema_version': 1, 'run_id': run.name, 'scenario': state['scenario'],
-                               'outcome': state['outcome'], 'proof_level': 'isolated native fixture' if state['outcome'] == 'passed' else 'no passing native proof',
+                               'outcome': state['outcome'],
+                               'proof_level': (('shipped source CLI with actual private file effects' if state['scenario'] == 'session-units'
+                                                else 'isolated native fixture') if state['outcome'] == 'passed' else 'no passing scenario proof'),
                                'remaining_gates': OMITTED, 'evidence': str(run), 'cleanup': 'complete'})
     return state['outcome']
 
@@ -204,7 +230,7 @@ def owned_run(path):
 @contextmanager
 def source_lock(run):
     state = read(run / 'state.json')
-    if state['outcome'] != 'passed':
+    if state['outcome'] != 'passed' or state['scenario'] != 'native-authority':
         yield
         return
     # The prepared source contains writable native indexes/caches: one driver
@@ -270,11 +296,18 @@ def main():
         return EXIT[result['outcome']]
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         outcome = 'incomplete'
-        if 'run' in locals() and (run / 'state.json').is_file():
-            atomic(run / ('error-' + str(uuid.uuid4()) + '.json'),
-                   {'command': args.command, 'error': str(error), 'wall_ns': time.time_ns()})
-            if read(run / 'state.json')['phase'] == 'driving':
-                outcome = cleanup(run)
+        if not isinstance(error, BlockingIOError) and 'run' in locals() and (run / 'state.json').is_file():
+            # The operation's context has unwound. Reacquire ownership before
+            # writing recovery evidence or state; a competing owner may exist.
+            try:
+                with (run / 'lock').open('a') as lock:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    atomic(run / ('error-' + str(uuid.uuid4()) + '.json'),
+                           {'command': args.command, 'error': str(error), 'wall_ns': time.time_ns()})
+                    if read(run / 'state.json')['phase'] == 'driving':
+                        outcome = cleanup(run)
+            except BlockingIOError:
+                pass
         print(json.dumps({'outcome': outcome, 'error': str(error),
                           'run': str(run) if 'run' in locals() else None}))
         return EXIT[outcome]
