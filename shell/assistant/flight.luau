@@ -120,6 +120,13 @@ return function(paths, puppet, make_actor)
             reset()
             return
         end
+        if fact.ai_dg_warm then
+            local mine = serial
+            after(50, function()
+                if mine == serial and pending then begin(scene) end
+            end)
+            return
+        end
         local s = { w = width, h = height, blocked = scene.blocked }
         if
             scene.output == selected

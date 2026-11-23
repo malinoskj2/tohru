@@ -480,7 +480,10 @@ return function(full_body, landing_frames)
         end,
         flight = flight,
         begin_entrance = function(kind, direction)
-            if not landing_frames or LANDING[target] == nil or not flight(kind, direction) then return false end
+            if not landing_frames or not flight(kind, direction) then return false end
+            -- Alternate rests share the neutral landing; they have no separate
+            -- turn-in strip and must not suppress the next appearance's flight.
+            if LANDING[target] == nil then target = "neutral" end
             entrance = landing_frames[pose]
             return true
         end,

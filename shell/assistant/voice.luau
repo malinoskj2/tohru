@@ -17,9 +17,11 @@ return function(assistant, puppet, flight, service_executable)
     local barged, cancelling, queued, interrupted_spoken = false, false, nil, nil
     local GREETINGS = {"Yes?", "I'm here.", "Mm? What is it?", "You called?", "Here I am. What do you need?", "Hello again."}
     local greeted = 0
+    local greeting_serial = 0
 
     local function show_dragon(on)
         hide_serial = hide_serial + 1
+        if not on then greeting_serial = greeting_serial + 1 end
         if flight then
             if on and not fact.ai_dragon_open then flight.show()
             elseif not on then flight.hide() end
@@ -131,6 +133,7 @@ return function(assistant, puppet, flight, service_executable)
                 if fact.ai_dragon_open and not fact.ai_speaking then linger() end
             end
         elseif event == "hearing" then
+            if message.on then greeting_serial = greeting_serial + 1 end
             if not message.on then
                 local mine = transcript_serial
                 after(500, function() if transcript_serial == mine then text.ai_transcript = "" end end)
@@ -159,8 +162,20 @@ return function(assistant, puppet, flight, service_executable)
             local pick = math.random(#GREETINGS - (greeted > 0 and 1 or 0))
             if greeted > 0 and pick >= greeted then pick = pick + 1 end
             greeted = pick
-            send({cmd = "say", text = GREETINGS[greeted], conversation = conversation})
+            greeting_serial = greeting_serial + 1
+            local mine, service_generation = greeting_serial, generation
+            local greeting = GREETINGS[pick]
+            local function greet()
+                if mine ~= greeting_serial or service_generation ~= generation or not fact.ai_dragon_open then return end
+                if flight and (fact.ai_flying or (fact.ai_flight_alpha or 1) < 1) then
+                    after(50, greet)
+                    return
+                end
+                send({cmd = "say", text = greeting, conversation = conversation})
+            end
+            greet()
         elseif event == "turn" then
+            greeting_serial = greeting_serial + 1
             puppet.thinking()
             local opts = interrupted_spoken and {interrupted = interrupted_spoken} or {}
             opts.capture_id = message.turn_id

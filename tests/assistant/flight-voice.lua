@@ -47,12 +47,15 @@ local function advance(ms)
     now = until_ms
 end
 local sample = { output = "LEFT", w = 864, h = 1536 }
-local selection
+local selection, greetings = nil, 0
 _G.json = {
     decode = function(raw)
         return raw
     end,
     encode = function(v)
+        if v.cmd == "say" then
+            greetings = greetings + 1
+        end
         if v.kind then
             selection = v
         end
@@ -114,12 +117,14 @@ local function deliver(event, fields)
 end
 deliver("ready", { dragon = "/fixture" })
 deliver("listening", { on = true })
--- Cold first appearance stays stationary until the sheets finish warming.
+-- A cold first appearance waits for warm sheets, then flies in.
 deliver("conversation", { on = true })
 advance(50)
 assert(not fact.ai_flying and not fact.ai_flight_art)
-handlers.assistant_dragon()
 advance(3100)
+assert(fact.ai_flying and fact.ai_flight_art, "cold appearance skipped its entrance")
+handlers.assistant_dragon()
+advance(31000)
 local function wake(expected)
     deliver("hearing", { on = true })
     deliver("hearing", { on = false })
@@ -148,6 +153,31 @@ assert(fact.ai_speaking and fact.ai_mouth == 0.7)
 deliver("speaking", { on = false, conversation = "chat" })
 handlers.assistant_dragon()
 assert(opened == "chat" and not fact.ai_dragon_open)
+
+-- A wake-only greeting must wait for the entrance instead of interrupting it.
+advance(31000)
+flight.window({ monitor = "LEFT" })
+deliver("conversation", { on = true })
+local before_greeting = greetings
+deliver("wake")
+advance(200)
+assert(fact.ai_flying and greetings == before_greeting, "greeting cut off the entrance")
+advance(4000)
+assert(not fact.ai_flying and greetings == before_greeting + 1, "greeting did not follow landing")
+handlers.assistant_dragon()
+
+-- Starting a question during the entrance cancels its deferred greeting.
+advance(31000)
+deliver("conversation", { on = true })
+before_greeting = greetings
+deliver("wake")
+advance(50)
+deliver("hearing", { on = true })
+deliver("hearing", { on = false })
+deliver("turn", { text = "A question" })
+advance(4000)
+assert(greetings == before_greeting, "stale greeting interrupted the question")
+handlers.assistant_dragon()
 
 for _, interruption in ipairs({ "hearing", "speaking", "disconnect" }) do
     advance(31000)
