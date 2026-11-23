@@ -1,5 +1,6 @@
 -- A single VM drives production voice, entrance and registered puppet code.
 -- Substitute only the Pleamar host, compositor report and voice service process.
+package.path = "shell/?.luau;" .. package.path
 local handlers, timers, processes = {}, {}, {}
 local now, sequence = 0, 0
 _G.fact, _G.text = {}, {}

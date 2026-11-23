@@ -477,6 +477,19 @@ outputs.sync = json.encode({
 for _ = 1, 16 do every_cbs[1]() end
 assert(fact.ai_ready)
 
+-- An explicit task acknowledgement detaches only its matching voice poller.
+assert(assistant.ask("Create a workspace", uuid, {voice_generation=17}))
+local task_poller = spawned[#spawned]
+task_poller.line({event="start", conversation=uuid, voice_request="task-request"})
+assert(not assistant.detach_voice("other-request") and assistant.streaming())
+assert(assistant.detach_voice("task-request") and not assistant.streaming())
+assert(killed[#killed][2] == "int")
+assert(assistant.ask("A follow-up question", uuid, {voice_generation=18}))
+task_poller.line({event="delta", text="Late original answer"})
+task_poller.exit(nil, 0)
+assert(assistant.streaming())
+spawned[#spawned].line({event="done", conversation=uuid})
+
 -- Idle DM polling defers during active desktop/voice work and never speaks or
 -- replaces the selected conversation. The same pending ID is offered again.
 values["assistant.backend"] = "local"

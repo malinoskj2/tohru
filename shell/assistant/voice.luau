@@ -20,8 +20,36 @@ return function(assistant, puppet, flight, service_executable)
     local greeted = 0
     local greeting_serial = 0
     local send
+    local task_clock = 0
+    local hearing = false
+    local task_speech = require("assistant/task-speech")(function() return task_clock end,
+        function(message, chat)
+            turn_generation = turn_generation + 1
+            send({cmd = "speech_start", generation = turn_generation, conversation = chat})
+            send({cmd = "speech_end", generation = turn_generation, text = message})
+            return turn_generation
+        end,
+        function()
+            turn_generation = turn_generation + 1
+            send({cmd = "hush"})
+            fact.ai_speaking, fact.ai_mouth = false, 0
+            puppet.speaking(false, "interrupted")
+        end)
+
+    local function task_visible(chat)
+        local status = assistant.status and assistant.status() or {}
+        return id ~= nil and not fact.ai_voice_paused and not fact.notices_dnd
+            and (fact.ai_dragon_open or status.open) == true
+            and (not status.open or status.conversation == (chat or conversation))
+    end
+    every(1000, function()
+        task_clock = task_clock + 1000
+        task_speech.tick(task_visible(), hearing or fact.ai_speaking
+            or (assistant.streaming and assistant.streaming()))
+    end)
 
     local function show_dragon(on)
+        if not on then task_speech.interrupt() end
         hide_serial = hide_serial + 1
         if not on then greeting_serial = greeting_serial + 1 end
         if flight then
@@ -55,6 +83,8 @@ return function(assistant, puppet, flight, service_executable)
     end
 
     local function quiet()
+        hearing = false
+        task_speech.interrupt()
         voice_return.interrupt()
         barged, cancelling, queued, interrupted_spoken = false, false, nil, nil
         turn_generation = turn_generation + 1
@@ -71,6 +101,7 @@ return function(assistant, puppet, flight, service_executable)
     end
 
     local function ask_turn(prompt, opts)
+        task_speech.interrupt()
         voice_return.interrupt()
         turn_generation = turn_generation + 1
         streaming_speech = false
@@ -84,6 +115,7 @@ return function(assistant, puppet, flight, service_executable)
             if assistant.streaming and assistant.streaming() then
                 queued = {text = prompt, opts = opts}
             else
+                task_speech.interrupt()
                 local unavailable = fact.ai_can_signin == false
                 send({cmd = "say", conversation = conversation,
                     text = unavailable and "I can't reach Orca right now. Open Orca and try again."
@@ -138,6 +170,7 @@ return function(assistant, puppet, flight, service_executable)
                 show_dragon(true)
             else
                 if assistant.discard_draft then assistant.discard_draft() end
+                task_speech.interrupt()
                 interrupted_spoken = nil
                 if conversation then assistant.remember(conversation) end
                 conversation = nil
@@ -148,6 +181,8 @@ return function(assistant, puppet, flight, service_executable)
                 if fact.ai_dragon_open and not fact.ai_speaking then linger() end
             end
         elseif event == "hearing" then
+            hearing = message.on == true
+            if message.on then task_speech.interrupt() end
             if message.on then greeting_serial = greeting_serial + 1 end
             if not message.on then
                 local mine = transcript_serial
@@ -190,6 +225,7 @@ return function(assistant, puppet, flight, service_executable)
             end
             greet()
         elseif event == "turn" then
+            task_speech.interrupt()
             greeting_serial = greeting_serial + 1
             puppet.thinking()
             local opts = interrupted_spoken and {interrupted = interrupted_spoken} or {}
@@ -202,6 +238,8 @@ return function(assistant, puppet, flight, service_executable)
                 ask_turn(message.text, opts)
             end
         elseif event == "speaking" then
+            if message.generation and message.generation ~= turn_generation then return end
+            if not message.on and not message.paused then task_speech.finished(message.generation) end
             local state = message.paused and "paused" or (message.interrupted and "interrupted" or nil)
             fact.ai_speaking = message.on == true and not message.paused
             puppet.speaking(fact.ai_speaking, state)
@@ -216,6 +254,7 @@ return function(assistant, puppet, flight, service_executable)
             fact.ai_mouth = tonumber(message.level) or 0
             puppet.mouth(fact.ai_mouth, tonumber(message.viseme))
         elseif event == "barge" then
+            task_speech.interrupt()
             voice_return.interrupt()
             turn_generation = turn_generation + 1
             streaming_speech = false
@@ -274,6 +313,7 @@ return function(assistant, puppet, flight, service_executable)
     local function answer_event(kind, conv, answer, voice, turn, request)
         if not id then return end
         if not voice then
+            if kind == "start" then task_speech.interrupt() end
             if kind == "start" then voice_return.interrupt() end
             if queued then flush_queued() end
             return
@@ -290,23 +330,27 @@ return function(assistant, puppet, flight, service_executable)
         end
         if kind == "start" then
             voice_return.begin(conv, request)
+            task_speech.begin(conv, request)
             streaming_speech = true
             streamed_text = false
             send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id})
             return
         elseif kind == "delta" then
+            task_speech.interrupt()
             if streaming_speech and answer and answer ~= "" then
                 streamed_text = true
                 send({cmd = "speech_delta", generation = turn_generation, text = answer})
             end
             return
         elseif kind == "done" then
+            task_speech.interrupt()
             if streaming_speech then
                 send({cmd = "speech_end", generation = turn_generation, text = not streamed_text and (answer or "") or nil})
             else
                 send({cmd = "say", text = answer or "", conversation = conversation, generation = turn_generation, turn_id = capture_id})
             end
         elseif kind == "error" then
+            task_speech.interrupt()
             send({cmd = "say", text = "Hmm, that didn't work. The details are in the chat.", conversation = conversation})
         else
             send({cmd = "hush"})
@@ -339,6 +383,7 @@ return function(assistant, puppet, flight, service_executable)
         send({cmd = "diagnostic", stage = allowed and "continuation_speech" or "continuation_dropped",
             request = text.ai_voice_result_request, completion = text.ai_voice_result_completion, visible = visible == true, reason = reason})
         if not allowed then return end
+        task_speech.interrupt()
         local result = text.ai_voice_result_text or ""
         if result == "" then return end
         turn_generation = turn_generation + 1
@@ -346,8 +391,28 @@ return function(assistant, puppet, flight, service_executable)
         send({cmd = "speech_start", generation = turn_generation, conversation = text.ai_voice_result_chat})
         send({cmd = "speech_end", generation = turn_generation, text = result})
     end)
-    on("assistant_hush", function() voice_return.interrupt(); turn_generation = turn_generation + 1; send({cmd = "hush"}) end)
+    on("assistant_voice_task", function()
+        local event = {chat = text.ai_voice_task_chat, request = text.ai_voice_task_request,
+            task = text.ai_voice_task_id, sequence = tonumber(text.ai_voice_task_sequence),
+            kind = text.ai_voice_task_kind, text = text.ai_voice_task_text}
+        if not task_visible(event.chat) then task_speech.interrupt(); return end
+        if hearing then task_speech.interrupt(); return end
+        local accepted, reason = task_speech.update(event)
+        send({cmd = "diagnostic", stage = accepted and "task_update" or "task_update_dropped",
+            task = event.task, sequence = event.sequence, kind = event.kind, reason = reason})
+        if not accepted then return end
+        if event.kind == "ack" then
+            -- The bot owns the asynchronous task; retire only the desktop poller.
+            -- Its final answer remains in shared history, not a second speech path.
+            if assistant.detach_voice and assistant.detach_voice(event.request) then send({cmd = "hush"}) end
+            voice_return.interrupt()
+            streaming_speech, streamed_text = false, false
+        end
+        task_speech.tick(true, hearing or (fact.ai_speaking and event.kind ~= "done" and event.kind ~= "failed"))
+    end)
+    on("assistant_hush", function() task_speech.interrupt(); voice_return.interrupt(); turn_generation = turn_generation + 1; send({cmd = "hush"}) end)
     on("assistant_dragon", function()
+        task_speech.interrupt()
         voice_return.interrupt()
         if not fact.ai_dragon_open then return end
         show_dragon(false)
@@ -361,12 +426,14 @@ return function(assistant, puppet, flight, service_executable)
             return row.value
         end
         puppet.reduced(value("assistant.reduced_motion", false) == true)
+        task_speech.configure(value("assistant.waiting_chatter", false), value("assistant.waiting_seed", 1))
         if flight then flight.configure(value) end
         local backend = table.concat({
             tostring(value("assistant.backend", "local")), tostring(value("assistant.orca_bot", "Tohru")),
             tostring(value("assistant.orca_voice_chat", "home")), tostring(value("assistant.orca_offline", "error")),
         }, "|")
         if backend_signature and backend_signature ~= backend then
+            task_speech.interrupt()
             turn_generation = turn_generation + 1
             streaming_speech, streamed_text = false, false
             conversation, queued, interrupted_spoken, capture_id = nil, nil, nil, nil
@@ -438,6 +505,6 @@ return function(assistant, puppet, flight, service_executable)
     return {
         configure = configure,
         running = function() return id ~= nil end,
-        hush = function() send({cmd = "hush"}) end,
+        hush = function() task_speech.interrupt(); send({cmd = "hush"}) end,
     }
 end

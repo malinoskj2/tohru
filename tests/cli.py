@@ -48,6 +48,25 @@ class Cli(unittest.TestCase):
         self.assertEqual(bad.returncode, 2)
         self.assertEqual(bad.stdout, "")
 
+    def test_voice_task_boundary(self):
+        chat = "12345678-1234-4234-8234-123456789abc"
+        def update(kind="ack", sequence="1", task="workspace", message="I'll create that now."):
+            return self.invoke("assistant", "voice-task", "--chat", chat, "--request", "orca:request",
+                               "--task", task, "--sequence", sequence, "--kind", kind, "--", message)
+        for kind in ("ack", "progress", "done", "failed", "cancelled"):
+            result = update(kind)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), ["--say", "tohru", "text ai_voice_task_chat " + chat,
+                "text ai_voice_task_request orca:request", "text ai_voice_task_id workspace",
+                "text ai_voice_task_sequence 1", "text ai_voice_task_kind " + kind,
+                "text ai_voice_task_text I'll create that now.", "emit assistant_voice_task"])
+        for args in ({"kind": "commentary"}, {"kind": "chatter"}, {"sequence": "0"}, {"sequence": "2147483647"},
+                     {"sequence": "01"}, {"task": "bad\nidentity"}, {"message": "x" * 321},
+                     {"message": "bad\ntext"}, {"message": ""}):
+            result = update(**args)
+            self.assertEqual(result.returncode, 2, args)
+            self.assertEqual(result.stdout, "")
+
     def test_portable_config_keys_route_to_native_schema(self):
         for key,value in [('appearance.font_text','Noto Sans'),('appearance.font_mono','DejaVu Sans Mono'),('wallpaper.enabled','true'),('idle.lock_seconds','600'),('assistant.voice_python','/opt/voice/bin/python'),('assistant.contextual_entrances','true'),('assistant.contextual_entrances','false'),('assistant.entrance_variant','auto'),('assistant.entrance_seed','12345')]:
             result=self.invoke('config','set',key,value)

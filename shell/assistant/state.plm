@@ -37,6 +37,12 @@ part AssistantState {
     text ai_voice_result_request = ""
     text ai_voice_result_completion = ""
     text ai_voice_result_text = ""
+    text ai_voice_task_chat = ""
+    text ai_voice_task_request = ""
+    text ai_voice_task_id = ""
+    text ai_voice_task_sequence = ""
+    text ai_voice_task_kind = ""
+    text ai_voice_task_text = ""
     fact ai_can_signin = true
     text ai_offline_title = ""
     text ai_offline_body = ""
@@ -93,6 +99,8 @@ part AssistantState {
     event assistant_dragon ->
     event assistant_show_request ->
     event assistant_alert ->
+    event assistant_voice_result ->
+    event assistant_voice_task ->
 
     image ai_history_icon = file "history.svg", 14, 14
     image ai_plus_icon = file "plus.svg", 14, 14

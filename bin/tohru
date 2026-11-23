@@ -304,6 +304,31 @@ case ${1:-help} in
                 [[ $# -le 3 ]] && conv_id_ok "$id" || fail 'Usage: tohru assistant show [ID]   (ID defaults to $TOHRU_CONVERSATION)'
                 exec "$pleamar" --say tohru "text ai_show_request $id" 'emit assistant_open' 'emit assistant_show_request'
                 ;;
+            voice-task)
+                shift 2
+                chat_id= request_id= task_id= sequence= kind=
+                while [[ $# -gt 0 ]]; do
+                    case $1 in
+                        --chat|--request|--task|--sequence|--kind)
+                            [[ $# -ge 2 ]] || fail 'Missing voice-task argument'
+                            case $1 in
+                                --chat) chat_id=$2 ;; --request) request_id=$2 ;; --task) task_id=$2 ;;
+                                --sequence) sequence=$2 ;; --kind) kind=$2 ;;
+                            esac
+                            shift 2 ;;
+                        --) shift; break ;;
+                        *) fail 'Invalid voice-task option' ;;
+                    esac
+                done
+                conv_id_ok "$chat_id" || fail 'Invalid conversation ID'
+                [[ $request_id =~ ^[A-Za-z0-9_:%.-]{1,512}$ && $task_id =~ ^[A-Za-z0-9_:%.-]{1,128}$ ]] || fail 'Invalid voice-task identity'
+                [[ $sequence =~ ^[1-9][0-9]{0,9}$ && $sequence -le 2147483646 ]] || fail 'Invalid voice-task sequence'
+                case $kind in ack|progress|done|failed|cancelled) ;; *) fail 'Invalid voice-task kind' ;; esac
+                [[ $# == 1 && -n $1 && ${#1} -le 320 && $1 != *[[:cntrl:]]* ]] || fail 'Invalid voice-task text'
+                exec "$pleamar" --say tohru "text ai_voice_task_chat $chat_id" "text ai_voice_task_request $request_id" \
+                    "text ai_voice_task_id $task_id" "text ai_voice_task_sequence $sequence" "text ai_voice_task_kind $kind" \
+                    "text ai_voice_task_text $1" 'emit assistant_voice_task'
+                ;;
             voice-result)
                 shift 2
                 chat_id= request_id= completion_id=
