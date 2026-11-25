@@ -10,10 +10,51 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 
 ROOT = Path(__file__).resolve().parents[2]
+SERVICE_LOG_LIMIT = 4 * 1024 * 1024
+RECORDED_OUTPUT_LIMIT = 64 * 1024
+
+
+def bounded(text):
+    if len(text) <= RECORDED_OUTPUT_LIMIT:
+        return text
+    return text[:RECORDED_OUTPUT_LIMIT] + f"\n[truncated {len(text) - RECORDED_OUTPUT_LIMIT} characters]"
+
+
+def group_members(pgid):
+    members = []
+    for stat in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            fields = stat.read_text().rsplit(")", 1)[1].split()
+        except OSError:
+            continue
+        if int(fields[2]) == pgid and fields[0] != "Z":
+            members.append(int(stat.parent.name))
+    return members
+
+
+def signal_group(pgid, signum):
+    try:
+        os.killpg(pgid, signum)
+    except ProcessLookupError:
+        pass
+
+
+def pump(source, path, limit):
+    # Drain past the limit so a chatty child never blocks on a full pipe.
+    stored = dropped = 0
+    with source, path.open("wb") as log:
+        while chunk := source.read1(65536):
+            keep = chunk[:max(0, limit - stored)]
+            log.write(keep)
+            stored += len(keep)
+            dropped += len(chunk) - len(keep)
+        if dropped:
+            log.write(f"\n[dropped {dropped} bytes past {limit}]\n".encode())
 
 
 def digest(path):
@@ -81,17 +122,19 @@ class Run:
             self.phase("command", argv=list(map(str, argv)), started=start, timeout=15)
             raise RuntimeError(f"Command timed out: {argv}") from error
         self.phase("command", argv=list(map(str, argv)), started=start,
-                   exit=result.returncode, stdout=result.stdout, stderr=result.stderr)
+                   exit=result.returncode, stdout=bounded(result.stdout), stderr=bounded(result.stderr))
         if check and result.returncode:
             raise RuntimeError(f"Command failed ({result.returncode}): {argv}: {result.stderr[:500]}")
         return result
 
     def start(self, argv, name, extra=None):
-        log = (self.evidence / f"{name}.log").open("w")
-        self.handles.append(log)
         process = subprocess.Popen(list(map(str, argv)), env={**self.env, **(extra or {})},
-                                   stdout=log, stderr=subprocess.STDOUT, close_fds=True,
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, close_fds=True,
                                    start_new_session=True)
+        reader = threading.Thread(target=pump, daemon=True,
+                                  args=(process.stdout, self.evidence / f"{name}.log", SERVICE_LOG_LIMIT))
+        reader.start()
+        self.handles.append(reader)
         self.owners.append((name, process))
         self.phase("process-start", name=name, pid=process.pid, argv=list(map(str, argv)))
         return process
@@ -198,28 +241,41 @@ class Run:
     def cleanup(self):
         self.phase("cleanup")
         failures = []
+        leftovers = {}
         for name, process in reversed(self.owners):
             try:
-                if process.poll() is None:
-                    os.killpg(process.pid, signal.SIGTERM)
-                    try:
-                        process.wait(timeout=8)
-                    except subprocess.TimeoutExpired:
-                        os.killpg(process.pid, signal.SIGKILL)
-                        process.wait(timeout=5)
-                self.phase("process-stop", name=name, pid=process.pid, exit=process.returncode)
+                # Signal the group even when its leader has exited: children such as
+                # Xwayland keep the group alive after the leader is gone.
+                signal_group(process.pid, signal.SIGTERM)
+                deadline = time.monotonic() + 8
+                while (process.poll() is None or group_members(process.pid)) and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                if process.poll() is None or group_members(process.pid):
+                    signal_group(process.pid, signal.SIGKILL)
+                    process.wait(timeout=5)
+                    deadline = time.monotonic() + 5
+                    while group_members(process.pid) and time.monotonic() < deadline:
+                        time.sleep(0.05)
+                remaining = group_members(process.pid)
+                if remaining:
+                    leftovers[name] = remaining
+                    failures.append(f"{name}: group {process.pid} still has {remaining}")
+                self.phase("process-stop", name=name, pid=process.pid, exit=process.returncode,
+                           group_remaining=remaining)
             except Exception as error:
                 failures.append(f"{name}: {error}")
-        for handle in self.handles:
-            handle.close()
+        for reader in self.handles:
+            reader.join(timeout=5)
+            if reader.is_alive():
+                failures.append("log reader did not finish")
         if not failures:
             shutil.rmtree(self.scratch)
         (self.evidence / "cleanup.json").write_text(json.dumps({"failures": failures,
             "scratch": str(self.scratch), "scratch_removed": not self.scratch.exists(),
-            "processes": {name: process.poll() for name, process in self.owners}}, indent=2) + "\n")
+            "processes": {name: process.poll() for name, process in self.owners},
+            "group_leftovers": leftovers}, indent=2) + "\n")
         self.events.close()
         return failures
-
 
 def preflight(runtime):
     missing = [tool for tool in ("dbus-daemon", "sway", "swaymsg", "grim") if not shutil.which(tool)]

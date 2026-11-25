@@ -46,7 +46,9 @@ declared source, patches and lock against this checkout. Require `result: passed
 before claiming they match; exit 2 is a provenance gap, not a reason to rebuild.
 
 This driver lacks the runner's validated completion pointer and stale-run
-rejection, and its command capture is unbounded. Use the exact directory it prints.
+rejection; use the exact directory it prints. Service logs stop at 4 MiB and
+recorded command output at 64 KiB per stream. Cleanup signals each owned
+process group even after its leader exits and fails the run if a member remains.
 
 ## Runner lifecycle: Launch, Doctor, Drive, Evidence, Cleanup
 
