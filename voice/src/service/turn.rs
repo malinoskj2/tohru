@@ -323,8 +323,21 @@ impl Voice {
             return;
         }
         let request = if self.active() {
-            let request =
-                policy::wake_split(transcript).unwrap_or_else(|| policy::sentence(transcript));
+            let named = policy::wake_split(transcript);
+            if named.as_deref() == Some("") && self.pending.is_empty() {
+                // The conversation can outlive her on screen; her name must still bring her back.
+                self.wake_decision(true, "name_in_conversation", transcript);
+                self.extend();
+                self.conversation(true);
+                if !draft.is_empty() {
+                    emit(json!({"event":"draft_cancel"}));
+                }
+                if !self.thinking {
+                    emit(json!({"event":"wake","turn_id":self.turn_id}));
+                }
+                return;
+            }
+            let request = named.unwrap_or_else(|| policy::sentence(transcript));
             if self.thinking {
                 if policy::backchannel(&request) {
                     if !draft.is_empty() {

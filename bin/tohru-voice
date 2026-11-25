@@ -1771,6 +1771,16 @@ class Voice:
             return
         if self.in_conversation():
             request = wake_split(transcript)
+            if request == "" and not self.pending_continuation:
+                # The conversation can outlive her on screen; her name must still bring her back.
+                self.wake_decision(True, "name_in_conversation", transcript)
+                self.extend_conversation()
+                self.conversation(True)
+                if active_draft:
+                    emit("draft_cancel")
+                if not self.thinking:
+                    emit("wake", turn_id=getattr(self, "turn_id", None))
+                return
             request = sentence(transcript) if request is None else request
             if self.thinking:
                 if is_backchannel(request):

@@ -411,6 +411,24 @@ class VoiceTests(unittest.TestCase):
         self.speak(voice, 12, 40)
         self.assertEqual([e["event"] for e in self.events], ["conversation", "wake"])
 
+    def test_the_name_alone_in_a_conversation_summons_her_again(self):
+        voice = make_voice(FakeRecognizer(["TOHRU"], "TOHRU."))
+        voice.extend_conversation()
+        self.speak(voice, 12, 40)
+        self.assertEqual([e["event"] for e in self.events], ["hearing", "hearing", "conversation", "wake"])
+        self.assertTrue(self.events[2]["on"])
+        self.assertTrue(voice.in_conversation())
+
+    def test_the_name_alone_while_thinking_shows_her_without_dropping_the_answer(self):
+        voice = make_voice(FakeRecognizer([""], ""))
+        voice.extend_conversation()
+        voice.thinking = True
+        voice.last_turn_text = "What time is it"
+        voice.deliver("TOHRU")
+        self.assertEqual(self.events, [{"on": True, "event": "conversation"}])
+        self.assertTrue(voice.thinking)
+        self.assertEqual(voice.last_turn_text, "What time is it")
+
     def test_answers_are_spoken_plainly_and_not_while_paused(self):
         voice = make_voice(FakeRecognizer([""], ""))
         voice.command({"cmd": "say", "text": "**Eight** ounces. See [the chart](https://example.com).\n```\ncode\n```", "conversation": "c1"})
