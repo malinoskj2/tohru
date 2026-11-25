@@ -740,6 +740,7 @@ fn assistant_models_nest_under_each_provider() {
 #[test]
 fn voice_and_semantic_models_validate_and_persist_independently() {
     let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
     let mut owner = files.owner();
     for group in ["voice_models", "semantic_models"] {
         for cli in ["codex", "claude", "gemini", "agy", "opencode"] {
@@ -766,6 +767,7 @@ fn voice_and_semantic_models_validate_and_persist_independently() {
 #[test]
 fn contextual_entrances_validate_replay_controls_and_preserve_managed_values() {
     let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
     let enabled = Key::parse("assistant.contextual_entrances").unwrap();
     assert_eq!(files.owner().get(enabled).value, Value::Bool(true));
     files.owner().set(enabled, Value::Bool(false)).unwrap();
@@ -1213,6 +1215,7 @@ fn discord_author_id_invalid_disk_and_managed_settings_are_rejected() {
 #[test]
 fn portability_settings_use_native_validation_and_managed_ownership() {
     let fixture = Fixture::new();
+    fs::write(fixture.managed(), "").unwrap();
     let mut owner = fixture.owner();
     assert_eq!(
         owner.get(Key::FontText).value,
