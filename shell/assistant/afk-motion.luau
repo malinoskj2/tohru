@@ -358,7 +358,7 @@ return function(choreography)
             elseif pose=="peek_hide" then
                 -- Her paw lets go of the edge and slips back, then her head
                 -- ducks after it, blended like the way out.
-                local src=q<.5 and 123-42*smooth(q/.5) or 81-61*smooth((q-.5)/.5)
+                local src=q<.15 and 123-23*q/.15 or q<.55 and 100-12*(q-.15)/.4 or 88-68*smooth((q-.55)/.45)
                 clip(sample,"edge_head",20,123,(src-20)/103,true)
             elseif pose=="peek_pull" then
                 -- Her slide out from behind the edge (source 50-86) runs at
