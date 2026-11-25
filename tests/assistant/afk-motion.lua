@@ -22,7 +22,7 @@ for _,s in ipairs(cases) do
             assert(math.abs(sample.turn)>=.05 and math.abs(sample.turn)<=1.2)
             assert(sample.scale>0 and sample.scale<=12)
             for _,k in ipairs({'skin_frame','skin_next'}) do
-                if sample[k] then assert(sample[k]>=0 and sample[k]<=271 and sample[k]==math.floor(sample[k])) end
+                if sample[k] then assert(sample[k]>=0 and sample[k]<=351 and sample[k]==math.floor(sample[k])) end
             end
             if sample.skin_mix then assert(sample.skin_next and sample.skin_mix>=0 and sample.skin_mix<=1) end
             for _,k in ipairs({'closeup_frame','closeup_next','body_frame','body_next'}) do
@@ -52,8 +52,8 @@ for i=0,100 do
 end
 -- Generated in-betweens drive the turns, nap, perch, peeks, climbs and closeups.
 do
-    local ranges={turn=96,arrive_right=112,arrive_left=128,curl=144,perch=160,bank=176,edge_reach=192,edge_pull=216,edge_head=248}
-    local counts={edge_reach=24,edge_pull=32,edge_head=24}
+    local ranges={turn=96,arrive_right=112,arrive_left=128,curl=144,perch=160,bank=176,edge_reach=192,edge_pull=240,edge_head=304}
+    local counts={edge_reach=48,edge_pull=64,edge_head=48}
     local wide={w=1920,h=1080,scale=1,target={id='v',x=500,y=300,w=700,h=450},output_id=1}
     local function uses(id,name)
         local scene=scenes.get(id)
@@ -78,13 +78,15 @@ do
     for i,beat in ipairs(scenes.get('hide_peek').beats) do beats[beat[2]..i]=start+beat[1]/2;start=start+beat[1] end
     local function at(name)for key,time in pairs(beats) do if key:match('^'..name..'%d+$') then return motion.sample('hide_peek',wide,time) end end end
     local head,reach,pull,wave=at('peek_head'),at('peek_reach'),at('peek_pull'),at('peek_wave')
-    for _,x in ipairs({head,reach,pull,wave,at('peek_look'),at('peek_hide')}) do assert(not x.behind and x.anchored and x.rotation==0 and x.bank==0) end
-    assert(at('peek_wait').behind and at('flight_behind').behind and not at('flight_home').behind)
+    for _,x in ipairs({head,reach,pull,at('peek_look'),at('peek_hide')}) do assert(not x.behind and x.anchored and x.rotation==0 and x.bank==0) end
+    assert(not wave.behind and wave.anchored and math.abs(wave.rotation)<=6 and wave.bank==0)
+    -- A hidden wait is transparent too, so a layer switch can't flash her.
+    assert(at('peek_wait').opacity==0 and at('peek_wait').behind and at('flight_behind').behind and not at('flight_home').behind)
     local off=185*150*head.scale/432
-    assert(head.turn==-1 and math.abs(head.x-off-(t.x+t.w))<1e-9 and head.skin_frame>=248 and head.skin_frame<272)
-    assert(reach.turn==1 and math.abs(reach.x+off-t.x)<1e-9 and reach.skin_frame>=192 and reach.skin_frame<216)
-    assert(pull.turn==1 and pull.x==reach.x and pull.skin_frame>=216 and pull.skin_frame<248)
-    assert(wave.turn==1 and wave.skin_frame==56 and math.abs(wave.x-(reach.x+30*150*wave.scale/240))<1e-9)
+    assert(head.turn==-1 and math.abs(head.x-off-(t.x+t.w))<1e-9 and head.skin_frame>=304 and head.skin_frame<352)
+    assert(reach.turn==1 and math.abs(reach.x+off-t.x)<1e-9 and reach.skin_frame>=192 and reach.skin_frame<240)
+    assert(pull.turn==1 and pull.x==reach.x and pull.skin_frame>=240 and pull.skin_frame<304)
+    assert(wave.turn>=.95 and wave.turn<=1 and wave.skin_frame==56 and math.abs(wave.x-(reach.x+30*150*wave.scale/240))<1e-9)
     -- The pull ends on the wave key and the wave's articulation starts at rest.
     local pull_end,wave_start=0,0
     for i,beat in ipairs(scenes.get('hide_peek').beats) do
@@ -92,11 +94,11 @@ do
         pull_end=pull_end+beat[1]
     end
     local last=motion.sample('hide_peek',wide,pull_end-1e-6)
-    assert(last.skin_frame==247 or (last.skin_next==247 and last.skin_mix>.999))
+    assert(last.skin_frame==303 or (last.skin_next==303 and last.skin_mix>.999))
     assert(motion.sample('hide_peek',wide,wave_start+1e-6).phase<1e-3)
     -- The wave settles, unmirrored, into the front hover her turn home starts on.
     local settled=motion.sample('hide_peek',wide,wave_start+2.2-.3-1e-3)
-    assert(settled.turn==1 and settled.skin_frame==56 and settled.skin_next==8 and settled.skin_mix>.99 and math.abs(settled.phase-2)<1e-9)
+    assert(math.abs(settled.turn-1)<1e-9 and math.abs(settled.rotation)<1e-9 and settled.skin_frame==56 and settled.skin_next==8 and settled.skin_mix>.99 and math.abs(settled.phase-2)<1e-9)
     -- A crossfade always blends toward the following generated frame.
     local nap=motion.sample('corner_nap',wide,2.8+1)
     assert(nap.skin_frame>=144 and nap.skin_frame<159 and nap.skin_next==nap.skin_frame+1 and nap.turn==-1)

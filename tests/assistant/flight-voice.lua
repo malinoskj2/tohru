@@ -328,7 +328,7 @@ end
 assert(actor.register_skin("/fixture/afk.webp", 12))
 assert(actor.register_closeup("/fixture/bust.webp"))
 assert((text.ai_actor_skin_src or "") == "" and (text.ai_actor_closeup_src or "") == "")
-assert(not actor.register_skin("/fixture/afk.webp", 35))
+assert(not actor.register_skin("/fixture/afk.webp", 65))
 local lease = assert(actor.acquire(ready, stopped))
 assert(not actor.acquire(ready, stopped) and fact.ai_actor_open and not fact.ai_dragon_open)
 advance(2100)

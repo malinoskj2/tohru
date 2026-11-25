@@ -1,8 +1,8 @@
 {
   "cell": 240,
   "columns": 8,
-  "rows": 34,
-  "frames": 272,
+  "rows": 44,
+  "frames": 352,
   "poses": {
     "fly_left": {
       "first": 0,
@@ -207,18 +207,18 @@
     },
     "edge_reach": {
       "first": 192,
-      "count": 24,
-      "sha256": "a9bf4acd798eaaa81753e73ce1571ff52fecc113876a84d2554db17ec3b9a905"
+      "count": 48,
+      "sha256": "8e38f856d74422d1654b3ad25a6e1cad002eb92487089f76b5f7cb62a2d4089c"
     },
     "edge_pull": {
-      "first": 216,
-      "count": 32,
-      "sha256": "0d8f679f7ff98c04a039489dc34b452a75db08fe937c999bc0bcbae9885ffe3a"
+      "first": 240,
+      "count": 64,
+      "sha256": "327642aafefe77d86876756fc678ac0f9fa3592237d74daddae8fd3cce2903eb"
     },
     "edge_head": {
-      "first": 248,
-      "count": 24,
-      "sha256": "5f7715eb8d4b745d77e255ca0ec5b22cba720e7eb56f7eff1ce914b2002ca442"
+      "first": 304,
+      "count": 48,
+      "sha256": "ca34d05e3580427c5d12c691c8d248e02c913ed25e7dde49df9fbc0b2d666051"
     }
   },
   "closeup": {
@@ -270,7 +270,7 @@
     ]
   },
   "annotation_note": "Conservative manually registered head bounds (including horns/frill); transparent sheet size is not head detail.",
-  "atlas_rgba_bytes": 62668800,
+  "atlas_rgba_bytes": 81100800,
   "reused_flight_source": {
     "path": "shell/assistant/dragon/flight.webp",
     "cell": 240,

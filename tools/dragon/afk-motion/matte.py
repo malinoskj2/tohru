@@ -38,7 +38,13 @@ def extract(rgb,cropped_bottom,panel=None):
     if count<2 or stats[1:,cv2.CC_STAT_AREA].max()<40:
         if panel is not None:return np.zeros(a.shape[:2]+(4,),'uint8')
         raise RuntimeError('No foreground found')
-    label=1+np.argmax(stats[1:,cv2.CC_STAT_AREA]);body=(labels==label).astype('uint8')
+    areas=stats[1:,cv2.CC_STAT_AREA]
+    if panel is None:
+        body=(labels==1+np.argmax(areas)).astype('uint8')
+    else:
+        # A paw gripping the edge is often detached from the peeking head.
+        keep=1+np.flatnonzero(areas>=max(150,.04*areas.max()))
+        body=np.isin(labels,keep).astype('uint8')
     body=cv2.morphologyEx(body,cv2.MORPH_CLOSE,np.ones((3,3),'uint8'))
     filled=body.copy();h,w=body.shape
     flood=np.zeros((h+2,w+2),'uint8');cv2.floodFill(filled,flood,(0,0),1)

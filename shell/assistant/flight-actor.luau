@@ -50,7 +50,7 @@ return function(puppet, host)
             or type(path) ~= "string"
             or #path > 4096
             or path:sub(1, 1) ~= "/"
-            or not finite(rows, 1, 34)
+            or not finite(rows, 1, 64)
             or rows ~= math.floor(rows)
         then
             return false

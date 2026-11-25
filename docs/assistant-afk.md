@@ -91,15 +91,17 @@ a real login session.
 
 ## Art, resolution and loading
 
-The separate `afk.webp` has 8×28 cells of 240px (1920×6720), leaving the
+The separate `afk.webp` has 8×44 cells of 240px (1920×10560), leaving the
 production body atlas intact. Its first 12 rows hold canonical flight frames and
 authored nap, perch, tail/contact keys and a stretch; normal rendering is capped
-at 236 physical pixels, so 240px cells are native. The other 16 rows hold eight
+at 236 physical pixels, so 240px cells are native. The next 12 rows hold six
 generated 16-frame in-between sequences: a side-to-side body turn, side-to-front
 arrivals from each direction, gliding down into the curled nap, landing on a
-ledge with the tail dropping, banking into a climb, a curious lean and a
-pop-up wave. Adjacent frames crossfade, so a sequence stays fluid at any
-playback rate.
+ledge with the tail dropping and banking into a climb. The last 20 rows hold the
+hide-and-peek edge clips: 48 frames each for the head-first and paw-first peeks
+and 64 for the pull-out. Adjacent frames crossfade, so a sequence stays fluid at
+any playback rate; edge clips hold each frame and crossfade only mid-step, so
+quick moves stay crisp instead of doubled.
 Continuous native WGSL moves contact paws, wings, horn rubbing, tail and breath;
 these are not static poses translated around a path. Quiet rest freezes frame,
 root, zoom, bob, bank, squash and effects while ordinary voice lip/blink ownership
@@ -165,7 +167,7 @@ are not resolution evidence. The runtime exposes no GPU-ready/free acknowledgeme
 a conservative three-second warm barrier precedes travel, and all live bindings
 clear after retreat/cancel/disable; renderer caches may remain.
 
-Supplemental RGBA estimates are 59.8 MiB normal, 96 MiB camera, or 192 MiB for
+Supplemental RGBA estimates are 77.3 MiB normal, 96 MiB camera, or 192 MiB for
 the two grids the glass and upside-down scenes need. Add existing voice textures (roughly 57 MiB at scale 1,
 89 MiB at 1.25, 228 MiB at 2), flight texture, surface buffers and conservatively
 four physical shader layers (31.6 MiB at 1080p; 126.6 MiB at 4K). Decoder

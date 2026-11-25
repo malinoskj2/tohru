@@ -92,7 +92,7 @@
       "scale": 1.8,
       "background": "A flat plain gray panel, like the side of a window, fills the right part of the frame; its straight vertical left edge stays exactly where it is and the panel never moves, changes or casts shadows. Left of the panel the background stays perfectly uniform dark gray and empty; there is no floor, scenery, camera move, zoom, shot change, text or other character. The camera stays locked.",
       "action": "At the opening she is completely hidden behind the gray panel and nothing of her is visible, exactly as in Picture 1. After a short pause, one small rounded front paw slowly pokes out from behind the panel's left edge, its little fingers wiggle, then curl around the edge and grip the front of the panel; from then on the paw stays gripping in exactly that spot. Then, just above her gripping paw, the tips of her horns appear and her head slowly slides out head-first from behind the edge, a little at a time, until her face peeks out curiously exactly as in Picture 2. Her body stays hidden behind the panel; only her gripping fingers overlap its front edge.",
-      "cells": 24
+      "cells": 48
     },
     "edge_head": {
       "first": {
@@ -109,7 +109,7 @@
       "scale": 1.8,
       "background": "A flat plain gray panel, like the side of a window, fills the right part of the frame; its straight vertical left edge stays exactly where it is and the panel never moves, changes or casts shadows. Left of the panel the background stays perfectly uniform dark gray and empty; there is no floor, scenery, camera move, zoom, shot change, text or other character. The camera stays locked.",
       "action": "At the opening she is completely hidden behind the gray panel and nothing of her is visible, exactly as in Picture 1. After a short pause, the tips of her horns appear at the panel's left edge and her head slowly slides out head-first from behind the edge, a little at a time, her eyes peeking around curiously and her head tilting. Then one small rounded front paw comes out from behind the edge just below her chin, and its little fingers curl around the edge and grip the front of the panel, ending exactly as in Picture 2. Her body stays hidden behind the panel; only her gripping fingers overlap its front edge.",
-      "cells": 24
+      "cells": 48
     },
     "edge_pull": {
       "first": {
@@ -148,7 +148,7 @@
           ]
         }
       ],
-      "cells": 32
+      "cells": 64
     },
     "bust": {
       "first": {

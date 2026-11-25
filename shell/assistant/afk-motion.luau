@@ -7,13 +7,13 @@ return function(choreography)
     local BODY=1.9245097100019937
     -- Generated FL2VA in-betweens follow the 12 authored rows, 16 frames each.
     local MOTION={turn=96,arrive_right=112,arrive_left=128,curl=144,perch=160,bank=176,
-        edge_reach=192,edge_pull=216,edge_head=248}
+        edge_reach=192,edge_pull=240,edge_head=304}
     local LAST=15
     -- Source frame (of 124) behind each edge-clip cell: cells are picked half
     -- by motion and half by time, and playback follows the generated timing.
-    local EDGE_PICKS={edge_reach={0,6,12,18,23,28,35,42,48,52,58,63,68,72,76,79,84,88,93,98,102,109,117,123},edge_pull={0,6,13,20,25,30,37,44,48,51,55,60,65,68,69,71,72,73,75,78,81,83,84,86,89,93,96,99,104,111,117,123},edge_head={0,6,12,19,26,32,37,42,47,51,56,60,65,70,75,80,84,88,93,98,102,109,117,123}}
+    local EDGE_PICKS={edge_reach={0,3,6,9,11,15,17,20,22,25,27,31,34,37,41,43,47,48,51,54,57,59,62,65,67,69,71,73,75,76,78,80,82,84,87,89,91,93,96,98,100,103,107,109,113,117,120,123},edge_pull={0,4,6,9,12,16,19,22,25,28,30,33,36,40,44,46,48,49,51,52,54,57,59,62,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,93,95,96,98,100,102,105,108,111,114,117,120,123},edge_head={0,3,6,9,12,16,18,22,25,28,31,34,36,39,42,43,46,48,50,52,55,57,59,61,64,67,69,72,74,76,78,81,83,85,87,89,91,94,96,98,100,102,106,109,113,117,120,123}}
     -- Last source frame of the glance that opens the pull clip, before its dip.
-    local EDGE_GLANCE=13
+    local EDGE_GLANCE=12
     local TURN,ARRIVE=.8,.6
     -- One generated bust gesture loop and one closeup wingbeat, 16 frames each.
     local BUST_LOOP,CLOSEUP_FRAMES=5.2,16
@@ -192,7 +192,7 @@ return function(choreography)
         -- Neighbouring cells can sit far apart in fast motion, so each one
         -- holds and only the middle of the step crossfades, which keeps
         -- quick moves crisp instead of doubled.
-        if i<last and f>i then sample.skin_next=sample.skin_frame+1;sample.skin_mix=smooth((f-i-.3)/.4) end
+        if i<last and f>i then sample.skin_next=sample.skin_frame+1;sample.skin_mix=smooth((f-i-.4)/.2) end
         return sample
     end
     local function cycle(sample,frames,position)
@@ -331,7 +331,9 @@ return function(choreography)
             sample.facing=0;sample.anchored=true
             sample.turn=semantic.from:find("right") and -1 or 1
             if pose=="peek_wait" then
-                sample.pose="skin";sample.skin_frame=8;sample.behind=true
+                -- Fully hidden. Pleamar can move her layer a frame before her
+                -- art and position, so a visible wait would flash in front.
+                sample.pose="skin";sample.skin_frame=8;sample.behind=true;sample.opacity=0
             elseif pose=="peek_head" then
                 -- Head first, then her paw comes out and grips the edge.
                 clip(sample,"edge_head",20,123,q)
@@ -344,19 +346,21 @@ return function(choreography)
                 clip(sample,"edge_pull",0,EDGE_GLANCE,smooth(math.min(1,3*math.sin(math.pi*q))))
             elseif pose=="peek_hide" then
                 -- Ducks back quickly, the paw letting go last.
-                clip(sample,"edge_head",123,36,q*q)
+                clip(sample,"edge_head",123,20,smooth(q))
             elseif pose=="peek_pull" then
                 clip(sample,"edge_pull",0,123,q)
             elseif pose=="peek_wave" then
-                -- The pull ends on the canonical wave key. Its articulation
-                -- starts from rest so the handoff holds still, and it settles
-                -- into the front hover the turn home starts on.
-                -- Two whole waves and one bob, both back at rest before the
-                -- settle, so nothing jumps when the turn home takes over.
+                -- The pull ends on the canonical wave key: two happy hops
+                -- with a tilt and the paw wave, all back at rest before she
+                -- settles into the front hover the turn home starts on.
                 local waving=duration-.7
-                sample.pose="skin";sample.skin_frame=7*8;sample.turn=1
-                sample.wave_phase=2*math.min(beat_time,waving)/waving
-                sample.y=sample.y-4*sample.scale*(1-math.cos(2*math.pi*math.min(beat_time,waving)/waving))/2
+                local w=math.min(beat_time,waving)/waving
+                local hop=math.abs(math.sin(2*math.pi*w))
+                sample.pose="skin";sample.skin_frame=7*8
+                sample.turn=1-.05*hop
+                sample.rotation=-6*math.sin(3*math.pi*w)
+                sample.wave_phase=2*w
+                sample.y=sample.y-9*sample.scale*hop
                 local settle=smooth((beat_time-waving)/.4)
                 if settle>0 then sample.skin_next=8;sample.skin_mix=settle end
             end
