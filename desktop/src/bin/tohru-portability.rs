@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use tohru_desktop::config::Config;
 use tohru_desktop::shortcuts::{self, Operation};
-use tohru_desktop::{greeter, paths, pyjson, units};
+use tohru_desktop::{doctor, greeter, paths, pyjson, units};
 
 /// Portable session setup and read-only diagnostics.
 #[derive(Parser)]
@@ -19,6 +19,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Read-only, bounded diagnostics of the session, services and optional features.
+    Doctor {
+        #[arg(long)]
+        json: bool,
+    },
     /// Write systemd user units without enabling or starting any.
     SessionUnits {
         #[arg(long)]
@@ -57,6 +62,15 @@ enum Command {
 
 fn run(command: Command) -> Result<ExitCode> {
     match command {
+        Command::Doctor { json } => {
+            let report = doctor::run(&doctor::System, Config::load());
+            if json {
+                println!("{}", report.json());
+            } else {
+                print!("{}", report.text());
+            }
+            return Ok(ExitCode::from(report.summary.status.exit_code()));
+        }
         Command::SessionUnits {
             output,
             prefix,

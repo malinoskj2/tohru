@@ -229,3 +229,36 @@ fn the_tohru_cli_dispatches_to_the_native_commands() {
     let unit = std::fs::read_to_string(root.path().join("units/tohru-bar.service")).unwrap();
     assert!(unit.contains(&repository().join("bin/tohru-run").display().to_string()));
 }
+
+#[test]
+fn doctor_reports_read_only_json_and_exit_codes() {
+    let root = tempfile::tempdir().unwrap();
+    let config = root.path().join("config/tohru");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(
+        config.join("config.toml"),
+        "[assistant.discord]\ntoken_file=\"/secret/do-not-report\"\n",
+    )
+    .unwrap();
+    let output = private(
+        Command::new(PORTABILITY).args(["doctor", "--json"]),
+        root.path(),
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(!text.contains("do-not-report"));
+    let report: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(report["read_only"], Value::Bool(true));
+    assert_eq!(
+        output.status.code(),
+        report["summary"]["exit_code"]
+            .as_i64()
+            .and_then(|code| i32::try_from(code).ok())
+    );
+
+    std::fs::write(config.join("config.toml"), "[broken").unwrap();
+    let output = private(Command::new(PORTABILITY).arg("doctor"), root.path());
+    assert_eq!(output.status.code(), Some(2));
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.starts_with("error   invalid                  config: "));
+    assert!(text.ends_with("Doctor: configuration-error (exit 2)\n"));
+}

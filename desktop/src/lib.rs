@@ -1,6 +1,7 @@
 pub mod afk;
 pub mod config;
 pub mod discord;
+pub mod doctor;
 pub mod flight_scene;
 pub mod greeter;
 pub mod home_guard;

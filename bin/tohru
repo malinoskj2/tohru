@@ -66,10 +66,7 @@ case ${1:-help} in
         [[ $# -le 1 ]] || fail 'help takes no arguments'
         usage
         ;;
-    doctor)
-        exec python3 "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/tohru_portability.py" "$@"
-        ;;
-    session-units|echo-cancel|shortcuts|greeter-check)
+    doctor|session-units|echo-cancel|shortcuts|greeter-check)
         exec "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/tohru-portability" "$@"
         ;;
     dev)

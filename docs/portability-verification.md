@@ -104,9 +104,8 @@ With Python 3.11+, Lua 5.4, util-linux and dbus-daemon on PATH:
 
 ```sh
 mkdir -p .tmp
-python3 tests/portability.py
-# dbus-fast must be installed explicitly in this test Python environment:
-python3 tests/shortcuts-portal.py
+cargo test --locked --manifest-path desktop/Cargo.toml
+cargo build --locked --release --manifest-path desktop/Cargo.toml
 python3 tests/cli.py Cli.test_portable_config_keys_route_to_native_schema \
   Cli.test_session_menu_routes_never_start_a_role \
   LockWrapper.test_one_locker_at_a_time \
