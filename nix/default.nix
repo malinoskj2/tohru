@@ -14,7 +14,7 @@ let
   };
   source = lib.fileset.toSource {
     root = ../.;
-    fileset = lib.fileset.unions [ ../bin ../shell ../share ../docs ../LICENSE ];
+    fileset = lib.fileset.unions [ ../bin ../shell ../share ../docs ../LICENSE ../tests/assistant/home-guard.py ];
   };
   runtimeUnwrapped = rustPlatform.buildRustPackage {
     pname = "pleamar-tohru";
@@ -66,6 +66,10 @@ in assert lib.asserts.assertOneOf "voiceRuntime" voiceRuntime [ "python" "rust" 
   nativeBuildInputs = [ makeWrapper ];
   buildInputs = [ python3 ];
   dontBuild = true;
+  doInstallCheck = true;
+  installCheckPhase = ''
+    TOHRU_HOME_GUARD=$out/bin/tohru-home-guard python3 tests/assistant/home-guard.py InstalledHookCommand
+  '';
   installPhase = ''
     runHook preInstall
     mkdir -p $out/bin $out/share/tohru

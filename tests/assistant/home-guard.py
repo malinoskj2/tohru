@@ -14,6 +14,30 @@ sys.path.insert(0, str(ROOT / "bin"))
 from tohru_home_guard import plan
 from tohru_status_ledger import WorkerLedger
 
+GUARD = os.environ.get("TOHRU_HOME_GUARD", str(ROOT / "bin/tohru-home-guard"))
+
+
+class InstalledHookCommand(unittest.TestCase):
+    def hook(self, tool, value, remaining_ms=5000):
+        result = subprocess.run([GUARD, "plan", "--remaining-ms", str(remaining_ms)], capture_output=True, text=True,
+                                input=json.dumps({"tool": tool, "input": value}), timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_wrapped_foreground_bash_runs_through_the_installed_guard(self):
+        decision = self.hook("Bash", {"command": "printf guarded"})
+        self.assertEqual(decision["decision"], "wrap")
+        result = subprocess.run(["bash", "-c", decision["input"]["command"]], capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "guarded")
+        self.assertIn('"event": "home_tool"', result.stderr)
+
+    def test_quick_tools_pass_before_any_foreground_work(self):
+        for tool in ("Read", "Glob", "Grep", "ToolSearch"):
+            self.assertEqual(self.hook(tool, {}), {"decision": "pass"}, tool)
+            self.assertEqual(self.hook(tool, {}, 0)["decision"], "deny", tool)
+        self.assertEqual(self.hook("Agent", {"prompt": "work"})["decision"], "deny")
+
 
 class HomeGuard(unittest.TestCase):
     def test_known_slow_work_and_internal_subagents_are_denied_before_execution(self):

@@ -16,12 +16,15 @@ SLOW = {"cargo": {"build", "test", "bench", "run", "install", "clippy"},
         "pip3": {"install", "download"}, "uv": {"sync", "pip", "run"},
         "npm": {"install", "ci", "test", "run"}, "pnpm": {"install", "test", "run", "exec"}}
 SLOW_PROGRAMS = {"make", "cmake", "ninja", "pytest", "curl", "wget", "sleep", "gpu-run", "gpu-game"}
+QUICK_TOOLS = {"Read", "Glob", "Grep", "ToolSearch"}
 SEPARATORS = {";", "&&", "||", "|", "&", "(", ")"}
 
 
 def plan(tool, value, remaining_ms):
     if tool == "AskUserQuestion":
         return {"decision": "pass"}
+    if tool in QUICK_TOOLS:
+        return {"decision": "pass"} if 0 < remaining_ms <= 5000 else {"decision": "deny", "reason": REFUSAL}
     if tool != "Bash" or not isinstance(value, dict) or not isinstance(value.get("command"), str):
         return {"decision": "deny", "reason": REFUSAL}
     if value.get("run_in_background") is True:
@@ -59,8 +62,8 @@ def plan(tool, value, remaining_ms):
         return {"decision": "deny", "reason": REFUSAL}
     if "worker-show" in words and any(word in command for word in ("while ", "until ", "for ")):
         return {"decision": "deny", "reason": REFUSAL}
-    executable = str(Path(__file__).with_name("tohru-home-guard").resolve())
-    wrapped = shlex.join([sys.executable, executable, "run", "--budget-ms", str(remaining_ms), "--command", command])
+    executable = str(Path(__file__).resolve().with_name("tohru-home-guard"))
+    wrapped = shlex.join([executable, "run", "--budget-ms", str(remaining_ms), "--command", command])
     return {"decision": "wrap", "input": {**value, "command": wrapped, "timeout": remaining_ms + 1500}}
 
 
