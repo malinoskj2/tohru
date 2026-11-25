@@ -3,6 +3,7 @@ use super::*;
 impl Voice {
     pub fn step(&mut self, frame: &[f32]) -> Result<()> {
         self.playback_changed();
+        self.settle_window();
         let probability = self.vad.probability(frame)?;
         let rms = (frame.iter().map(|s| s * s).sum::<f32>() / WINDOW as f32).sqrt();
         self.last_vad = (probability, rms);
@@ -221,6 +222,7 @@ impl Voice {
     }
 
     pub(super) fn cancel_thinking(&mut self) {
+        self.settling = None;
         self.generation = Value::Null;
         self.speech_job = None;
         self.speaker.hush();
@@ -390,6 +392,7 @@ impl Voice {
             self.cancelled = false;
             self.last_turn = request.clone();
             self.thinking = true;
+            self.settling = Some(Settling::new(self.turn_id.clone()));
             emit(
                 json!({"event":"transcript","text":request.chars().take(240).collect::<String>(),"final":true}),
             );

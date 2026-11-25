@@ -51,6 +51,10 @@ DRAFT_HOLD_MS = 480
 COMPLETE_HOLD_MS = 650
 INCOMPLETE_HOLD_MS = 1050
 MAX_UTTERANCE_MS = 30_000
+# Orca admits a turn only once it is settled: the owner has not resumed within SETTLE_MS
+# of quiet after it. A resumed utterance holds it until its words decide.
+SETTLE_MS = 352
+SETTLE_CAP_MS = 2496
 BARGE_MS = 200
 BARGE_FLOOR = 0.025
 BARGE_AEC_FLOOR = 0.065
@@ -1315,6 +1319,7 @@ class Voice:
         self.cancelled_thinking = False
         self.last_turn_text = ""
         self.pending_continuation = ""
+        self.settling = None
         self.echo_cancelled = False
         self.echo_coupling = ECHO_COUPLING_INIT
         self.load_on_conversation = False
@@ -1473,6 +1478,7 @@ class Voice:
         probability = self.silero(window)
         rms = float(np.sqrt(np.mean(window * window)))
         self.last_vad = (probability, rms)
+        self.settle_window()
         if self.speaker.speaking and not self.barge_pending:
             if probability >= SPEECH_START:
                 self.suppression("playback", probability, rms)
@@ -1497,6 +1503,26 @@ class Voice:
                 self.conversation(False)
             return
         self.hear(window, probability >= SPEECH_CONTINUE)
+
+    def settle_window(self):
+        settling = getattr(self, "settling", None)
+        if settling is None:
+            return
+        settling["total"] += WINDOW_MS
+        if not self.in_speech:
+            settling["quiet"] += WINDOW_MS
+        if settling["quiet"] >= SETTLE_MS or settling["total"] >= SETTLE_CAP_MS:
+            self.settling = None
+            emit("settled", turn_id=settling["turn_id"])
+
+    def emit_turn(self, request):
+        self.cancelled_thinking = False
+        self.last_turn_text = request
+        self.thinking = True
+        turn_id = getattr(self, "turn_id", None)
+        self.settling = {"turn_id": turn_id, "quiet": 0.0, "total": 0.0}
+        emit("transcript", text=request[:240], final=True)
+        emit("turn", text=request, turn_id=turn_id)
 
     def suppression(self, reason, probability, rms):
         now = time.monotonic()
@@ -1700,6 +1726,7 @@ class Voice:
         self.speaker.resume()
 
     def cancel_thinking(self):
+        self.settling = None
         self.speech_generation = None
         self.speaker.hush()
         self.thinking = False
@@ -1795,11 +1822,7 @@ class Voice:
             if request:
                 if active_draft and normalize_transcript(request) != active_draft:
                     emit("draft_cancel")
-                self.cancelled_thinking = False
-                self.last_turn_text = request
-                self.thinking = True
-                emit("transcript", text=request[:240], final=True)
-                emit("turn", text=request, turn_id=getattr(self, "turn_id", None))
+                self.emit_turn(request)
             elif active_draft:
                 emit("draft_cancel")
             return
@@ -1815,11 +1838,7 @@ class Voice:
         if request:
             if active_draft and normalize_transcript(request) != active_draft:
                 emit("draft_cancel")
-            self.cancelled_thinking = False
-            self.last_turn_text = request
-            self.thinking = True
-            emit("transcript", text=request[:240], final=True)
-            emit("turn", text=request, turn_id=getattr(self, "turn_id", None))
+            self.emit_turn(request)
         else:
             if active_draft:
                 emit("draft_cancel")

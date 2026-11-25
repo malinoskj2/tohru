@@ -80,8 +80,12 @@ assert(fact.ai_listening)
 
 -- A turn goes to the assistant; its answer is spoken in the same conversation.
 service.line({event = "conversation", on = true})
-service.line({event = "turn", text = "What time is it"})
-assert(asked[1][1] == "What time is it" and asked[1][2] == nil)
+service.line({event = "turn", text = "What time is it", turn_id = "capture-1"})
+assert(asked[1][1] == "What time is it" and asked[1][2] == nil and asked[1][3].capture_id == "capture-1")
+local settled = {}
+assistant.settled = function(turn_id) settled[#settled + 1] = turn_id end
+service.line({event = "settled", turn_id = "capture-1"})
+assert(#settled == 1 and settled[1] == "capture-1", "the settle signal reaches the turn's helper")
 listeners[1]("done", "v1", "Half past two.", true)
 assert(written[1].message.cmd == "say" and written[1].message.text == "Half past two." and written[1].message.conversation == "v1")
 listeners[1]("done", "c9", "Typed answer", false)

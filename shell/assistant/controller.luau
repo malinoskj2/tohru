@@ -10,6 +10,7 @@ return function(settings)
     local send
     local draft = nil
     local pending_commit = nil
+    local settled_turn = nil
     local DRAFT_PROVIDERS = {claude = true, codex = true}
     local DRAFT_NEEDS_TOOLS = "<<needs-tools>>"
     local function has_needs_tools(value)
@@ -473,7 +474,11 @@ return function(settings)
             args[#args + 1] = "--discord-incoming"
             args[#args + 1] = incoming
         end
-        live = {conversation = target, discord = incoming, slot = provider.slot, text = "", voice = voice == true, provider = provider.id, voice_generation = opts and opts.voice_generation}
+        -- Orca turns cost a whole Home turn once admitted, so a spoken one waits for the voice
+        -- service to say the owner has not carried on; the helper prepares meanwhile.
+        local settle_turn = voice and is_orca() and opts and opts.capture_id or nil
+        if settle_turn then args[#args + 1] = "--await-settle" end
+        live = {conversation = target, discord = incoming, slot = provider.slot, text = "", voice = voice == true, provider = provider.id, voice_generation = opts and opts.voice_generation, settle_turn = settle_turn}
         local turns = {}
         for _, turn in ipairs(shown_turns) do turns[#turns + 1] = turn end
         turns[#turns + 1] = {role = "user", text = prompt, voice = voice}
@@ -521,7 +526,11 @@ return function(settings)
             end
         end, function(_, code)
             if live == mine then finish({event = "error", message = "tohru-assistant exited with " .. tostring(code)}) end
-        end, {input = prompt})
+        end, settle_turn and {input = json.encode(prompt) .. "\n", stdin = "open"} or {input = prompt})
+        if settle_turn and settle_turn == settled_turn then
+            mine.settle_turn = nil
+            write(mine.id, "settled\n")
+        end
         return true
     end
 
@@ -1087,6 +1096,13 @@ return function(settings)
         end,
         draft = start_draft,
         discard_draft = discard_draft,
+        settled = function(turn_id)
+            settled_turn = turn_id
+            if turn_id and live and live.settle_turn == turn_id and live.id then
+                live.settle_turn = nil
+                write(live.id, "settled\n")
+            end
+        end,
         stop = function()
             if pending_commit then pending_commit.cancelled = true end
             discard_draft()

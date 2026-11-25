@@ -651,4 +651,38 @@ assert(not assistant.detach_voice("cancel-owned-request"), "admission must not f
 cancelled_poller.line({event="stopped", conversation=uuid})
 assert(cancellation_finished and not assistant.streaming())
 
+-- A spoken Orca turn reaches Home only after the voice service settles it; the helper prepares meanwhile.
+values["assistant.backend"] = "orca"
+local writes = {}
+_G.write = function(id, line) writes[#writes + 1] = {id, line}; return true end
+local function flagged(list, name)
+    for _, a in ipairs(list) do if a == name then return true end end
+    return false
+end
+assert(assistant.ask("Tell me about the history", uuid, {voice_generation = 18, capture_id = "turn-1"}))
+local gated = spawned[#spawned]
+assert(flagged(gated.args, "--await-settle") and gated.how.stdin == "open" and gated.how.input == "Tell me about the history\n")
+assistant.settled("turn-0")
+assert(#writes == 0, "another turn's settle never admits this one")
+assistant.settled("turn-1")
+assert(#writes == 1 and writes[1][1] == #spawned and writes[1][2] == "settled\n")
+assistant.settled("turn-1")
+assert(#writes == 1, "a turn is admitted once")
+gated.line({event = "stopped", conversation = uuid})
+assert(not assistant.streaming())
+-- Settled before the helper starts (a queued turn): admitted as it starts.
+assistant.settled("turn-2")
+assert(assistant.ask("Of the Roman empire", uuid, {voice_generation = 19, capture_id = "turn-2"}))
+assert(#writes == 2 and writes[2][1] == #spawned)
+spawned[#spawned].line({event = "stopped", conversation = uuid})
+-- Typed turns and voice turns without a capture keep the plain one-shot input.
+assert(assistant.ask("No capture", uuid, {voice_generation = 20}))
+assert(not flagged(spawned[#spawned].args, "--await-settle") and spawned[#spawned].how.input == "No capture" and #writes == 2)
+spawned[#spawned].line({event = "stopped", conversation = uuid})
+values["assistant.backend"] = "local"
+local before_local = #spawned
+assert(assistant.ask("Local voice", uuid, {voice_generation = 21, capture_id = "turn-3"}))
+assert(#spawned == before_local + 1 and spawned[#spawned].how.input == "Local voice" and not flagged(spawned[#spawned].args, "--await-settle"), "local turns are never held")
+spawned[#spawned].line({event = "stopped", conversation = uuid})
+
 print("Assistant provider choice, models, streaming, Stop, ready mark, sign-in, history, voice turn, drafts, memory hand-off, alerts and Orca backend fixtures passed")

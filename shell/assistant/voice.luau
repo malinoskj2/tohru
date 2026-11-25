@@ -239,6 +239,8 @@ return function(assistant, puppet, flight, service_executable)
             else
                 send({cmd = "draft", ok = false})
             end
+        elseif event == "settled" then
+            if assistant.settled then assistant.settled(message.turn_id) end
         elseif event == "draft_cancel" then
             if assistant.discard_draft then assistant.discard_draft() end
         elseif event == "wake" then

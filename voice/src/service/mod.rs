@@ -22,6 +22,36 @@ use std::{
     time::{Duration, Instant},
 };
 
+// Orca admits a turn only once it is settled: the owner has not resumed within SETTLE_MS
+// of quiet after it. A resumed utterance holds it until its words decide.
+const SETTLE_MS: u32 = 352;
+const SETTLE_CAP_MS: u32 = 2496;
+
+struct Settling {
+    turn_id: String,
+    quiet_ms: u32,
+    total_ms: u32,
+}
+
+impl Settling {
+    fn new(turn_id: String) -> Self {
+        Self {
+            turn_id,
+            quiet_ms: 0,
+            total_ms: 0,
+        }
+    }
+
+    /// One 32 ms window; true once the turn has settled.
+    fn tick(&mut self, in_speech: bool) -> bool {
+        self.total_ms += 32;
+        if !in_speech {
+            self.quiet_ms += 32;
+        }
+        self.quiet_ms >= SETTLE_MS || self.total_ms >= SETTLE_CAP_MS
+    }
+}
+
 pub struct Voice {
     vad: Vad,
     asr: Recognizer,
@@ -33,6 +63,7 @@ pub struct Voice {
     cancelled: bool,
     last_turn: String,
     pending: String,
+    settling: Option<Settling>,
     in_speech: bool,
     hearing: bool,
     hearing_eligible: bool,
@@ -106,6 +137,7 @@ impl Voice {
             cancelled: false,
             last_turn: String::new(),
             pending: String::new(),
+            settling: None,
             in_speech: false,
             hearing: false,
             hearing_eligible: false,
@@ -323,6 +355,15 @@ impl Voice {
 }
 
 impl Voice {
+    fn settle_window(&mut self) {
+        let in_speech = self.in_speech;
+        if self.settling.as_mut().is_some_and(|s| s.tick(in_speech))
+            && let Some(settling) = self.settling.take()
+        {
+            emit(json!({"event":"settled","turn_id":settling.turn_id}));
+        }
+    }
+
     fn playback_changed(&mut self) {
         let playing = self.speaker.speaking();
         if playing && !self.was_playing {
@@ -338,4 +379,31 @@ impl Voice {
 mod capture;
 mod commands;
 mod turn;
+
 pub use capture::{device_report, devices, run};
+
+#[cfg(test)]
+mod settle_tests {
+    use super::*;
+
+    #[test]
+    fn quiet_settles_after_the_window_and_speech_holds_it() {
+        let mut quiet = Settling::new("t".into());
+        let windows = SETTLE_MS / 32;
+        assert!((1..windows).all(|_| !quiet.tick(false)));
+        assert!(quiet.tick(false));
+
+        let mut resumed = Settling::new("t".into());
+        assert!((0..windows / 2).all(|_| !resumed.tick(false)));
+        assert!((0..windows * 2).all(|_| !resumed.tick(true)));
+        assert!((windows / 2..windows - 1).all(|_| !resumed.tick(false)));
+        assert!(resumed.tick(false));
+    }
+
+    #[test]
+    fn speech_without_words_cannot_hold_a_turn_forever() {
+        let mut noisy = Settling::new("t".into());
+        assert!((1..SETTLE_CAP_MS / 32).all(|_| !noisy.tick(true)));
+        assert!(noisy.tick(true));
+    }
+}

@@ -629,6 +629,55 @@ class VoiceTests(unittest.TestCase):
         self.assertTrue(barge.get("continuation"))
         self.assertEqual(self.events[-1], {"event": "turn", "text": "Tell me about the history of the roman empire"})
 
+    def test_a_turn_settles_after_quiet_but_a_continued_fragment_never_does(self):
+        windows = round(voice_module.SETTLE_MS / voice_module.WINDOW_MS)
+        voice = make_voice(FakeRecognizer(["WHAT TIME IS IT"], "WHAT TIME IS IT"))
+        voice.extend_conversation()
+        self.speak(voice, 10, 25)
+        self.assertEqual(self.events[-1], {"event": "turn", "text": "What time is it"})
+        for _ in range(windows - 1):
+            voice.settle_window()
+        self.assertNotIn("settled", [e["event"] for e in self.events])
+        voice.settle_window()
+        self.assertEqual(self.events[-1], {"event": "settled"})
+        for _ in range(windows * 3):
+            voice.settle_window()
+        self.assertEqual([e["event"] for e in self.events].count("settled"), 1)
+
+        # The owner carries on: speech holds the settle window, and the continuation cancels it.
+        self.events.clear()
+        voice = make_voice(FakeRecognizer(["TELL ME ABOUT THE HISTORY"], "TELL ME ABOUT THE HISTORY"))
+        voice.extend_conversation()
+        self.speak(voice, 10, 25)
+        for _ in range(windows // 2):
+            voice.settle_window()
+        voice.recognizer = FakeRecognizer(["OF THE ROMAN EMPIRE"], "OF THE ROMAN EMPIRE")
+        voice.begin([])
+        for _ in range(windows * 2):
+            voice.settle_window()
+            voice.hear(b"", True)
+        self.assertNotIn("settled", [e["event"] for e in self.events])
+        for _ in range(25):
+            if not voice.in_speech:
+                break
+            voice.hear(b"", False)
+        self.assertTrue(any(e.get("continuation") for e in self.events))
+        self.assertEqual(self.events[-1], {"event": "turn", "text": "Tell me about the history of the roman empire"})
+        for _ in range(windows):
+            voice.settle_window()
+        self.assertEqual([e["event"] for e in self.events].count("settled"), 1, "only the joined turn settles")
+
+    def test_settle_window_is_bounded_while_noise_never_yields_words(self):
+        voice = make_voice(FakeRecognizer(["CHECK THE BUILD"], "CHECK THE BUILD"))
+        voice.extend_conversation()
+        self.speak(voice, 10, 25)
+        voice.in_speech = True
+        for _ in range(round(voice_module.SETTLE_CAP_MS / voice_module.WINDOW_MS) - 1):
+            voice.settle_window()
+        self.assertNotIn("settled", [e["event"] for e in self.events])
+        voice.settle_window()
+        self.assertEqual(self.events[-1], {"event": "settled"})
+
     def test_endpointing_holds_unfinished_phrases_and_shortens_with_draft(self):
         # Complete-looking phrase without draft (< 4 words) finishes around COMPLETE_HOLD_MS (~650 ms, 21 windows).
         voice = make_voice(FakeRecognizer(["WHAT TIME IS"], "WHAT TIME IS"))
