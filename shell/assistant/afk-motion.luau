@@ -186,13 +186,10 @@ return function(choreography)
         local even=lerp(from,to,clamp(q,0,1))
         local last=#picks-1
         local f=clamp((timed+even)/2,0,last)
-        local i=math.min(last,math.floor(f))
+        -- Edge clips are dense enough to step from cell to cell; blending
+        -- neighbours would double her outline during quick moves.
         sample.pose="skin";sample.generated=true
-        sample.skin_frame=MOTION[name]+i
-        -- Neighbouring cells can sit far apart in fast motion, so each one
-        -- holds and only the middle of the step crossfades, which keeps
-        -- quick moves crisp instead of doubled.
-        if i<last and f>i then sample.skin_next=sample.skin_frame+1;sample.skin_mix=smooth((f-i-.4)/.2) end
+        sample.skin_frame=MOTION[name]+math.min(last,math.floor(f+.5))
         return sample
     end
     local function cycle(sample,frames,position)
@@ -342,8 +339,10 @@ return function(choreography)
                 clip(sample,"edge_reach",14,123,q)
             elseif pose=="peek_look" then
                 -- The pull clip opens on a glance with the paw held still:
-                -- a quick turn out along it, a hold, and a quick turn back.
-                clip(sample,"edge_pull",0,EDGE_GLANCE,smooth(math.min(1,3*math.sin(math.pi*q))))
+                -- a turn out along it, a curious little nod while she looks,
+                -- and a turn back.
+                local look=smooth(math.min(1,1.8*math.sin(math.pi*q)))
+                clip(sample,"edge_pull",0,EDGE_GLANCE,look*(1-.3*math.sin(math.pi*smooth((q-.25)/.5))))
             elseif pose=="peek_hide" then
                 -- Ducks back quickly, the paw letting go last.
                 clip(sample,"edge_head",123,20,smooth(q))

@@ -100,8 +100,8 @@ arrivals from each direction, gliding down into the curled nap, landing on a
 ledge with the tail dropping and banking into a climb. The last 20 rows hold the
 hide-and-peek edge clips: 48 frames each for the head-first and paw-first peeks
 and 64 for the pull-out. Adjacent frames crossfade, so a sequence stays fluid at
-any playback rate; edge clips hold each frame and crossfade only mid-step, so
-quick moves stay crisp instead of doubled.
+any playback rate; the denser edge clips step frame to frame instead, so quick
+moves stay crisp instead of doubled.
 Continuous native WGSL moves contact paws, wings, horn rubbing, tail and breath;
 these are not static poses translated around a path. Quiet rest freezes frame,
 root, zoom, bob, bank, squash and effects while ordinary voice lip/blink ownership
