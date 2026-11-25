@@ -848,6 +848,9 @@ if args[:2] == ["bot", "send"]:
         state["entries"][cid] = []
     else:
         chat = next((c for c in state["chats"] if c["id"] == chat_arg), None) or next(c for c in state["chats"] if c.get("home"))
+        if chat.get("closed"):
+            print(json.dumps({"ok": False, "error": {"code": "invalid_argument", "message": "Chat is closed or does not belong to this bot"}}))
+            sys.exit(1)
         cid = chat["id"]
     message_id = str(uuid.uuid4())
     state["entries"].setdefault(cid, []).append({"kind": "message", "role": "user", "text": body, "itemId": message_id})
@@ -1263,6 +1266,31 @@ class OrcaBotBackend(unittest.TestCase):
         shown_voice = json.loads(self.invoke("show", "--backend", "orca", "--orca-bot", "Tohru", new_cid).stdout)
         self.assertTrue(shown_voice["turns"][0]["voice"])
         self.assertEqual(shown_voice["turns"][0]["text"], "What is the weather?")
+
+    def test_start_marks_the_current_home_after_a_new_home_chat(self):
+        new_home = "9a3c2f10-7b4e-4c1d-8e2f-5a6b7c8d9e0f"
+        state = json.loads(self.orca_state.read_text())
+        state["chats"][0].update(home=False, closed=True, reason="ended")
+        state["chats"].insert(0, {"id": new_home, "title": "Home", "lastActivityAt": 1700000005000,
+                                  "lastAsked": None, "lastSaid": None, "home": True, "closed": False})
+        state["entries"][new_home] = []
+        self.orca_state.write_text(json.dumps(state))
+        chat = ("chat", "--backend", "orca", "--orca-bot", "Tohru", "--provider", "orca:Tohru", "--voice")
+
+        pinned = self.invoke(*chat, "--orca-voice-chat", "home", "--conversation", self.HOME_UUID, stdin="Still there?")
+        self.assertNotEqual(pinned.returncode, 0)
+        self.assertIn("Chat is closed", json.loads(pinned.stdout.splitlines()[-1])["message"])
+
+        for mode in ("home", "quick"):
+            result = self.invoke(*chat, "--orca-voice-chat", mode, stdin="Still there?")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            start = json.loads(result.stdout.splitlines()[0])
+            self.assertEqual((start["conversation"], start["home"]), (new_home, True), mode)
+
+        fresh = self.invoke(*chat, "--orca-voice-chat", "new", stdin="Side thread")
+        start = json.loads(fresh.stdout.splitlines()[0])
+        self.assertNotEqual(start["conversation"], new_home)
+        self.assertFalse(start["home"])
 
     def test_orca_stop_and_offline_modes(self):
         proc = subprocess.Popen(

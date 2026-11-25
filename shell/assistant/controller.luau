@@ -38,6 +38,9 @@ return function(settings)
     local clock = 0
     local synced_at, syncing = -SYNC_EVERY, false
     local seen_chats, seen_seeded, home_chat = {}, false, nil
+    -- Every chat Orca has called Home. Orca closes a Home when it starts a new one, so a turn
+    -- aimed at any of them goes to whichever Home is current when it is sent.
+    local homes = {}
     local want_new_chat = false
     local last_backend_sig = ""
     local unremembered = {}
@@ -337,7 +340,14 @@ return function(settings)
             syncing = false
             local data = code == 0 and decode(out) or nil
             if not data or not data.online then return end
-            if data.home_chat and data.home_chat ~= "" then home_chat = data.home_chat end
+            if data.home_chat and data.home_chat ~= "" then
+                local previous = home_chat
+                home_chat = data.home_chat
+                homes[home_chat] = true
+                if previous ~= home_chat and conversation ~= home_chat and homes[conversation] and not live then
+                    if fact.ai_open and fact.ai_view == 0 then load(home_chat) else conversation = nil end
+                end
+            end
             local changed_chat = nil
             for _, chat in ipairs(data.chats or {}) do
                 local cid = chat.id
@@ -419,10 +429,10 @@ return function(settings)
         local args = {"chat", "--provider", provider_id}
         local is_draft = opts and opts.draft == true
         if not is_draft then append_backend(args) end
-        if cid then
+        if cid and not (is_orca() and homes[cid]) then
             args[#args + 1] = "--conversation"
             args[#args + 1] = cid
-        elseif is_orca() and want_new_chat and not voice and not is_draft then
+        elseif not cid and is_orca() and want_new_chat and not voice and not is_draft then
             args[#args + 1] = "--new-chat"
         end
         if voice then args[#args + 1] = "--voice" end
@@ -481,6 +491,11 @@ return function(settings)
                 want_new_chat = false
                 for _, listener in ipairs(speech_listeners) do
                     listener("start", mine.conversation, "", mine.voice, mine.voice_generation, event.voice_request)
+                end
+                if event.home and is_orca() and event.conversation then
+                    homes[event.conversation] = true
+                    home_chat = event.conversation
+                    if target and conversation == target then conversation = event.conversation end
                 end
                 if conversation == nil and (not voice or fact.ai_open) then conversation = event.conversation end
                 refresh_live()
@@ -940,6 +955,7 @@ return function(settings)
         conversation = nil
         want_new_chat = false
         home_chat = nil
+        homes = {}
         seen_chats = {}
         seen_seeded = false
         show_turns({})
@@ -1109,7 +1125,10 @@ return function(settings)
         on_answer = function(listener) answer_listeners[#answer_listeners + 1] = listener end,
         on_alert = function(listener) alert_listeners[#alert_listeners + 1] = listener end,
         on_visibility = function(listener) visibility_listeners[#visibility_listeners + 1] = listener end,
-        show = function(id) open(); fact.ai_view = 0; load(id) end,
+        show = function(id)
+            if is_orca() and homes[id] and home_chat then id = home_chat end
+            open(); fact.ai_view = 0; load(id)
+        end,
         status = function()
             return {open = fact.ai_open, streaming = live ~= nil, ready = fact.ai_ready, conversation = conversation,
                 provider = current and providers[current] and providers[current].id or "",

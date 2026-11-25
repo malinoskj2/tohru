@@ -507,6 +507,43 @@ task_poller.exit(nil, 0)
 assert(assistant.streaming())
 spawned[#spawned].line({event="done", conversation=uuid})
 
+-- A new Home Chat closes the old one: voice and the popup follow whichever Home is current.
+local new_home = "9a3c2f10-7b4e-4c1d-8e2f-5a6b7c8d9e0f"
+local function sends_conversation(spawn_args)
+    for _, a in ipairs(spawn_args) do if a == "--conversation" then return true end end
+    return false
+end
+assert(assistant.ask("Still there?", uuid, {voice_generation=19}))
+local followed = spawned[#spawned]
+assert(not sends_conversation(followed.args), "a former Home must not pin the voice turn to a closed chat")
+followed.line({event="start", conversation=new_home, home=true})
+assert(assistant.status().conversation == new_home)
+followed.line({event="done", conversation=new_home})
+local shown = runs_of("show")
+assert(shown[#shown].args[2] == new_home)
+assistant.show(uuid)
+assert(runs_of("show")[#runs_of("show")].args[2] == new_home, "showing a former Home opens the current one")
+-- The popup still on the old Home when Orca switches moves to the new Home on the next sync.
+local newer_home = "1b2c3d4e-5f60-4718-9a0b-c1d2e3f40516"
+outputs.show = json.encode({id = new_home, provider = "orca:Tohru", turns = {}})
+assistant.show(new_home)
+outputs.sync = json.encode({
+    backend = "orca", online = true, bot = "Tohru", home_chat = newer_home,
+    chats = {{id = newer_home, title = "Home", updated = 1, last_said = "", home = true}},
+})
+outputs.show = json.encode({id = newer_home, provider = "orca:Tohru", turns = {}})
+for _ = 1, 16 do every_cbs[1]() end
+assert(assistant.status().conversation == newer_home, "the open popup follows the new Home")
+text.ai_prompt = "Typed after the switch"
+emit("assistant_send")
+assert(not sends_conversation(spawned[#spawned].args))
+spawned[#spawned].line({event="start", conversation=newer_home, home=true})
+spawned[#spawned].line({event="done", conversation=newer_home})
+-- A chat that was never Home keeps its explicit ID.
+assert(assistant.ask("Side thread", "c-not-home", {voice_generation=20}))
+assert(has(spawned[#spawned].args, "--conversation", "c-not-home"))
+spawned[#spawned].line({event="done", conversation="c-not-home"})
+
 -- Idle DM polling defers during active desktop/voice work and never speaks or
 -- replaces the selected conversation. The same pending ID is offered again.
 values["assistant.backend"] = "local"

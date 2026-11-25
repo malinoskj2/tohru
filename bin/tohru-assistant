@@ -1797,7 +1797,7 @@ def orca_quick_voice(args, prompt, bot_name, offline):
             emit({"event": "error", "message": "Invalid side responder admission; inspect Home before retrying."})
             return 1
         emit({"event": "start", "conversation": chat_id, "provider": "orca:" + bot_name,
-              "slot": 0, "title": title_of(prompt), "voice_request": ""})
+              "slot": 0, "title": title_of(prompt), "voice_request": "", "home": True})
         emit({"event": "voice_notice", "text": "One moment, I'm in the middle of something."})
         home_metric("side_ack", chat=chat_id, request=request,
                     duration_ms=round((time.monotonic() - side_started_at) * 1000))
@@ -1983,7 +1983,7 @@ def orca_chat_turn(args, prompt, bot_name, voice_chat, offline):
                 os.unlink(temporary)
 
     emit({"event": "start", "conversation": chat_id, "provider": f"orca:{actual_bot}", "slot": 0, "title": subject,
-          "voice_request": ""})
+          "voice_request": "", "home": bool(home) and chat_id == home.get("id")})
     if getattr(args, "quick_handoff_notice", None):
         emit({"event": "voice_notice", "text": args.quick_handoff_notice})
 
