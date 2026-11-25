@@ -43,7 +43,6 @@ pub struct Voice {
     last_speech_ns: Option<u64>,
     audio: Vec<f32>,
     preroll: VecDeque<Vec<f32>>,
-    rejected: bool,
     spotting: bool,
     turn_checked: bool,
     turn_complete: Option<bool>,
@@ -117,7 +116,6 @@ impl Voice {
             last_speech_ns: None,
             audio: Vec::new(),
             preroll: VecDeque::new(),
-            rejected: false,
             spotting: false,
             turn_checked: false,
             turn_complete: None,
@@ -173,7 +171,6 @@ impl Voice {
         self.quiet_ms = 0;
         self.speech_ms = 0;
         self.audio.clear();
-        self.rejected = false;
         self.turn_checked = false;
         self.turn_complete = None;
         self.barge_ms = 0;
@@ -227,8 +224,7 @@ impl Voice {
         {
             return;
         }
-        if self.rejected
-            || self.spotting
+        if self.spotting
             || self.barge_pending
             || self.thinking
             || self.draft_count >= 2
@@ -270,7 +266,6 @@ impl Voice {
         self.speech_ms = 0;
         self.turn_checked = false;
         self.turn_complete = None;
-        self.rejected = false;
         self.audio = self.preroll.iter().flatten().copied().collect();
         self.preroll.clear();
         self.spotting = self.spotter.is_some() && !self.active();
@@ -307,16 +302,11 @@ impl Voice {
 
     fn wake_decision(&self, accepted: bool, reason: &str, candidate: &str) {
         let words = policy::words(candidate);
-        let count = if words
-            .first()
-            .is_some_and(|w| ["to", "too", "two", "toe", "tow", "toh"].contains(&w.as_str()))
-        {
-            2
-        } else {
-            1
-        };
+        let (at, count) =
+            policy::wake_match(&words).unwrap_or((0, policy::wake_split_width(&words)));
         let candidate: Vec<String> = words
             .iter()
+            .skip(at)
             .take(count)
             .map(|w| {
                 w.chars()

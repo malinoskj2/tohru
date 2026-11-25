@@ -8,7 +8,7 @@ journalctl --user -u tohru-bar.service --since '10 minutes ago' --no-pager
 
 Voice diagnostic records have a session ID, a monotonic timestamp and `wall_ms` for correlation with other processes. Per-utterance events carry `turn_id`; provider and playback events also carry a speech generation.
 
-To investigate a missed wake, follow `utterance_start`, `wake_decision`, `asr_finalize_end`, `conversation`, `ui_visibility_request` and `ui_state_observed`. The onset includes VAD probability and microphone RMS. A wake decision records acceptance or a reason such as `prefix_mismatch`, `decision_timeout`, `final_name_mismatch` or `kws_no_match`. Only a bounded leading name candidate is logged; the request and full transcript are excluded. Keyword-spotter confidence is unavailable when its API supplies only a detection result.
+To investigate a missed wake, follow `utterance_start`, `wake_decision`, `asr_finalize_end`, `conversation`, `ui_visibility_request` and `ui_state_observed`. The onset includes VAD probability and microphone RMS. A wake decision records acceptance or a reason such as `final_name_mismatch`, `empty_final` or `kws_no_match`. Only the matched name form, or the bounded leading word when none matched, is logged; the request and full transcript are excluded. Keyword-spotter confidence is unavailable when its API supplies only a detection result.
 
 `capture_suppressed` distinguishes playback, echo cooldown, the thinking-state microphone floor and VAD rejection. It reports bounded scores and a count of suppressed windows, at most once per reason every five seconds. It does not produce per-frame logs or save microphone audio.
 

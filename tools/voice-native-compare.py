@@ -31,6 +31,8 @@ TEXTS = [
     "", "...", "hello\nworld", "_like _it", "GPU GPUs CPU CPUs",
 ]
 POLICY = TEXTS + ["tohru", "too roo tell me why", "to", "tell me", "hello tohru", "okay",
+                  "hey tohru, what's up", "can you check this tohru", "so tohru, what's next", "I had taro for lunch",
+                  "I want to row", "can you check this to ru",
                   "I could use a map and", "Wait a moment", "go ahead", "Here is `a. b`. Next.",
                   "```rust\nlet x=1;\n``` Done.", "[link](https://example.com) **bold**", "α" * 450]
 
@@ -68,7 +70,7 @@ def python_worker():
                         g2p = en.G2P(trf=False, british=False, fallback=espeak.EspeakFallback(british=False))
                     result["phonemes"] = g2p(text)[0]
                 elif op == "policy":
-                    result = dict(wake=v.wake_split(text), possible=v.wake_possible(text), sentence=v.sentence(text),
+                    result = dict(wake=v.wake_split(text), sentence=v.sentence(text),
                                   backchannel=v.is_backchannel(text), unfinished=v.is_unfinished(text), hold=v.explicit_hold(text),
                                   handoff=v.explicit_handoff(text), speakable=v.speakable(text), chunks=v.sentences(text))
                 elif op == "synthesize":
