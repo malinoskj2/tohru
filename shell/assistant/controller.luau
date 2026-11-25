@@ -409,8 +409,9 @@ return function(settings)
             fact.ai_ready_slot = finished.slot
             ready_for = finished.conversation
         end
+        local said = event.event == "error" and (event.spoken or "") or finished.text
         for _, listener in ipairs(answer_listeners) do
-            listener(event.event, finished.conversation, finished.text, finished.voice, finished.voice_generation)
+            listener(event.event, finished.conversation, said, finished.voice, finished.voice_generation)
         end
     end
 

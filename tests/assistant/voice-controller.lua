@@ -86,6 +86,12 @@ listeners[1]("done", "v1", "Half past two.", true)
 assert(written[1].message.cmd == "say" and written[1].message.text == "Half past two." and written[1].message.conversation == "v1")
 listeners[1]("done", "c9", "Typed answer", false)
 assert(#written == 1)
+-- Failures are spoken in Tohru's own words when the helper voiced them, with a short fallback otherwise.
+listeners[1]("error", "v1", "I tripped over that model name.", true)
+assert(written[#written].message.cmd == "say" and written[#written].message.text == "I tripped over that model name.")
+listeners[1]("error", "v1", "", true)
+assert(written[#written].message.text == "Sorry, that went wrong on my end.")
+table.remove(written); table.remove(written)
 service.line({event = "turn", text = "And tomorrow"})
 assert(asked[2][2] == "v1")
 service.line({event = "speaking", on = true, conversation = "v1"})
@@ -164,7 +170,7 @@ end
 -- A turn the assistant cannot take when signed out is answered aloud; when streaming it queues silently without the busy line.
 refusing = true
 service.line({event = "turn", text = "Are you there"})
-assert(written[#written].message.cmd == "say" and written[#written].message.text:find("Sign in"))
+assert(written[#written].message.cmd == "say" and written[#written].message.text:find("sign me in"))
 local w_count = #written
 refusing = "busy"
 service.line({event = "turn", text = "Are you there"})

@@ -290,6 +290,21 @@ class Assistant(unittest.TestCase):
         self.assertIn("selected model (bogus)", events[-1]["message"])
         self.assertEqual(len(self.calls("claude")), 1)
 
+    def test_voice_failures_are_spoken_in_tohrus_words_with_the_real_error(self):
+        source = FAKE_CLAUDE.replace('words = os.environ.get("FAKE_ANSWER", "Eight fluid ounces.").split(" ")',
+                                     'failure = "Something just failed" in " ".join(args)\n'
+                                     'words = [\'{"text":"I tripped over that model name."}\'] if failure else os.environ.get("FAKE_ANSWER", "").split(" ")')
+        self.fake("claude", source.replace('"subtype": "success", "result"', '"subtype": "success", "is_error": not failure, "result": " ".join(words) if failure else "There\'s an issue with the selected model (bogus).", "_"'))
+        events = self.chat("--provider", "claude", "--model", "bogus", "--voice", FAKE_ANSWER="x")
+        self.assertEqual(events[-1]["event"], "error")
+        self.assertIn("selected model (bogus)", events[-1]["message"])
+        self.assertEqual(events[-1]["spoken"], "I tripped over that model name.")
+        failure = self.calls("claude")[-1]
+        self.assertIn("selected model (bogus)", failure["stdin"])
+        self.assertEqual(failure["argv"][failure["argv"].index("--tools") + 1], "")
+        typed = self.chat("--provider", "claude", "--model", "bogus", FAKE_ANSWER="x")
+        self.assertNotIn("spoken", typed[-1])
+
     def test_voice_fast_default_preserves_typed_and_explicit_choices(self):
         for flags, model, effort in (
             ([], 'gpt-6.2-sol', 'medium'),
@@ -910,8 +925,25 @@ class OrcaBotBackend(unittest.TestCase):
             self.assertEqual(entries[-2]["text"], "[tohru-desktop:voice]\nBuild the feature")
             events = [json.loads(line) for line in result.stdout.splitlines()]
             self.assertEqual([event["text"] for event in events if event["event"] == "voice_notice"],
-                             ["Home is working. I'm checking your message.", "I've passed that to Home."])
+                             ["One moment, I'm in the middle of something.", "I'll take care of that."])
             self.assertEqual(len([event for event in events if event["event"] == "delta"]), 1)
+
+    def test_quick_responder_speaks_as_tohru_in_the_first_person(self):
+        self.busy_home()
+        result = self.quick("Fix the bar", FAKE_ANSWER='{"route":"home","text":"I\'m on it."}')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = [json.loads(line) for line in result.stdout.splitlines()]
+        notices = [event["text"] for event in events if event["event"] == "voice_notice"]
+        self.assertEqual(notices, ["One moment, I'm in the middle of something.", "I'm on it."])
+        state = json.loads(self.orca_state.read_text())
+        self.assertIn("I'm on it.", [entry.get("text") for entry in state["entries"][self.HOME_UUID]])
+        model = json.loads(self.fake_claude_log.read_text().splitlines()[0])
+        system = " ".join(model["argv"])
+        self.assertIn("Speak only in the first person", system)
+        self.assertIn("never mention Home", system)
+        self.assertNotIn('"home":', model["stdin"])
+        for line in notices:
+            self.assertNotRegex(line, r"\bHome\b")
 
     def test_quick_superseded_request_never_speaks_or_starts_work(self):
         self.busy_home()
@@ -954,7 +986,7 @@ class OrcaBotBackend(unittest.TestCase):
         self.assertEqual(events[-1]["event"], "stopped")
         self.assertFalse(any(event["event"] == "delta" for event in events))
         state = json.loads(self.orca_state.read_text())
-        self.assertEqual(state["entries"][self.HOME_UUID][-1]["text"], "Interrupted before an answer was delivered.")
+        self.assertEqual(state["entries"][self.HOME_UUID][-1]["text"], "You stopped me before I answered.")
         self.assertFalse(any(call["argv"][:2] == ["bot", "send"] for call in self.orca_calls()))
         process.stdout.close()
         process.stderr.close()

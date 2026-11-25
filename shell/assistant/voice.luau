@@ -148,8 +148,8 @@ return function(assistant, puppet, flight, service_executable)
                 task_speech.interrupt()
                 local unavailable = fact.ai_can_signin == false
                 send({cmd = "say", conversation = conversation,
-                    text = unavailable and "I can't reach Orca right now. Open Orca and try again."
-                        or "I can't answer yet. Sign in to an assistant from the chat popup first."})
+                    text = unavailable and "I can't reach Orca at the moment."
+                        or "I can't think straight yet. Could you sign me in from the chat popup?"})
             end
         end
     end
@@ -427,7 +427,7 @@ return function(assistant, puppet, flight, service_executable)
         elseif kind == "error" then
             notice_reply = nil
             task_speech.silence()
-            send({cmd = "say", text = "Hmm, that didn't work. The details are in the chat.", conversation = conversation})
+            send({cmd = "say", text = answer ~= nil and answer ~= "" and answer or "Sorry, that went wrong on my end.", conversation = conversation})
         else
             notice_reply = nil
             send({cmd = "hush"})

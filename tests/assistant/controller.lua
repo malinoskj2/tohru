@@ -143,6 +143,14 @@ voice.line(json.encode({event = "delta", text = "Why?"}))
 assert(speech_events[#speech_events][1] == "delta" and speech_events[#speech_events][2] == "Why?")
 voice.line(json.encode({event = "done", conversation = "v1"}))
 assert(answers[1][1] == "done" and answers[1][2] == "v1" and answers[1][3] == "Why?" and answers[1][4] == true)
+-- A voiced failure hands the helper's spoken line to voice instead of the partial answer.
+assert(assistant.ask("use the bogus model", "v1"))
+local failing = spawned[#spawned]
+failing.line(json.encode({event = "start", conversation = "v1"}))
+failing.line(json.encode({event = "delta", text = "partial"}))
+failing.line(json.encode({event = "error", conversation = "v1", message = "selected model (bogus)", spoken = "I tripped over that model name."}))
+assert(answers[#answers][1] == "error" and answers[#answers][3] == "I tripped over that model name.")
+table.remove(answers)
 -- The mark's menu: right-click opens it over a closed popup; opening the popup closes it.
 emit("assistant_menu")
 assert(fact.ai_menu_open and not fact.ai_open)
