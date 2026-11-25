@@ -21,7 +21,7 @@ FAKE_CLAUDE = r'''#!/usr/bin/env python3
 import json, os, sys, time
 args = sys.argv[1:]
 with open(os.environ["FAKE_LOG"], "a") as log:
-    log.write(json.dumps({"cli": os.path.basename(sys.argv[0]), "argv": args, "cwd": os.getcwd(), "auto_memory_off": os.environ.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY") == "1", "quick_env": {k: os.environ.get(k) for k in ("DISABLE_PROMPT_CACHING", "CLAUDE_CODE_DISABLE_CLAUDE_MDS") if k in os.environ}, "orca_env": {k: v for k, v in os.environ.items() if k.startswith("ORCA_")}, "stdin": sys.stdin.read() if "-p" in args else ""}) + "\n")
+    log.write(json.dumps({"cli": os.path.basename(sys.argv[0]), "argv": args, "cwd": os.getcwd(), "auto_memory_off": os.environ.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY") == "1", "quick_env": {k: os.environ.get(k) for k in ("DISABLE_PROMPT_CACHING", "FORCE_PROMPT_CACHING_5M", "CLAUDE_CODE_DISABLE_CLAUDE_MDS") if k in os.environ}, "orca_env": {k: v for k, v in os.environ.items() if k.startswith("ORCA_")}, "stdin": sys.stdin.read() if "-p" in args else ""}) + "\n")
 if args[:2] == ["auth", "status"]:
     print(json.dumps({"loggedIn": os.environ.get("FAKE_SIGNED_IN") == "1"})); sys.exit(0)
 session = args[args.index("--resume") + 1] if "--resume" in args else args[args.index("--session-id") + 1] if "--session-id" in args else "ephemeral"
@@ -936,6 +936,32 @@ class OrcaBotBackend(unittest.TestCase):
         self.assertEqual(model["argv"][model["argv"].index("--effort") + 1], "low")
         self.assertIn("--system-prompt", model["argv"])
         self.assertNotIn("--append-system-prompt", model["argv"])
+        self.assertEqual(model["argv"][model["argv"].index("--model") + 1], "claude-sonnet-5-5")
+        self.assertIn("items", sent["records"])
+
+    def test_quick_model_effort_and_cache_are_its_own_settings(self):
+        config = Path(self.env["XDG_CONFIG_HOME"]) / "tohru/config.toml"
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text('[assistant]\nquick_voice_model = "claude-opus-5-5"\nquick_voice_effort = "medium"\nquick_voice_cache = true\n'
+                          '[assistant.models.claude]\nmodel = "claude-haiku-5-5"\n')
+        self.busy_home()
+        result = self.quick("How is the build doing?", FAKE_ANSWER='{"route":"answer","text":"Still running."}')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        model = json.loads(self.fake_claude_log.read_text().splitlines()[-1])
+        argv = model["argv"]
+        self.assertEqual((argv[argv.index("--model") + 1], argv[argv.index("--effort") + 1]), ("claude-opus-5-5", "medium"))
+        self.assertEqual(model["quick_env"], {"FORCE_PROMPT_CACHING_5M": "1", "CLAUDE_CODE_DISABLE_CLAUDE_MDS": "1"})
+        # The rarely changing records ride in the cached system prompt; per-question ones stay in the message.
+        self.assertIn("Native build", argv[argv.index("--system-prompt") + 1])
+        sent = json.loads(model["stdin"])
+        self.assertNotIn("items", sent["records"])
+        self.assertIn("ctx_build", sent["records"]["dispatches"]["receipts"])
+        config.write_text('[assistant]\nquick_voice_model = "gpt-6"\nquick_voice_effort = "loud"\n')
+        self.write_orca_state()
+        self.busy_home()
+        self.assertEqual(self.quick("And now?", FAKE_ANSWER='{"route":"answer","text":"Yes."}').returncode, 0)
+        argv = json.loads(self.fake_claude_log.read_text().splitlines()[-1])["argv"]
+        self.assertEqual((argv[argv.index("--model") + 1], argv[argv.index("--effort") + 1]), ("claude-sonnet-5-5", "low"))
 
     def test_quick_work_and_invalid_model_output_queue_the_original_owner_turn_once(self):
         for output in ('{"route":"home"}', 'not JSON', '{"route":"answer","text":"unsafe", "command":"rm"}'):

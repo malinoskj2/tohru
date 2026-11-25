@@ -840,6 +840,43 @@ fn assistant_backend_defaults_to_local_and_validates_opt_in_orca_settings() {
         restarted.get(Key::AssistantOrcaOffline).value,
         Value::Text("local".into())
     );
+    assert_eq!(
+        restarted.get(Key::AssistantQuickVoiceModel).value,
+        Value::Text("claude-sonnet-5-5".into())
+    );
+    assert_eq!(
+        restarted.get(Key::AssistantQuickVoiceEffort).value,
+        Value::Text("low".into())
+    );
+    assert_eq!(
+        restarted.get(Key::AssistantQuickVoiceCache).value,
+        Value::Bool(false)
+    );
+    owner
+        .set(
+            Key::AssistantQuickVoiceModel,
+            Value::Text("claude-opus-5-5".into()),
+        )
+        .unwrap();
+    owner
+        .set(Key::AssistantQuickVoiceEffort, Value::Text("medium".into()))
+        .unwrap();
+    owner
+        .set(Key::AssistantQuickVoiceCache, Value::Bool(true))
+        .unwrap();
+    let quick = files.owner();
+    assert_eq!(
+        quick.get(Key::AssistantQuickVoiceModel).value,
+        Value::Text("claude-opus-5-5".into())
+    );
+    assert_eq!(
+        quick.get(Key::AssistantQuickVoiceEffort).value,
+        Value::Text("medium".into())
+    );
+    assert_eq!(
+        quick.get(Key::AssistantQuickVoiceCache).value,
+        Value::Bool(true)
+    );
     for (key, bad) in [
         (Key::AssistantBackend, Value::Text("auto".into())),
         (Key::AssistantBackend, Value::Text("Orca".into())),
@@ -849,6 +886,12 @@ fn assistant_backend_defaults_to_local_and_validates_opt_in_orca_settings() {
         (Key::AssistantOrcaBot, Value::Text("Tohru;rm".into())),
         (Key::AssistantOrcaVoiceChat, Value::Text("thread".into())),
         (Key::AssistantOrcaOffline, Value::Text("fallback".into())),
+        (Key::AssistantQuickVoiceModel, Value::Text("gpt-6".into())),
+        (Key::AssistantQuickVoiceModel, Value::Text(String::new())),
+        (Key::AssistantQuickVoiceModel, Value::Text("claude-x y".into())),
+        (Key::AssistantQuickVoiceEffort, Value::Text(String::new())),
+        (Key::AssistantQuickVoiceEffort, Value::Text("loud".into())),
+        (Key::AssistantQuickVoiceCache, Value::Text("yes".into())),
     ] {
         let before = fs::read(files.user()).unwrap();
         assert!(owner.set(key, bad).is_err(), "{key:?}");
@@ -911,6 +954,9 @@ fn integrated_assistant_keys_remain_distinct_and_enumerated() {
         Key::AssistantOrcaBot,
         Key::AssistantOrcaVoiceChat,
         Key::AssistantOrcaOffline,
+        Key::AssistantQuickVoiceModel,
+        Key::AssistantQuickVoiceEffort,
+        Key::AssistantQuickVoiceCache,
         Key::AssistantOrca,
         Key::AssistantDiscordEnabled,
         Key::AssistantDiscordDestination,

@@ -43,7 +43,7 @@ class TimedGate:
         return True
 
 
-def measure(module, home, bot, question, show, settle_ms=None):
+def measure(module, home, bot, question, show, settle_ms=None, overrides=None):
     ok, page, error = module.orca_call(["agent", "read", f"orca_session_id:{home}", "--limit", "100", "--ids", "--json"], timeout=15)
     if not ok:
         raise SystemExit(f"cannot read Home history: {error}")
@@ -92,6 +92,7 @@ def measure(module, home, bot, question, show, settle_ms=None):
 
     def run_provider(provider, argv, stdin_text, **kwargs):
         row["stdin_bytes"] = len(stdin_text.encode())
+        row["system_bytes"] = len(argv[argv.index("--system-prompt") + 1].encode()) if "--system-prompt" in argv else 0
         row["model_start_ms"] = ms()
         row["argv_model"] = argv[argv.index("--model") + 1] if "--model" in argv else ""
         row["argv_effort"] = argv[argv.index("--effort") + 1] if "--effort" in argv else ""
@@ -103,7 +104,15 @@ def measure(module, home, bot, question, show, settle_ms=None):
     module.home_metric = lambda *a, **k: None
     module.StreamParser = Parser
     module.run_provider = run_provider
-    module.orca_chat_turn = lambda *a, **k: emit({"event": "handoff"}) or 0
+    def handoff(*_, **__):
+        row["handoff_ms"] = ms()
+        emit({"event": "handoff"})
+        return 0
+
+    module.orca_chat_turn = handoff
+    if overrides:
+        live = module.assistant_settings
+        module.assistant_settings = lambda: {**live(), **overrides}
     args = argparse.Namespace(persona="on", persona_file="", voice=True, provider="claude")
     gate = None
     if settle_ms is not None:
@@ -127,12 +136,22 @@ def main():
     parser.add_argument("--question", action="append", required=True)
     parser.add_argument("--label", default="")
     parser.add_argument("--show", action="store_true", help="Include the spoken answer in each row")
+    parser.add_argument("--model", default="", help="Use this quick-voice model for the run only")
+    parser.add_argument("--cache", choices=("on", "off"), help="Override assistant.quick_voice_cache for the run only")
+    parser.add_argument("--effort", default="", help="Use this quick-voice effort for the run only")
     parser.add_argument("--settle-ms", type=int, help="Open the settle gate this long after the turn starts")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="quick-voice-cost-") as scratch:
         module = load(args.assistant, scratch)
         for question in args.question:
-            row = measure(module, args.home, args.bot, question, args.show, args.settle_ms)
+            overrides = {}
+            if args.model:
+                overrides["assistant.quick_voice_model"] = args.model
+            if args.effort:
+                overrides["assistant.quick_voice_effort"] = args.effort
+            if args.cache:
+                overrides["assistant.quick_voice_cache"] = args.cache == "on"
+            row = measure(module, args.home, args.bot, question, args.show, args.settle_ms, overrides)
             print(json.dumps({"label": args.label, "question_chars": len(question), **row}), flush=True)
 
 

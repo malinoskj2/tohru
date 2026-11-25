@@ -57,6 +57,9 @@ let
     // lib.optionalAttrs (assistant.orcaBot.voiceChat != null) { orca_voice_chat = assistant.orcaBot.voiceChat; }
     // lib.optionalAttrs (assistant.orcaBot.offline != null) { orca_offline = assistant.orcaBot.offline; }
     // lib.optionalAttrs (assistant.orcaBot.needsYouMinutes != null) { orca_needs_you_minutes = assistant.orcaBot.needsYouMinutes; }
+    // lib.optionalAttrs (assistant.orcaBot.quickVoice.model != null) { quick_voice_model = assistant.orcaBot.quickVoice.model; }
+    // lib.optionalAttrs (assistant.orcaBot.quickVoice.effort != null) { quick_voice_effort = assistant.orcaBot.quickVoice.effort; }
+    // lib.optionalAttrs (assistant.orcaBot.quickVoice.cache != null) { quick_voice_cache = assistant.orcaBot.quickVoice.cache; }
     // lib.optionalAttrs (assistant.persona.file != null) { persona_file = "${assistant.persona.file}"; }
     // lib.optionalAttrs (assistant.models != { }) {
       models = modelSettings assistant.models;
@@ -359,6 +362,24 @@ in {
           default = null;
           example = 10;
           description = "Minutes between the bar's checks for the bot's items that newly need you, each announced once on the desktop and aloud, written to `assistant.orca_needs_you_minutes`; `0` turns the watcher off and `null` leaves it to the user's config (5).";
+        };
+        quickVoice = {
+          model = lib.mkOption {
+            type = lib.types.nullOr (lib.types.strMatching "claude-[A-Za-z0-9._:/@#+-]{1,121}");
+            default = null;
+            example = "claude-opus-5-5";
+            description = "The Claude model the `quick` voice responder answers with, apart from Home's, written to `assistant.quick_voice_model`; `null` leaves it to the user's config (`claude-sonnet-5-5`).";
+          };
+          effort = lib.mkOption {
+            type = lib.types.nullOr (lib.types.enum [ "minimal" "low" "medium" "high" "xhigh" "max" ]);
+            default = null;
+            description = "The quick voice responder's effort, written to `assistant.quick_voice_effort`; `null` leaves it to the user's config (`low`).";
+          };
+          cache = lib.mkOption {
+            type = lib.types.nullOr lib.types.bool;
+            default = null;
+            description = "Whether the quick voice responder caches its rarely changing records for five minutes, written to `assistant.quick_voice_cache`. It pays off only for questions in quick succession; `null` leaves it to the user's config (off).";
+          };
         };
       };
       models = lib.mkOption {

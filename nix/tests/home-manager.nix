@@ -80,7 +80,11 @@ let
   foregroundBot = (home tohru.homeManagerModules.tohru [ {
     programs.tohru = {
       enable = true;
-      assistant.orcaBot = { enable = true; voiceChat = "foreground"; };
+      assistant.orcaBot = {
+        enable = true;
+        voiceChat = "foreground";
+        quickVoice = { model = "claude-opus-5-5"; effort = "medium"; cache = true; };
+      };
     };
   } ]).config;
   profiled = (home tohru.homeManagerModules.tohru [ {
@@ -165,6 +169,8 @@ assert pkgs.lib.hasInfix "[assistant.models.codex]\neffort = \"high\"\nmodel = \
 assert pkgs.lib.hasInfix "[assistant.models.claude]\neffort = \"low\"" quietManaged;
 assert pkgs.lib.hasInfix "[assistant]\nbackend = \"orca\"\norca = \"auto\"\norca_bot = \"Tohru\"\norca_needs_you_minutes = 10\norca_offline = \"error\"\norca_voice_chat = \"home\"\nvoice_source = \"usb-integration-mic\"" orcaManaged;
 assert pkgs.lib.hasInfix "orca_voice_chat = \"foreground\"" (builtins.readFile foregroundBot.home.sessionVariables.TOHRU_MANAGED_CONFIG);
+assert pkgs.lib.hasInfix "quick_voice_cache = true\nquick_voice_effort = \"medium\"\nquick_voice_model = \"claude-opus-5-5\"" (builtins.readFile foregroundBot.home.sessionVariables.TOHRU_MANAGED_CONFIG);
+assert !(pkgs.lib.hasInfix "quick_voice" orcaManaged);
 assert !(pkgs.lib.hasInfix "orca_bot" quietManaged) && !(pkgs.lib.hasInfix "backend =" quietManaged);
 assert pkgs.lib.hasInfix "[assistant.voice_profiles]\nhidden_unload_seconds = 0\nmodel_root = \"/models\"\nvram_threshold_percent = 40" profiledManaged;
 assert pkgs.lib.hasInfix "[assistant.voice_profiles.high]\nasr_model = \"whisper-large-v3-turbo\"\nenabled = true\npython = \"/gpu/bin/python3\"\nvram_mib = 9000" profiledManaged;

@@ -1888,30 +1888,44 @@ def spoken_line(text, limit):
     return isinstance(text, str) and 0 < len(text.strip()) <= limit and not re.search(r'[\x00-\x08\x0b-\x1f]', text)
 
 
+QUICK_MODEL = "claude-sonnet-5-5"
 QUICK_EFFORT = "low"
-# Each call's prompt is unique after the first few KB, so a cache write is never read back
-# and bills at up to twice the input price. CLAUDE.md files are coding instructions, several
-# thousand tokens that only distract a tool-free spoken reply.
-QUICK_ENV = {"DISABLE_PROMPT_CACHING": "1", "CLAUDE_CODE_DISABLE_CLAUDE_MDS": "1"}
+# CLAUDE.md files are coding instructions, several thousand tokens that only distract a
+# tool-free spoken reply.
+QUICK_ENV = {"CLAUDE_CODE_DISABLE_CLAUDE_MDS": "1"}
+# A one-off prompt's cache write is rarely read back and bills above the input price.
+QUICK_UNCACHED = {"DISABLE_PROMPT_CACHING": "1"}
+# Claude Code caches the system prompt on its own breakpoint, so records that rarely change
+# between questions ride there and the per-question remainder follows in the message.
+QUICK_CACHED = {"FORCE_PROMPT_CACHING_5M": "1"}
+QUICK_STABLE_RECORDS = ("scope", "items", "worktrees", "workers")
 
 
-def quick_claude(args, rule, payload, timeout, run=None):
+def quick_claude(args, rule, payload, timeout, run=None, stable=None):
     """Run the tool-free persona model once; None when it is missing, slow or malformed."""
     if not shutil.which("claude"):
         return None
     try:
         settings = assistant_settings()
-        model, _ = resolve_model("claude", str(settings.get("assistant.models.claude.model") or ""), "")
-        effort = QUICK_EFFORT
-        argv = provider_argv("claude", {"id": None, "resume": False, "ephemeral": True}, model, effort,
-                             persona_text(flag(args.persona), args.persona_file) + "\n" + rule, tools=False)
+        model = str(settings.get("assistant.quick_voice_model") or "")
+        model = model if model.startswith("claude-") and MODEL_TEXT.match(model) else QUICK_MODEL
+        effort = settings.get("assistant.quick_voice_effort")
+        effort = effort if effort in EFFORTS else QUICK_EFFORT
+        cached = settings.get("assistant.quick_voice_cache") is True
+        system = persona_text(flag(args.persona), args.persona_file) + "\n" + rule
+        if cached and stable:
+            system += "\nRecords that change rarely, as quoted data observed with the message's records:\n" + json.dumps(stable, ensure_ascii=False)
+        elif stable:
+            payload = {**payload, "records": {**stable, **payload.get("records", {})}}
+        argv = provider_argv("claude", {"id": None, "resume": False, "ephemeral": True}, model, effort, system, tools=False)
         argv[argv.index("--setting-sources") + 1] = ""
         # Claude Code's own coding-agent prompt is several thousand tokens a tool-free reply never uses.
         argv[argv.index("--append-system-prompt")] = "--system-prompt"
         sent = json.dumps(payload, ensure_ascii=False)
-        if len(sent.encode()) > 250000:
+        if len(sent.encode()) + len(system.encode()) > 250000:
             return None
-        parser, code, _, stopped = run_provider(BY_ID["claude"], argv, sent, run=run, timeout=timeout, extra_env=QUICK_ENV)
+        env = {**QUICK_ENV, **(QUICK_CACHED if cached else QUICK_UNCACHED)}
+        parser, code, _, stopped = run_provider(BY_ID["claude"], argv, sent, run=run, timeout=timeout, extra_env=env)
         if code != 0 or stopped or parser.error:
             return None
         value = json.loads(parser.text)
@@ -1970,9 +1984,10 @@ def orca_quick_voice(args, prompt, bot_name, offline):
         try:
             facts = orca_quick_facts(bot_name, chat_id, request, reads.result())
             if not run.stopped:
-                value = quick_claude(args, QUICK_VOICE_RULE, {"history": quick_history(receipt), "approvals": receipt.get("approvals") or [],
-                                                              "records": facts, "owner_question": prompt},
-                                     timeout=20, run=run)
+                stable = {key: facts.pop(key) for key in QUICK_STABLE_RECORDS if key in facts}
+                value = quick_claude(args, QUICK_VOICE_RULE, {"records": facts, "history": quick_history(receipt),
+                                                              "approvals": receipt.get("approvals") or [], "owner_question": prompt},
+                                     timeout=20, run=run, stable=stable)
                 text = value.get("text") if value else None
                 if value and value.get("route") in ("answer", "home") and set(value) == {"route", "text"} and spoken_line(text, 1000):
                     decision = {"route": value["route"], "text": text.strip()}
