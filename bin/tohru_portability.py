@@ -8,10 +8,8 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import sys
-import tempfile
 import tomllib
 import unicodedata
 
@@ -316,141 +314,14 @@ def shortcuts(operation="status"):
     return {"owner": owner, "state": "runtime IPC snapshot" + (" (first 512 entries)" if len(bindings)>512 else ""), "editable": False, "bindings": rows}
 
 
-def unit_text(name, spec, prefix, target, managed=None):
-    # systemd escaping differs from shell escaping. Reject newlines and escape specifiers.
-    def quote(value, expand=True):
-        if any(c in str(value) for c in "\n\r\0"):
-            raise ValueError("invalid unit value")
-        escaped = str(value).replace('\\', '\\\\').replace('"', '\\"').replace('%','%%')
-        return '"' + (escaped.replace('$','$$') if expand else escaped) + '"'
-    command = spec["program"].split()
-    executable = str(Path(prefix).resolve() / command[0])
-    lines = ["[Unit]", f"Description={spec['description']}", f"PartOf={target}", f"After={target}",
-             "ConditionEnvironment=WAYLAND_DISPLAY", "", "[Service]", "Type="+spec.get("type","simple"),
-             "ExecStart="+" ".join(quote(x) for x in [executable]+command[1:]),
-             "Restart=on-failure", "RestartSec=2", "KillMode="+spec.get("kill_mode","control-group"),
-             "StandardOutput=journal", "StandardError=journal"]
-    if spec.get("type") == "notify":
-        lines += ["NotifyAccess=all", "TimeoutStartSec="+str(spec["timeout"])]
-    if spec.get("restart_prevent_exit_status"):
-        lines += ["RestartPreventExitStatus="+str(spec["restart_prevent_exit_status"])]
-    if managed:
-        lines += ["Environment="+quote("TOHRU_MANAGED_CONFIG="+managed, expand=False)]
-    if spec.get("install", True):
-        lines += ["", "[Install]", f"WantedBy={target}"]
-    return "\n".join(lines)+"\n"
-
-
-def generate_units(args):
-    specs = json.loads((DATA / "session/services.json").read_text())
-    selected = args.components.split(",")
-    if not set(selected) <= specs.keys():
-        raise ValueError("unknown component")
-    if not re.fullmatch(r"[a-zA-Z0-9_.@:-]+\.target", args.target):
-        raise ValueError("invalid target")
-    # Lock is available on demand even when idle ownership stays external.
-    selected = list(dict.fromkeys(selected+["lock"]))
-    destination = Path(args.output)
-    destination.mkdir(parents=True, exist_ok=True)
-    for name in selected:
-        path = destination / f"tohru-{name}.service"
-        with path.open("x") as stream:
-            stream.write(unit_text(name, specs[name], args.prefix, args.target, args.managed))
-    print(f"Generated {len(selected)} units in {destination}; no services enabled or started")
-
-
-def echo_cancel(args):
-    source = DATA / "pipewire/60-tohru-echo-cancel.conf"
-    content = source.read_text()
-    if args.output:
-        path = Path(args.output)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("x") as stream:
-            stream.write(content)
-        print(f"Created {path}; restart PipeWire yourself when convenient; routes unchanged")
-    else:
-        print(content, end="")
-
-
-def greeter_check(args):
-    import pwd
-    import shlex
-    checks = []
-    def check(name, valid, detail):
-        checks.append({"name": name, "state": "ok" if valid else "missing-or-unreadable", "detail": detail})
-    data = read_toml(Path(args.config))
-    session = data.get("default_session", {})
-    command = session.get("command", "")
-    user = session.get("user", "")
-    if not isinstance(command, str) or not command or not isinstance(user, str) or not user:
-        raise ValueError("greetd requires default_session command and user")
-    argv = shlex.split(command)
-    check("host-command", bool(argv and shutil.which(argv[0])), "Configured hosting command executable; arguments were not executed")
-    try:
-        account = pwd.getpwnam(user)
-        check("greeter-user", account.pw_uid != 0, "Configured greeter account exists and is not root")
-    except KeyError:
-        check("greeter-user", False, "Create/use the distro greeter account; do not use a desktop account")
-    settings = read_toml(Path(args.settings))
-    greeter = settings.get("greeter", {})
-    assets = [greeter.get("wallpaper")] + list(greeter.get("avatars", {}).values())
-    for index, path in enumerate(assets):
-        if path:
-            check("asset."+str(index), isinstance(path,str) and Path(path).is_file() and os.access(path,os.R_OK), "Configured asset readability checked as current UID")
-    dirs = args.sessions_dir or ["/usr/local/share", "/usr/share"]
-    found = 0
-    for directory in dirs:
-        for kind in ("wayland-sessions", "xsessions"):
-            path = Path(directory)/kind
-            if path.is_dir():
-                found += sum(1 for entry in list(path.glob("*.desktop"))[:64] if os.access(entry,os.R_OK))
-    check("sessions", found > 0, f"{found} readable desktop session files; Exec/login not tested")
-    check("greetd-pam", Path("/etc/pam.d/greetd").is_file(), "Have a distro administrator review the PAM stack")
-    for role in ("font_text", "font_display"):
-        family = settings.get("appearance", {}).get(role, "Noto Sans")
-        if not isinstance(family,str):
-            raise ValueError("greeter font families must be strings")
-        match,state = probe(["fc-match", "--format=%{family}",family])
-        check(role, bool(match), "Resolved: "+match[:160] if match else state)
-    result = {"schema":1,"read_only":True,"checked_as_uid":os.getuid(),"checks":checks,
-              "limits":"Run under the intended greeter identity/environment. No compositor, authentication, login session or privileged changes attempted."}
-    print(json.dumps(result) if args.json else "\n".join(f"{c['state']}: {c['name']}: {c['detail']}" for c in checks)+"\n"+result["limits"])
-    return 0 if all(c["state"]=="ok" for c in checks) else 1
-
-
 def main():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
-    units = commands.add_parser("session-units")
-    units.add_argument("--output", required=True)
-    units.add_argument("--prefix", default=str(BIN))
-    units.add_argument("--target", default="graphical-session.target")
-    units.add_argument("--components", default="bar,session,launcher")
-    units.add_argument("--managed")
-    echo = commands.add_parser("echo-cancel")
-    echo.add_argument("--output")
-    shortcuts_parser=commands.add_parser("shortcuts")
-    shortcuts_parser.add_argument("operation",nargs="?",choices=("status","setup","configure"),default="status")
     doctor = commands.add_parser("doctor")
     doctor.add_argument("--json", action="store_true")
-    greeter = commands.add_parser("greeter-check")
-    greeter.add_argument("--config", default="/etc/greetd/config.toml")
-    greeter.add_argument("--settings", default="/etc/greetd/tohru.toml")
-    greeter.add_argument("--sessions-dir", action="append")
-    greeter.add_argument("--json", action="store_true")
     args = parser.parse_args()
-    if args.command == "session-units":
-        generate_units(args)
-    elif args.command == "echo-cancel":
-        echo_cancel(args)
-    elif args.command == "shortcuts":
-        print(json.dumps(shortcuts(args.operation)))
-    elif args.command == "doctor":
-        from tohru_doctor import doctor
-        return doctor(args.json)
-    elif args.command == "greeter-check":
-        return greeter_check(args)
-    return 0
+    from tohru_doctor import doctor
+    return doctor(args.json)
 
 
 if __name__ == "__main__":

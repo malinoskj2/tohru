@@ -32,3 +32,15 @@ pub fn same(left: Option<&Value>, right: Option<&Value>) -> bool {
 pub fn field<'a>(value: Option<&'a Value>, key: &str) -> Option<&'a Value> {
     value.and_then(|value| value.get(key))
 }
+
+/// Python `str()` of a decoded JSON value.
+#[must_use]
+pub fn py_str(value: Option<&Value>) -> String {
+    match value {
+        None | Some(Value::Null) => "None".to_owned(),
+        Some(Value::Bool(true)) => "True".to_owned(),
+        Some(Value::Bool(false)) => "False".to_owned(),
+        Some(Value::String(text)) => text.clone(),
+        Some(other) => other.to_string(),
+    }
+}

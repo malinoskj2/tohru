@@ -57,9 +57,13 @@ def doctor(scenario, target, source):
         check(name, bool(path), path or requirements['diagnostic'])
     identity = None
     if scenario == 'session-units':
-        files = ['bin/tohru', 'bin/tohru_portability.py', 'share/tohru/session/services.json']
+        files = ['bin/tohru', 'bin/tohru-portability', 'share/tohru/session/services.json']
         for name in files:
             check(name, (ROOT / name).is_file(), 'Required shipped source command/data')
+        native = Path(os.environ.get('TOHRU_DESKTOP_TARGET') or
+                      Path(os.environ.get('CARGO_TARGET_DIR') or ROOT / 'desktop/target') / 'release')
+        check('native_build', os.access(native / 'tohru-portability', os.X_OK),
+              'cargo build --release --manifest-path desktop/Cargo.toml')
         check('executable_cli', os.access(ROOT / 'bin/tohru', os.X_OK), 'Invoke actual bin/tohru through its shebang')
         identity = {name: digest(ROOT / name) for name in files if (ROOT / name).is_file()}
     if scenario == 'native-authority':

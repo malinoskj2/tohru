@@ -61,7 +61,7 @@ def manifest():
     paths=set()
     for root in roots:
         if root.exists():paths.update(p for p in root.rglob('*') if p.is_file())
-    for pattern in ('shell/assistant/afk*','shell/assistant/dragon/afk*','bin/tohru_afk_idle.py','tests/assistant/afk*','tools/dragon/afk*','.tmp/afk-*.log'):
+    for pattern in ('shell/assistant/afk*','shell/assistant/dragon/afk*','bin/tohru-afk-idle','desktop/src/afk/*','tests/assistant/afk*','tools/dragon/afk*','.tmp/afk-*.log'):
         paths.update(p for p in ROOT.glob(pattern) if p.is_file())
     target=OUT/'preservation-manifest.json'
     paths.discard(target)

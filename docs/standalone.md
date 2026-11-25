@@ -258,12 +258,8 @@ assistant_trigger = ""
 ```
 
 Generate/install the optional `shortcuts` component's unit, then start it yourself.
-It needs Python's maintained **dbus-fast** client (tested at 5.2.0; Nix packaging
-provides it). Install it yourself in the service's Python environment, e.g.
-`python3 -m pip install dbus-fast==5.2.0` in your chosen virtual environment; there
-is no runtime installer. Source provenance/hash is in
-[provenance/portal-python.json](provenance/portal-python.json). Releases keep this
-optional dependency separate from voice; no model package is involved.
+The portal client is built into `tohru-shortcuts`, so there is nothing extra to
+install. No model package is involved.
 
 Settings → Shortcuts → **Set up Tohru action shortcuts** requests desktop grants.
 The portal owns the grant/configuration dialog. Only the fixed launcher, session

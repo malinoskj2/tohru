@@ -1,9 +1,17 @@
+pub mod afk;
+pub mod config;
 pub mod flight_scene;
+pub mod greeter;
 pub mod home_guard;
+pub mod idle;
 pub mod paths;
 pub mod probe;
 pub mod pyjson;
 pub mod pyvalue;
 pub mod session_action;
 pub mod shell;
+pub mod shortcuts;
+pub mod units;
 pub mod voice_status;
+pub mod wallpaper;
+pub mod wayland;

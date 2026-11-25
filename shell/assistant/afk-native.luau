@@ -125,7 +125,7 @@ return function(shared, options)
             if controlling or #controls==0 then return end
             controlling=true
             local request=table.remove(controls,1)
-            run("tohru_afk_idle.py",request.args,function(_,code)
+            run("tohru-afk-idle",request.args,function(_,code)
                 controlling=false
                 if request.callback then request.callback(code==0) end
                 pump()
@@ -259,7 +259,7 @@ return function(shared, options)
             enabled=settings.enabled
             stop_requested=false
             if enabled and not options.art then
-                run("tohru_afk_idle.py",{"assets"},function(out,code)
+                run("tohru-afk-idle",{"assets"},function(out,code)
                     local ok,value=pcall(json.decode,out)
                     if code==0 and ok and type(value)=="table" and type(value.art)=="string" then
                         options.art=value.art

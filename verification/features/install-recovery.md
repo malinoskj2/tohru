@@ -29,7 +29,9 @@ python3 tools/verify/verify.py doctor --scenario session-units --target sandbox 
 python3 tools/verify/verify.py run session-units --target sandbox
 ```
 
-Prerequisites: executable bin/tohru, bin/tohru_portability.py, the shipped
+Prerequisites: executable bin/tohru, bin/tohru-portability built with
+`cargo build --release --manifest-path desktop/Cargo.toml` (the shim honours
+`CARGO_TARGET_DIR` and `TOHRU_DESKTOP_TARGET`), the shipped
 share/tohru/session/services.json, Python >=3.11, bash and coreutils dirname/readlink.
 The runner invokes the actual executable through its shipped shebang, with a
 private HOME/XDG/TMPDIR and no inherited caller, desktop sockets or credentials.

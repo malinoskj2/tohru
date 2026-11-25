@@ -53,7 +53,6 @@ let
     meta = { license = [ lib.licenses.bsd3 lib.licenses.mit ]; platforms = lib.platforms.linux; };
   };
   runtime = callPackage ./runtime-wrapper.nix { runtime = runtimeUnwrapped; };
-  portalPython = python3.withPackages (p: [ p.dbus-fast ]);
   nativeVoice = callPackage ./voice-native.nix { };
   desktop = callPackage ./desktop.nix { };
 in stdenvNoCC.mkDerivation {
@@ -78,10 +77,10 @@ in stdenvNoCC.mkDerivation {
     cp -r shell $out/share/tohru/
     cp -r share/tohru/. $out/share/tohru/
     cp -r docs $out/share/tohru/
-    cp bin/tohru_*.py bin/tohru-idle bin/tohru-wallpaper-media $out/bin/
+    cp bin/tohru_*.py bin/tohru-wallpaper-media $out/bin/
     cp LICENSE $out/share/tohru/LICENSE
     cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-session-run \
-      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-wallpaper bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev bin/tohru-assistant bin/tohru-discord bin/tohru_discord.py $out/bin/
+      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev bin/tohru-assistant bin/tohru-discord bin/tohru_discord.py $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}"
     install -m644 bin/tohru_status_ledger.py $out/bin/
     wrapProgram $out/bin/tohru-home-guard --prefix PATH : ${lib.makeBinPath [ bash ]}
@@ -120,15 +119,10 @@ in stdenvNoCC.mkDerivation {
       --prefix PATH : ${lib.makeBinPath [ systemd coreutils ]}
     # Generic output discovery uses wayland-info; Hyprland IPC remains optional.
     wrapProgram $out/bin/tohru-wallpaper \
-      --prefix PATH : ${lib.makeBinPath [ python3 wayland-utils mpvpaper jq socat ffmpeg-headless util-linux coreutils findutils gnugrep ]}
+      --prefix PATH : ${lib.makeBinPath [ wayland-utils mpvpaper jq socat ffmpeg-headless util-linux coreutils findutils gnugrep ]}
     wrapProgram $out/bin/tohru-media-art \
       --prefix PATH : ${lib.makeBinPath [ curl coreutils ]}
-    install -Dm755 bin/tohru-shortcuts $out/share/tohru/libexec/tohru-shortcuts
-    cp bin/tohru_shortcuts.py bin/tohru_portability.py $out/share/tohru/libexec/
-    makeWrapper ${portalPython}/bin/python3 $out/bin/tohru-shortcuts \
-      --add-flags $out/share/tohru/libexec/tohru-shortcuts \
-      --set TOHRU_BIN_DIR $out/bin \
-      --prefix PATH : "$out/bin:${lib.makeBinPath [ systemd coreutils ]}"
+    wrapProgram $out/bin/tohru-shortcuts --prefix PATH : "$out/bin:${lib.makeBinPath [ systemd coreutils ]}"
     ${lib.optionalString withVoice ''
       makeWrapper ${nativeVoice}/bin/tohru-voice-native $out/bin/tohru-voice \
         --add-flags "--dragon-art $out/share/tohru/shell/assistant/dragon"
@@ -137,8 +131,8 @@ in stdenvNoCC.mkDerivation {
       --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_POLKIT_SCENE $out/share/tohru/shell/polkit/polkit.plm
-    for program in tohru-idle tohru-session-action tohru_afk_idle.py; do
-      wrapProgram $out/bin/$program --set TOHRU_RUNTIME ${runtime}/bin/pleamar --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}"
+    for program in tohru-idle tohru-session-action tohru-afk-idle; do
+      wrapProgram $out/bin/$program --set TOHRU_RUNTIME ${runtime}/bin/pleamar --prefix PATH : "$out/bin:${lib.makeBinPath [ util-linux systemd coreutils procps wayland-utils swayidle ]}"
     done
     runHook postInstall
   '';

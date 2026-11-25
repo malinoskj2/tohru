@@ -30,7 +30,7 @@ fn fake_systemctl(directory: &Path, state: &str) {
 
 fn endpoint(runtime: &Path) -> std::path::PathBuf {
     let digest = Sha256::digest(b"wayland-test\0");
-    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    let hex = tohru_desktop::paths::hex(&digest);
     runtime.join(format!("tohru-lock-{}.status", &hex[..16]))
 }
 

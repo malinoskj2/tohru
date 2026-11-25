@@ -61,7 +61,7 @@ maintained swayidle, never chat timestamps, elapsed-time guesses or raw input.
   observer is started.
 * `idle.owner="disabled"`: AFK observes nothing.
 * `afk_idle_source="callbacks"`: use
-  `tohru_afk_idle.py callbacks --manager-pid PID` for the current timeout and
+  `tohru-afk-idle callbacks --manager-pid PID` for the current timeout and
   generation/PID-bound commands. PID must be the live maintained external idle
   manager; refresh after manager/bridge restarts. Unknown/dead identities are
   inactive. Configure a real maintained listener, never a wall-clock timer.

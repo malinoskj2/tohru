@@ -235,4 +235,4 @@ Its animation leaves (`hyprfocusIn`, `hyprsheetIn`, `hyprrecedeTilt` and the res
 
 Standalone services, read-only doctor, greetd templates and PipeWire setup are documented in [standalone.md](standalone.md). Managed `settings` can set all wallpaper, idle, font and voice environment keys without adding Nix-specific runtime paths. `systemd.components` uses the shared `share/tohru/session/services.json`; do not install generated standalone units on top of HM units.
 
-The optional shortcuts component packages dbus-fast independently of voice. Compositor-managed bindings remain read-only; portal registration/configuration is explicitly user-triggered and publishes backend-confirmed triggers. See the standalone shortcut instructions for v1/v2 support and restart/grant semantics.
+The optional shortcuts component carries its own portal client, independent of voice. Compositor-managed bindings remain read-only; portal registration/configuration is explicitly user-triggered and publishes backend-confirmed triggers. See the standalone shortcut instructions for v1/v2 support and restart/grant semantics.

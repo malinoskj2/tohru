@@ -77,7 +77,6 @@ jobs:
             python3 -B "${test[@]}" || status=1
           done <<'EOF'
           tests/assistant/service.py
-          tests/assistant/afk-idle.py
           tests/assistant/afk-art.py
           tests/assistant/discord.py
           tests/assistant/discord-dm.py

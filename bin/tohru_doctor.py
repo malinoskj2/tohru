@@ -230,8 +230,8 @@ def doctor(as_json=False):
     add("shortcuts.portal","present-unverified" if portal else "unknown", "GlobalShortcuts interface version readable; no binding session requested" if portal else portal_state)
     portal_mode=values.get("shortcuts.mode")=="portal"
     dependency,dep_state=json_probe([str(BIN/"tohru-shortcuts"),"--check-dependencies"]) if portal_mode else (None,"disabled")
-    add("shortcuts.dependencies","disabled" if not portal_mode else "ok" if isinstance(dependency,dict) and dependency.get("dbus_fast") else "missing" if isinstance(dependency,dict) else "unknown",
-        "Optional dbus-fast client" if portal_mode else "Portal ownership disabled", "Install dbus-fast for the portal service; Nix packaging includes it")
+    add("shortcuts.dependencies","disabled" if not portal_mode else "ok" if isinstance(dependency,dict) and dependency.get("portal_client")=="built-in" else "missing" if isinstance(dependency,dict) else "unknown",
+        "Built-in portal client" if portal_mode else "Portal ownership disabled", "Rebuild tohru-shortcuts; the portal client is compiled in")
     active_grants=shortcuts_report.get("active_registration") and bool(shortcuts_report.get("bindings"))
     add("shortcuts.registration","disabled" if not portal_mode else "ok" if active_grants else "unknown" if shortcuts_report.get("state")=="request-pending" else "configured-ungranted",
         "Current portal session has backend-confirmed action grants" if active_grants else str(shortcuts_report.get("state","unavailable")),

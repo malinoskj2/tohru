@@ -114,7 +114,7 @@ afk.close();assert(not current and not fact.ai_afk_active)
 -- cannot race a newly enabled source and terminate its helper afterward.
 local requests={}
 _G.run=function(program,args,done)
-    assert(program=='tohru_afk_idle.py')
+    assert(program=='tohru-afk-idle')
     requests[#requests+1]={args=args,done=done}
 end
 fact.ai_dg_reduced=false

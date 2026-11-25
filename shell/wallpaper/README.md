@@ -26,7 +26,7 @@ XDG_RUNTIME_DIR. File/directory/executable/options are normal managed/native
 settings; existing assignment files can be selected explicitly. No Hyprland
 monitor query, personal scripts, service names or home-directory links are used.
 
-`tohru_wallpaper.py` owns process/socket policy and atomic state;
+`tohru-wallpaper` owns process/socket policy and atomic state;
 `tohru-wallpaper-media` preserves the original thumbnail/snapshot pipeline.
 A wallpaper not already owned by Tohru is never killed or adopted. Hotplug polling
 restores assignments; temporary discovery failure preserves currently running

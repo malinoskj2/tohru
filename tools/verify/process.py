@@ -7,11 +7,16 @@ import time
 
 
 def private_environment(run):
-    return {'PATH': os.environ.get('PATH', ''), 'HOME': str(run / 'home'),
-            'XDG_CONFIG_HOME': str(run / 'config'), 'XDG_DATA_HOME': str(run / 'data'),
-            'XDG_STATE_HOME': str(run / 'state'), 'XDG_CACHE_HOME': str(run / 'cache'),
-            'XDG_RUNTIME_DIR': str(run / 'runtime'), 'TMPDIR': str(run / 'tmp'),
-            'CI': '1', 'ELECTRON_RUN_AS_NODE': '1', 'SCCACHE_DISABLE': '1'}
+    environment = {'PATH': os.environ.get('PATH', ''), 'HOME': str(run / 'home'),
+                   'XDG_CONFIG_HOME': str(run / 'config'), 'XDG_DATA_HOME': str(run / 'data'),
+                   'XDG_STATE_HOME': str(run / 'state'), 'XDG_CACHE_HOME': str(run / 'cache'),
+                   'XDG_RUNTIME_DIR': str(run / 'runtime'), 'TMPDIR': str(run / 'tmp'),
+                   'CI': '1', 'ELECTRON_RUN_AS_NODE': '1', 'SCCACHE_DISABLE': '1'}
+    # The checkout's native commands are links to bin/tohru-native, which finds the build here.
+    for key in ('TOHRU_DESKTOP_TARGET', 'CARGO_TARGET_DIR'):
+        if os.environ.get(key):
+            environment[key] = os.environ[key]
+    return environment
 
 
 def execute(argv, cwd, env, log, timeout=180, limit=2 * 1024 * 1024):

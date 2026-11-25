@@ -29,7 +29,7 @@
     "description": "Tohru idle owner"
   },
   "afk": {
-    "program": "tohru_afk_idle.py serve",
+    "program": "tohru-afk-idle serve",
     "description": "Tohru passive desktop idle notifications",
     "kill_mode": "mixed",
     "install": false
