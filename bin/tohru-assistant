@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-from concurrent.futures import ThreadPoolExecutor
 import fcntl
 import hashlib
 import json
@@ -31,6 +30,7 @@ def xdg(name, fallback):
 
 
 DATA = Path(os.environ.get("TOHRU_ASSISTANT_DATA") or xdg("XDG_DATA_HOME", ".local/share") / "tohru")
+SETTLE_LIMIT_SECONDS = 3
 SCRATCH = Path(os.environ.get("TOHRU_ASSISTANT_SCRATCH") or xdg("XDG_STATE_HOME", ".local/state") / "tohru/assistant/scratch")
 CONVERSATION_ID = re.compile(r"^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$", re.I)
 PROBE_SECONDS = 6
@@ -1667,49 +1667,193 @@ def orca_side_record(bot, phase, request, text):
         os.unlink(path)
 
 
-def orca_quick_facts(bot, home, request):
-    """Read fixed shared-record APIs; the model gets data, never CLI execution."""
-    facts = {"observed_at": int(time.time()), "scope": "local Orca records; incomplete pages are not evidence of absence"}
+class Background:
+    """One call on a daemon thread, so an interrupted turn exits without waiting for it."""
+
+    def __init__(self, function, *args):
+        self.value = None
+        self.thread = threading.Thread(target=self.run, args=(function, *args), daemon=True)
+        self.thread.start()
+
+    def run(self, function, *args):
+        self.value = function(*args)
+
+    def result(self):
+        self.thread.join()
+        return self.value
+
+
+def daemon_map(calls):
+    """orca_call for each {key: (argv, timeout)} in parallel on daemon threads."""
+    running = {key: Background(orca_call, argv, timeout) for key, (argv, timeout) in calls.items()}
+    return {key: job.result() for key, job in running.items()}
+
+
+def orca_quick_reads(bot):
+    """Read fixed shared-record APIs; the model gets data, never CLI execution. Writes nothing."""
     reads = (
         ("items", ["bot", "item", "list", "--bot", bot, "--limit", "100"]),
         ("workers", ["orchestration", "worker-list", "--limit", "100"]),
         ("worktrees", ["worktree", "list", "--limit", "100"]),
     )
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        pending = {name: pool.submit(orca_call, [*argv, "--json"], timeout=5) for name, argv in reads}
-        for name, future in pending.items():
-            ok, result, error = future.result()
-            facts[name] = result if ok else {"unavailable": error or "read failed"}
+    raw = {}
+    for name, (ok, result, error) in daemon_map({name: ([*argv, "--json"], 5) for name, argv in reads}).items():
+        raw[name] = result if ok else {"unavailable": error or "read failed"}
     # Read each referenced dispatch through worker-show, rather than treating a
     # terminal's existence, an old transcript or an item label as task completion.
-    serialized = json.dumps({key: facts[key] for key in ("items", "workers")})
+    serialized = json.dumps({key: raw[key] for key in ("items", "workers")})
     ids = list(dict.fromkeys(re.findall(r'(?:dispatch:|"(?:dispatchId|dispatch_id)"\s*:\s*")([A-Za-z0-9_-]+)', serialized)))
-    facts["dispatches"] = {}
-    facts["dispatch_reads_limited"] = len(ids) > 8
+    raw["dispatch_reads_limited"] = len(ids) > QUICK_DISPATCH_READS
+    raw["dispatches"] = {}
+    shows = {dispatch: (["orchestration", "worker-show", "--dispatch", dispatch, "--full", "--json"], 3)
+             for dispatch in ids[:QUICK_DISPATCH_READS]}
+    for dispatch, (ok, result, error) in daemon_map(shows).items():
+        raw["dispatches"][dispatch] = (True, result) if ok else (False, {"unavailable": error or "read failed"})
+    raw["observed_at"] = int(time.time())
+    return raw
+
+
+QUICK_DISPATCH_READS = 8
+QUICK_TEXT = 1200
+QUICK_MAIL_TEXT = 300
+QUICK_HISTORY_CHARS = 12000
+
+
+def pick(value, keys):
+    return {key: value[key] for key in keys if isinstance(value, dict) and value.get(key) not in (None, "", [], {})}
+
+
+def clip(text, limit):
+    text = str(text or "")
+    return text if len(text) <= limit else text[:limit] + "…"
+
+
+def quick_receipt(receipt):
+    """The status-bearing fields of one worker-show receipt."""
+    if not isinstance(receipt, dict):
+        return receipt
+    if "unavailable" in receipt:
+        return receipt
+    projection = receipt.get("projection") if isinstance(receipt.get("projection"), dict) else {}
+    liveness = projection.get("liveness")
+    return {
+        "dispatch": pick(receipt.get("dispatch"), ("id", "taskId", "status", "dispatchedAt", "completedAt", "lastHeartbeatAt",
+                                                   "failureCount", "lastFailure", "terminationReason", "retryOfDispatchId")),
+        "worker": pick(receipt.get("worker"), ("state", "stage", "setupState", "lastError", "updatedAt")),
+        "stage": projection.get("stage"),
+        "outcome": projection.get("outcome"),
+        "liveness": liveness.get("verdict") if isinstance(liveness, dict) else liveness,
+        "attention": projection.get("attention"),
+        "observation": receipt.get("observation"),
+        "task": pick(receipt.get("task"), ("status", "state")),
+    }
+
+
+def quick_item(item):
+    out = pick(item, ("number", "title", "status", "doneMeans", "question", "closeNote", "updatedAt"))
+    if item.get("description"):
+        out["description"] = clip(item["description"], QUICK_MAIL_TEXT)
+    links = []
+    for link in item.get("links") or []:
+        if isinstance(link, dict):
+            row = pick(link, ("kind", "ref", "latest", "title", "state", "startedAt", "settledAt"))
+            report = link.get("report")
+            if isinstance(report, dict) and report.get("subject"):
+                row["report"] = clip(report["subject"], 200)
+            links.append(row)
+    if links:
+        out["links"] = links[-6:]
+    return out
+
+
+def quick_records(raw, ledger_rows):
+    """Compact records: every status field the rule uses, without layout, identity plumbing or duplicates."""
+    facts = {"observed_at": raw["observed_at"], "scope": "local Orca records; incomplete pages are not evidence of absence"}
+    items = raw["items"]
+    if isinstance(items, dict) and isinstance(items.get("items"), list):
+        rows = [item for item in items["items"] if isinstance(item, dict)]
+        open_rows = [item for item in rows if item.get("status") != "done"]
+        done_rows = [item for item in rows if item.get("status") == "done"][:5]
+        facts["items"] = {"counts": items.get("counts"), "open": [quick_item(i) for i in open_rows[:20]],
+                          "recently_done": [quick_item(i) for i in done_rows]}
+    else:
+        facts["items"] = items
+    workers = raw["workers"]
+    if isinstance(workers, dict) and isinstance(workers.get("workers"), list):
+        rows = [w for w in workers["workers"] if isinstance(w, dict)]
+        keys = ("dispatchId", "taskId", "state", "outcome", "liveness", "agent", "terminalState")
+        active = [w for w in rows if w.get("outcome") not in ("succeeded", "failed", "cancelled", "abandoned")]
+        recent = [w for w in rows[:10] if w not in active]
+        facts["workers"] = {"active": [dict(pick(w, keys), workspace=str(w.get("workspace") or "").rsplit("/", 1)[-1]) for w in active[:20]],
+                            "recent_settled": [pick(w, keys) for w in recent],
+                            "page_complete": not workers.get("nextCursor")}
+    else:
+        facts["workers"] = workers
+    trees = raw["worktrees"]
+    if isinstance(trees, dict) and isinstance(trees.get("worktrees"), list):
+        rows = [t for t in trees["worktrees"] if isinstance(t, dict) and not t.get("isArchived")]
+        rows.sort(key=lambda t: t.get("lastActivityAt") or 0, reverse=True)
+        facts["worktrees"] = [pick(t, ("displayName", "branch", "workspaceStatus", "lastActivityAt")) for t in rows[:15]]
+    else:
+        facts["worktrees"] = trees
+    facts["dispatches"] = {"source": "orca orchestration worker-show, read fresh for this question at observed_at",
+                           "receipts": {dispatch: quick_receipt(result) for dispatch, (_, result) in raw["dispatches"].items()}}
+    facts["dispatch_reads_limited"] = raw["dispatch_reads_limited"]
+    if ledger_rows is None:
+        facts["receipt_ledger"] = {"unavailable": "Desktop receipt storage is unavailable; use fresh records only"}
+    else:
+        # A receipt read for this request is already under dispatches; the ledger adds only older observations.
+        facts["receipt_ledger"] = [{**{k: row[k] for k in ("dispatch", "observed_at", "age_seconds", "stale", "source")},
+                                    "receipt": quick_receipt(row["receipt"])}
+                                   for row in ledger_rows if row["dispatch"] not in raw["dispatches"]][:10]
+    return facts
+
+
+def orca_quick_facts(bot, home, request, raw=None):
+    raw = raw or orca_quick_reads(bot)
     ledger = None
+    rows = None
     try:
         ledger = WorkerLedger(private_dir(SCRATCH / "status-ledger"))
+        for dispatch, (ok, result) in raw["dispatches"].items():
+            if ok and not ledger.observe(home, dispatch, request, result):
+                raw["dispatches"][dispatch] = (False, {"unavailable": "worker-show returned another dispatch"})
+        rows = ledger.snapshot(home)
     except (OSError, sqlite3.Error):
-        facts["receipt_ledger"] = {"unavailable": "Desktop receipt storage is unavailable; use fresh records only"}
-    try:
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            pending = {dispatch: pool.submit(orca_call, ["orchestration", "worker-show", "--dispatch", dispatch, "--full", "--json"], timeout=3)
-                       for dispatch in ids[:8]}
-            for dispatch, future in pending.items():
-                ok, result, error = future.result()
-                facts["dispatches"][dispatch] = result if ok else {"unavailable": error or "read failed"}
-                if ok and ledger:
-                    try:
-                        if not ledger.observe(home, dispatch, request, result):
-                            facts["dispatches"][dispatch] = {"unavailable": "worker-show returned another dispatch"}
-                    except sqlite3.Error:
-                        pass
-        if ledger:
-            facts["receipt_ledger"] = ledger.snapshot(home)
+        rows = None
     finally:
         if ledger:
             ledger.close()
-    return facts
+    return quick_records(raw, rows)
+
+
+def quick_history(receipt):
+    """Recent Home conversation, newest kept first within a character budget; tool rows and NO_REPLY dropped."""
+    history = receipt.get("history") if isinstance(receipt, dict) else None
+    entries = history.get("entries") if isinstance(history, dict) else history
+    if not isinstance(entries, list):
+        return {"entries": [], "state": "unknown"}
+    kept, used = [], 0
+    for entry in reversed(entries):
+        if not isinstance(entry, dict) or entry.get("kind") not in (None, "message"):
+            continue
+        text = str(entry.get("text") or "").strip()
+        if not text or text == "NO_REPLY":
+            continue
+        authority = entry.get("interaction")
+        kind = authority.get("kind") if isinstance(authority, dict) else None
+        row = {"role": entry.get("role"), "text": clip(text, QUICK_MAIL_TEXT if kind == "internal" and entry.get("role") == "user" else QUICK_TEXT)}
+        if kind:
+            row["from"] = kind
+        used += len(row["text"])
+        if used > QUICK_HISTORY_CHARS and kept:
+            break
+        kept.append(row)
+    kept.reverse()
+    out = {"entries": kept, "state": history.get("state") if isinstance(history, dict) else None}
+    if len(kept) < len(entries):
+        out["older_omitted"] = True
+    return out
 
 
 QUICK_VOICE_RULE = """You are Tohru answering quickly by voice while you are busy with deeper work. You have no tools.
@@ -1744,21 +1888,30 @@ def spoken_line(text, limit):
     return isinstance(text, str) and 0 < len(text.strip()) <= limit and not re.search(r'[\x00-\x08\x0b-\x1f]', text)
 
 
+QUICK_EFFORT = "low"
+# Each call's prompt is unique after the first few KB, so a cache write is never read back
+# and bills at up to twice the input price. CLAUDE.md files are coding instructions, several
+# thousand tokens that only distract a tool-free spoken reply.
+QUICK_ENV = {"DISABLE_PROMPT_CACHING": "1", "CLAUDE_CODE_DISABLE_CLAUDE_MDS": "1"}
+
+
 def quick_claude(args, rule, payload, timeout, run=None):
     """Run the tool-free persona model once; None when it is missing, slow or malformed."""
     if not shutil.which("claude"):
         return None
     try:
         settings = assistant_settings()
-        model, effort = resolve_model("claude", str(settings.get("assistant.models.claude.model") or ""),
-                                      str(settings.get("assistant.models.claude.effort") or ""))
+        model, _ = resolve_model("claude", str(settings.get("assistant.models.claude.model") or ""), "")
+        effort = QUICK_EFFORT
         argv = provider_argv("claude", {"id": None, "resume": False, "ephemeral": True}, model, effort,
                              persona_text(flag(args.persona), args.persona_file) + "\n" + rule, tools=False)
         argv[argv.index("--setting-sources") + 1] = ""
+        # Claude Code's own coding-agent prompt is several thousand tokens a tool-free reply never uses.
+        argv[argv.index("--append-system-prompt")] = "--system-prompt"
         sent = json.dumps(payload, ensure_ascii=False)
         if len(sent.encode()) > 250000:
             return None
-        parser, code, _, stopped = run_provider(BY_ID["claude"], argv, sent, run=run, timeout=timeout)
+        parser, code, _, stopped = run_provider(BY_ID["claude"], argv, sent, run=run, timeout=timeout, extra_env=QUICK_ENV)
         if code != 0 or stopped or parser.error:
             return None
         value = json.loads(parser.text)
@@ -1787,6 +1940,10 @@ def orca_quick_voice(args, prompt, bot_name, offline):
             return 1
         request = str(uuid.uuid4())
         side_started_at = time.monotonic()
+        # The records are read while the turn settles; nothing reaches Home before it does.
+        reads = Background(orca_quick_reads, bot_name)
+        if not settle(args):
+            return 0
         ok, receipt, error = orca_side_record(bot_name, "begin", request, prompt)
         if not ok:
             emit({"event": "error", "message": error or "Quick voice needs the matching Orca integration patch; no request was resent."})
@@ -1811,9 +1968,10 @@ def orca_quick_voice(args, prompt, bot_name, offline):
         previous = {sig: signal.signal(sig, interrupt) for sig in (signal.SIGINT, signal.SIGTERM)}
         decision = {"route": "home"}
         try:
-            facts = orca_quick_facts(bot_name, chat_id, request)
+            facts = orca_quick_facts(bot_name, chat_id, request, reads.result())
             if not run.stopped:
-                value = quick_claude(args, QUICK_VOICE_RULE, {"history": receipt, "records": facts, "owner_question": prompt},
+                value = quick_claude(args, QUICK_VOICE_RULE, {"history": quick_history(receipt), "approvals": receipt.get("approvals") or [],
+                                                              "records": facts, "owner_question": prompt},
                                      timeout=20, run=run)
                 text = value.get("text") if value else None
                 if value and value.get("route") in ("answer", "home") and set(value) == {"route", "text"} and spoken_line(text, 1000):
@@ -1845,6 +2003,8 @@ def orca_chat_turn(args, prompt, bot_name, voice_chat, offline):
     bot, err = orca_find_bot(bot_name)
     if bot is None:
         if offline == "local":
+            if not settle(args):
+                return 0
             if args.provider not in BY_ID or not BY_ID[args.provider].installed():
                 fallback = next((p for p in discover() if p["signed_in"]), None)
                 if fallback is None:
@@ -1940,6 +2100,8 @@ def orca_chat_turn(args, prompt, bot_name, voice_chat, offline):
                 + body.removeprefix(tag + "\n"))
     subject = title_of(prompt)
     chat_arg = "new" if create_new else target_chat
+    if not settle(args):
+        return 0
     submitted_at = time.monotonic()
     ok, receipt, send_err = orca_send_to_bot(actual_bot, body, subject, chat_arg=chat_arg)
     if not ok:
@@ -2810,8 +2972,66 @@ def discord_chat(args):
         return 1
 
 
+class SettleGate:
+    """Holds the first irreversible Orca admission until the voice service says the owner has stopped.
+
+    Preparation runs meanwhile, so a final turn waits only for what is left of the
+    settle window. A continuation kills this process before anything reaches Home."""
+
+    def __init__(self, stream, limit=SETTLE_LIMIT_SECONDS):
+        self.event = threading.Event()
+        self.limit = limit
+        self.waited_ms = None
+        self.prompt = ""
+        first = stream.readline()
+        try:
+            self.prompt = str(json.loads(first)) if first.strip() else ""
+        except ValueError:
+            self.prompt = first.strip()
+        threading.Thread(target=self.read, args=(stream,), daemon=True).start()
+
+    def read(self, stream):
+        for line in stream:
+            if line.strip() == "settled":
+                break
+        self.event.set()
+
+    def wait(self):
+        """True to admit; False when the owner interrupted. A missing signal admits after the limit."""
+        started = time.monotonic()
+        try:
+            self.event.wait(self.limit)
+        except KeyboardInterrupt:
+            return False
+        if self.waited_ms is None:
+            self.waited_ms = round((time.monotonic() - started) * 1000)
+        return True
+
+
+class OpenGate:
+    waited_ms = None
+
+    def wait(self):
+        return True
+
+
+def settle(args):
+    gate = getattr(args, "settle_gate", None) or OpenGate()
+    if gate.wait():
+        if gate.waited_ms is not None:
+            home_metric("settle_wait", duration_ms=gate.waited_ms, voice=bool(args.voice))
+            args.settle_gate = None
+        return True
+    emit({"event": "stopped"})
+    return False
+
+
 def chat(args):
-    prompt = sys.stdin.read().strip()
+    if args.await_settle:
+        args.settle_gate = SettleGate(sys.stdin)
+        prompt = args.settle_gate.prompt.strip()
+    else:
+        prompt = sys.stdin.read().strip()
     if not prompt and not args.discord_incoming:
         raise SystemExit("tohru-assistant: empty prompt")
     backend, bot_name, voice_chat, offline = resolve_backend_config(args)
@@ -3132,6 +3352,8 @@ def main(argv=None):
             p.add_argument("--new-chat", action="store_true")
             p.add_argument("--voice", action="store_true")
             p.add_argument("--draft", action="store_true")
+            p.add_argument("--await-settle", action="store_true",
+                           help="Read the prompt as one JSON line, then admit nothing until a 'settled' line")
             p.add_argument("--interrupted", default="")
             p.add_argument("--semantic", action="store_true", help="Strict semantic protocol for tool-free voice drafts")
             p.add_argument("--scenario-model", default="")

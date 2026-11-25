@@ -21,7 +21,7 @@ FAKE_CLAUDE = r'''#!/usr/bin/env python3
 import json, os, sys, time
 args = sys.argv[1:]
 with open(os.environ["FAKE_LOG"], "a") as log:
-    log.write(json.dumps({"cli": os.path.basename(sys.argv[0]), "argv": args, "cwd": os.getcwd(), "auto_memory_off": os.environ.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY") == "1", "orca_env": {k: v for k, v in os.environ.items() if k.startswith("ORCA_")}, "stdin": sys.stdin.read() if "-p" in args else ""}) + "\n")
+    log.write(json.dumps({"cli": os.path.basename(sys.argv[0]), "argv": args, "cwd": os.getcwd(), "auto_memory_off": os.environ.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY") == "1", "quick_env": {k: os.environ.get(k) for k in ("DISABLE_PROMPT_CACHING", "CLAUDE_CODE_DISABLE_CLAUDE_MDS") if k in os.environ}, "orca_env": {k: v for k, v in os.environ.items() if k.startswith("ORCA_")}, "stdin": sys.stdin.read() if "-p" in args else ""}) + "\n")
 if args[:2] == ["auth", "status"]:
     print(json.dumps({"loggedIn": os.environ.get("FAKE_SIGNED_IN") == "1"})); sys.exit(0)
 session = args[args.index("--resume") + 1] if "--resume" in args else args[args.index("--session-id") + 1] if "--session-id" in args else "ephemeral"
@@ -921,10 +921,21 @@ class OrcaBotBackend(unittest.TestCase):
         self.assertIn("--strict-mcp-config", model["argv"])
         self.assertEqual(model["argv"][model["argv"].index("--tools") + 1], "")
         self.assertEqual(model["argv"][model["argv"].index("--setting-sources") + 1], "")
-        self.assertIn("detail " * 1000, model["stdin"])
+        sent = json.loads(model["stdin"])
+        # Recent conversation is kept, newest first, within a fixed budget; tool rows and plumbing are dropped.
+        self.assertTrue(sent["history"]["entries"][-1]["text"].startswith("FULL HOME CONTEXT detail"))
+        self.assertLessEqual(len(sent["history"]["entries"][-1]["text"]), 1201)
+        self.assertNotIn("detail " * 1000, model["stdin"])
         self.assertIn("Approve deploy", model["stdin"])
         self.assertIn("in_progress", model["stdin"])
+        self.assertIn("ctx_build", sent["records"]["dispatches"]["receipts"])
         self.assertTrue(model["orca_env"] == {})
+        # Cost: no never-read cache writes, no CLAUDE.md coding instructions, a low-effort reply
+        # and Tohru's own system prompt instead of Claude Code's coding-agent prompt.
+        self.assertEqual(model["quick_env"], {"DISABLE_PROMPT_CACHING": "1", "CLAUDE_CODE_DISABLE_CLAUDE_MDS": "1"})
+        self.assertEqual(model["argv"][model["argv"].index("--effort") + 1], "low")
+        self.assertIn("--system-prompt", model["argv"])
+        self.assertNotIn("--append-system-prompt", model["argv"])
 
     def test_quick_work_and_invalid_model_output_queue_the_original_owner_turn_once(self):
         for output in ('{"route":"home"}', 'not JSON', '{"route":"answer","text":"unsafe", "command":"rm"}'):
@@ -1004,6 +1015,76 @@ class OrcaBotBackend(unittest.TestCase):
         state = json.loads(self.orca_state.read_text())
         self.assertEqual(state["entries"][self.HOME_UUID][-1]["text"], "You stopped me before I answered.")
         self.assertFalse(any(call["argv"][:2] == ["bot", "send"] for call in self.orca_calls()))
+        process.stdout.close()
+        process.stderr.close()
+
+    def gated(self, *extra, **env):
+        process = subprocess.Popen([sys.executable, str(HELPER), "chat", "--backend", "orca", "--orca-bot", "Tohru",
+                                    "--provider", "orca:Tohru", "--voice", "--await-settle", *extra],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                   env={**os.environ, **self.env, **env})
+        process.stdin.write(json.dumps("Tell me about the history") + "\n")
+        process.stdin.flush()
+        return process
+
+    def settle_admissions(self):
+        return [call for call in self.orca_calls() if call["argv"][:2] == ["bot", "send"]
+                or (call["argv"][:2] == ["bot", "voice-side"] and "begin" in call["argv"])]
+
+    def wait_for_prepared(self, count):
+        deadline = time.monotonic() + 5
+        while len(self.orca_calls()) < count and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.3)
+
+    def test_unsettled_voice_turn_prepares_but_never_reaches_home(self):
+        for mode in ("home", "quick"):
+            self.write_orca_state()
+            self.orca_log.write_text("")
+            if mode == "quick":
+                self.busy_home()
+            process = self.gated("--orca-voice-chat", mode)
+            # Preparation reads run while the turn settles; nothing is admitted yet.
+            self.wait_for_prepared(3)
+            self.assertGreaterEqual(len(self.orca_calls()), 3)
+            self.assertEqual(self.settle_admissions(), [], mode)
+            # The owner carried on: the controller interrupts this fragment.
+            process.send_signal(signal.SIGINT)
+            output, errors = process.communicate(timeout=5)
+            self.assertEqual(process.returncode, 0, errors)
+            self.assertEqual([json.loads(line)["event"] for line in output.splitlines()], ["stopped"], mode)
+            self.assertEqual(self.settle_admissions(), [], mode)
+            self.assertFalse(self.fake_claude_log.read_text())
+
+    def test_settled_voice_turn_reaches_home_once(self):
+        for mode in ("home", "quick"):
+            self.write_orca_state()
+            self.orca_log.write_text("")
+            if mode == "quick":
+                self.busy_home()
+            env = {"FAKE_ANSWER": json.dumps({"route": "answer", "text": "It's going well."})} if mode == "quick" else {}
+            process = self.gated("--orca-voice-chat", mode, **env)
+            self.wait_for_prepared(3)
+            self.assertEqual(self.settle_admissions(), [], mode)
+            process.stdin.write("settled\n")
+            process.stdin.flush()
+            output, errors = process.communicate(timeout=10)
+            self.assertEqual(process.returncode, 0, errors)
+            events = [json.loads(line) for line in output.splitlines()]
+            self.assertEqual(events[-1]["event"], "done", mode)
+            self.assertEqual(len(self.settle_admissions()), 1, mode)
+            metrics = [json.loads(line) for line in (self.scratch / "home-metrics.jsonl").read_text().splitlines()]
+            self.assertIn("settle_wait", [row["event"] for row in metrics])
+            self.assertNotIn("history", json.dumps(metrics))
+            (self.scratch / "home-metrics.jsonl").unlink()
+
+    def test_closed_settle_channel_admits_rather_than_dropping_speech(self):
+        process = self.gated("--orca-voice-chat", "home")
+        process.stdin.close()
+        output = process.stdout.read()
+        self.assertEqual(process.wait(timeout=10), 0, process.stderr.read())
+        self.assertEqual(json.loads(output.splitlines()[-1])["event"], "done")
+        self.assertEqual(len(self.settle_admissions()), 1)
         process.stdout.close()
         process.stderr.close()
 
