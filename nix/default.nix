@@ -80,7 +80,7 @@ in stdenvNoCC.mkDerivation {
     cp bin/tohru_*.py bin/tohru-wallpaper-media $out/bin/
     cp LICENSE $out/share/tohru/LICENSE
     cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-session-run \
-      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev bin/tohru-assistant bin/tohru-discord bin/tohru_discord.py $out/bin/
+      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev bin/tohru-assistant $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}"
     install -m644 bin/tohru_status_ledger.py $out/bin/
     wrapProgram $out/bin/tohru-home-guard --prefix PATH : ${lib.makeBinPath [ bash ]}

@@ -28,6 +28,22 @@ fn session(config: &str) -> TempDir {
 }
 
 fn run(root: &TempDir) -> Output {
+    let output = launch(root);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
+/// Each run's fake `swayidle` is another test's conflicting idle manager, so runs take turns.
+static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn launch(root: &TempDir) -> Output {
+    let _turn = SERIAL
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     Command::new(IDLE)
         .env("PATH", common::path_with(&root.path().join("bin")))
         .env("XDG_RUNTIME_DIR", root.path().join("runtime"))
@@ -51,7 +67,6 @@ fn recorded(root: &TempDir) -> Vec<String> {
 fn external_ownership_runs_nothing() {
     let root = session("");
     let output = run(&root);
-    assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
         "tohru-idle: idle ownership is external\n"
@@ -62,12 +77,7 @@ fn external_ownership_runs_nothing() {
 #[test]
 fn owned_swayidle_waits_for_confirmed_locks_and_suspends_after_them() {
     let root = session("[idle]\nowner=\"tohru\"\nlock_seconds=300\nsuspend_seconds=900\n");
-    let output = run(&root);
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    run(&root);
     let args = recorded(&root);
     assert_eq!(args[..2], ["-w", "lock"]);
     assert!(args[2].ends_with("tohru-session-action lock"));
@@ -84,7 +94,7 @@ fn owned_idle_captures_the_registered_afk_generation_once() {
         common::session_dir(&root.path().join("runtime"), "private-test", "private-test");
     std::fs::create_dir_all(&directory).unwrap();
     std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
-    assert!(run(&root).status.success());
+    run(&root);
     assert_eq!(recorded(&root).len(), 5);
 
     std::fs::write(
@@ -92,7 +102,7 @@ fn owned_idle_captures_the_registered_afk_generation_once() {
         r#"{"schema": 1, "generation": 123, "seconds": 300}"#,
     )
     .unwrap();
-    assert!(run(&root).status.success());
+    run(&root);
     let args = recorded(&root);
     assert_eq!(args[5..7], ["timeout", "300"]);
     assert!(args[7].contains("tohru-afk-idle notify idle --generation 123 --manager-pid"));
@@ -104,7 +114,7 @@ fn owned_idle_captures_the_registered_afk_generation_once() {
         r#"{"schema": 1, "generation": 124, "seconds": 301}"#,
     )
     .unwrap();
-    assert!(run(&root).status.success());
+    run(&root);
     assert_eq!(recorded(&root).len(), 5);
 }
 
@@ -126,7 +136,7 @@ fn effective_afk_source_overrides_the_stored_settings() {
         r#"{"enabled": true, "seconds": 420, "source": "callbacks", "owner": "tohru"}"#,
     )
     .unwrap();
-    assert!(run(&root).status.success());
+    run(&root);
     assert_eq!(recorded(&root)[5..7], ["timeout", "420"]);
 
     std::fs::write(
@@ -134,7 +144,7 @@ fn effective_afk_source_overrides_the_stored_settings() {
         r#"{"enabled": true, "seconds": 0, "source": "callbacks", "owner": "tohru"}"#,
     )
     .unwrap();
-    let output = run(&root);
+    let output = launch(&root);
     assert_eq!(output.status.code(), Some(1));
     assert!(
         String::from_utf8_lossy(&output.stderr).contains("invalid effective AFK configuration")

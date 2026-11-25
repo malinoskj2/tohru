@@ -69,6 +69,9 @@ jobs:
           done
           exit "$status"
 
+      - name: Build the native commands the checkout's bin/ links run
+        run: cargo build --locked --release --manifest-path desktop/Cargo.toml
+
       - name: Python CPU tests
         run: |
           status=0

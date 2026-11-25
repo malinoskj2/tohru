@@ -121,6 +121,10 @@ class Assistant(unittest.TestCase):
             "FAKE_LOG": str(self.log),
             "FAKE_SIGNED_IN": "1",
         }
+        # The checkout's native commands are links to bin/tohru-native, which finds the build here.
+        for key in ("TOHRU_DESKTOP_TARGET", "CARGO_TARGET_DIR"):
+            if os.environ.get(key):
+                self.env[key] = os.environ[key]
 
     def fake(self, name, source):
         path = self.bin / name
@@ -1279,6 +1283,9 @@ class OrcaBotBackend(unittest.TestCase):
             "ORCA_AGENT_SESSION_ID": "caller-should-be-stripped",
             "ORCA_ENVIRONMENT": "remote-should-be-stripped",
         }
+        for key in ("TOHRU_DESKTOP_TARGET", "CARGO_TARGET_DIR"):
+            if os.environ.get(key):
+                self.env[key] = os.environ[key]
 
     def write_orca_state(self, bots=None):
         state = {

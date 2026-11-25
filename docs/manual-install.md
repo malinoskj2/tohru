@@ -141,4 +141,4 @@ Then load `$HOME/.local/lib/libtohru-hyprland.so` from your Hyprland configurati
 
 ## Discord bot support
 
-Optional [Discord read/post support](discord.md) uses Python 3.11+ (including its standard-library SSL module and system CA certificates). Keep `bin/tohru-discord` and `bin/tohru_discord.py` beside `bin/tohru-assistant`; releases and the Nix package include them. Configure it in Tohru's normal TOML settings; no external service or additional Python package is needed.
+Optional [Discord read/post support](discord.md) uses the native `tohru-discord` command and, for the assistant's per-turn broker, Python 3.11+ (including its standard-library SSL module and system CA certificates). Keep `bin/tohru-discord` and `bin/tohru_discord.py` beside `bin/tohru-assistant`; releases and the Nix package include them. Configure it in Tohru's normal TOML settings; no external service or additional Python package is needed.
