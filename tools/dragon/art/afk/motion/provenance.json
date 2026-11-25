@@ -39,7 +39,7 @@
         "last": "79fcf47675b12873d6f5d28d67d276df2626908252324492df012924ecdcaa5c"
       },
       "output": "tools/dragon/art/afk/motion/turn.png",
-      "output_sha256": "7705e0730d59a0e6618b74eeba9e21ae9465676f0d9a78e147720a8c63310a1c",
+      "output_sha256": "c02ea78348e302105f234cf6946453e7a45e477e6c30c19bad953f2f226fb389",
       "matte": "border-estimated uniform background, main component with holes filled, interior-paint edge unmix"
     },
     "arrive_right": {
@@ -79,7 +79,7 @@
         "last": "597e05e3fa5d01a763a644ea42b4891e7ca32d097f269b6928ff864077755a25"
       },
       "output": "tools/dragon/art/afk/motion/arrive_right.png",
-      "output_sha256": "412898ca584e4f26ca0ddac6890e4b9ad236f789d28dd52ef877dbb7a5510a79",
+      "output_sha256": "9ef5426ddd37a79c958d073f7d3f791fd3b9c10295102e8a4193b36d1781958e",
       "matte": "border-estimated uniform background, main component with holes filled, interior-paint edge unmix"
     },
     "arrive_left": {
@@ -119,7 +119,7 @@
         "last": "597e05e3fa5d01a763a644ea42b4891e7ca32d097f269b6928ff864077755a25"
       },
       "output": "tools/dragon/art/afk/motion/arrive_left.png",
-      "output_sha256": "64d269e487d1b1ffb07464e3f02e7e3f3443ab6d69db4474210a3eb404443471",
+      "output_sha256": "b6f37e09b34c2a77dd5b88e31aaff7f1f51dbbbac0151a181bfdba3ab473d078",
       "matte": "border-estimated uniform background, main component with holes filled, interior-paint edge unmix"
     },
     "curl": {
@@ -159,7 +159,7 @@
         "last": "28efe9c801fdfd4f13d6649d6bdb68abb9891fa34297570db0b180180f50c269"
       },
       "output": "tools/dragon/art/afk/motion/curl.png",
-      "output_sha256": "68365355db135e0d02e0a486fe6bded75832865aa7373970d179b6cc94439ebf",
+      "output_sha256": "fff04f0e2e35eca2586442b16625bb26b2997a8ea178b5f641dbef539df2af71",
       "matte": "border-estimated uniform background, main component with holes filled, interior-paint edge unmix"
     },
     "perch": {
@@ -199,7 +199,7 @@
         "last": "6cb02cbe693557e62da217c4299457b313242622d0f4a1bb1c2959c481cefcf6"
       },
       "output": "tools/dragon/art/afk/motion/perch.png",
-      "output_sha256": "a5b99caa2992705bee9cbafb47d0e2e764e603acfe163a5c9a14058bbe450e46",
+      "output_sha256": "179942919cf4cf268ba738aebed0e03bd2e3bea2c71d16a0b1918294c9d5c99f",
       "matte": "border-estimated uniform background, main component with holes filled, interior-paint edge unmix"
     },
     "bank": {
@@ -239,7 +239,7 @@
         "last": "202288cbdcb0fa7298a413d5843b3de7c687d65e2e9376fbd5997edfc76c4069"
       },
       "output": "tools/dragon/art/afk/motion/bank.png",
-      "output_sha256": "4f295ccfca2382b1c12ff0b7dc44303b103f3601c5b4c35cb59f4d647918d7bb",
+      "output_sha256": "05b34b7cb175d5931128f3a63a0e062f8369b03ed1624b9a8a5bb3106ab76726",
       "matte": "border-estimated uniform background, main component with holes filled, interior-paint edge unmix"
     },
     "peek": {
@@ -279,7 +279,7 @@
         "last": "714e97604be1b133a8cab058cdf6a741975af400beec3a9a6e62898a5aefb20c"
       },
       "output": "tools/dragon/art/afk/motion/peek.png",
-      "output_sha256": "86dcf55b51213e07680c4c55316923e15b647b6e1c38c5374336e9478564ec7f",
+      "output_sha256": "8ba27d3a400346f92ec6955fb5e78b9a8f6cd3c473533113914ea10226c3e8f2",
       "matte": "border-estimated uniform background, main component with holes filled, interior-paint edge unmix"
     },
     "wave": {
@@ -319,7 +319,7 @@
         "last": "9cff2e14523e3bc82e639a350c47182452f25d45f366044f7ab1f6c2c635a623"
       },
       "output": "tools/dragon/art/afk/motion/wave.png",
-      "output_sha256": "3030e7d98d3d2f3ca27be5aa9bb7d56026e8311881be37f0c3fd96f52bbd5408",
+      "output_sha256": "3040d51c31909139d92e36bc434c97f677845189668b1aaefbecef838d49c40b",
       "matte": "border-estimated uniform background, main component with holes filled, interior-paint edge unmix"
     },
     "bust": {
@@ -359,7 +359,7 @@
         "last": "770d5321f50754178944b6c4ad3d17befc4d0a21daad468b8af4fc486b5cc317"
       },
       "output": "shell/assistant/dragon/afk-bust-motion.webp",
-      "output_sha256": "55eb98641ef4e81d1ed082ca98949e0bcfc360ef9e75e1d752ff2e10e9bb7343",
+      "output_sha256": "f8c6b0bbf8d46f9f10de64a6a759657c06986044e5db56e66486c6b48e9fbf2c",
       "matte": "border-estimated uniform background, main component with holes filled, interior-paint edge unmix, realesrgan-x4plus-anime upscale"
     },
     "closeup": {
@@ -399,7 +399,7 @@
         "last": "60fb9577ab60a9538c743ed87991f15c26d8bef677edd6510b1a5308949f10e3"
       },
       "output": "shell/assistant/dragon/afk-closeup-motion.webp",
-      "output_sha256": "a36c0d3d5ed6717a274ae69833567881f7ba33b7393bb7055669ad5b7502c09f",
+      "output_sha256": "1299f9e0e709f502c8d546428069f66c20d40f1daf498abe44821cb8223af648",
       "matte": "border-estimated uniform background, main component with holes filled, interior-paint edge unmix, realesrgan-x4plus-anime upscale"
     }
   }

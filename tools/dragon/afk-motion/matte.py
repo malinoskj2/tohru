@@ -44,8 +44,9 @@ def extract(rgb,cropped_bottom):
     local=a[nearest[0],nearest[1]]-bg
     alpha=np.clip(np.sum((a-bg)*local,axis=-1)/np.maximum(np.sum(local*local,axis=-1),1),0,1)
     alpha=np.where(core,1,alpha)*support*np.clip((signal-6)/8,0,1)
-    # Membrane that lets the dark backdrop through stays translucent inside the body.
-    alpha=np.where(core,np.clip((signal-6)/34,0,1),alpha)
+    # Membrane that lets the dark backdrop through stays translucent inside the
+    # body, while backdrop enclosed between wing and body clears completely.
+    alpha=np.where(core,np.clip((signal-14)/26,0,1),alpha)
     foreground=np.clip((a-(1-alpha[...,None])*bg)/np.maximum(alpha[...,None],1/255),0,255)
     # Edge colour comes from the nearest interior paint, so no dark backdrop fringe survives.
     foreground=np.where(core[...,None]>0,foreground,a[nearest[0],nearest[1]])
@@ -150,7 +151,7 @@ def main():
     parser.add_argument('--big',type=int,default=1254)
     args=parser.parse_args()
     cv2.setNumThreads(2)
-    names=args.names or sorted(p.parent.name for p in OUT.glob('*/raw.mp4'))
+    names=args.names or list(json.loads((HERE/'sequences.json').read_text())['sequences'])
     for name in names:process(name,args.count,args.cell,args.big)
 
 
