@@ -134,6 +134,9 @@ local voiced = false
 for _, a in ipairs(voice.args) do voiced = voiced or a == "--voice" end
 assert(voiced)
 voice.line(json.encode({event = "start", conversation = "v1"}))
+voice.line(json.encode({event = "voice_notice", text = "I've queued that for Home."}))
+assert(speech_events[#speech_events][1] == "notice" and speech_events[#speech_events][2] == "I've queued that for Home.")
+assert(assistant.streaming())
 voice.line(json.encode({event = "voice_origin", request = "orca:queued", canonical_request = "orca:canonical"}))
 assert(speech_events[#speech_events][1] == "origin" and speech_events[#speech_events][2] == "orca:canonical" and speech_events[#speech_events][4] == "orca:queued")
 voice.line(json.encode({event = "delta", text = "Why?"}))

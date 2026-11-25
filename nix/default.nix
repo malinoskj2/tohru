@@ -1,4 +1,4 @@
-{ lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage
+{ lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage, bash
 , fontconfig, wayland, jq, socat, ffmpeg-headless, findutils, gnugrep, curl, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3, dbus
 , libnotify, util-linux, systemd, procps, coreutils, espeak-ng, pulseaudio, wayland-utils, swayidle, mpvpaper, wl-clipboard, xdg-terminal-exec
   # Without the voice service nothing for speech is installed; the setting then has nothing to start.
@@ -14,7 +14,7 @@ let
   };
   source = lib.fileset.toSource {
     root = ../.;
-    fileset = lib.fileset.unions [ ../bin ../shell ../share ../docs ../LICENSE ];
+    fileset = lib.fileset.unions [ ../bin ../shell ../share ../docs ../LICENSE ../tests/assistant/home-guard.py ];
   };
   runtimeUnwrapped = rustPlatform.buildRustPackage {
     pname = "pleamar-tohru";
@@ -66,6 +66,10 @@ in assert lib.asserts.assertOneOf "voiceRuntime" voiceRuntime [ "python" "rust" 
   nativeBuildInputs = [ makeWrapper ];
   buildInputs = [ python3 ];
   dontBuild = true;
+  doInstallCheck = true;
+  installCheckPhase = ''
+    TOHRU_HOME_GUARD=$out/bin/tohru-home-guard python3 tests/assistant/home-guard.py InstalledHookCommand
+  '';
   installPhase = ''
     runHook preInstall
     mkdir -p $out/bin $out/share/tohru
@@ -78,6 +82,9 @@ in assert lib.asserts.assertOneOf "voiceRuntime" voiceRuntime [ "python" "rust" 
       bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-wallpaper bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev bin/tohru-assistant bin/tohru-discord bin/tohru_discord.py $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}"
     install -Dm755 bin/tohru-voice-status $out/bin/tohru-voice-status
+    install -Dm755 bin/tohru-home-guard $out/bin/tohru-home-guard
+    install -m644 bin/tohru_home_guard.py bin/tohru_status_ledger.py $out/bin/
+    wrapProgram $out/bin/tohru-home-guard --prefix PATH : ${lib.makeBinPath [ bash ]}
     wrapProgram $out/bin/tohru-assistant --prefix PATH : ${lib.makeBinPath [ libnotify ]}
     wrapProgram $out/bin/tohru-run \
       --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \

@@ -38,7 +38,8 @@ preserves exact inputs, hashes, commands and failed attempts. A new attempt need
 a fresh output path; no shared store is modified. Preparation alone is no pass.
 
 The native suite drives actual CLI argument/envelope handling, background RPC,
-native SQLite history, queued aliases and child IPC. Expect nine passing test
+native SQLite history, queued aliases and child IPC. With the quick-voice and automatic
+steering patches applied, expect fourteen passing test
 files and both typechecks, not merely exit0 from an accepted CLI. Its native
 test action/log receipts and immutable collection supply the observable result.
 

@@ -159,7 +159,7 @@ pub const ASSISTANT_ORCA: [&str; 3] = ["auto", "true", "false"];
 pub const ASSISTANT_BACKENDS: [&str; 2] = ["local", "orca"];
 
 /// Where voice conversations land when `assistant.backend = "orca"`.
-pub const ORCA_VOICE_CHATS: [&str; 3] = ["home", "new", "foreground"];
+pub const ORCA_VOICE_CHATS: [&str; 4] = ["home", "new", "foreground", "quick"];
 
 /// What happens when `assistant.backend = "orca"` and Orca is unreachable.
 pub const ORCA_OFFLINE_MODES: [&str; 2] = ["error", "local"];

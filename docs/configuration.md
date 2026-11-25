@@ -26,7 +26,7 @@ Only the bar and Settings processes read settings; the bar forwards `notificatio
 | `assistant.provider` | string | `""` | The CLI answers go to: `claude`, `codex`, `gemini`, `agy` or `opencode`. Empty, or one that is missing or signed out, means the first installed one that is signed in. The popup's provider menu sets it |
 | `assistant.backend` | string | `"local"` | Which backend runs chats: `local` (default, local CLIs + SQLite, zero Orca dependency) or opt-in `orca` (routes desktop popup and voice through an Orca bot). See [assistant-bot-abilities.md](assistant-bot-abilities.md) |
 | `assistant.orca_bot` | string, 1 to 64 of `A-Z a-z 0-9 _ . -` and space | `"Tohru"` | The Orca bot name used when `assistant.backend = "orca"` |
-| `assistant.orca_voice_chat` | string | `"home"` | Home shares the public GUI, desktop text and voice history. Explicit `foreground` retains the earlier separate-chat route; `new` starts a fresh session. Explicit settings are preserved. See [foreground voice](task-speech.md#foreground-conversation). |
+| `assistant.orca_voice_chat` | string | `"home"` | Home shares the public GUI, desktop text and voice history. Opt-in `quick` answers alongside busy Home without creating another chat. `foreground` retains the earlier separate-chat route; `new` starts a fresh session. See [quick voice](#quick-voice-and-thin-home). |
 | `assistant.orca_offline` | string | `"error"` | What happens when `assistant.backend = "orca"` and Orca isn't running: `error` (shows an offline note so state never splits) or `local` (falls back to local CLIs) |
 | `assistant.models.<cli>.model` | string, up to 128 of `A-Z a-z 0-9 . _ : / @ # + -` | `""` | The model for `claude`, `codex`, `gemini`, `agy` or `opencode`, passed to that CLI as is. Empty means Tohru's default for it: `claude-opus-5-5`, `gpt-6.2-sol`, `gemini-4-neon`, `gemini-4-neon`, and opencode's own configured model. A model the CLI rejects shows its error; nothing falls back |
 | `assistant.models.<cli>.effort` | string | `""` | Reasoning effort: `minimal`, `low`, `medium`, `high`, `xhigh` or `max`, mapped to what each CLI accepts. Empty means `medium` for claude and codex, `high` for gemini and agy, and opencode's default |
@@ -95,6 +95,24 @@ programs.tohru.settings = {
 programs.tohru.lock.style = "horizon-meniscus";   # the same as settings.lock.style
 programs.tohru.notifications.position = "bottom-right";   # the same as settings.notifications.position
 ```
+
+## Quick voice and thin Home
+
+`assistant.orca_voice_chat = "quick"` keeps one public Home conversation. When Home is idle, voice follows the normal Home path. When Home is busy, an ephemeral Claude CLI process answers small talk and status questions without tools. It creates no Orca session and keeps no separate provider conversation.
+
+The responder reads recent native Home history, pending approvals, bot items, worktrees, and verified `orchestration worker-show` receipts. The desktop keeps those receipts in `status-ledger/worker-receipts.sqlite3` under the assistant scratch directory. Every observation carries its Home scope, request, timestamp, and age. Stale or unavailable records do not prove current task status.
+
+An acknowledgement plays immediately. The substantive answer waits until the acknowledgement and owner speech finish. Interruption or a newer owner request suppresses stale speech. Home records the question and answer in its native journal. A separate internal context note informs the persistent Home provider without asking it to answer again. Status answers are one-shot. Requests to do work, change state, make a decision, or follow a task go to Home as actual owner turns.
+
+This mode requires the matching Orca quick-voice integration patch, the automatic steering patch, and a signed-in Claude CLI. The responder uses `assistant.models.claude.model` and `.effort`. Its model call has a 20-second deadline. Invalid output or an unavailable model hands the original request to Home. A failed or uncertain native admission is never automatically resent.
+
+The default remains `home`. After the matching builds are installed, select `quick` with `tohru config set assistant.orca_voice_chat quick`, or set `programs.tohru.assistant.orcaBot.voiceChat = "quick"` in Home Manager. An older Orca rejects the new protocol instead of creating a fallback chat.
+
+The updated `tohru assistant orca init --bot Tohru` charter includes `[tohru-thin-home:5000]`. Existing Home charters are preserved; refresh one with `tohru assistant orca init --bot Tohru --force-soul --no-migrate`, which saves the previous charter as `SOUL.md.bak`, or merge the new budget instruction into your customized charter. Select Claude for Home before adding the marker. With the matching native integration, that marker enables a five-second foreground tool budget for Claude bot-folder sessions. Known foreground builds, tests, downloads, and worker waits are refused before execution. Other foreground shell commands receive a process-group deadline and up to one second for cleanup. Long work uses `worker-start --background` or Bash `run_in_background=true`. Read, Glob, Grep and ToolSearch run as quick foreground tools within the same budget. Internal subagents are refused. Owner questions and reply generation have no work deadline. Codex refuses this charter until an equivalent native guard is available.
+
+Desktop text and voice sent to Home select automatic native steering. Provider readiness and pending approvals retain Orca's existing gates. Internal context notes wait for idle and never count as fresh owner authority. No manual **Steer** click is required when the provider can accept the message.
+
+Desktop diagnostics are in `home-metrics.jsonl` under the assistant scratch directory. `owner_wait` measures submission to observation of native owner admission. `side_ack` and `side_response` measure response preparation, not audible playback. The native application log emits `[tohru-home]` events for total Home turn duration, foreground tool time, and blocked tools. Metrics omit message and command contents. No live latency measurements are implied by installing the instrumentation.
 
 ## Voice models
 

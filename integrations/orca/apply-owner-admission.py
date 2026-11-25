@@ -15,7 +15,7 @@ def digest(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', required=True, type=Path)
-    parser.add_argument('--stage', choices=('owner', 'background', 'interest', 'completion'), default='owner')
+    parser.add_argument('--stage', choices=('owner', 'background', 'interest', 'completion', 'quick'), default='owner')
     args = parser.parse_args()
     source = args.source.resolve()
     if not source.is_relative_to(ROOT / '.tmp'):
@@ -25,6 +25,7 @@ def main():
         'background': ('background-protocol-provenance.json', 'desktop-voice-background-protocol.patch'),
         'interest': ('current-interest-provenance.json', 'desktop-voice-current-interest.patch'),
         'completion': ('completion-observability-provenance.json', 'desktop-voice-completion-observability.patch'),
+        'quick': ('quick-voice-provenance.json', 'desktop-voice-quick.patch'),
     }[args.stage]
     provenance = json.loads((HERE / manifest).read_text())
     patch = HERE / name

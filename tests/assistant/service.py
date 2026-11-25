@@ -754,6 +754,43 @@ if args[:2] == ["bot", "voice-ready"]:
     print(json.dumps({"ok": True, "result": {"registered": True}}))
     sys.exit(0)
 
+if args[:2] == ["bot", "voice-side"]:
+    phase = args[args.index("--phase") + 1]
+    request = args[args.index("--request") + 1]
+    text = Path(args[args.index("--text-file") + 1]).read_text()
+    home = next(c["id"] for c in state["chats"] if c.get("home"))
+    if phase == "begin":
+        if home not in state.get("pending", {}):
+            result = {"route": "home"}
+        else:
+            history = list(state["entries"][home])
+            state["entries"][home].append({"kind":"message", "role":"user", "text":text, "interaction":{"kind":"internal"}})
+            result = {"route":"side", "chat":home, "request":request, "history":history,
+                      "approvals":[{"title":"Approve deploy", "state":"pending"}]}
+    else:
+        result = {"recorded": os.environ.get("FAKE_SIDE_REJECT") != "1"}
+        if result["recorded"]:
+            state["entries"][home].append({"kind":"message", "role":"assistant", "text":text, "interaction":{"kind":"internal"}})
+    save()
+    print(json.dumps({"ok":True, "result":result}))
+    sys.exit(0)
+
+if args[:3] == ["bot", "item", "list"]:
+    print(json.dumps({"ok":True, "result":{"items":[{"title":"Native build", "links":[{"ref":"dispatch:ctx_build", "state":"working"}]}]}}))
+    sys.exit(0)
+
+if args[:2] == ["orchestration", "worker-list"]:
+    print(json.dumps({"ok":True, "result":{"workers":[{"dispatchId":"ctx_build", "terminalState":"retained"}]}}))
+    sys.exit(0)
+
+if args[:2] == ["orchestration", "worker-show"]:
+    print(json.dumps({"ok":True, "result":{"dispatch":{"id":"ctx_build", "state":"working"}, "task":{"status":"in_progress"}}}))
+    sys.exit(0)
+
+if args[:2] == ["worktree", "list"]:
+    print(json.dumps({"ok":True, "result":{"worktrees":[{"branch":"current-build"}], "scope":{"covered":["local"]}}}))
+    sys.exit(0)
+
 if args[:2] == ["bot", "chats"]:
     print(json.dumps({"ok": True, "result": {"bot": state["bots"][0]["name"] if state["bots"] else "Tohru", "chats": state["chats"]}}))
     sys.exit(0)
@@ -814,6 +851,114 @@ sys.exit(1)
 
 
 class OrcaBotBackend(unittest.TestCase):
+    def quick(self, prompt, **env):
+        return self.invoke("chat", "--backend", "orca", "--orca-bot", "Tohru", "--provider", "orca:Tohru",
+                           "--orca-voice-chat", "quick", "--voice", stdin=prompt, **env)
+
+    def busy_home(self):
+        state = json.loads(self.orca_state.read_text())
+        state["pending"][self.HOME_UUID] = {"polls":1000, "reply":"Home long task result."}
+        state["entries"][self.HOME_UUID].append({"kind":"message", "role":"assistant", "text":"FULL HOME CONTEXT " + "detail " * 1000})
+        self.orca_state.write_text(json.dumps(state))
+
+    def test_quick_idle_uses_home_and_does_not_run_a_side_model(self):
+        result = self.quick("Hello")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Eight fluid ounces from Orca.", result.stdout)
+        self.assertFalse(self.fake_claude_log.read_text())
+        self.assertEqual(len(json.loads(self.orca_state.read_text())["chats"]), 1)
+        metrics = [json.loads(line) for line in (self.scratch / "home-metrics.jsonl").read_text().splitlines()]
+        self.assertEqual(metrics[0]["event"], "owner_wait")
+        self.assertGreaterEqual(metrics[0]["duration_ms"], 0)
+        self.assertNotIn("Hello", json.dumps(metrics))
+
+    def test_quick_busy_records_only_one_answer_in_home_and_reads_actual_dispatch(self):
+        self.busy_home()
+        answer = "The build is still running; deploy approval is pending."
+        result = self.quick("How is the build doing?", FAKE_ANSWER=json.dumps({"route":"answer", "text":answer}))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([event["text"] for event in events if event["event"] == "delta"], [answer])
+        state = json.loads(self.orca_state.read_text())
+        self.assertEqual(len(state["chats"]), 1)
+        self.assertEqual(state["pending"][self.HOME_UUID]["polls"], 1000)
+        self.assertEqual(state["entries"][self.HOME_UUID][-1]["text"], answer)
+        self.assertFalse(any(call["argv"][:2] == ["bot", "send"] for call in self.orca_calls()))
+        self.assertTrue(any(call["argv"][:2] == ["orchestration", "worker-show"] and "--full" in call["argv"] for call in self.orca_calls()))
+        model = json.loads(self.fake_claude_log.read_text().splitlines()[-1])
+        self.assertIn("--no-session-persistence", model["argv"])
+        self.assertIn("--strict-mcp-config", model["argv"])
+        self.assertEqual(model["argv"][model["argv"].index("--tools") + 1], "")
+        self.assertEqual(model["argv"][model["argv"].index("--setting-sources") + 1], "")
+        self.assertIn("detail " * 1000, model["stdin"])
+        self.assertIn("Approve deploy", model["stdin"])
+        self.assertIn("in_progress", model["stdin"])
+        self.assertTrue(model["orca_env"] == {})
+
+    def test_quick_work_and_invalid_model_output_queue_the_original_owner_turn_once(self):
+        for output in ('{"route":"home"}', 'not JSON', '{"route":"answer","text":"unsafe", "command":"rm"}'):
+            self.write_orca_state()
+            self.busy_home()
+            before = len(self.orca_calls())
+            result = self.quick("Build the feature", FAKE_ANSWER=output)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            sent = [call for call in self.orca_calls()[before:] if call["argv"][:2] == ["bot", "send"]]
+            self.assertEqual(len(sent), 1)
+            self.assertNotIn("new", sent[0]["argv"])
+            self.assertEqual(sent[0]["argv"][sent[0]["argv"].index("--delivery") + 1], "now")
+            entries = json.loads(self.orca_state.read_text())["entries"][self.HOME_UUID]
+            self.assertEqual(entries[-2]["text"], "[tohru-desktop:voice]\nBuild the feature")
+            events = [json.loads(line) for line in result.stdout.splitlines()]
+            self.assertEqual([event["text"] for event in events if event["event"] == "voice_notice"],
+                             ["Home is working. I'm checking your message.", "I've passed that to Home."])
+            self.assertEqual(len([event for event in events if event["event"] == "delta"]), 1)
+
+    def test_quick_superseded_request_never_speaks_or_starts_work(self):
+        self.busy_home()
+        result = self.quick("Are you there?", FAKE_ANSWER='{"route":"answer","text":"Yes."}', FAKE_SIDE_REJECT="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(events[-1]["event"], "stopped")
+        self.assertFalse(any(event["event"] == "delta" for event in events))
+        self.assertFalse(any(call["argv"][:2] == ["bot", "send"] for call in self.orca_calls()))
+
+    def test_quick_never_executes_a_desktop_action(self):
+        self.busy_home()
+        command_log = self.bin / "panel-command.json"
+        fake = self.bin / "tohru"
+        fake.write_text("#!/usr/bin/env python3\nimport json,sys\nfrom pathlib import Path\nPath(" + repr(str(command_log)) + ").write_text(json.dumps(sys.argv[1:]))\n")
+        fake.chmod(0o755)
+        result = self.quick("Show the calendar panel", FAKE_ANSWER='{"route":"home"}')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(command_log.exists())
+        self.assertTrue(self.fake_claude_log.read_text())
+        self.assertTrue(any(call["argv"][:2] == ["bot", "send"] for call in self.orca_calls()))
+
+    def test_quick_interruption_records_the_question_without_speaking_or_queuing_it(self):
+        self.busy_home()
+        process = subprocess.Popen([sys.executable, str(HELPER), "chat", "--backend", "orca", "--orca-bot", "Tohru",
+                                    "--provider", "orca:Tohru", "--orca-voice-chat", "quick", "--voice"],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                   env={**os.environ, **self.env, "FAKE_ANSWER":json.dumps({"route":"answer", "text":"a " * 100}), "FAKE_DELAY":"0.1"})
+        process.stdin.write("Are you available?")
+        process.stdin.close()
+        deadline = time.monotonic() + 5
+        while not self.fake_claude_log.read_text() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(self.fake_claude_log.read_text())
+        process.send_signal(signal.SIGINT)
+        output = process.stdout.read()
+        errors = process.stderr.read()
+        self.assertEqual(process.wait(timeout=5), 0, errors)
+        events = [json.loads(line) for line in output.splitlines()]
+        self.assertEqual(events[-1]["event"], "stopped")
+        self.assertFalse(any(event["event"] == "delta" for event in events))
+        state = json.loads(self.orca_state.read_text())
+        self.assertEqual(state["entries"][self.HOME_UUID][-1]["text"], "Interrupted before an answer was delivered.")
+        self.assertFalse(any(call["argv"][:2] == ["bot", "send"] for call in self.orca_calls()))
+        process.stdout.close()
+        process.stderr.close()
+
     def test_queued_request_uses_native_alias_and_internal_mail_does_not_take_owner_authority(self):
         with patch.object(sys, "path", [str(ROOT / "bin"), *sys.path]):
             service = runpy.run_path(str(HELPER), run_name="tohru_test")

@@ -178,10 +178,28 @@ service.line({event = "turn", text = "Stream this answer"})
 local turn = asked[#asked][3].voice_generation
 speech_listener("start", "v1", "", true, turn)
 assert(written[#written].message.cmd == "speech_start")
+local before_notice_timers = #timers
+speech_listener("notice", "v1", "I've queued that for Home.", true, turn)
+assert(#timers == before_notice_timers)
+assert(written[#written].message.cmd == "speech_end" and written[#written].message.text == "I've queued that for Home.")
+local before_answer = #written
 speech_listener("delta", "v1", "First sentence. ", true, turn)
-assert(written[#written].message.cmd == "speech_delta")
+assert(#written == before_answer)
 listeners[1]("done", "v1", "First sentence. ", true, turn)
+assert(#written == before_answer)
+-- Slow acknowledgement synthesis is not evidence of idle playback.
+for _, tick in pairs(ticking) do tick() end
+assert(#written == before_answer)
+service.line({event = "speaking", on = true, generation = turn, conversation = "v1"})
+service.line({event = "hearing", on = true})
+service.line({event = "speaking", on = false, generation = turn, conversation = "v1"})
+assert(#written == before_answer)
+service.line({event = "hearing", on = false})
+assert(written[before_answer + 1].message.cmd == "speech_start")
 assert(written[#written].message.cmd == "speech_end")
+assert(written[#written].message.text == "First sentence. ")
+timers[#timers]() -- finish the hearing transcript linger timer
+table.remove(timers)
 local count = #written
 speech_listener("delta", "v1", "Typed", false, turn)
 assert(#written == count)
