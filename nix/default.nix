@@ -1,4 +1,4 @@
-{ lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage
+{ lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage, bash
 , fontconfig, wayland, jq, socat, ffmpeg-headless, findutils, gnugrep, curl, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3, dbus
 , libnotify, util-linux, systemd, procps, coreutils, espeak-ng, pulseaudio, wayland-utils, swayidle, mpvpaper, wl-clipboard, xdg-terminal-exec
   # Without the voice service nothing for speech is installed; the setting then has nothing to start.
@@ -80,6 +80,7 @@ in assert lib.asserts.assertOneOf "voiceRuntime" voiceRuntime [ "python" "rust" 
     install -Dm755 bin/tohru-voice-status $out/bin/tohru-voice-status
     install -Dm755 bin/tohru-home-guard $out/bin/tohru-home-guard
     install -m644 bin/tohru_home_guard.py bin/tohru_status_ledger.py $out/bin/
+    wrapProgram $out/bin/tohru-home-guard --prefix PATH : ${lib.makeBinPath [ bash ]}
     wrapProgram $out/bin/tohru-assistant --prefix PATH : ${lib.makeBinPath [ libnotify ]}
     wrapProgram $out/bin/tohru-run \
       --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
