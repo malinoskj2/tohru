@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Verify Tohru changes in isolation before reporting them done. Drives the public CLI against private state - standalone session-unit staging, the bar's calendar and settings on an owned headless display, and the native Orca admission suite - and records hashed evidence. Use after changes to the shell, settings, CLI, session integration or Orca voice integration, or when asked to verify Tohru behaviour.
+description: Verify Tohru changes in isolation before reporting them done. Drives the public CLI against private state - standalone session-unit staging, the bar's calendar and settings on an owned headless display, and the native Orca admission suite - and records hashed evidence. Use after changes to the shell, settings, CLI, session integration or Orca voice integration, or when asked to verify Tohru behaviour. Its motion section reviews animations frame by frame against the owner's past rejections, with a separate fault-finding reviewer.
 ---
 
 # Verify Tohru
@@ -9,6 +9,9 @@ Tohru is a Pleamar desktop shell. A zero CLI exit only means a request was
 accepted; prove the resulting state. Read [the feature index](../../../verification/features/README.md),
 then only the map for the area you changed. Maps list unverified entry points;
 never report those as passed because a neighbouring journey passed.
+
+For motion work (animation, sprite sheets, flights, AFK scenes, transitions) also
+read [the motion section](motion.md); skip it for everything else.
 
 Run from the checkout under test. Pick the smallest journey that covers the change:
 
@@ -65,4 +68,5 @@ Orca by name, restart the host bar or touch host settings.
 
 Code lives in `tools/verify/`. After changing it or a map, run
 `python3 -m unittest discover -s tests/verification -v`. This file and
-`.claude/skills/verify/SKILL.md` must stay byte-identical.
+`.claude/skills/verify/SKILL.md` must stay byte-identical, and so must both
+copies of `motion.md`.

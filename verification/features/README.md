@@ -20,6 +20,7 @@ and audio are scripted. It does not prove live Home, desktop UX or hearing.
 | [Notifications](notifications.md) | Notification daemon and popups | Existing private-bus harness; not driven here |
 | [Desktop controls](desktop-controls.md) | Settings window, launcher, sound, session actions | Existing runners; unified journey unverified |
 | [Install and recovery](install-recovery.md) | Shipped session-units CLI, packaged CLI, supervisor, GUI startup | Private CLI file effects supported; package/live recovery unverified |
+| [Animation and motion](../motion/rejections.md) | Generated frames, sheets, native desktop captures | `tools/verify/motion.py` per-frame checks, approved side by side, separate reviewer; appeal stays the owner's |
 
 ## Desktop driver
 
