@@ -884,7 +884,7 @@ class OrcaBotBackend(unittest.TestCase):
         self.assertEqual(state["pending"][self.HOME_UUID]["polls"], 1000)
         self.assertEqual(state["entries"][self.HOME_UUID][-1]["text"], answer)
         self.assertFalse(any(call["argv"][:2] == ["bot", "send"] for call in self.orca_calls()))
-        self.assertTrue(any(call["argv"][:2] == ["orchestration", "worker-show"] for call in self.orca_calls()))
+        self.assertTrue(any(call["argv"][:2] == ["orchestration", "worker-show"] and "--full" in call["argv"] for call in self.orca_calls()))
         model = json.loads(self.fake_claude_log.read_text().splitlines()[-1])
         self.assertIn("--no-session-persistence", model["argv"])
         self.assertIn("--strict-mcp-config", model["argv"])

@@ -1688,7 +1688,7 @@ def orca_quick_facts(bot, home, request):
         facts["receipt_ledger"] = {"unavailable": "Desktop receipt storage is unavailable; use fresh records only"}
     try:
         with ThreadPoolExecutor(max_workers=4) as pool:
-            pending = {dispatch: pool.submit(orca_call, ["orchestration", "worker-show", "--dispatch", dispatch, "--json"], timeout=3)
+            pending = {dispatch: pool.submit(orca_call, ["orchestration", "worker-show", "--dispatch", dispatch, "--full", "--json"], timeout=3)
                        for dispatch in ids[:8]}
             for dispatch, future in pending.items():
                 ok, result, error = future.result()

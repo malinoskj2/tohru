@@ -15,6 +15,11 @@ TESTS = [
     'src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.test.ts',
     'src/cli/arguments/args.test.ts',
     'src/cli/orchestration/agent-view.test.ts',
+    'src/main/bots/desktop-voice-side.test.ts',
+    'src/main/runtime/rpc/methods/bots-voice-side.test.ts',
+    'src/main/claude/claude-thin-home-options.test.ts',
+    'src/main/bots/desktop-bot-auto-steer.test.ts',
+    'src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts',
 ]
 
 def main():

@@ -1,0 +1,908 @@
+diff --git a/src/cli/bots/bot-handler-groups.ts b/src/cli/bots/bot-handler-groups.ts
+index 34df3c1..f74bcc2 100644
+--- a/src/cli/bots/bot-handler-groups.ts
++++ b/src/cli/bots/bot-handler-groups.ts
+@@ -8,6 +8,7 @@ export const BOT_HANDLER_GROUPS: HandlerGroup[] = [
+       'bot chats',
+       'bot send',
+       'bot voice-ready',
++      'bot voice-side',
+       'bot voice-task',
+       'bot new-chat',
+       'bot memory forget'
+diff --git a/src/cli/bots/bot.ts b/src/cli/bots/bot.ts
+index 96acc7f..974b42c 100644
+--- a/src/cli/bots/bot.ts
++++ b/src/cli/bots/bot.ts
+@@ -75,6 +75,17 @@ export async function findBot(
+ }
+ 
+ export const BOT_HANDLERS: Record<string, CommandHandler> = {
++  'bot voice-side': async ({ flags, client, json, cwd }) => {
++    const selector = getOptionalStringFlag(flags, 'bot')
++    if (!selector) throw new RuntimeClientError('invalid_argument', 'Missing --bot')
++    const bot = await findBot(client, selector)
++    const result = await callBots(client, 'bots.voice.side', {
++      botId: bot.id, phase: getOptionalStringFlag(flags, 'phase'),
++      request: getOptionalStringFlag(flags, 'request'),
++      text: await readMessageText(flags, cwd, true)
++    })
++    printResult(result, json, () => 'Side voice operation recorded in Home.')
++  },
+   'bot voice-ready': async ({ flags, client, json }) => {
+     const result = await callBots(client, 'bots.voice.ready', {
+       chat: getOptionalStringFlag(flags, 'chat'),
+diff --git a/src/cli/specs/bot.ts b/src/cli/specs/bot.ts
+index fad6cbf..5505fc0 100644
+--- a/src/cli/specs/bot.ts
++++ b/src/cli/specs/bot.ts
+@@ -6,6 +6,10 @@ import { SLACK_MARKDOWN, SLACK_MENTION, TEXT_FILE } from './slack'
+ const BOT_NOTES = ['A bot lives on the computer that runs the command, in ~/.orca/bots/<name>.']
+ 
+ export const BOT_COMMAND_SPECS: CommandSpec[] = [
++  { path: ['bot', 'voice-side'], hidden: true,
++    summary: 'Record an owner-side quick voice exchange in Home without creating a chat',
++    usage: 'orca bot voice-side --bot <name> --phase begin|finish --request <UUID> --text-file <file> --json',
++    allowedFlags: [...GLOBAL_FLAGS, 'bot', 'phase', 'request', 'text', 'text-file'] },
+   {
+     path: ['bot', 'voice-ready'],
+     hidden: true,
+diff --git a/src/main/bots/desktop-voice-continuations.ts b/src/main/bots/desktop-voice-continuations.ts
+index c6fa481..6d6088c 100644
+--- a/src/main/bots/desktop-voice-continuations.ts
++++ b/src/main/bots/desktop-voice-continuations.ts
+@@ -20,7 +20,7 @@ import type { JournalSqlReads } from '../native-chat/agent-session-journal/journ
+ type Origin = { chat: string; request: string }
+ const MAX_LINKS = 512
+ const MAX_AGE = 24 * 60 * 60 * 1000
+-function trace(stage: string, fields: Record<string, string | boolean | null>): void {
++function trace(stage: string, fields: Record<string, string | number | boolean | null>): void {
+   console.info('[desktop-voice]', JSON.stringify({ stage, wall_ms: Date.now(), ...fields }))
+ }
+ 
+@@ -135,8 +135,20 @@ export class DesktopVoiceContinuations {
+ // A restart deliberately drops speech eligibility; the durable result remains in Orca.
+ const continuations = new DesktopVoiceContinuations()
+ 
++const sideSilenced = new Set<string>()
++export function silenceDesktopOwnerForSide(chat: string): void {
++  sideSilenced.add(chat)
++  if (sideSilenced.size > 512) {
++    const oldest = sideSilenced.values().next().value
++    if (oldest !== undefined) sideSilenced.delete(oldest)
++  }
++}
++
+ export function desktopVoiceOwnerMessage(chat: string, message: AgentJournalMessageItem): void {
+-  if (!message.from && !message.origin && !message.memorySource) desktopVoiceOwnerTurn(chat)
++  if (!message.from && !message.origin && !message.memorySource) {
++    sideSilenced.delete(chat)
++    desktopVoiceOwnerTurn(chat)
++  }
+ }
+ 
+ export function desktopVoiceOwnerTurn(chat: string): void {
+@@ -148,6 +160,7 @@ export async function desktopVoiceOrigin(
+   runtime: OrcaRuntimeService,
+   chat: string
+ ): Promise<Origin | null> {
++  if (sideSilenced.has(chat)) return null
+   const unchanged = desktopVoiceTasks.capture(chat)
+   const reads = await (await requireStructuredHost(runtime)).journalReads(chat)
+   const origin = await currentDesktopOwnerOrigin(reads, chat)
+diff --git a/src/main/bots/desktop-voice-side.test.ts b/src/main/bots/desktop-voice-side.test.ts
+new file mode 100644
+index 0000000..ed7a4ff
+--- /dev/null
++++ b/src/main/bots/desktop-voice-side.test.ts
+@@ -0,0 +1,125 @@
++import { afterEach, expect, it } from 'vitest'
++import { DesktopVoiceSide } from './desktop-voice-side'
++import { desktopVoiceOwnerTurn } from './desktop-voice-continuations'
++import {
++  createQueuedMessageTestRig,
++  type QueuedMessageTestRig
++} from '../native-chat/agent-session-wire/host/testing/structured-agent-session-queued-message-rig.test-fixture'
++import { openRigTurnFor } from '../native-chat/agent-session-wire/host/testing/structured-agent-session-queued-rig-turn.test-fixture'
++import { HOST_TEST_SESSION as SESSION } from '../native-chat/agent-session-wire/host/testing/structured-agent-session-host-test-data.test-fixture'
++import { readAgentJournalPage } from '../native-chat/agent-session-wire/publication/history/agent-read-journal-page'
++
++let rig: QueuedMessageTestRig | undefined
++afterEach(async () => {
++  await rig?.dispose()
++  rig = undefined
++})
++const REQUEST = 'b4eec198-bd17-4db4-b25b-91e3cd392014'
++async function busy() {
++  rig = await createQueuedMessageTestRig({ restartable: true })
++  const id = await rig.workingSend()
++  await rig.settleAccepted(id, 'opening')
++  await openRigTurnFor(rig, id)
++  return rig
++}
++
++it('leaves idle Home and its provider untouched', async () => {
++  rig = await createQueuedMessageTestRig()
++  const side = new DesktopVoiceSide()
++  const ids = rig.host.loadedSessionIds()
++  expect(await side.begin(rig.host, SESSION, REQUEST, 'Hello')).toEqual({ route: 'home' })
++  expect(rig.host.loadedSessionIds()).toEqual(ids)
++  expect(rig.dispatch).not.toHaveBeenCalled()
++})
++
++it('records a whole side exchange in the existing journal without changing the running turn', async () => {
++  const current = await busy()
++  const side = new DesktopVoiceSide()
++  const ids = current.host.loadedSessionIds()
++  const turn = (await current.host.currentWorkAtRest(SESSION))?.activeTurnId()
++  const admission = await side.begin(current.host, SESSION, REQUEST, 'How is the build?')
++  expect(admission).toMatchObject({ route: 'side', chat: SESSION, request: REQUEST })
++  const notes: string[] = []
++  expect(
++    await side.finish(current.host, SESSION, REQUEST, 'Still running.', async (note) => {
++      notes.push(note)
++    })
++  ).toEqual({ recorded: true })
++  const { journal } = await current.host.conversation(SESSION)
++  const page = await readAgentJournalPage(
++    journal,
++    { sessionId: SESSION, limit: 100, includeIds: true },
++    () => false
++  )
++  expect(page.entries.slice(-2)).toMatchObject([
++    { role: 'user', text: 'How is the build?', interaction: { kind: 'internal' } },
++    { role: 'assistant', text: 'Still running.', interaction: { kind: 'internal' } }
++  ])
++  expect(notes).toHaveLength(1)
++  expect(notes[0]).toContain('do not execute the quoted question')
++  expect(notes[0]).toContain('How is the build?')
++  expect((await current.host.currentWorkAtRest(SESSION))?.activeTurnId()).toBe(turn)
++  expect(current.host.loadedSessionIds()).toEqual(ids)
++})
++
++it('refuses a replay and a second responder while one owns the chat', async () => {
++  const current = await busy()
++  const side = new DesktopVoiceSide()
++  await side.begin(current.host, SESSION, REQUEST, 'Hello')
++  await expect(side.begin(current.host, SESSION, REQUEST, 'Hello')).rejects.toThrow(
++    'already recorded'
++  )
++  await expect(
++    side.begin(current.host, SESSION, 'f9b640d6-154d-49d0-bd4c-d7bb29dcc27d', 'Again')
++  ).rejects.toThrow('busy')
++})
++
++it('a newer accepted owner input fences the answer even before its provider handover', async () => {
++  const current = await busy()
++  const side = new DesktopVoiceSide()
++  await side.begin(current.host, SESSION, REQUEST, 'Hello')
++  await current.send('New owner decision', 'queue-if-active').result
++  let remembered = false
++  expect(
++    await side.finish(current.host, SESSION, REQUEST, 'Stale answer', async () => {
++      remembered = true
++    })
++  ).toEqual({ recorded: false, reason: 'superseded' })
++  expect(remembered).toBe(false)
++})
++
++it('actual owner handover retires a pending side answer', async () => {
++  const current = await busy()
++  const side = new DesktopVoiceSide()
++  await side.begin(current.host, SESSION, REQUEST, 'Hello')
++  desktopVoiceOwnerTurn(SESSION)
++  expect(
++    await side.finish(current.host, SESSION, REQUEST, 'Stale', async () => {
++      throw new Error('must not send')
++    })
++  ).toEqual({ recorded: false, reason: 'superseded' })
++})
++
++it('an uncertain context notification keeps one recorded answer and one native retry identity', async () => {
++  const current = await busy()
++  const side = new DesktopVoiceSide()
++  await side.begin(current.host, SESSION, REQUEST, 'Hello')
++  const operations: string[] = []
++  await expect(
++    side.finish(current.host, SESSION, REQUEST, 'Yes.', async (_text, operation) => {
++      operations.push(operation)
++      throw new Error('notification unavailable')
++    })
++  ).rejects.toThrow('notification unavailable')
++  expect(
++    await side.finish(current.host, SESSION, REQUEST, 'Yes.', async (_text, operation) => {
++      operations.push(operation)
++    })
++  ).toEqual({ recorded: true })
++  expect(operations[0]).toBe(operations[1])
++  const { journal } = await current.host.conversation(SESSION)
++  const page = await readAgentJournalPage(journal, { sessionId: SESSION, limit: 100 }, () => false)
++  expect(
++    page.entries.filter((entry) => entry.kind === 'message' && entry.text === 'Yes.')
++  ).toHaveLength(1)
++})
+diff --git a/src/main/bots/desktop-voice-side.ts b/src/main/bots/desktop-voice-side.ts
+new file mode 100644
+index 0000000..c0641ac
+--- /dev/null
++++ b/src/main/bots/desktop-voice-side.ts
+@@ -0,0 +1,163 @@
++import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/host/structured-agent-session-host'
++import { desktopVoiceOwnerTurn, silenceDesktopOwnerForSide } from './desktop-voice-continuations'
++import { desktopVoiceTasks } from './desktop-voice-task-delivery'
++import { agentJournalItemKey } from '../../shared/agent-session/journal/agent-session-journal-item-key'
++import { AGENT_JOURNAL_THREAD_SCOPE } from '../../shared/agent-session/journal/agent-session-journal-types'
++import type { AgentJournalMessageItem } from '../../shared/agent-session/journal/agent-session-journal-types'
++import { readAgentJournalPage } from '../native-chat/agent-session-wire/publication/history/agent-read-journal-page'
++
++export const SIDE_VOICE_SOURCE = 'Tohru quick voice'
++type Journal = Awaited<ReturnType<StructuredAgentSessionHost['conversation']>>['journal']
++type Lease = {
++  chat: string
++  question: string
++  epoch: string
++  context: string | null
++  owner: string | null
++  queuedOwners: string
++  current: () => boolean
++  at: number
++  answer?: string
++}
++
++/** A responder is an owner-side process, never a native chat or a provider child. */
++export class DesktopVoiceSide {
++  private readonly leases = new Map<string, Lease>()
++  private readonly chats = new Set<string>()
++
++  private identity(request: string, role: 'user' | 'assistant') {
++    return { provider: 'orca' as const, clientMessageId: `voice-side:${request}:${role}` }
++  }
++
++  private async ownerQueue(journal: Journal): Promise<string> {
++    return JSON.stringify(
++      (await journal.queuedMessages.list())
++        .filter((row) => !row.body.from && !row.body.origin && !row.body.memorySource)
++        .map((row) => [row.messageId, row.state])
++    )
++  }
++
++  private async append(
++    journal: Journal,
++    request: string,
++    role: 'user' | 'assistant',
++    text: string,
++    fence: number
++  ): Promise<void> {
++    const body: AgentJournalMessageItem = {
++      kind: 'message',
++      role,
++      blocks: [{ type: 'text', text }],
++      memorySource: SIDE_VOICE_SOURCE
++    }
++    await journal.appendItem(this.identity(request, role), body, {
++      fence,
++      turnScope: AGENT_JOURNAL_THREAD_SCOPE
++    })
++  }
++
++  async begin(host: StructuredAgentSessionHost, chat: string, request: string, question: string) {
++    await host.conversation(chat)
++    return host.serialize(chat, async () => {
++      const { journal } = await host.conversation(chat)
++      const record = host.deps.store.requireWritableRecord(chat)
++      // History's state includes accepted unopened input and unresolved approvals.
++      const history = await readAgentJournalPage(
++        journal,
++        { sessionId: chat, limit: 100, includeIds: true },
++        () => false
++      )
++      const work = await host.currentWorkAtRest(chat)
++      if (!work?.working() && !work?.hasActionablePrompt()) return { route: 'home' as const }
++      const existing = await journal.reads.itemDetail(
++        agentJournalItemKey(this.identity(request, 'user'))
++      )
++      if (existing || this.leases.has(request))
++        throw new Error('Side request already recorded; do not resend')
++      for (const [key, lease] of this.leases) {
++        if (Date.now() - lease.at > 60000) {
++          this.leases.delete(key)
++          this.chats.delete(lease.chat)
++        }
++      }
++      if (this.chats.has(chat) || this.leases.size >= 64) throw new Error('Side responder is busy')
++      const lease: Lease = {
++        chat,
++        question,
++        epoch: (await journal.reads.cursor()).epoch,
++        context: record.providerContextBoundary?.operationId ?? null,
++        owner: (await journal.reads.promptItem('last', true))?.itemId ?? null,
++        queuedOwners: await this.ownerQueue(journal),
++        current: () => true,
++        at: Date.now()
++      }
++      await this.append(journal, request, 'user', question, record.lease.runtimeFence)
++      // A real owner voice input retires previous task audio even though it never starts Home work.
++      desktopVoiceOwnerTurn(chat)
++      lease.current = desktopVoiceTasks.capture(chat)
++      this.leases.set(request, lease)
++      this.chats.add(chat)
++      silenceDesktopOwnerForSide(chat)
++      const context = await journal.reads.continuationContext()
++      return {
++        route: 'side' as const,
++        chat,
++        request,
++        history,
++        approvals: context.items.filter(
++          (item) =>
++            (item.body.kind === 'approval' || item.body.kind === 'question') &&
++            item.body.resolution.state === 'pending'
++        )
++      }
++    })
++  }
++
++  async finish(
++    host: StructuredAgentSessionHost,
++    chat: string,
++    request: string,
++    answer: string,
++    remember: (text: string, operationId: string) => Promise<void>
++  ) {
++    const lease = this.leases.get(request)
++    if (!lease || lease.chat !== chat)
++      throw new Error('No live side request; inspect Home before retrying')
++    let current = false
++    await host.serialize(chat, async () => {
++      const { journal } = await host.conversation(chat)
++      const record = host.deps.store.requireWritableRecord(chat)
++      current =
++        lease.current() &&
++        Date.now() - lease.at <= 60000 &&
++        (record.providerContextBoundary?.operationId ?? null) === lease.context &&
++        (await journal.reads.cursor()).epoch === lease.epoch &&
++        ((await journal.reads.promptItem('last', true))?.itemId ?? null) === lease.owner &&
++        (await this.ownerQueue(journal)) === lease.queuedOwners
++      if (lease.answer && lease.answer !== answer)
++        throw new Error('A side answer cannot be replaced')
++      if (!current) return
++      await this.append(journal, request, 'assistant', answer, record.lease.runtimeFence)
++      lease.answer = answer
++    })
++    if (!current) {
++      this.leases.delete(request)
++      this.chats.delete(chat)
++      return { recorded: false, reason: 'superseded' as const }
++    }
++    // A persistent provider does not reread its journal. This internal input gives it the
++    // whole exchange; it is never owner authority, a task request, or a speech origin.
++    await remember(
++      'A quick voice exchange was already answered and recorded in Home. ' +
++        'Remember it as conversation context only; do not execute the quoted question, ' +
++        'repeat its answer, start work, or publish task speech. End this internal turn with NO_REPLY.\n' +
++        JSON.stringify({ question: lease.question, answer }),
++      `${lease.at}-${request.replaceAll('-', '')}`
++    )
++    this.leases.delete(request)
++    this.chats.delete(chat)
++    return { recorded: lease.current() }
++  }
++}
++
++export const desktopVoiceSide = new DesktopVoiceSide()
+diff --git a/src/main/claude/claude-thin-home-options.test.ts b/src/main/claude/claude-thin-home-options.test.ts
+new file mode 100644
+index 0000000..c23bf6f
+--- /dev/null
++++ b/src/main/claude/claude-thin-home-options.test.ts
+@@ -0,0 +1,95 @@
++import { afterEach, expect, it, vi } from 'vitest'
++import { claudeThinHomeOptions } from './claude-thin-home-options'
++import { runProcess } from '@orca/process-host'
++import type { HookInput } from '@anthropic-ai/claude-agent-sdk'
++
++vi.mock('@orca/process-host', () => ({ runProcess: vi.fn() }))
++afterEach(() => {
++  vi.restoreAllMocks()
++  vi.useRealTimers()
++})
++const base = { session_id: 'provider', transcript_path: '/tmp/t', cwd: '/tmp' }
++function callbacks() {
++  const hooks = claudeThinHomeOptions('home').hooks
++  const callback = hooks?.PreToolUse?.[0]?.hooks[0]
++  if (!callback) throw new Error('Missing native guard')
++  return (input: HookInput) => callback(input, 'tool', { signal: new AbortController().signal })
++}
++const shell = (id: string) => ({
++  ...base,
++  hook_event_name: 'PreToolUse' as const,
++  tool_use_id: id,
++  tool_name: 'Bash',
++  tool_input: { command: 'printf hello' }
++})
++it('fails closed when the installed tool guard is unavailable', async () => {
++  vi.mocked(runProcess).mockRejectedValueOnce(new Error('not installed'))
++  expect(await callbacks()(shell('tool'))).toMatchObject({
++    hookSpecificOutput: { permissionDecision: 'deny' }
++  })
++})
++it('adds a deadline to work without changing the reply or granting tool permission', async () => {
++  vi.mocked(runProcess).mockResolvedValue({
++    code: 0,
++    signal: null,
++    timedOut: false,
++    stdout: JSON.stringify({
++      decision: 'wrap',
++      input: { command: 'guarded command', timeout: 5000 }
++    }),
++    stderr: ''
++  })
++  const result = await callbacks()(shell('tool'))
++  expect(result).toEqual({
++    hookSpecificOutput: {
++      hookEventName: 'PreToolUse',
++      updatedInput: { command: 'guarded command', timeout: 5000 }
++    }
++  })
++})
++it('accounts execution time but leaves model generation and a long final answer uncapped', async () => {
++  vi.useFakeTimers({ toFake: ['Date'] })
++  const log = vi.spyOn(console, 'info').mockImplementation(() => {})
++  vi.mocked(runProcess).mockResolvedValue({
++    code: 0,
++    signal: null,
++    timedOut: false,
++    stdout: JSON.stringify({ decision: 'wrap', input: { command: 'guarded command' } }),
++    stderr: ''
++  })
++  const call = callbacks()
++  await call({ ...base, hook_event_name: 'UserPromptSubmit', prompt: 'owner' })
++  vi.setSystemTime(Date.now() + 100000)
++  await call(shell('first'))
++  await call({
++    ...base,
++    hook_event_name: 'PostToolUse',
++    tool_name: 'Bash',
++    tool_input: {},
++    tool_use_id: 'first',
++    tool_response: {},
++    duration_ms: 3000
++  })
++  await call(shell('second'))
++  expect(vi.mocked(runProcess).mock.calls.at(-1)?.[0].args).toContain('2000')
++  await call({
++    ...base,
++    hook_event_name: 'PostToolUse',
++    tool_name: 'Bash',
++    tool_input: {},
++    tool_use_id: 'second',
++    tool_response: {},
++    duration_ms: 1000
++  })
++  await call({
++    ...base,
++    hook_event_name: 'Stop',
++    stop_hook_active: false,
++    last_assistant_message: 'A long final answer. '.repeat(1000)
++  })
++  const metrics = log.mock.calls.map((row) => JSON.parse(String(row[1])))
++  expect(metrics.find((row) => row.event === 'home_turn')).toMatchObject({
++    duration_ms: 100000,
++    foreground_ms: 4000
++  })
++})
+diff --git a/src/main/claude/claude-thin-home-options.ts b/src/main/claude/claude-thin-home-options.ts
+new file mode 100644
+index 0000000..db58a3c
+--- /dev/null
++++ b/src/main/claude/claude-thin-home-options.ts
+@@ -0,0 +1,115 @@
++import type { HookCallback, Options } from '@anthropic-ai/claude-agent-sdk'
++import { runProcess } from '@orca/process-host'
++import * as z from 'zod'
++
++export const THIN_HOME_MARKER = '[tohru-thin-home:5000]'
++const Plan = z.discriminatedUnion('decision', [
++  z.object({ decision: z.literal('pass'), background: z.boolean().optional() }),
++  z.object({ decision: z.literal('deny'), reason: z.string() }),
++  z.object({ decision: z.literal('wrap'), input: z.record(z.string(), z.unknown()) })
++])
++const REFUSAL =
++  'Foreground work is unavailable. Delegate through Orca worker-start --background or Bash run_in_background=true; keep answering the owner normally.'
++
++/** Only tool time spends the budget. Model generation and the final reply have no deadline. */
++export function claudeThinHomeOptions(session: string): Pick<Options, 'hooks'> {
++  let started: number | null = null
++  let spent = 0
++  let tools = 0
++  const active = new Map<string, { at: number; background: boolean }>()
++  const metric = (event: string, fields: Record<string, number | string | boolean>) => {
++    console.info('[tohru-home]', JSON.stringify({ event, session, wall_ms: Date.now(), ...fields }))
++  }
++  const deny = (reason: string) => ({
++    hookSpecificOutput: {
++      hookEventName: 'PreToolUse' as const,
++      permissionDecision: 'deny' as const,
++      permissionDecisionReason: reason
++    }
++  })
++  const hook: HookCallback = async (input) => {
++    switch (input.hook_event_name) {
++      case 'UserPromptSubmit':
++        if (started === null) {
++          started = Date.now()
++          spent = 0
++          tools = 0
++        }
++        return {}
++      case 'Stop':
++        if (started !== null)
++          metric('home_turn', { duration_ms: Date.now() - started, foreground_ms: spent, tools })
++        started = null
++        active.clear()
++        return {}
++      case 'PostToolUse':
++      case 'PostToolUseFailure': {
++        const previous = active.get(input.tool_use_id)
++        if (previous) {
++          const duration = Math.max(0, input.duration_ms ?? Date.now() - previous.at)
++          active.delete(input.tool_use_id)
++          if (!previous.background) spent += duration
++          metric('home_tool', {
++            duration_ms: duration,
++            foreground_ms: spent,
++            background: previous.background
++          })
++        }
++        return {}
++      }
++      case 'PreToolUse': {
++        if (started === null) {
++          started = Date.now()
++          spent = 0
++          tools = 0
++        }
++        if (active.size > 0)
++          return deny('Finish the current foreground tool before another. ' + REFUSAL)
++        active.set(input.tool_use_id, { at: Date.now(), background: false })
++        try {
++          const result = await runProcess({
++            program: 'tohru-home-guard',
++            args: ['plan', '--remaining-ms', String(Math.max(0, Math.floor(5000 - spent)))],
++            input: JSON.stringify({ tool: input.tool_name, input: input.tool_input }),
++            timeoutMs: 1000,
++            maxOutputBytes: 64000
++          })
++          if (result.code !== 0 || result.timedOut) {
++            active.delete(input.tool_use_id)
++            return deny(REFUSAL)
++          }
++          const plan = Plan.parse(JSON.parse(result.stdout))
++          if (plan.decision === 'deny') {
++            active.delete(input.tool_use_id)
++            metric('home_tool_blocked', { tool: input.tool_name, foreground_ms: spent })
++            return deny(plan.reason)
++          }
++          if (input.tool_name !== 'AskUserQuestion') {
++            tools += 1
++            active.set(input.tool_use_id, {
++              at: Date.now(),
++              background: plan.decision === 'pass' && plan.background === true
++            })
++          } else active.delete(input.tool_use_id)
++          return plan.decision === 'wrap'
++            ? { hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: plan.input } }
++            : {}
++        } catch {
++          active.delete(input.tool_use_id)
++          return deny(REFUSAL)
++        }
++      }
++      default:
++        return {}
++    }
++  }
++  return {
++    hooks: {
++      UserPromptSubmit: [{ hooks: [hook] }],
++      PreToolUse: [{ hooks: [hook] }],
++      PostToolUse: [{ hooks: [hook] }],
++      PostToolUseFailure: [{ hooks: [hook] }],
++      Stop: [{ hooks: [hook] }]
++    }
++  }
++}
+diff --git a/src/main/claude/structured/launch/claude-bot-session-options.ts b/src/main/claude/structured/launch/claude-bot-session-options.ts
+index 1d6194b..ea8e824 100644
+--- a/src/main/claude/structured/launch/claude-bot-session-options.ts
++++ b/src/main/claude/structured/launch/claude-bot-session-options.ts
+@@ -1,3 +1,4 @@
++import { claudeThinHomeOptions, THIN_HOME_MARKER } from '../../claude-thin-home-options'
+ import type { Options as ClaudeAgentSdkOptions } from '@anthropic-ai/claude-agent-sdk'
+ import {
+   CLAUDE_TOOLS_REFUSED_INSTRUCTION,
+@@ -21,6 +22,7 @@ export async function claudeBotSessionOptions(
+   basis: {
+     instructions(linkedSkills?: string | null): Promise<string | null>
+     readOnly?: ReadOnlySessionMode | null
++    record?: { sessionId: string; location: { workspaceKind: string } }
+   },
+   linked: readonly LinkedSkillProject[],
+   tools: BotLaunchTools,
+@@ -37,7 +39,11 @@ export async function claudeBotSessionOptions(
+     ...(instructions
+       ? { systemPrompt: { type: 'preset', preset: 'claude_code', append: instructions } }
+       : {}),
+-    ...(basis.readOnly ? claudeReadOnlyOptions(basis.readOnly) : {}),
++    ...(basis.readOnly
++      ? claudeReadOnlyOptions(basis.readOnly)
++      : own?.includes(THIN_HOME_MARKER) && basis.record?.location.workspaceKind === 'folder'
++        ? claudeThinHomeOptions(basis.record.sessionId)
++        : {}),
+     ...(tools.servers.length > 0 && !toolsOff ? { mcpServers: claudeLaunchServers(tools) } : {})
+   }
+ }
+diff --git a/src/main/codex/structured/launch/codex-structured-launch-resolution.ts b/src/main/codex/structured/launch/codex-structured-launch-resolution.ts
+index 530a1b5..be52de9 100644
+--- a/src/main/codex/structured/launch/codex-structured-launch-resolution.ts
++++ b/src/main/codex/structured/launch/codex-structured-launch-resolution.ts
+@@ -175,6 +175,15 @@ export function codexStructuredLaunchPart(
+     const developerInstructions = await basis.instructions(
+       linkedSkillsSection(linkedSkills.projects, [])
+     )
++    if (
++      !basis.readOnly &&
++      record.location.workspaceKind === 'folder' &&
++      developerInstructions?.includes('[tohru-thin-home:5000]')
++    ) {
++      throw new Error(
++        'Thin Home needs the Claude native pre-tool hook. Select Claude before enabling the Tohru thin-Home charter.'
++      )
++    }
+     const tools = await basis.toolServers()
+     const threadConfig = basis.readOnly
+       ? codexReadOnlyThreadConfig(basis.readOnly)
+diff --git a/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.test.ts b/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.test.ts
+index c5164b2..8fdeea1 100644
+--- a/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.test.ts
++++ b/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.test.ts
+@@ -371,6 +371,35 @@ function reply(sequence: number, text: string): AgentJournalRenderItem {
+   return { ...message(sequence, text), turnScope: { kind: 'turn', turnItemId: 'turn-1' } }
+ }
+ 
++it('keeps side exchanges internal while the eventual answer retains its owner request', async () => {
++  const f = fixture()
++  f.seedItem({
++    ...message(1, ''),
++    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'Build it' }] }
++  })
++  f.seedItem({
++    ...turn(2, 'completed'),
++    body: { kind: 'turn', turnId: 'turn-1', state: 'completed', outcome: 'success', userItemId: 'orca:1' }
++  })
++  for (const [sequence, role, text] of [[3, 'user', 'How is it going?'], [4, 'assistant', 'Still working.']] as const) {
++    f.seedItem({
++      ...message(sequence, ''),
++      body: { kind: 'message', role, blocks: [{ type: 'text', text }], memorySource: 'Tohru quick voice' }
++    })
++  }
++  f.seedItem(reply(5, 'Build completed'))
++  f.head(5)
++  const page = await f.read(20, () => false, true)
++  expect(page.entries.filter((entry) => entry.kind === 'message' && (entry.text === 'How is it going?' || entry.text === 'Still working.'))).toMatchObject([
++    { interaction: { kind: 'internal' } },
++    { interaction: { kind: 'internal' } }
++  ])
++  expect(page.entries.at(-1)).toMatchObject({
++    text: 'Build completed',
++    interaction: { kind: 'answer', requestId: 'orca:1', completionId: 'orca:5' }
++  })
++})
++
+ it('reads an open turn as working and its ended turn as done with its reply', async () => {
+   const f = fixture()
+   f.seedItem({
+diff --git a/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.ts b/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.ts
+index 493d528..a6d872a 100644
+--- a/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.ts
++++ b/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.ts
+@@ -51,7 +51,9 @@ export async function readAgentJournalPage(
+       if (entry.kind !== 'message' || !entry.itemId) continue
+       const item = page.items.find((item) => item.itemId === entry.itemId)
+       if (!item || item.body.kind !== 'message') continue
+-      if (item.body.role === 'user') {
++      if (item.body.memorySource === 'Tohru quick voice') {
++        entry.interaction = { kind: 'internal' }
++      } else if (item.body.role === 'user') {
+         entry.interaction = ownerInput(item)
+           ? { kind: 'owner', requestId: await ownerRequest(journal, item) }
+           : { kind: 'internal' }
+diff --git a/src/main/runtime/rpc/methods/bots-voice-side.test.ts b/src/main/runtime/rpc/methods/bots-voice-side.test.ts
+new file mode 100644
+index 0000000..7806142
+--- /dev/null
++++ b/src/main/runtime/rpc/methods/bots-voice-side.test.ts
+@@ -0,0 +1,44 @@
++import '../dispatch/testing/unused-default-rpc-methods.test-fixture'
++import { expect, it } from 'vitest'
++import { RpcDispatcher } from '../dispatcher'
++import { BOT_VOICE_SIDE_METHOD } from './bots-voice-side'
++import { LOCAL_CLI_RPC_CALLER } from '../callers/rpc-caller-identity'
++import type { OrcaRuntimeService } from '../../orca-runtime'
++
++// These refusals occur before the runtime or journal can be consulted.
++const runtime = { getRuntimeId: () => 'runtime' } as OrcaRuntimeService
++const dispatcher = new RpcDispatcher({ runtime, methods: [BOT_VOICE_SIDE_METHOD] })
++const params = {
++  botId: 'tohru',
++  phase: 'begin',
++  request: 'b4eec198-bd17-4db4-b25b-91e3cd392014',
++  text: 'Hello'
++}
++it('rejects a paired caller and a desktop window without owner CLI admission', async () => {
++  for (const caller of [
++    { kind: 'paired-device', deviceId: 'remote' },
++    { kind: 'desktop' }
++  ] as const) {
++    expect(
++      await dispatcher.dispatch(
++        { id: 'request', authToken: 'owner', method: 'bots.voice.side', params },
++        { caller }
++      )
++    ).toMatchObject({ ok: false })
++  }
++})
++it('validates the phase, request identity and bounded text at the RPC boundary', async () => {
++  for (const invalid of [
++    { ...params, phase: 'run' },
++    { ...params, request: 'invented' },
++    { ...params, text: '' },
++    { ...params, text: 'a'.repeat(16001) }
++  ]) {
++    expect(
++      await dispatcher.dispatch(
++        { id: 'request', authToken: 'owner', method: 'bots.voice.side', params: invalid },
++        { caller: LOCAL_CLI_RPC_CALLER }
++      )
++    ).toMatchObject({ ok: false })
++  }
++})
+diff --git a/src/main/runtime/rpc/methods/bots-voice-side.ts b/src/main/runtime/rpc/methods/bots-voice-side.ts
+new file mode 100644
+index 0000000..148b982
+--- /dev/null
++++ b/src/main/runtime/rpc/methods/bots-voice-side.ts
+@@ -0,0 +1,53 @@
++import { BotVoiceSide } from '../../../../shared/rpc-contract/bot-voice-side-params'
++import { requireStructuredHost, runtimeBotChats } from '../../../bots/bot-chat-session'
++import { desktopVoiceSide, SIDE_VOICE_SOURCE } from '../../../bots/desktop-voice-side'
++import { botChatTakingMail } from './bots-chats'
++import { chatThatTookIt } from '../../../bots/bot-automation-sessions'
++import { defineMethod, InvalidArgumentError } from '../core'
++
++export const BOT_VOICE_SIDE_METHOD = defineMethod({
++  name: 'bots.voice.side',
++  permission: 'workspace',
++  params: BotVoiceSide,
++  handler: async (params, context) => {
++    if (
++      context.pairedDeviceId ||
++      context.orchestrationCaller ||
++      context.caller?.kind !== 'local-cli'
++    ) {
++      throw new InvalidArgumentError(
++        'Side voice requires the local owner socket without an agent caller'
++      )
++    }
++    const { runtime } = context
++    runtime.bots.assertEnabled()
++    const bot = runtime.bots.list().find((entry) => entry.id === params.botId)
++    if (!bot || bot.paused || !bot.chatSessionId)
++      throw new InvalidArgumentError('Existing active Home required')
++    const target = await botChatTakingMail(runtime, bot, bot.chatSessionId)
++    if (!target) throw new InvalidArgumentError('Home is closed')
++    const chat = target.sessionId
++    const host = await requireStructuredHost(runtime)
++    if (params.phase === 'begin')
++      return desktopVoiceSide.begin(host, bot.chatSessionId, params.request, params.text)
++    return desktopVoiceSide.finish(
++      host,
++      chat,
++      params.request,
++      params.text,
++      async (text, operation) => {
++        // A fixed native operation identity makes an uncertain reminder admission safe to retry.
++        chatThatTookIt(
++          await runtimeBotChats(runtime).sendToSession(
++            bot.id,
++            chat,
++            text,
++            { memorySource: SIDE_VOICE_SOURCE },
++            undefined,
++            operation
++          )
++        )
++      }
++    )
++  }
++})
+diff --git a/src/main/runtime/rpc/methods/bots.ts b/src/main/runtime/rpc/methods/bots.ts
+index 115e396..f742d48 100644
+--- a/src/main/runtime/rpc/methods/bots.ts
++++ b/src/main/runtime/rpc/methods/bots.ts
+@@ -1,3 +1,4 @@
++import { BOT_VOICE_SIDE_METHOD } from './bots-voice-side'
+ import { BOT_DESKTOP_CHAT_METHOD } from './bots-desktop-chat'
+ import {
+   BotActivityRead,
+@@ -114,6 +115,7 @@ async function ownerTypedLatest(runtime: RpcContext['runtime'], sessionId: strin
+ export const BOT_METHODS = [
+   ...BOT_VOICE_METHODS,
+   BOT_DESKTOP_CHAT_METHOD,
++  BOT_VOICE_SIDE_METHOD,
+   defineMethod({
+     name: 'bots.list',
+     permission: 'workspace',
+diff --git a/src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts b/src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts
+index 3eca2dd..a96b499 100644
+--- a/src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts
++++ b/src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts
+@@ -1,7 +1,7 @@
+ import { expect, it } from 'vitest'
+ import { needsOrchestrationCallerResolution } from './orchestration-session-caller'
+ 
+-it.each(['bots.voice.task', 'bots.voice.ready'])(
++it.each(['bots.voice.task', 'bots.voice.ready', 'bots.voice.side'])(
+   '%s resolves injected identity and never trusts a declared session parameter',
+   (method) => {
+     const request = {
+diff --git a/src/shared/bots/bot-voice-methods.ts b/src/shared/bots/bot-voice-methods.ts
+index 1d8b591..37f6a40 100644
+--- a/src/shared/bots/bot-voice-methods.ts
++++ b/src/shared/bots/bot-voice-methods.ts
+@@ -1,2 +1,2 @@
+ /** Voice RPCs whose local agent session must be carried and verified together. */
+-export const BOT_VOICE_SESSION_METHOD_NAMES = ['bots.voice.task', 'bots.voice.ready'] as const
++export const BOT_VOICE_SESSION_METHOD_NAMES = ['bots.voice.task', 'bots.voice.ready', 'bots.voice.side'] as const
+diff --git a/src/shared/rpc-contract/bot-voice-side-params.ts b/src/shared/rpc-contract/bot-voice-side-params.ts
+new file mode 100644
+index 0000000..656ace7
+--- /dev/null
++++ b/src/shared/rpc-contract/bot-voice-side-params.ts
+@@ -0,0 +1,16 @@
++import * as z from 'zod'
++
++export const BotVoiceSide = z.discriminatedUnion('phase', [
++  z.object({
++    phase: z.literal('begin'),
++    botId: z.string().min(1),
++    request: z.uuid(),
++    text: z.string().trim().min(1).max(16000)
++  }),
++  z.object({
++    phase: z.literal('finish'),
++    botId: z.string().min(1),
++    request: z.uuid(),
++    text: z.string().trim().min(1).max(4000)
++  })
++])
+diff --git a/src/shared/rpc-contract/rpc-params-catalog.generated.ts b/src/shared/rpc-contract/rpc-params-catalog.generated.ts
+index 24bce80..6dab341 100644
+--- a/src/shared/rpc-contract/rpc-params-catalog.generated.ts
++++ b/src/shared/rpc-contract/rpc-params-catalog.generated.ts
+@@ -125,6 +125,7 @@ import {
+   AutomationUpdate
+ } from './automations/automation-params'
+ import { BotVoiceReady, BotVoiceTask } from './bot-voice-params'
++import { BotVoiceSide } from './bot-voice-side-params'
+ import {
+   ComposioApp,
+   ComposioApps,
+@@ -1322,6 +1323,7 @@ export const RPC_PARAMS_BY_METHOD = {
+   'bots.upNext.unseen': null,
+   'bots.update': BotUpdate,
+   'bots.voice.ready': BotVoiceReady,
++  'bots.voice.side': BotVoiceSide,
+   'bots.voice.task': BotVoiceTask,
+   'bots.work.forget': BotWorkForget,
+   'bots.work.list': BotWorkList,
