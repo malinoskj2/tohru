@@ -93,6 +93,7 @@ pub enum Key {
     AssistantOrcaBot,
     AssistantOrcaVoiceChat,
     AssistantOrcaOffline,
+    AssistantOrcaNeedsYouMinutes,
     AssistantModel(Cli),
     AssistantEffort(Cli),
     AssistantVoiceModel(Cli),
@@ -165,7 +166,7 @@ pub const ORCA_VOICE_CHATS: [&str; 4] = ["home", "new", "foreground", "quick"];
 pub const ORCA_OFFLINE_MODES: [&str; 2] = ["error", "local"];
 
 impl Key {
-    pub const ALL: [Self; 112] = [
+    pub const ALL: [Self; 113] = [
         Self::ShortcutsMode,
         Self::ShortcutLauncher,
         Self::ShortcutSession,
@@ -248,6 +249,7 @@ impl Key {
         Self::AssistantOrcaBot,
         Self::AssistantOrcaVoiceChat,
         Self::AssistantOrcaOffline,
+        Self::AssistantOrcaNeedsYouMinutes,
         Self::AssistantModel(Cli::Claude),
         Self::AssistantEffort(Cli::Claude),
         Self::AssistantModel(Cli::Codex),
@@ -373,6 +375,7 @@ impl Key {
             Self::AssistantOrcaBot => "assistant.orca_bot",
             Self::AssistantOrcaVoiceChat => "assistant.orca_voice_chat",
             Self::AssistantOrcaOffline => "assistant.orca_offline",
+            Self::AssistantOrcaNeedsYouMinutes => "assistant.orca_needs_you_minutes",
             Self::AssistantModel(Cli::Claude) => "assistant.models.claude.model",
             Self::AssistantEffort(Cli::Claude) => "assistant.models.claude.effort",
             Self::AssistantModel(Cli::Codex) => "assistant.models.codex.model",
@@ -555,6 +558,7 @@ impl Key {
             Self::AssistantOrcaBot => (&["assistant"], "orca_bot"),
             Self::AssistantOrcaVoiceChat => (&["assistant"], "orca_voice_chat"),
             Self::AssistantOrcaOffline => (&["assistant"], "orca_offline"),
+            Self::AssistantOrcaNeedsYouMinutes => (&["assistant"], "orca_needs_you_minutes"),
             Self::AssistantModel(cli) => (cli.tables(), "model"),
             Self::AssistantEffort(cli) => (cli.tables(), "effort"),
             Self::AssistantVoiceModel(Cli::Claude) => {
@@ -623,6 +627,7 @@ impl Key {
         match self {
             Self::IdleLockSeconds | Self::IdleSuspendSeconds => Some((0, 86400)),
             Self::AssistantDiscordDesktopTimeoutSeconds => Some((10, 300)),
+            Self::AssistantOrcaNeedsYouMinutes => Some((0, 1440)),
             Self::CornerSize => Some((1, 100)),
             Self::AssistantEntranceSeed | Self::AssistantWaitingSeed => Some((0, 2147483646)),
             Self::AssistantTtsSpeed => Some((50, 200)),
@@ -706,6 +711,7 @@ impl Key {
             Self::AssistantOrcaBot => Value::Text("Tohru".to_owned()),
             Self::AssistantOrcaVoiceChat => Value::Text(ORCA_VOICE_CHATS[0].to_owned()),
             Self::AssistantOrcaOffline => Value::Text(ORCA_OFFLINE_MODES[0].to_owned()),
+            Self::AssistantOrcaNeedsYouMinutes => Value::Integer(5),
             Self::AssistantEntranceSeed | Self::AssistantWaitingSeed => Value::Integer(1),
             Self::AssistantEntranceVariant => Value::Text("auto".to_owned()),
             Self::AssistantTtsSpeed => Value::Integer(100),

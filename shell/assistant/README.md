@@ -11,6 +11,7 @@ The AI assistant described in [docs/ai-assistant.md](../../docs/ai-assistant.md)
 | `popup.plm` | The Pocket popup (direction 01): heading, provider picker, sign-in note, empty chat, the chat column, the field and history |
 | `controller.luau` | Runs `tohru-assistant` for providers, chats and history, streams the answer, and keeps the bar's streaming and ready state. Takes `{provider, choose}` for the `assistant.provider` setting and returns `{open, close, toggle, new_chat, show_history, choose, signin, settle, ask, stop, streaming, on_answer, show, status}` |
 | `voice.luau` | Runs `tohru-voice` while `assistant.voice` is on and kills it when off; sends voice turns to the controller and its answers back to be spoken; drives the mic dot, mouth level and overlay. Restarts a crashed service after 2, 4, … s, up to five times, and never after exit 3 (missing models or tools) |
+| `needs-you.luau` | The Needs-you watcher: in Orca mode, runs `tohru-assistant needs-you poll` every `assistant.orca_needs_you_minutes` and `needs-you wake` for new items once no voice turn, speech or streaming answer is under way and neither DND nor the lock is on; backs off quietly while Orca is unreachable |
 | `dragon.plm` | The speaking dragon overlay at the bottom right, drawn from the sheets in `dragon/`; a click opens the conversation |
 | `puppet.luau` | The dragon's animator: idle, listening, thinking and talking poses, transitions, blinks, flourishes, viseme mouths and hearts, at 24 fps while she is shown |
 | `dragon/` | Her sheets, eye and mouth patches, heart and glass shader; layout and provenance in its README |
@@ -74,6 +75,7 @@ A Python helper (standard library only) that the bar runs with `sys.spawn`. Each
 | `history [--query Q] [--provider ID] [--since T] [--limit N]` | Conversations, newest first, with the matching snippet when `--query` is given |
 | `show CID`, `delete CID` | One conversation, or remove it (UUIDs supported in `orca` mode) |
 | `sync` | Lightweight background check for new Orca bot replies (`orca` mode); no-op in `local` mode |
+| `needs-you poll`, `needs-you wake UID:EVENT…` | `poll` reads the bot's Needs you items and prints the ones not yet announced (`ok`, `baseline`, `pending`); the first poll only records what is waiting. `wake` sends the given pending items to the bot's Home Chat in one `[tohru-desktop:needs-you]` message and marks them announced. State is `orca-needs-you.json` in the data folder (`orca` mode only) |
 | `orca init [--bot NAME] [--no-migrate] [--force-soul]` | Seeds `~/.orca/bots/<slug>/SOUL.md` and migrates SQLite memories into `MEMORY.md` without altering `assistant.sqlite` |
 
 - **Auth probes** never prompt: stdin is closed, each probe has 6 s, and they run in parallel. `claude auth status` and `codex login status` where the CLI has one; otherwise the credential file (`~/.gemini/oauth_creds.json`, `~/.gemini/antigravity-cli/antigravity-oauth-token`, `~/.local/share/opencode/auth.json`). **Sign in…** runs `claude auth login`, `codex login`, `opencode auth login`, or the bare CLI for `gemini` and `agy`, in `TOHRU_TERMINAL`, `xdg-terminal-exec`, `$TERMINAL -e` or the first common terminal found.
@@ -96,6 +98,7 @@ python3 tests/assistant/service.py
 python3 tests/assistant/voice.py
 lua5.4 tests/assistant/controller.lua
 lua5.4 tests/assistant/voice-controller.lua
+lua5.4 tests/assistant/needs-you.lua
 lua5.4 tests/assistant/puppet.lua
 ```
 

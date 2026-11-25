@@ -56,6 +56,7 @@ let
     // lib.optionalAttrs (assistant.orcaBot.bot != null) { orca_bot = assistant.orcaBot.bot; }
     // lib.optionalAttrs (assistant.orcaBot.voiceChat != null) { orca_voice_chat = assistant.orcaBot.voiceChat; }
     // lib.optionalAttrs (assistant.orcaBot.offline != null) { orca_offline = assistant.orcaBot.offline; }
+    // lib.optionalAttrs (assistant.orcaBot.needsYouMinutes != null) { orca_needs_you_minutes = assistant.orcaBot.needsYouMinutes; }
     // lib.optionalAttrs (assistant.persona.file != null) { persona_file = "${assistant.persona.file}"; }
     // lib.optionalAttrs (assistant.models != { }) {
       models = modelSettings assistant.models;
@@ -352,6 +353,12 @@ in {
           type = lib.types.nullOr (lib.types.enum [ "error" "local" ]);
           default = null;
           description = "Behavior when `assistant.backend = \"orca\"` and Orca is unreachable (`error` to prevent split-brain, or `local` to fall back), written to `assistant.orca_offline`.";
+        };
+        needsYouMinutes = lib.mkOption {
+          type = lib.types.nullOr (lib.types.ints.between 0 1440);
+          default = null;
+          example = 10;
+          description = "Minutes between the bar's checks for the bot's items that newly need you, each announced once on the desktop and aloud, written to `assistant.orca_needs_you_minutes`; `0` turns the watcher off and `null` leaves it to the user's config (5).";
         };
       };
       models = lib.mkOption {

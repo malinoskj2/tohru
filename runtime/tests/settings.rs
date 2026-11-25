@@ -1271,3 +1271,21 @@ fn voice_profiles_defaults_validation_and_nested_tables() {
     .unwrap();
     assert!(Owner::load(files.user(), None).is_err());
 }
+
+#[test]
+fn needs_you_interval_defaults_to_five_minutes_and_zero_turns_it_off() {
+    let files = Fixture::new();
+    let key = Key::parse("assistant.orca_needs_you_minutes").unwrap();
+    assert_eq!(key.name(), "assistant.orca_needs_you_minutes");
+    let mut owner = Owner::load(files.user(), None).unwrap();
+    assert_eq!(owner.get(key).value, Value::Integer(5));
+    for invalid in [Value::Integer(-1), Value::Integer(1441), Value::Bool(false), Value::Text("5".into())] {
+        assert!(owner.set(key, invalid).is_err());
+    }
+    owner.set(key, Value::Integer(0)).unwrap();
+    assert_eq!(Owner::load(files.user(), None).unwrap().get(key).value, Value::Integer(0));
+    assert!(fs::read_to_string(files.user()).unwrap().contains("[assistant]\norca_needs_you_minutes = 0"));
+    fs::write(files.user(), "[assistant]\norca_needs_you_minutes = 1440\n").unwrap();
+    owner.reload().unwrap();
+    assert_eq!(owner.get(key).value, Value::Integer(1440));
+}

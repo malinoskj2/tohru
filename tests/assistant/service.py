@@ -790,6 +790,11 @@ if args[:2] == ["bot", "voice-side"]:
     print(json.dumps({"ok":True, "result":result}))
     sys.exit(0)
 
+if args[:3] == ["bot", "item", "list"] and "--status" in args:
+    items = [i for i in state.get("items", []) if i["status"] == "needs_you"]
+    print(json.dumps({"ok": True, "result": {"botName": "Tohru", "items": items, "counts": {}}}))
+    sys.exit(0)
+
 if args[:3] == ["bot", "item", "list"]:
     print(json.dumps({"ok":True, "result":{"items":[{"title":"Native build", "links":[{"ref":"dispatch:ctx_build", "state":"working"}]}]}}))
     sys.exit(0)
@@ -834,6 +839,14 @@ if args[:2] == ["agent", "read"]:
         print(json.dumps({"ok": True, "result": {"orcaSessionId": sid, "state": "working", "entries": entries}}))
         sys.exit(0)
     print(json.dumps({"ok": True, "result": {"orcaSessionId": sid, "state": "done", "entries": state["entries"].get(sid, [])}}))
+    sys.exit(0)
+
+if args[:3] == ["bot", "item", "show"]:
+    item = next((i for i in state.get("items", []) if i["uid"] == args[3]), None)
+    if item is None:
+        print(json.dumps({"ok": False, "error": {"code": "not_found", "message": "no item"}}))
+        sys.exit(1)
+    print(json.dumps({"ok": True, "result": {"item": item, "events": state.get("events", {}).get(item["uid"], [])}}))
     sys.exit(0)
 
 if args[:2] == ["bot", "send"]:
@@ -1179,6 +1192,112 @@ class OrcaBotBackend(unittest.TestCase):
     def orca_calls(self):
         text = self.orca_log.read_text().strip()
         return [json.loads(line) for line in text.splitlines()] if text else []
+
+    def set_items(self, items, events=None):
+        state = json.loads(self.orca_state.read_text())
+        state["items"] = items
+        state["events"] = events or {}
+        self.orca_state.write_text(json.dumps(state))
+
+    def needs_item(self, uid, number, question_event, last, asks="Merge now?"):
+        return {"uid": uid, "number": number, "title": f"Item {number}", "description": None, "status": "needs_you",
+                "chat": {"id": self.HOME_UUID, "kind": "home", "title": "Home Chat"}, "lastEventId": last,
+                "question": {"eventId": question_event, "text": f"Context.\n\n{asks}", "gist": "The reviewer is out.",
+                             "decisions": [{"question": asks, "replies": []}]}}
+
+    def needs_you(self, *args, **env):
+        result = self.invoke("needs-you", *args, "--backend", "orca", **env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def sends(self):
+        return [c for c in self.orca_calls() if c["argv"][:2] == ["bot", "send"]]
+
+    def test_needs_you_announces_each_new_item_once_across_restarts(self):
+        self.set_items([self.needs_item("old-1", 1, "e10", "e11")])
+        first = self.needs_you("poll")
+        self.assertTrue(first["ok"] and first["baseline"])
+        self.assertEqual(first["pending"], [])
+        state_file = self.data / "orca-needs-you.json"
+        self.assertEqual(state_file.stat().st_mode & 0o777, 0o600)
+
+        self.set_items([self.needs_item("old-1", 1, "e10", "e11"), self.needs_item("new-2", 2, "e20", "e21", "Ship it?")])
+        polled = self.needs_you("poll")
+        self.assertFalse(polled["baseline"])
+        self.assertEqual([(p["uid"], p["event"], p["number"]) for p in polled["pending"]], [("new-2", "e20", 2)])
+        self.assertEqual(self.sends(), [])
+        self.assertFalse(any(c["argv"][:3] == ["bot", "item", "show"] for c in self.orca_calls()))
+
+        woke = self.needs_you("wake", "new-2:e20", "old-1:e10")
+        self.assertTrue(woke["ok"] and woke["woke"])
+        self.assertEqual(woke["chat"], self.HOME_UUID)
+        self.assertEqual([i["uid"] for i in woke["items"]], ["new-2"])
+        send = self.sends()[-1]["argv"]
+        self.assertEqual(send[send.index("--bot") + 1], "Tohru")
+        self.assertEqual(send[send.index("--chat") + 1], self.HOME_UUID)
+        body = json.loads(self.orca_state.read_text())["entries"][self.HOME_UUID][-1]["text"]
+        self.assertIn("[tohru-desktop:needs-you]", body)
+        self.assertIn(f"tohru assistant alert --chat {self.HOME_UUID} --speak", body)
+        self.assertIn("Item #2 Item 2", body)
+        self.assertIn("Context: The reviewer is out.", body)
+        self.assertIn("Asks: Ship it?", body)
+        self.assertNotIn("Item #1", body)
+
+        again = self.needs_you("wake", "new-2:e20")
+        self.assertFalse(again["woke"])
+        self.assertEqual(len(self.sends()), 1)
+        self.assertEqual(self.needs_you("poll")["pending"], [])
+
+        # A new question on the same item, or leaving and coming back, is a new event.
+        self.set_items([self.needs_item("new-2", 2, "e30", "e31", "Ship it today?")])
+        self.assertEqual([p["event"] for p in self.needs_you("poll")["pending"]], ["e30"])
+        self.set_items([])
+        self.assertEqual(self.needs_you("poll")["pending"], [])
+        self.set_items([self.needs_item("new-2", 2, "e30", "e31")])
+        self.assertEqual([p["event"] for p in self.needs_you("poll")["pending"]], ["e30"])
+
+        # A wake for an item that has left Needs you sends nothing.
+        self.set_items([])
+        self.needs_you("poll")
+        self.assertFalse(self.needs_you("wake", "new-2:e30")["woke"])
+        self.assertEqual(len(self.sends()), 1)
+
+    def test_needs_you_without_a_question_uses_the_move_event_and_comment(self):
+        self.needs_you("poll")
+        item = {"uid": "plain-3", "number": 3, "title": "Plain", "description": "Tidy the docs", "status": "needs_you",
+                "chat": {"id": "c2", "kind": "topic", "title": "Docs chat"}, "lastEventId": "e42", "question": None}
+        events = {"plain-3": [
+            {"id": "e40", "kind": "status", "data": {"from": "planned", "to": "needs_you"}},
+            {"id": "e41", "kind": "commented", "data": {"text": "Please look at the draft."}},
+            {"id": "e42", "kind": "linked", "data": {}},
+        ]}
+        self.set_items([item], events)
+        pending = self.needs_you("poll")["pending"]
+        self.assertEqual([(p["uid"], p["event"]) for p in pending], [("plain-3", "e40")])
+        self.needs_you("wake", "plain-3:e40")
+        body = json.loads(self.orca_state.read_text())["entries"][self.HOME_UUID][-1]["text"]
+        self.assertIn("From your chat: Docs chat", body)
+        self.assertIn("About: Tidy the docs", body)
+        self.assertIn("Says: Please look at the draft.", body)
+        shows = len([c for c in self.orca_calls() if c["argv"][:3] == ["bot", "item", "show"]])
+        self.needs_you("poll")
+        self.assertEqual(len([c for c in self.orca_calls() if c["argv"][:3] == ["bot", "item", "show"]]), shows)
+
+    def test_needs_you_offline_and_local_backend_stay_quiet(self):
+        offline = self.needs_you("poll", FAKE_ORCA_OFFLINE="1")
+        self.assertFalse(offline["ok"])
+        self.assertIn("not running", offline["error"])
+        self.assertFalse((self.data / "orca-needs-you.json").exists())
+        self.needs_you("poll")
+        self.set_items([self.needs_item("x", 9, "e90", "e90")])
+        self.assertEqual(len(self.needs_you("poll")["pending"]), 1)
+        failed = self.needs_you("wake", "x:e90", FAKE_ORCA_OFFLINE="1")
+        self.assertFalse(failed["ok"])
+        self.assertEqual(len(self.needs_you("poll")["pending"]), 1)
+        calls = len(self.orca_calls())
+        local = self.invoke("needs-you", "poll")
+        self.assertEqual(json.loads(local.stdout)["ok"], False)
+        self.assertEqual(len(self.orca_calls()), calls)
 
     def test_default_local_backend_never_touches_orca(self):
         providers = json.loads(self.invoke("providers").stdout)

@@ -354,7 +354,8 @@ class Cli(unittest.TestCase):
         self.assertEqual((orca_init.returncode, orca_init.stdout.split()), (0, ["orca", "init", "--bot", "Tohru"]))
         self.assertEqual(self.invoke("assistant", "orca", "bogus", **env).returncode, 2)
         for key, val in (("assistant.backend", "orca"), ("assistant.orca_bot", "Tohru"),
-                         ("assistant.orca_voice_chat", "home"), ("assistant.orca_offline", "error")):
+                         ("assistant.orca_voice_chat", "home"), ("assistant.orca_offline", "error"),
+                         ("assistant.orca_needs_you_minutes", "5")):
             res = self.invoke("config", "set", key, val)
             self.assertEqual(res.returncode, 0, res.stderr)
             self.assertEqual(json.loads(res.stdout)[2:4], [f"text setting_key {key}", f"text setting_value {val}"])

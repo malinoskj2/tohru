@@ -10,7 +10,7 @@ local close_panels
 local bell = require("bar/bell")(function() if close_panels then close_panels("notifications") end end)
 local PALETTE_INDEX = {mocha=0, macchiato=1, rose_pine=2, nord=3, gruvbox=4, tokyo_night=5, dracula=6, everforest=7}
 local last_palette = nil
-local assistant, voice
+local assistant, voice, needs_you
 local function publish(settings)
     fact.bar_mooncoil = settings["bar.mooncoil"].value
     fact.mooncoil = settings["bar.mooncoil"].value
@@ -34,6 +34,7 @@ local function publish(settings)
     text.settings_status = json.encode({schema = 7, settings = settings})
     if assistant then assistant.configure() end
     if voice then voice.configure(settings) end
+    if needs_you then needs_you.configure() end
     if assistant then assistant.configure_discord() end
 end
 local function change(operation)
@@ -118,6 +119,7 @@ assistant = require("assistant/controller")({
 assistant.configure_discord()
 voice = require("assistant/voice")(assistant, puppet, flight)
 voice.configure(tohru_settings.snapshot())
+needs_you = require("assistant/needs-you")(function(key) local entry = tohru_settings.snapshot()[key]; return entry and entry.value end, assistant.streaming)
 on("setting_assistant", function()
     local key, raw = text.setting_key or "", text.setting_value or ""
     local current = tohru_settings.snapshot()[key]

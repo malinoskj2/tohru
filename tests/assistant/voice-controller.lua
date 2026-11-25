@@ -342,13 +342,35 @@ local final_count = #written
 events.assistant_hush()
 speech_listener("delta","orca-chat","Obsolete.",true,final_generation)
 assert(#written==final_count+1 and written[#written].message.cmd=="hush")
--- Busy turns suppress proactive speech rather than invalidating their generation.
+-- Busy turns hold proactive speech until they end rather than interrupting or invalidating their generation.
 assistant.streaming=function() return true end
 final_count=#written
 alert_listeners[1]("orca-chat","Wait for the current answer",true)
+alert_listeners[1]("orca-chat","And then this one",true)
+assert(#written==final_count)
+timers[#timers]()
 assert(#written==final_count)
 assistant.streaming=real_stream
-print("Cross-feature final-only replies, alert generations and busy suppression passed")
+fact.ai_voice_conversation=true
+timers[#timers]()
+assert(#written==final_count)
+fact.ai_voice_conversation=false
+timers[#timers]()
+assert(#written==final_count+2 and written[#written].message.text=="Wait for the current answer")
+timers[#timers]()
+assert(#written==final_count+4 and written[#written].message.text=="And then this one")
+-- Do Not Disturb drops held speech instead of saving it for later.
+assistant.streaming=function() return true end
+final_count=#written
+alert_listeners[1]("orca-chat","Held then hushed",true)
+assistant.streaming=real_stream
+fact.notices_dnd=true
+timers[#timers]()
+fact.notices_dnd=false
+assert(#written==final_count)
+alert_listeners[1]("orca-chat","Spoken straight away",true)
+assert(#written==final_count+2 and written[#written].message.text=="Spoken straight away")
+print("Cross-feature final-only replies, alert generations and held alerts passed")
 
 -- An analyzed continuation uses the current visible voice origin, without opening a popup.
 refusing = false

@@ -66,6 +66,7 @@ FOREGROUND_VOICE_RULES = (
     "keep superseded results in this chat and never replay them over the owner. Long foreground tools still "
     "serialize this actor, so keep those in workers.\n"
 )
+NEEDS_YOU_TAG = "[tohru-desktop:needs-you]"
 MEMORY_BOILERPLATE = "one line per fact, newest first. longer notes go in memory/<topic>.md."
 
 
@@ -1447,7 +1448,7 @@ def unwrap_desktop_text(text):
                 continue
             cleaned.append(line)
         body = "\n".join(cleaned).strip()
-    for tag, is_voice in ((DESKTOP_VOICE_TAG, True), (DESKTOP_TAG, False)):
+    for tag, is_voice in ((DESKTOP_VOICE_TAG, True), (NEEDS_YOU_TAG, False), (DESKTOP_TAG, False)):
         if body.startswith(tag):
             rest = body[len(tag):].lstrip("\n ")
             if rest.startswith("[tohru-foreground home=") and "\n[foreground-owner-turn]\n" in rest:
@@ -2227,6 +2228,195 @@ def orca_sync(bot_name):
     return {"backend": "orca", "online": True, "bot": actual_bot, "home_chat": home_chat, "chats": out}
 
 
+NEEDS_YOU_PAGES = 10
+NEEDS_YOU_TEXT = 600
+
+
+def needs_you_path():
+    return DATA / "orca-needs-you.json"
+
+
+class needs_you_lock:
+    def __enter__(self):
+        import fcntl
+        private_dir(DATA)
+        self.fd = os.open(DATA / ".orca-needs-you.lock", os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(self.fd, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *_):
+        os.close(self.fd)
+
+
+def needs_you_load(bot_name):
+    data = read_json(needs_you_path())
+    if not isinstance(data, dict) or data.get("version") != 1 or str(data.get("bot") or "").casefold() != bot_name.casefold():
+        return None
+    items = data.get("items")
+    return {uid: entry for uid, entry in items.items() if isinstance(entry, dict)} if isinstance(items, dict) else {}
+
+
+def needs_you_save(bot_name, items):
+    write_private(needs_you_path(), json.dumps({"version": 1, "bot": bot_name, "items": items}, sort_keys=True))
+
+
+def clip(value, limit=NEEDS_YOU_TEXT):
+    value = " ".join(str(value or "").split())
+    return value if len(value) <= limit else value[:limit - 1].rstrip() + "…"
+
+
+def needs_you_items(bot_name):
+    """Every item now in Needs you, or (None, error) when the list could not be read completely."""
+    items, cursor = [], None
+    for _ in range(NEEDS_YOU_PAGES):
+        argv = ["bot", "item", "list", "--bot", bot_name, "--status", "needs-you", "--limit", "100", "--json"]
+        if cursor:
+            argv[-1:-1] = ["--cursor", cursor]
+        ok, result, err = orca_call(argv, timeout=PROBE_SECONDS * 2)
+        if not ok or not isinstance(result, dict) or not isinstance(result.get("items"), list):
+            return None, err or "Orca returned no item list"
+        items += [i for i in result["items"] if isinstance(i, dict) and i.get("uid") and i.get("status") in ("needs_you", "needs-you")]
+        cursor = result.get("nextCursor")
+        if not cursor:
+            return items, ""
+    return None, "too many Needs you items to page through"
+
+
+def needs_you_question(item):
+    q = item.get("question")
+    if not isinstance(q, dict) or not q.get("eventId"):
+        return None
+    asks = [clip(d.get("question"), 200) for d in q.get("decisions") or [] if isinstance(d, dict) and d.get("question")]
+    context = clip(q.get("gist")) if asks else ""
+    return {"event": str(q["eventId"]), "context": context, "questions": asks[:4],
+            "comment": "" if asks else clip(q.get("text"))}
+
+
+def needs_you_episode(item):
+    """What put this item in Needs you: its open question, else the latest move there and the comment after it."""
+    found = needs_you_question(item)
+    if found:
+        return found
+    ok, result, _ = orca_call(["bot", "item", "show", str(item["uid"]), "--json"], timeout=PROBE_SECONDS * 2)
+    events = result.get("events") if ok and isinstance(result, dict) else None
+    if not isinstance(events, list):
+        return None
+    key, comment = "", ""
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
+        if ev.get("kind") == "status" and data.get("to") == "needs_you":
+            key = str(ev.get("id") or "")
+        elif ev.get("kind") == "commented" and data.get("text"):
+            comment = clip(data["text"])
+    return {"event": key, "context": "", "questions": [], "comment": comment} if key else None
+
+
+def needs_you_public(uid, entry):
+    return {"uid": uid, "event": entry.get("event", ""), "number": entry.get("number"), "title": entry.get("title", "")}
+
+
+def needs_you_poll(bot_name):
+    """Compare Orca's Needs you items with what was already seen; nothing here runs a model."""
+    items, err = needs_you_items(bot_name)
+    if items is None:
+        return {"ok": False, "error": clip(err, 200)}
+    with needs_you_lock():
+        known = needs_you_load(bot_name)
+        baseline = known is None
+        known = known or {}
+        fresh = {}
+        for item in items:
+            uid = str(item["uid"])
+            prev = known.get(uid)
+            last = str(item.get("lastEventId") or "")
+            if prev and prev.get("last") == last and last:
+                fresh[uid] = prev
+                continue
+            episode = needs_you_episode(item)
+            if episode is None:
+                if prev:
+                    fresh[uid] = prev
+                continue
+            if prev and prev.get("event") == episode["event"]:
+                fresh[uid] = {**prev, "last": last}
+                continue
+            chat = item.get("chat") if isinstance(item.get("chat"), dict) else {}
+            fresh[uid] = {
+                "event": episode["event"], "last": last, "announced": baseline,
+                "number": item.get("number"), "title": clip(item.get("title"), 200),
+                "description": clip(item.get("description")), "context": episode["context"],
+                "questions": episode["questions"], "comment": episode["comment"],
+                "chat": "" if chat.get("kind") == "home" else clip(chat.get("title"), 80), "seen": int(time.time()),
+            }
+        needs_you_save(bot_name, fresh)
+    pending = sorted((needs_you_public(uid, e) for uid, e in fresh.items() if not e.get("announced")),
+                     key=lambda e: (fresh[e["uid"]].get("seen", 0), e["number"] or 0))
+    return {"ok": True, "baseline": baseline, "count": len(fresh), "pending": pending}
+
+
+def needs_you_lines(entry):
+    number = entry.get("number")
+    lines = [f"Item {f'#{number} ' if number is not None else ''}{entry.get('title') or '(untitled)'}"]
+    if entry.get("chat"):
+        lines.append(f"From your chat: {entry['chat']}")
+    if entry.get("description"):
+        lines.append(f"About: {entry['description']}")
+    if entry.get("context"):
+        lines.append(f"Context: {entry['context']}")
+    lines += [f"Asks: {q}" for q in entry.get("questions") or []]
+    if not entry.get("questions") and entry.get("comment"):
+        lines.append(f"Says: {entry['comment']}")
+    return lines
+
+
+def needs_you_message(entries, home_chat):
+    one = len(entries) == 1
+    lines = [
+        NEEDS_YOU_TAG,
+        "[Sent automatically by the Tohru desktop's Needs-you watcher, not typed by your owner. "
+        f"{'This item just moved' if one else f'These {len(entries)} items just moved'} to Needs you. "
+        f"Tell your owner what {'it is' if one else 'each is'} and what is being asked, in plain spoken sentences "
+        f"(one or two per item), by running exactly one `tohru assistant alert --chat {home_chat} --speak \"<summary>\"`, "
+        "then reply here with the same summary. Don't answer the questions, change the items or start other work.]",
+    ]
+    for entry in entries:
+        lines += ["", *needs_you_lines(entry)]
+    return "\n".join(lines)
+
+
+def needs_you_wake(bot_name, pairs):
+    """Wake the bot once in its Home Chat for the pending items, through the same bridge desktop chats use."""
+    with needs_you_lock():
+        known = needs_you_load(bot_name) or {}
+        due = [(uid, known[uid]) for uid, event in pairs
+               if uid in known and known[uid].get("event") == event and not known[uid].get("announced")]
+        if not due:
+            return {"ok": True, "woke": False, "items": []}
+        bot, err = orca_find_bot(bot_name)
+        if bot is None:
+            return {"ok": False, "error": clip(err, 200)}
+        if bot.get("paused"):
+            return {"ok": False, "error": f"Bot '{bot['name']}' is paused in Orca"}
+        chats, err = orca_bot_chats(bot["name"])
+        home = next((c for c in chats or [] if c.get("home") and not c.get("closed") and c.get("id")), None)
+        if home is None:
+            return {"ok": False, "error": clip(err or "The bot has no Home Chat", 200)}
+        home_id = str(home["id"])
+        first = due[0][1].get("title") or due[0][0]
+        subject = clip(f"Needs you: {first}" if len(due) == 1 else f"Needs you: {len(due)} items", TITLE_CHARS)
+        ok, _, err = orca_send_to_bot(bot["name"], needs_you_message([e for _, e in due], home_id), subject, chat_arg=home_id)
+        if not ok:
+            return {"ok": False, "error": clip(err or "Could not reach the bot", 200)}
+        now = int(time.time())
+        for _, entry in due:
+            entry["announced"] = True
+            entry["woke"] = now
+        needs_you_save(bot_name, known)
+    return {"ok": True, "woke": True, "chat": home_id, "items": [needs_you_public(uid, e) for uid, e in due]}
+
+
 ORCA_SOUL_ADDENDUM = """## Desktop & Voice Interface
 
 You are one unified Tohru, reachable both in Orca's Bots panel and from the Tohru desktop shell (text popup and voice).
@@ -2240,6 +2430,7 @@ You are one unified Tohru, reachable both in Orca's Bots panel and from the Tohr
 - Keep Home turns short. Submit long tools, builds, research and implementation to private Orca workers using `orca orchestration worker-start --background ... --json`, then end the turn so Home can answer new input. The durable accepted receipt is not readiness or completion; inspect its stable Dispatch ID and report launch failure honestly. Existing worker-start without --background waits for readiness and can occupy this conversation.
 - [tohru-thin-home:5000] Home has about five seconds of foreground tool time per turn. A native pre-tool hook blocks builds, tests, downloads, worker waits, and internal subagents before they start. Other foreground shell commands have the remaining time as a process-group timeout. Use Orca workers with `worker-start --background` or Bash `run_in_background=true` for long commands and report the durable handle. The budget never cuts off your answer or counts time waiting for the owner's decision. After the first truthful acknowledgement, end the turn. Deliver results when voice is idle, framed as a follow-up to the earlier work, without repeating work or acknowledgements.
 - `worker-start --background` emits its own bounded acceptance/readiness updates for the current visible voice request; do not duplicate those acknowledgements. Other deliberate spoken updates use `orca bot voice-task` with the actual current owner request and increasing per-task sequence. Acknowledge truthful acceptance and speak useful verified progress/completion while the desktop is visible; never read raw tool output or internal mail. Pending/dispatched does not prove audible output. Owner speech cancels stale playback, not the underlying job.
+- Messages starting with `[tohru-desktop:needs-you]` come from the desktop's Needs-you watcher when one of your items moves to Needs you. Follow the bracketed note in them: one spoken `tohru assistant alert` that says what the item is and what it asks, and nothing else.
 - Use `orca automations create --bot <your_name>` for schedules, reminders (`--once --by`), and event waits; use `orca orchestration` to delegate and coordinate workers so their replies wake you automatically.
 """
 
@@ -2985,6 +3176,12 @@ def main(argv=None):
     p = sub.add_parser("voice-ready")
     p.add_argument("--conversation", required=True)
     p.add_argument("--request", required=True)
+    p = sub.add_parser("needs-you")
+    ny_sub = p.add_subparsers(dest="needs_you_command", required=True)
+    add_backend_args(ny_sub.add_parser("poll"))
+    nw = ny_sub.add_parser("wake")
+    add_backend_args(nw)
+    nw.add_argument("items", nargs="+", metavar="UID:EVENT")
     p = sub.add_parser("orca")
     orca_sub = p.add_subparsers(dest="orca_command", required=True)
     oi = orca_sub.add_parser("init")
@@ -3085,6 +3282,15 @@ def main(argv=None):
             emit(orca_sync(bot_name))
         else:
             emit({"backend": "local", "online": True, "home_chat": "", "chats": []})
+    elif args.command == "needs-you":
+        if backend != "orca":
+            emit({"ok": False, "error": "Needs you watching needs assistant.backend = orca"})
+            return 0
+        if args.needs_you_command == "poll":
+            emit(needs_you_poll(bot_name))
+        else:
+            pairs = [tuple(item.split(":", 1)) for item in args.items if ":" in item]
+            emit(needs_you_wake(bot_name, pairs))
     elif args.command == "export":
         return export_command(args)
     elif args.command == "import":

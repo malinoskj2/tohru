@@ -440,14 +440,46 @@ return function(assistant, puppet, flight, service_executable)
     if assistant.on_speech then assistant.on_speech(answer_event) end
 
     if assistant.on_alert then
-        assistant.on_alert(function(chat_id, msg, speak)
-            if not speak or not id or not msg or msg == "" then return end
-            if fact.ai_voice_paused or fact.notices_dnd or fact.ai_speaking or fact.ai_voice_conversation then return end
-            if assistant.streaming and assistant.streaming() then return end
+        local ALERTS_KEPT = 3
+        local held, waiting = {}, false
+        local function speak_alert(chat_id, msg)
             turn_generation = turn_generation + 1
             streaming_speech, streamed_text = false, false
             send({cmd = "speech_start", generation = turn_generation, conversation = (chat_id and chat_id ~= "") and chat_id or conversation})
             send({cmd = "speech_end", generation = turn_generation, text = msg})
+        end
+        local function hushed() return fact.ai_voice_paused or fact.notices_dnd end
+        local function talking()
+            return fact.ai_speaking or fact.ai_voice_conversation or (assistant.streaming and assistant.streaming())
+        end
+        local function release()
+            waiting = false
+            if not id or hushed() then held = {}; return end
+            if talking() then
+                waiting = true
+                after(1000, release)
+                return
+            end
+            local alert = table.remove(held, 1)
+            if alert then speak_alert(alert.chat, alert.text) end
+            if #held > 0 then
+                waiting = true
+                after(1000, release)
+            end
+        end
+        assistant.on_alert(function(chat_id, msg, speak)
+            if not speak or not id or not msg or msg == "" then return end
+            if hushed() then return end
+            if talking() or #held > 0 then
+                if #held >= ALERTS_KEPT then table.remove(held, 1) end
+                held[#held + 1] = {chat = chat_id, text = msg}
+                if not waiting then
+                    waiting = true
+                    after(1000, release)
+                end
+                return
+            end
+            speak_alert(chat_id, msg)
         end)
     end
 
