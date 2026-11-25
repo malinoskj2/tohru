@@ -10,7 +10,7 @@ _G.on=function(name,fn)events[name]=fn end
 local stops,resets={},0
 local rail={observe=function(slots,slot)assert(slots==7);stops[#stops+1]=slot end,reset=function()resets=resets+1 end}
 local data={system={os_name="NixOS",os_version="26.05 (Yarara)",hostname="home",kernel="6.12.14",processor="AMD Ryzen 9 7950X 16-Core Processor",
- memory_total_bytes=64*1073741824,memory_available_bytes=48.2*1073741824,current_uid=1000,current_generation=412},
+ memory_total_bytes=64*1073741824,memory_available_bytes=48.2*1073741824,current_uid=1000,current_generation=412,system_target="/nix/store/system-412"},
  issues={},accounts={{name="jesse",uid=1000,description="",home="/home/jesse",shell="/bin/zsh"}},
  disks={{name="nvme0n1",capacity_bytes=2e12,model="Samsung 990 PRO 2TB",removable=false}},
  mounts={{path="/",source="/dev/nvme0n1p2",filesystem="ext4",read_only=false},{path="/boot",source="/dev/nvme0n1p1",filesystem="vfat",read_only=false}},
@@ -25,7 +25,7 @@ assert(text["info_big.0"]=="64" and text["info_unit.0"]=="GiB" and text.info_cap
 assert(text["info_note.0"]=="48.2 GiB available · NixOS 26.05 (Yarara)")
 assert(text["info_big.4"]=="2" and text["info_unit.4"]=="TB" and text.info_storage_caption=="1 disk · 2 mounts")
 assert(text["info_note.4"]=="1 block device · 2 mounts")
-assert(text["info_big.5"]=="412" and text.info_generation_caption=="2 generations" and text["info_note.5"]=="2 generations · active")
+assert(text.info_platform_title=="Generations" and text["info_big.5"]=="412" and text.info_generation_caption=="2 generations" and text["info_note.5"]=="2 generations · active")
 assert(text["info_big.3"]=="1" and text["info_unit.3"]=="account" and text["info_note.3"]=="Current jesse · UID 1000")
 assert(not fact.info_partial and stops[1]==1)
 
@@ -72,7 +72,9 @@ events.info_step(1);assert(fact.info_page==5 and not fact.info_visible)
 -- Missing facts read as unknown and a partial snapshot is flagged on the overview.
 data={system={},issues={{source="missing",kind="Io"}}}
 events.info_open()
-assert(text["info_big.0"]=="—" and text["info_big.4"]=="—" and text["info_big.5"]=="—" and text.info_caption=="Unknown" and fact.info_partial)
+assert(text["info_big.0"]=="—" and text["info_big.4"]=="—" and text.info_caption=="Unknown" and fact.info_partial)
+-- Without a NixOS system target the fifth tile is Platform, which still names the kernel family.
+assert(text.info_platform_title=="Platform" and text["info_big.5"]=="Linux" and text["info_note.5"]=="System information")
 print("Information overview folding, page selection, rail stops, summaries and lifecycle passed")
 
 -- The scene binds the keyboard to those events.

@@ -7,7 +7,7 @@ _G.model=setmetatable({},{__index=records,__newindex=function(_,name,list)
  for index,row in ipairs(list) do for key,item in pairs(row) do text[name.."."..(index-1).."."..key]=item end end
 end})
 _G.on=function(name,fn)events[name]=fn end
-local data={system={os_name="Fixture Linux",hostname="harbor",memory_total_bytes=8*1073741824,current_uid=1000,current_generation=nil},issues={{source="missing",kind="Io"}},accounts={{name="root",uid=0,description="Root",home="/root",shell="/bin/sh"},{name="alice",uid=1000,description="Alice",home="/home/alice",shell="/bin/zsh"}},disks={{name="sda",capacity_bytes=1024,removable=false}},mounts={{path="/",source="/dev/sda",filesystem="ext4",read_only=true}},generations={}}
+local data={system={os_name="Fixture Linux",hostname="harbor",memory_total_bytes=8*1073741824,current_uid=1000,current_generation=nil,system_target="/nix/store/system30"},issues={{source="missing",kind="Io"}},accounts={{name="root",uid=0,description="Root",home="/root",shell="/bin/sh"},{name="alice",uid=1000,description="Alice",home="/home/alice",shell="/bin/zsh"}},disks={{name="sda",capacity_bytes=1024,removable=false}},mounts={{path="/",source="/dev/sda",filesystem="ext4",read_only=true}},generations={}}
 for number=30,1,-1 do data.generations[#data.generations+1]={number=number,target="/nix/store/system"..number,current=false} end
 local function snapshot()reads=reads+1;return data end
 local function outputs()return {{name="DP-1",width=1920,height=1080}} end
