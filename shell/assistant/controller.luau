@@ -485,6 +485,10 @@ return function(settings)
                 for _, listener in ipairs(speech_listeners) do
                     listener("origin", mine.conversation, event.canonical_request or "", mine.voice, mine.voice_generation, event.request)
                 end
+            elseif event.event == "voice_notice" then
+                for _, listener in ipairs(speech_listeners) do
+                    listener("notice", mine.conversation, event.text or "", mine.voice, mine.voice_generation)
+                end
             elseif event.event == "delta" then
                 mine.text = mine.text .. (event.text or "")
                 if incoming then return end

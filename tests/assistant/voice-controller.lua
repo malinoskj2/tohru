@@ -176,10 +176,21 @@ service.line({event = "turn", text = "Stream this answer"})
 local turn = asked[#asked][3].voice_generation
 speech_listener("start", "v1", "", true, turn)
 assert(written[#written].message.cmd == "speech_start")
+speech_listener("notice", "v1", "I've queued that for Home.", true, turn)
+local ack_timeout = #timers
+assert(written[#written].message.cmd == "speech_end" and written[#written].message.text == "I've queued that for Home.")
+local before_answer = #written
+service.line({event = "speaking", on = true, generation = turn, conversation = "v1"})
 speech_listener("delta", "v1", "First sentence. ", true, turn)
-assert(written[#written].message.cmd == "speech_delta")
+assert(#written == before_answer)
 listeners[1]("done", "v1", "First sentence. ", true, turn)
+assert(#written == before_answer)
+service.line({event = "speaking", on = false, generation = turn, conversation = "v1"})
+assert(written[before_answer + 1].message.cmd == "speech_start")
 assert(written[#written].message.cmd == "speech_end")
+assert(written[#written].message.text == "First sentence. ")
+timers[ack_timeout]()
+table.remove(timers, ack_timeout)
 local count = #written
 speech_listener("delta", "v1", "Typed", false, turn)
 assert(#written == count)
