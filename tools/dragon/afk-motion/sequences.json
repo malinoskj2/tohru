@@ -1,0 +1,99 @@
+{
+  "identity": "Tohru is the same small rounded dragon in both pictures: a glossy translucent peach and lavender head, two long softly swept peach-gold and lilac horns, two small dark plum dot eyes, a tiny smile, an iridescent mint and lavender glass body, small translucent purple bat-like wings, two short rounded front paws, two rounded hind feet and one long curling tail. Her facial placement, limb count, horn shapes, pastel palette, soft outline and rounded body volume stay exactly consistent through natural articulated movement.",
+  "background": "The background stays perfectly uniform dark gray and empty; there is no floor, scenery, camera move, zoom, shot change, text or other character. The camera stays locked.",
+  "sequences": {
+    "turn": {
+      "first": {
+        "cell": 0
+      },
+      "last": {
+        "cell": 16
+      },
+      "action": "At the opening she flies facing left exactly as in Picture 1, wings beating. Over the clip she smoothly banks and turns her whole body around in mid-air: her head and muzzle swing toward the viewer, she passes through a believable three-quarter view and a front view with both wings visible, and continues turning until she faces right, flying exactly as in Picture 2. Skull, horns, chest, pelvis and tail rotate as one body; the far wing is occluded and revealed naturally; her wings keep beating through the turn; the tail follows with a slight delay."
+    },
+    "arrive_right": {
+      "first": {
+        "cell": 16
+      },
+      "last": {
+        "cell": 8
+      },
+      "action": "At the opening she flies facing right exactly as in Picture 1, wings beating. Over the clip she slows down, flares her wings to brake, lifts her chest upright and turns her body toward the viewer, passing through a three-quarter view, until she hovers facing the viewer exactly as in Picture 2 with her tail hanging below and both paws in front of her chest. Her wings settle into a gentle hovering rhythm."
+    },
+    "arrive_left": {
+      "first": {
+        "cell": 0
+      },
+      "last": {
+        "cell": 8
+      },
+      "action": "At the opening she flies facing left exactly as in Picture 1, wings beating. Over the clip she slows down, flares her wings to brake, lifts her chest upright and turns her body toward the viewer, passing through a three-quarter view, until she hovers facing the viewer exactly as in Picture 2 with her tail hanging below and both paws in front of her chest. Her wings settle into a gentle hovering rhythm."
+    },
+    "curl": {
+      "first": {
+        "cell": 0
+      },
+      "last": {
+        "cell": 64
+      },
+      "action": "At the opening she flies facing left exactly as in Picture 1. Over the clip she glides down, gives a sleepy little yawn, folds her wings against her back, lowers her body and lies down, tucking her paws under her cheek and wrapping her long tail around her belly into a cozy coil, closing her eyes, until she is curled up asleep exactly as in Picture 2."
+    },
+    "perch": {
+      "first": {
+        "cell": 0
+      },
+      "last": {
+        "cell": 72
+      },
+      "action": "At the opening she flies facing left exactly as in Picture 1. Over the clip she swings her body upright and turns toward the viewer, flaps twice to slow down, lands sitting upright on an invisible horizontal ledge with her weight on both feet, folds her wings flat along her shoulders, rests her paws by her feet and lets her long tail drop straight down below the ledge, until she sits exactly as in Picture 2."
+    },
+    "bank": {
+      "first": {
+        "cell": 16
+      },
+      "last": {
+        "cell": 32
+      },
+      "action": "At the opening she flies facing right exactly as in Picture 1, wings beating. Over the clip she banks into a climbing arc: she tilts her body nose-up, sweeps her wings in strong deep downstrokes and rises into the steep climbing pose of Picture 2, her tail trailing and curling behind her through the bank."
+    },
+    "peek": {
+      "first": {
+        "cell": 8
+      },
+      "last": {
+        "cell": 24
+      },
+      "action": "At the opening she hovers facing the viewer exactly as in Picture 1. Over the clip she gets curious and playful: she tilts her head, leans her whole body sideways as if peeking around a corner, her eyes widen, and she reaches one paw outward, ending exactly in the curious three-quarter reaching pose of Picture 2. Her wings keep a gentle hovering beat."
+    },
+    "wave": {
+      "first": {
+        "cell": 24
+      },
+      "last": {
+        "cell": 56
+      },
+      "action": "At the opening she is in the curious three-quarter reaching pose of Picture 1. Over the clip she pops back upright with a happy little bounce, turns to face the viewer with a delighted smile, tucks one paw under her chin and lifts the other paw to wave playfully, ending exactly in the waving pose of Picture 2. Her wings flutter happily."
+    },
+    "bust": {
+      "first": {
+        "image": "bust"
+      },
+      "last": {
+        "image": "bust"
+      },
+      "size": 768,
+      "action": "This is a close-up of her head and raised paws, cropped at the chest by the bottom edge of the frame, exactly as in Picture 1. Over the clip she curiously peers outward as though through a window: she gently presses and taps both rounded paws against the invisible glass, tilts her head to one side, glances to her left and then to her right, blinks once, and smiles, then returns to exactly the pose of Picture 2. The chest crop stays at the bottom edge and her head stays the same size."
+    },
+    "closeup": {
+      "first": {
+        "image": "closeup"
+      },
+      "last": {
+        "image": "closeup"
+      },
+      "size": 768,
+      "action": "She hovers facing the viewer exactly as in Picture 1, her whole body visible. Over the clip she flaps her small wings in a steady lively flying rhythm, several full wingbeats with clear upstrokes and downstrokes, her body bobbing slightly with each downstroke and her tail swaying, then returns to exactly the pose of Picture 2. She stays the same size and in the same place.",
+      "cycle": true
+    }
+  }
+}

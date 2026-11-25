@@ -2,7 +2,7 @@
 -- The caller owns the episode clock, input/idle source and semantic pose choices.
 return function(puppet, host)
     local generation, active, stopping = 0, nil, false
-    local skin_path, skin_rows, closeup_path = "", 0, ""
+    local skin_path, skin_rows, closeup_path, closeup_grid = "", 0, "", 1
     local api = {}
     local function finite(n, lo, hi)
         return type(n) == "number" and n >= lo and n <= hi
@@ -50,7 +50,7 @@ return function(puppet, host)
             or type(path) ~= "string"
             or #path > 4096
             or path:sub(1, 1) ~= "/"
-            or not finite(rows, 1, 12)
+            or not finite(rows, 1, 32)
             or rows ~= math.floor(rows)
         then
             return false
@@ -59,11 +59,20 @@ return function(puppet, host)
         return true
     end
 
-    function api.register_closeup(path, token)
-        if not can_register(token) or type(path) ~= "string" or #path > 4096 or path:sub(1, 1) ~= "/" then
+    -- A closeup may be a square grid of equally sized motion frames.
+    function api.register_closeup(path, token, grid)
+        grid = grid or 1
+        if
+            not can_register(token)
+            or type(path) ~= "string"
+            or #path > 4096
+            or path:sub(1, 1) ~= "/"
+            or not finite(grid, 1, 8)
+            or grid ~= math.floor(grid)
+        then
             return false
         end
-        closeup_path = path
+        closeup_path, closeup_grid = path, grid
         return true
     end
 
@@ -214,6 +223,14 @@ return function(puppet, host)
             or (s.behind and not lease.target)
             or (closeup and closeup_path == "")
             or (
+                closeup
+                and s.closeup_frame ~= nil
+                and (
+                    not finite(s.closeup_frame, 0, closeup_grid * closeup_grid - 1)
+                    or s.closeup_frame ~= math.floor(s.closeup_frame)
+                )
+            )
+            or (
                 skin
                 and (
                     skin_path == ""
@@ -282,6 +299,9 @@ return function(puppet, host)
             if skin then
                 fact.ai_actor_skin_rows = skin_rows
             end
+            if closeup then
+                fact.ai_actor_closeup_grid = closeup_grid
+            end
             lease.anchor = nil
             if skin or closeup then
                 lease.prepared_at = now + 3
@@ -292,6 +312,9 @@ return function(puppet, host)
         fact.ai_actor_skin_open, fact.ai_actor_closeup_open = skin, closeup
         if skin then
             fact.ai_actor_skin_frame = s.skin_frame
+        end
+        if closeup then
+            fact.ai_actor_closeup_frame = s.closeup_frame or 0
         end
         if lease.flying then
             puppet.wingbeat((now - lease.beat) / 0.42)

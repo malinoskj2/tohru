@@ -10,6 +10,8 @@ part AssistantDragon {
     text ai_actor_closeup_src = ""
     image ai_actor_closeup = from ai_actor_closeup_src, 0, 0
     fact ai_actor_closeup_open = false
+    fact ai_actor_closeup_grid = 1
+    fact ai_actor_closeup_frame = 0
     fact ai_actor_skin_rows = 1
     fact ai_actor_skin_frame = 0
     fact ai_actor_skin_open = false
@@ -95,7 +97,7 @@ part AssistantDragon {
                 group {
                     move: ai_dg_x, ai_dg_y
                     shader: ai_afk_detail, ai_afk_art_kind, ai_afk_action, ai_afk_phase, ai_afk_fog
-                    image ai_actor_closeup { at: 0, 0; size: 150, 150; show: ai_actor_closeup_open; opacity: if(ai_afk_preparing or not ai_afk_body_open, 100%, ai_afk_bust_mix) }
+                    image ai_actor_closeup { at: 0, 0; size: 150, 150; cell: ai_actor_closeup_frame, ai_actor_closeup_grid, ai_actor_closeup_grid; show: ai_actor_closeup_open; opacity: if(ai_afk_preparing or not ai_afk_body_open, 100%, ai_afk_bust_mix) }
                 }
                 group {
                     move: ai_dg_x, ai_dg_y
