@@ -286,7 +286,7 @@ in {
           type = lib.types.nullOr lib.types.str;
           default = null;
           example = "/opt/tohru-voice-gpu/bin/python3";
-          description = "An interpreter with torch (CUDA), numpy and faster-qwen3-tts (and faster-whisper when `asrModel` is set), written to `assistant.voice_profiles.high.python`. Tohru installs nothing; enabled without it, the high profile is refused with an error.";
+          description = "An interpreter with torch (CUDA), numpy and faster-qwen3-tts (and faster-whisper when `asrModel` is set), written to `assistant.voice_profiles.high.python`; it runs the packaged `tohru-voice-qwen3-worker` inside the reservation. Tohru installs no Python packages; enabled without it, the high profile is refused with an error.";
         };
         high.ttsModel = lib.mkOption {
           type = lib.types.nullOr lib.types.str;

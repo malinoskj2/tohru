@@ -21,7 +21,6 @@
           inherit tohru;
           pleamar-runtime = tohru.runtime;
           tohru-voice-native = pkgs.callPackage ./nix/voice-native.nix { };
-          tohru-native-voice = tohru.override { voiceRuntime = "rust"; };
         } // nixpkgs.lib.optionalAttrs (builtins.pathExists ./hyprland/package.nix) {
           # This package must use the exact reviewed candidate compositor headers.
           tohru-hyprland = (import hyprland-nixpkgs { inherit system; }).callPackage ./hyprland/package.nix { };

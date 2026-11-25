@@ -1,8 +1,8 @@
 { lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage, bash
 , fontconfig, wayland, jq, socat, ffmpeg-headless, findutils, gnugrep, curl, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3, dbus
-, libnotify, util-linux, systemd, procps, coreutils, espeak-ng, pulseaudio, wayland-utils, swayidle, mpvpaper, wl-clipboard, xdg-terminal-exec
+, libnotify, util-linux, systemd, procps, coreutils, wayland-utils, swayidle, mpvpaper, wl-clipboard, xdg-terminal-exec
   # Without the voice service nothing for speech is installed; the setting then has nothing to start.
-, withVoice ? true, voiceRuntime ? "python" }:
+, withVoice ? true }:
 let
   pin = builtins.fromJSON (builtins.readFile ../runtime/pleamar/pin.json);
   # Keep documentation/flake/test changes from rebuilding the full runtime.
@@ -53,13 +53,9 @@ let
     meta = { license = [ lib.licenses.bsd3 lib.licenses.mit ]; platforms = lib.platforms.linux; };
   };
   runtime = callPackage ./runtime-wrapper.nix { runtime = runtimeUnwrapped; };
-  # misaki's English G2P with its espeak fallback; its optional neural fallback (torch) is never loaded.
   portalPython = python3.withPackages (p: [ p.dbus-fast ]);
-  voicePython = python3.withPackages (p: [
-    p.numpy p.onnxruntime p.sherpa-onnx p.misaki p.num2words p.phonemizer p.spacy-models.en_core_web_sm
-  ]);
   nativeVoice = callPackage ./voice-native.nix { };
-in assert lib.asserts.assertOneOf "voiceRuntime" voiceRuntime [ "python" "rust" ]; stdenvNoCC.mkDerivation {
+in stdenvNoCC.mkDerivation {
   pname = "tohru-shell";
   version = "0.1.0";
   src = source;
@@ -129,17 +125,7 @@ in assert lib.asserts.assertOneOf "voiceRuntime" voiceRuntime [ "python" "rust" 
       --add-flags $out/share/tohru/libexec/tohru-shortcuts \
       --set TOHRU_BIN_DIR $out/bin \
       --prefix PATH : "$out/bin:${lib.makeBinPath [ systemd coreutils ]}"
-    ${lib.optionalString (withVoice && voiceRuntime == "python") ''
-      install -Dm755 bin/tohru-voice $out/share/tohru/libexec/tohru-voice
-      cp bin/tohru_portability.py bin/tohru_voice_profiles.py $out/share/tohru/libexec/
-      makeWrapper ${voicePython}/bin/python3 $out/bin/tohru-voice \
-        --add-flags $out/share/tohru/libexec/tohru-voice \
-        --prefix PATH : ${lib.makeBinPath [ pulseaudio espeak-ng ]} \
-        --set TOHRU_BIN_DIR $out/bin \
-        --set OPENBLAS_NUM_THREADS 1 \
-        --set HF_HUB_OFFLINE 1
-    ''}
-    ${lib.optionalString (withVoice && voiceRuntime == "rust") ''
+    ${lib.optionalString withVoice ''
       makeWrapper ${nativeVoice}/bin/tohru-voice-native $out/bin/tohru-voice \
         --add-flags "--dragon-art $out/share/tohru/shell/assistant/dragon"
     ''}
@@ -152,6 +138,6 @@ in assert lib.asserts.assertOneOf "voiceRuntime" voiceRuntime [ "python" "rust" 
     done
     runHook postInstall
   '';
-  passthru = { inherit runtime voicePython withVoice voiceRuntime; };
+  passthru = { inherit runtime nativeVoice withVoice; };
   meta = { license = lib.licenses.mit; platforms = lib.platforms.linux; mainProgram = "tohru-run"; };
 }

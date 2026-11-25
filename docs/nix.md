@@ -67,7 +67,7 @@ With a standalone Home Manager flake, pass `inputs` through `extraSpecialArgs`, 
 | `programs.tohru.systemd.target` | `"graphical-session.target"` | The user target that starts and stops those services |
 | `programs.tohru.lock.style` | `null` | Sets the managed `lock.style` |
 | `programs.tohru.notifications.position` | `null` | Sets the managed `notifications.position` |
-| `programs.tohru.assistant.voice.enable` | `true` | False writes `assistant.voice = false` and builds the package without the voice service or its Python dependencies |
+| `programs.tohru.assistant.voice.enable` | `true` | False writes `assistant.voice = false` and builds the package without the voice service |
 | `programs.tohru.assistant.voice.echoCancel` | `false` | Installs `~/.config/pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf` (`libpipewire-module-echo-cancel`, WebRTC AEC) with `tohru-echo-cancel-source` and `tohru-echo-cancel-sink` at priority 0 so default audio devices stay unchanged |
 | `programs.tohru.assistant.voice.source` | `null` | Sets `assistant.voice_source`; empty selects automatically |
 | `programs.tohru.assistant.voice.wake` | `null` | Sets the managed `assistant.voice_wake` (`kws` or `asr`) |
@@ -97,7 +97,7 @@ Everything is inert unless `enable` is true; `systemd.enable` alone adds no serv
 
 ### Voice
 
-The package takes `withVoice ? true`. With it, `tohru-voice` is installed with a Python carrying numpy, onnxruntime, sherpa-onnx and misaki (with num2words, phonemizer and spaCy's `en_core_web_sm` for its fallback), and `pulseaudio` (`parec`, `pacat`, `pactl`) and `espeak-ng` on its `PATH`; it sets `HF_HUB_OFFLINE=1` and `OPENBLAS_NUM_THREADS=1`. Without it, none of that is in the closure and the bar never starts a voice service.
+The package takes `withVoice ? true`. With it, `tohru-voice` is the native voice service from `.#tohru-voice-native`, with ONNX Runtime, `pulseaudio` (`parec`, `pacat`, `pactl`) and `espeak-ng` on its `PATH`, and the high-VRAM profile's `tohru-voice-qwen3-worker` script. The worker runs under the interpreter named by `voiceProfiles.high.python`, which the package does not supply. Without it, none of that is in the closure and the bar never starts a voice service.
 
 #### Voice models
 
