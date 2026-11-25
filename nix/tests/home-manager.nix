@@ -82,6 +82,19 @@ let
       assistant.orcaBot = { enable = true; voiceChat = "foreground"; };
     };
   } ]).config;
+  profiled = (home tohru.homeManagerModules.tohru [ {
+    programs.tohru = {
+      enable = true;
+      assistant.voiceProfiles = {
+        vramThresholdPercent = 40;
+        hiddenUnloadSeconds = 0;
+        modelRoot = "/models";
+        low.precision = "float32";
+        high = { enable = true; python = "/gpu/bin/python3"; asrModel = "whisper-large-v3-turbo"; vramMib = 9000; };
+      };
+    };
+  } ]).config;
+  profiledManaged = builtins.readFile profiled.home.sessionVariables.TOHRU_MANAGED_CONFIG;
   servicesOnly = (home tohru.homeManagerModules.tohru [ { programs.tohru.systemd.enable = true; } ]).config;
   roles = {
     tohru-bar = "tohru-run";
@@ -152,6 +165,10 @@ assert pkgs.lib.hasInfix "[assistant.models.claude]\neffort = \"low\"" quietMana
 assert pkgs.lib.hasInfix "[assistant]\nbackend = \"orca\"\norca = \"auto\"\norca_bot = \"Tohru\"\norca_offline = \"error\"\norca_voice_chat = \"home\"\nvoice_source = \"usb-integration-mic\"" orcaManaged;
 assert pkgs.lib.hasInfix "orca_voice_chat = \"foreground\"" (builtins.readFile foregroundBot.home.sessionVariables.TOHRU_MANAGED_CONFIG);
 assert !(pkgs.lib.hasInfix "orca_bot" quietManaged) && !(pkgs.lib.hasInfix "backend =" quietManaged);
+assert pkgs.lib.hasInfix "[assistant.voice_profiles]\nhidden_unload_seconds = 0\nmodel_root = \"/models\"\nvram_threshold_percent = 40" profiledManaged;
+assert pkgs.lib.hasInfix "[assistant.voice_profiles.high]\nasr_model = \"whisper-large-v3-turbo\"\nenabled = true\npython = \"/gpu/bin/python3\"\nvram_mib = 9000" profiledManaged;
+assert pkgs.lib.hasInfix "[assistant.voice_profiles.low]\nprecision = \"float32\"" profiledManaged;
+assert !(pkgs.lib.hasInfix "voice_profiles" quietManaged) && !(pkgs.lib.hasInfix "voice_profiles" orcaManaged);
 assert serviced.systemd.user.services.tohru-launcher.Service.KillMode == "process";
 assert serviced.systemd.user.services.tohru-lock.Service.Type == "notify";
 assert builtins.all (name: serviced.systemd.user.services.${name}.Service.KillMode == "control-group")

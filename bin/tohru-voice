@@ -30,7 +30,10 @@ if __name__ == "__main__" and not os.environ.get("TOHRU_VOICE_ENV_READY"):
     executable = sys.executable if interpreter == "python3" else interpreter
     os.execvpe(executable, [executable, __file__, *sys.argv[1:]], environment)
 
+from tohru_voice_profiles import ConfigError, Selector, WorkerReplyError, parse_config as parse_profiles
+
 SESSION = f"{os.getpid()}-{time.monotonic_ns()}"
+HIGH_ASR_SECONDS = 3
 SAMPLE_RATE = 16_000
 WINDOW = 512
 WINDOW_MS = WINDOW * 1000 / SAMPLE_RATE
@@ -516,7 +519,7 @@ def mel_filters(np, bins=201, mels=80, rate=SAMPLE_RATE):
     return filters * (2.0 / (points[2:] - points[:-2]))[None, :]
 
 
-def transducer(folder):
+def transducer(folder, precision="int8"):
     missing = transducer_missing(folder)
     if missing is None:
         raise FileNotFoundError(f"{folder} is not a folder")
@@ -527,7 +530,8 @@ def transducer(folder):
     def find(prefix):
         names = sorted(n for n in files if n.startswith(prefix) and n.endswith(".onnx"))
         int8 = [n for n in names if ".int8." in n]
-        choice = (int8 or names or [None])[0]
+        full = [n for n in names if ".int8." not in n]
+        choice = ((int8 if precision == "int8" else full) or names or [None])[0]
         if choice is None:
             raise FileNotFoundError(f"no {prefix}*.onnx in {folder}")
         return str(files[choice])
@@ -536,9 +540,9 @@ def transducer(folder):
 
 
 class Recognizer:
-    def __init__(self, folder, sherpa):
+    def __init__(self, folder, sherpa, precision="int8"):
         self.recognizer = sherpa.OnlineRecognizer.from_transducer(
-            **transducer(folder), num_threads=2, sample_rate=SAMPLE_RATE, feature_dim=80, decoding_method="greedy_search")
+            **transducer(folder, precision), num_threads=2, sample_rate=SAMPLE_RATE, feature_dim=80, decoding_method="greedy_search")
         self.stream = None
 
     def start(self):
@@ -577,9 +581,9 @@ class Recognizer:
 class Spotter:
     """A small keyword spotter that hears the wake word for a fraction of the ASR's cost; the ASR then confirms it."""
 
-    def __init__(self, folder, sherpa):
+    def __init__(self, folder, sherpa, precision="int8"):
         self.spotter = sherpa.KeywordSpotter(
-            **transducer(folder), keywords_file=str(SHIPPED_VOICES / "wake-keywords.txt"), num_threads=1, sample_rate=SAMPLE_RATE,
+            **transducer(folder, precision), keywords_file=str(SHIPPED_VOICES / "wake-keywords.txt"), num_threads=1, sample_rate=SAMPLE_RATE,
             feature_dim=80, max_active_paths=4, keywords_score=KWS_SCORE, keywords_threshold=KWS_THRESHOLD,
             num_trailing_blanks=1)
         self.stream = None
@@ -964,6 +968,41 @@ def make_engine(settings, warn=None):
         return Espeak(settings)
 
 
+class HighSpeech:
+    """One answer through the high-VRAM worker; any sentence it cannot make comes from the low engine."""
+
+    name = "high"
+
+    def __init__(self, worker, low, profiles):
+        self.worker, self.low, self.profiles = worker, low, profiles
+        self.timing = Espeak({})
+
+    def synthesize(self, text, np):
+        if self.worker is not None:
+            try:
+                header, body = self.worker.request({"op": "tts", "text": text}, timeout=30)
+                audio = np.frombuffer(body, dtype="<f4")
+                rate = int(header["rate"])
+                yield audio, rate, text, self.timeline(text, np, audio, rate)
+                return
+            except WorkerReplyError as error:
+                log(f"voice profile: high could not speak a sentence ({error}); using low for it")
+            except (RuntimeError, KeyError, ValueError) as error:
+                self.profiles.failed(str(error), self.worker)
+                self.worker = None
+        yield from (self.low.synthesize if hasattr(self.low, "synthesize") else self.low.stream)(text, np)
+
+    def timeline(self, text, np, audio, rate):
+        if not hasattr(np, "sqrt"):
+            return []
+        return self.timing.timeline(text, np, audio, rate, 175, 50)
+
+
+def speech_engine(low, profiles):
+    worker = profiles.high() if profiles is not None else None
+    return HighSpeech(worker, low, profiles) if worker is not None else low
+
+
 class Speaker:
     """Plays one answer at a time and reports the mouth envelope; pause() holds it and hush() stops it."""
 
@@ -1095,7 +1134,9 @@ class Speaker:
             self.spoken_parts = []
             self.current_part = ""
             self.current_fraction = 0.0
-        for audio, chunk_rate, part, timeline in synthesized(self.engine, text, np, stop):
+        engine = speech_engine(self.engine, getattr(self.voice, "profiles", None))
+        diagnostic("speech_profile", profile=getattr(engine, "name", "low") if engine is not self.engine else "low")
+        for audio, chunk_rate, part, timeline in synthesized(engine, text, np, stop):
             if stop.is_set():
                 break
             if self.player is None or self.player.poll() is not None or rate != chunk_rate:
@@ -1252,13 +1293,14 @@ class Monitor:
 
 
 class Voice:
-    def __init__(self, np, ort, sherpa, vad, asr, turn=None, kws=None):
+    def __init__(self, np, ort, sherpa, vad, asr, turn=None, kws=None, precision="int8", profiles=None):
         self.np = np
         self.warning = ""
+        self.profiles = profiles
         self.silero = Silero(vad, np, ort)
-        self.recognizer = Recognizer(asr, sherpa)
+        self.recognizer = Recognizer(asr, sherpa, precision)
         self.turn = SmartTurn(turn, np, ort) if turn else None
-        self.spotter = Spotter(kws, sherpa) if kws else None
+        self.spotter = Spotter(kws, sherpa, precision) if kws else None
         self.speaker = Speaker(np, self)
         self.lock = threading.Lock()
         self.capture = None
@@ -1675,6 +1717,8 @@ class Voice:
         self.final_speech_ms = self.speech_ms
         diagnostic("asr_finalize_start", turn_id=getattr(self, "turn_id", None), last_speech_ns=getattr(self, "last_speech_ns", None))
         transcript = "" if self.rejected else self.recognizer.finish()
+        if transcript.strip() and not self.rejected:
+            transcript = self.high_transcript(transcript)
         if SEMANTIC and not pending and not self.rejected:
             final_request = self.draft_candidate(transcript)
             same = normalize_transcript(final_request) == self.semantic_text
@@ -1698,6 +1742,24 @@ class Voice:
             self.confirm_barge()
         self.reset_utterance()
         self.deliver(transcript, active_draft)
+
+    def high_transcript(self, streaming):
+        """The high profile's final-pass recogniser, when loaded; the streaming transcript otherwise or on any failure."""
+        worker = self.profiles.high() if self.profiles is not None else None
+        if worker is None or not getattr(worker, "asr", False):
+            return streaming
+        body = np_concat(self.np, self.utterance).astype("<f4").tobytes()
+        try:
+            header, _ = worker.request({"op": "asr", "bytes": len(body)}, body, timeout=HIGH_ASR_SECONDS)
+        except WorkerReplyError as error:
+            log(f"voice profile: high could not transcribe this turn ({error}); using low")
+            return streaming
+        except RuntimeError as error:
+            self.profiles.failed(str(error), worker)
+            return streaming
+        text = str(header.get("text", "")).strip()
+        diagnostic("asr_profile", profile="high", empty=not text)
+        return text or streaming
 
     def deliver(self, transcript, active_draft=""):
         if not transcript.strip():
@@ -1877,6 +1939,9 @@ class Voice:
             if not self.thinking:
                 self.last_turn_text = ""
                 self.spoke()
+        elif cmd == "presence":
+            if self.profiles is not None:
+                self.profiles.presence(bool(message.get("visible")))
         elif cmd == "tts":
             try:
                 self.set_engine(message)
@@ -1893,6 +1958,22 @@ class Voice:
             self.pending_continuation = ""
             self.conversation_until = 0.0
             self.conversation(False)
+
+
+def voice_profiles(raw, warnings):
+    """The low profile's precision and, when the high profile is enabled, its selector; bad settings keep low only."""
+    try:
+        config = parse_profiles(json.loads(raw) if raw else {})
+    except (ValueError, ConfigError) as error:
+        warnings.append(f"voice profiles: {error}; using the low-VRAM profile only")
+        log(f"voice profile: invalid settings ({error}); using the low-VRAM profile only")
+        return None, "int8"
+    precision = config["low"]["precision"]
+    if not config["high"]["enabled"]:
+        return None, precision
+    log(f"voice profile: low ({config['low']['device']}, {precision}) loaded; high ({config['high']['device']}, "
+        f"{config['high']['precision']}) loads when Tohru appears with GPU VRAM under {config['threshold']}%")
+    return Selector(config, log, lambda active, reason: emit("profile", active=active, reason=reason)), precision
 
 
 def np_concat(np, windows):
@@ -1931,6 +2012,7 @@ def main():
     parser.add_argument("--tts-load-on-conversation", action="store_true")
     parser.add_argument("--wake", choices=("kws", "asr"), default="asr")
     parser.add_argument("--kws-model", default="")
+    parser.add_argument("--profiles", default="")
     args = parser.parse_args()
     if args.devices:
         devices = audio_devices("sources")
@@ -1956,8 +2038,9 @@ def main():
     import sherpa_onnx as sherpa
     ort.set_default_logger_severity(3)
     turn = Path(args.turn_model).expanduser() if args.turn_model and not warnings else None
+    profiles, precision = voice_profiles(args.profiles, warnings)
     voice = Voice(np, ort, sherpa, Path(args.vad_model).expanduser(), Path(args.asr_model).expanduser(), turn,
-                  Path(args.kws_model).expanduser() if args.wake == "kws" else None)
+                  Path(args.kws_model).expanduser() if args.wake == "kws" else None, precision, profiles)
     voice.configured_source = args.source
     try:
         voice.set_engine({"engine": args.tts_engine, "model": args.tts_model, "voicepack": args.tts_voicepack,
@@ -1974,6 +2057,8 @@ def main():
     finally:
         voice.shutdown()
         voice.stop_capture()
+        if voice.profiles is not None:
+            voice.profiles.shutdown()
         engine = voice.speaker.engine
         if hasattr(engine, "retire"):
             engine.retire()

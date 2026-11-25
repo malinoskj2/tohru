@@ -51,6 +51,20 @@ Only the bar and Settings processes read settings; the bar forwards `notificatio
 | `assistant.tts_voice` | string, 1 to 64 of `A-Z a-z 0-9 + - _ .` | `"en-us+f3"` | espeak-ng's voice name |
 | `assistant.tts_speed` | integer, 50 to 200 | `100` | espeak-ng's speaking rate, in percent of its normal |
 | `assistant.tts_pitch` | integer, −12 to 12 | `3` | espeak-ng's pitch shift in semitones |
+| `assistant.voice_profiles.vram_threshold_percent` | integer, 1 to 100 | `50` | When Tohru appears, the high-VRAM profile loads only below this GPU VRAM use. See [Voice profiles](#voice-profiles) |
+| `assistant.voice_profiles.hidden_unload_seconds` | integer, 0 to 86400 | `120` | How long she stays hidden before the high-VRAM profile unloads and releases its GPU reservation; `0` unloads at once |
+| `assistant.voice_profiles.queue_timeout_seconds` | integer, 1 to 3600 | `60` | How long the high-VRAM profile waits in the GPU scheduler's queue before staying on the low profile |
+| `assistant.voice_profiles.model_root` | absolute path or `""` | `""` | The shared model root with `catalog.json`, `readiness.json` and `by-name/`; empty reads `$MODEL_ROOT` |
+| `assistant.voice_profiles.low.device` | `cpu` | `"cpu"` | The low-VRAM profile, always loaded. Its models are `vad_model`, `asr_model`, `turn_model`, `kws_model` and `tts_model` above |
+| `assistant.voice_profiles.low.precision` | `int8` or `float32` | `"int8"` | Which recogniser and keyword-spotter `.onnx` files the low profile prefers when a folder has both |
+| `assistant.voice_profiles.high.enabled` | boolean | `false` | Allow the high-VRAM profile. Off, nothing touches the GPU |
+| `assistant.voice_profiles.high.device` | `cuda` | `"cuda"` | Where the high-VRAM profile loads |
+| `assistant.voice_profiles.high.precision` | `bfloat16`, `float16` or `float32` | `"bfloat16"` | Tensor precision of the high-VRAM models |
+| `assistant.voice_profiles.high.python` | absolute path or `""` | `""` | An interpreter with torch (CUDA), numpy and `faster-qwen3-tts` (plus `faster-whisper` when `asr_model` is set). Required when `enabled`; Tohru installs nothing |
+| `assistant.voice_profiles.high.tts_model` | `$MODEL_ROOT` alias | `"voice-tts"` | A Qwen3-TTS CustomVoice checkpoint, by its `by-name` alias |
+| `assistant.voice_profiles.high.tts_speaker` | 1 to 64 of `A-Z a-z 0-9 _` | `"Serena"` | The Qwen3-TTS built-in speaker |
+| `assistant.voice_profiles.high.asr_model` | `$MODEL_ROOT` alias or `""` | `""` | A faster-whisper checkpoint that re-transcribes each finished turn on the GPU. Empty keeps the low profile's streaming recogniser |
+| `assistant.voice_profiles.high.vram_mib` | integer, 0 to 262144 | `0` | The `gpu-run --vram` budget in MiB; `0` estimates it from the catalog |
 
 Example `config.toml`:
 
@@ -115,6 +129,35 @@ tts_model = "/home/me/models/kokoro-82m"
 `/home/me/models/kokoro-82m` holds `model.onnx`, `tokenizer.json` and, optionally, `voices/`. The same paths with `tohru config set assistant.vad_model /home/me/models/silero-vad/silero_vad.onnx` and so on, or in [Home Manager](nix.md#voice-models).
 
 Echo cancellation is configured at the PipeWire level via the Home Manager option `programs.tohru.assistant.voice.echoCancel` (explicit opt-in, default false), which installs `~/.config/pipewire/pipewire.conf.d/60-tohru-echo-cancel.conf` without changing the default audio devices. `TOHRU_VOICE_SOURCE` and `TOHRU_VOICE_SINK` override the PipeWire capture source and TTS playback sink that `tohru-voice` selects.
+
+## Voice profiles
+
+The voice service has two profiles. The low-VRAM profile is the CPU setup under [Voice models](#voice-models): it loads with the service and stays loaded, so every turn can always be answered. The high-VRAM profile is off by default. With `voice_profiles.high.enabled = true`:
+
+1. Each time Tohru comes onto the screen (the dragon or the chat popup becomes visible), the service reads `gpu-status --json`. Committed VRAM is measured use plus, for every running `gpu-run` reservation, any part of its budget it has not allocated yet; an exclusive reservation counts as full. The scheduler's desktop headroom is a reserve, not use, so it is not counted. At or above `vram_threshold_percent` she keeps the low profile.
+2. Below it, the high profile's aliases are resolved through `$MODEL_ROOT/catalog.json` and `readiness.json`. An alias that is absent, disabled, not `ready` or missing files keeps the low profile, and the log names the alias. Nothing is downloaded or copied.
+3. The models load in one worker started as `gpu-run --vram BUDGET --name "Tohru voice (high VRAM)" --timeout queue_timeout_seconds -- PYTHON ...`. The budget is `vram_mib`, or an estimate: the catalog's file sizes (doubled for `float32`) plus 10 %, 1.5 GiB working memory for speech, 1 GiB for recognition and 512 MiB of CUDA context, rounded up to 512 MiB. A queued reservation waits in the scheduler; nothing bypasses it.
+4. Until the worker reports its models loaded, answers use the low profile. A voice turn never waits for the high one. Each new answer then speaks through it; a sentence it cannot make, a worker that dies or a reservation that times out falls back to the low profile.
+5. When she has been hidden for `hidden_unload_seconds`, the worker exits and the reservation is released. Showing her again cancels the unload; the next appearance after an unload checks VRAM again. Stopping the voice service also releases it.
+
+Every decision goes to the voice service's log (the bar's journal), each line starting `tohru-voice: voice profile`.
+
+| Profile | Part | Model | Device, precision | VRAM |
+|---|---|---|---|---|
+| low (default) | gate, recognition, end of turn, speech | Silero VAD, Zipformer streaming, Smart Turn v3.2, Kokoro-82M | CPU, int8 recogniser | none |
+| high | speech | `voice-tts`: Qwen3-TTS-12Hz-1.7B-CustomVoice, speaker `Serena` | CUDA, bfloat16 | estimated budget 7 GiB (7168 MiB) |
+| high, optional | final-pass recognition | a faster-whisper checkpoint, such as Whisper large-v3-turbo | CUDA, bfloat16 | about +2.5 GiB (9.5 GiB with speech) |
+
+The high profile keeps the low profile's VAD, streaming recognition and turn detection on the CPU, since they run on every 32 ms of audio. No faster-whisper checkpoint larger than `whisper-tiny.en` is in the shared catalog yet, so `asr_model` stays empty until one is added there.
+
+```toml
+[assistant.voice_profiles]
+vram_threshold_percent = 50
+
+[assistant.voice_profiles.high]
+enabled = true
+python = "/opt/tohru-voice-gpu/bin/python3"
+```
 
 ## Standalone lifecycle and fonts
 

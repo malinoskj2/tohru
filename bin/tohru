@@ -31,7 +31,8 @@ Usage: tohru panel toggle|open sound|calendar|network|media|bluetooth|wallpaper|
                                                voice_models.PROVIDER.model|effort, semantic_models.PROVIDER.model|effort,
                                                memory, discord.enabled, discord.read, discord.post,
                                                discord.desktop_first, discord.desktop_timeout_seconds, discord.destination, discord.receive,
-                                               discord.token_file, discord.guild_id, discord.channels, discord.allowed_user_id, vad_model, asr_model, turn_model, voice_wake, kws_model, tts_*;
+                                               discord.token_file, discord.guild_id, discord.channels, discord.allowed_user_id, vad_model, asr_model, turn_model, voice_wake, kws_model, tts_*,
+                                               voice_profiles.*, voice_profiles.low.*, voice_profiles.high.*;
                                                see docs/configuration.md)
        tohru config set bar.preferred_output OUTPUT   ('' for every output)
        tohru assistant open|close|toggle | show [ID]   (show opens a chat; ID defaults to $TOHRU_CONVERSATION)

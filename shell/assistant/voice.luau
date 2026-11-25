@@ -2,6 +2,7 @@
 return function(assistant, puppet, flight, service_executable)
     local voice_return = require("assistant/voice-return")()
     local id = nil
+    local presence
     local wanted = false
     local args = {}
     local conversation = nil
@@ -17,6 +18,8 @@ return function(assistant, puppet, flight, service_executable)
     local loaded = false
     local hearing = false
     local barged, cancelling, queued, interrupted_spoken = false, false, nil, nil
+    local present = false
+    local profiles_signature = nil
     local GREETINGS = {"Yes?", "I'm here.", "Mm? What is it?", "You called?", "Here I am. What do you need?", "Hello again."}
     local greeted = 0
     local greeting_serial = 0
@@ -49,6 +52,15 @@ return function(assistant, puppet, flight, service_executable)
             or (assistant.streaming and assistant.streaming()))
     end)
 
+    -- The service picks its voice profile when she comes onto the screen: the dragon or the popup.
+    function presence(force)
+        local now = fact.ai_dragon_open == true or fact.ai_open == true
+        if now ~= present or force then
+            present = now
+            send({cmd = "presence", visible = now})
+        end
+    end
+
     local function show_dragon(on)
         if not on then task_speech.interrupt() end
         hide_serial = hide_serial + 1
@@ -68,6 +80,7 @@ return function(assistant, puppet, flight, service_executable)
             end
         end)
         puppet.visible(on)
+        presence()
     end
 
     -- She stays a moment after the last word, unless the conversation is still listening for more.
@@ -311,6 +324,7 @@ return function(assistant, puppet, flight, service_executable)
                 after(2000 * failures, function() if wanted and not id and mine == generation then start() end end)
             end
         end, {stdin = "open", stderr = "inherit"})
+        if id and (fact.ai_dragon_open == true or fact.ai_open == true) then presence(true) end
     end
 
     local function answer_event(kind, conv, answer, voice, turn, request)
@@ -369,6 +383,7 @@ return function(assistant, puppet, flight, service_executable)
         end
         flush_queued()
     end
+    if assistant.on_visibility then assistant.on_visibility(function() presence() end) end
     assistant.on_answer(answer_event)
     if assistant.on_speech then assistant.on_speech(answer_event) end
 
@@ -501,13 +516,31 @@ return function(assistant, puppet, flight, service_executable)
         }
         next[#next + 1] = "--source"
         next[#next + 1] = value("assistant.voice_source", "")
+        local profile_keys = {
+            "vram_threshold_percent", "hidden_unload_seconds", "queue_timeout_seconds", "model_root",
+            "low.device", "low.precision", "high.enabled", "high.device", "high.precision", "high.python",
+            "high.tts_model", "high.tts_speaker", "high.asr_model", "high.vram_mib",
+        }
+        local profiles, signature = {low = {}, high = {}}, {}
+        for _, key in ipairs(profile_keys) do
+            local v = value("assistant.voice_profiles." .. key, nil)
+            signature[#signature + 1] = tostring(v)
+            if v ~= nil then
+                local group, field = string.match(key, "^(%a+)%.(.+)$")
+                if group then profiles[group][field] = v else profiles[key] = v end
+            end
+        end
+        signature = table.concat(signature, "|")
+        next[#next + 1] = "--profiles"
+        next[#next + 1] = json.encode(profiles)
         if tts.load_on_conversation then next[#next + 1] = "--tts-load-on-conversation" end
         local on = value("assistant.voice", false) == true
         local models_changed = false
         for i = 1, 10 do if next[i] ~= args[i] then models_changed = true end end
         local tts_changed = #next ~= #args
-        for i = 11, #next do if next[i] ~= args[i] then tts_changed = true end end
-        if next[24] ~= args[24] then models_changed = true end
+        for i = 11, 24 do if next[i] ~= args[i] then tts_changed = true end end
+        if next[24] ~= args[24] or signature ~= profiles_signature then models_changed = true end
+        profiles_signature = signature
         args = next
         fact.ai_voice_enabled = on
         if not on then

@@ -11,6 +11,7 @@ import json
 import io
 from contextlib import redirect_stderr
 from unittest.mock import patch
+import sys
 
 try:
     import numpy
@@ -18,6 +19,7 @@ except ImportError:
     numpy = None
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "bin"))
 loader = importlib.machinery.SourceFileLoader("tohru_voice", str(ROOT / "bin/tohru-voice"))
 spec = importlib.util.spec_from_loader("tohru_voice", loader)
 voice_module = importlib.util.module_from_spec(spec)
@@ -141,6 +143,7 @@ def make_voice(recognizer, spotter=None):
     voice.echo_cancelled = False
     voice.echo_coupling = voice_module.ECHO_COUPLING_INIT
     voice.load_on_conversation = False
+    voice.profiles = None
     voice.reset_utterance()
     return voice
 

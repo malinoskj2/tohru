@@ -124,7 +124,7 @@ in assert lib.asserts.assertOneOf "voiceRuntime" voiceRuntime [ "python" "rust" 
       --prefix PATH : "$out/bin:${lib.makeBinPath [ systemd coreutils ]}"
     ${lib.optionalString (withVoice && voiceRuntime == "python") ''
       install -Dm755 bin/tohru-voice $out/share/tohru/libexec/tohru-voice
-      cp bin/tohru_portability.py $out/share/tohru/libexec/
+      cp bin/tohru_portability.py bin/tohru_voice_profiles.py $out/share/tohru/libexec/
       makeWrapper ${voicePython}/bin/python3 $out/bin/tohru-voice \
         --add-flags $out/share/tohru/libexec/tohru-voice \
         --prefix PATH : ${lib.makeBinPath [ pulseaudio espeak-ng ]} \

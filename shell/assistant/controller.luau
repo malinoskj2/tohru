@@ -24,7 +24,10 @@ return function(settings)
         return (tostring(value or ""):lower():gsub("[^a-z0-9]+", " "):gsub("^%s+", ""):gsub("%s+$", ""))
     end
     local history, search_serial = {}, 0
-    local answer_listeners, alert_listeners = {}, {}
+    local answer_listeners, alert_listeners, visibility_listeners = {}, {}, {}
+    local function visibility(on)
+        for _, listener in ipairs(visibility_listeners) do listener(on) end
+    end
     local speech_listeners = {}
     local probing, probed_at = false, -1
     local PROBE_AGAIN = 30000
@@ -651,6 +654,7 @@ return function(settings)
         fact.ai_picker = false
         fact.ai_menu_open = false
         fact.ai_open = true
+        visibility(true)
         probe(false)
         if fact.ai_ready and ready_for then
             fact.ai_view = 0
@@ -666,7 +670,9 @@ return function(settings)
         end
     end
     local function close()
+        local was_open = fact.ai_open
         fact.ai_open = false
+        if was_open then visibility(false) end
         fact.ai_picker = false
         fact.ai_menu_open = false
         fact.ai_forget_armed = false
@@ -1097,6 +1103,7 @@ return function(settings)
         end,
         on_answer = function(listener) answer_listeners[#answer_listeners + 1] = listener end,
         on_alert = function(listener) alert_listeners[#alert_listeners + 1] = listener end,
+        on_visibility = function(listener) visibility_listeners[#visibility_listeners + 1] = listener end,
         show = function(id) open(); fact.ai_view = 0; load(id) end,
         status = function()
             return {open = fact.ai_open, streaming = live ~= nil, ready = fact.ai_ready, conversation = conversation,

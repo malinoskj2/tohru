@@ -19,6 +19,23 @@ let
       effort = lib.mkOption { type = lib.types.nullOr (lib.types.enum efforts); default = null; description = "Reasoning effort passed to the CLI."; };
     };
   });
+  profiles = assistant.voiceProfiles;
+  setIf = value: attrs: lib.optionalAttrs (value != null) attrs;
+  profileSettings = lib.filterAttrs (_: v: v != { }) (
+    setIf profiles.vramThresholdPercent { vram_threshold_percent = profiles.vramThresholdPercent; }
+    // setIf profiles.hiddenUnloadSeconds { hidden_unload_seconds = profiles.hiddenUnloadSeconds; }
+    // setIf profiles.queueTimeoutSeconds { queue_timeout_seconds = profiles.queueTimeoutSeconds; }
+    // setIf profiles.modelRoot { model_root = profiles.modelRoot; }
+    // {
+      low = setIf profiles.low.precision { precision = profiles.low.precision; };
+      high = setIf profiles.high.enable { enabled = profiles.high.enable; }
+        // setIf profiles.high.precision { precision = profiles.high.precision; }
+        // setIf profiles.high.python { python = profiles.high.python; }
+        // setIf profiles.high.ttsModel { tts_model = profiles.high.ttsModel; }
+        // setIf profiles.high.ttsSpeaker { tts_speaker = profiles.high.ttsSpeaker; }
+        // setIf profiles.high.asrModel { asr_model = profiles.high.asrModel; }
+        // setIf profiles.high.vramMib { vram_mib = profiles.high.vramMib; };
+    });
   assistantSettings = lib.optionalAttrs (!assistant.voice.enable) { voice = false; }
     // lib.optionalAttrs (assistant.tts.loadOnConversation != null) { tts_load_on_conversation = assistant.tts.loadOnConversation; }
     // lib.optionalAttrs (assistant.persona.enable != null) { persona = assistant.persona.enable; }
@@ -48,7 +65,8 @@ let
     }
     // lib.optionalAttrs (assistant.semanticModels != { }) {
       semantic_models = modelSettings assistant.semanticModels;
-    };
+    }
+    // lib.optionalAttrs (profileSettings != { }) { voice_profiles = profileSettings; };
   managed = format.generate "tohru-managed.toml"
     (lib.recursiveUpdate cfg.settings (lib.optionalAttrs cfg.polkit.enable { polkit.agent = true; }));
   # hypridle runs outside the login shell, so the locker is told where the managed file is.
@@ -216,6 +234,76 @@ in {
         default = null;
         example = "/srv/models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01";
         description = "The sherpa-onnx keyword-spotter folder, written to `assistant.kws_model`; only needed with `wake = \"kws\"`. `null` leaves it to the user's config.";
+      };
+      voiceProfiles = {
+        vramThresholdPercent = lib.mkOption {
+          type = lib.types.nullOr (lib.types.ints.between 1 100);
+          default = null;
+          description = "When Tohru appears, the high-VRAM profile loads only if the GPU's committed VRAM (measured use, with running `gpu-run` reservations at their full budget) is below this percentage. Written to `assistant.voice_profiles.vram_threshold_percent`; `null` leaves it to the user's config (50).";
+        };
+        hiddenUnloadSeconds = lib.mkOption {
+          type = lib.types.nullOr (lib.types.ints.between 0 86400);
+          default = null;
+          description = "How long Tohru stays hidden (no dragon, no popup) before the high-VRAM profile unloads and releases its GPU reservation; 0 unloads at once. Written to `assistant.voice_profiles.hidden_unload_seconds`; `null` leaves it to the user's config (120).";
+        };
+        queueTimeoutSeconds = lib.mkOption {
+          type = lib.types.nullOr (lib.types.ints.between 1 3600);
+          default = null;
+          description = "How long the high-VRAM profile waits in the GPU scheduler's queue before staying on the low profile. Written to `assistant.voice_profiles.queue_timeout_seconds`; `null` leaves it to the user's config (60).";
+        };
+        modelRoot = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "/mnt/ext-ssd/models";
+          description = "The shared model root holding `catalog.json`, `readiness.json` and `by-name/`, written to `assistant.voice_profiles.model_root`. `null` leaves it to the user's config, where empty reads `$MODEL_ROOT`.";
+        };
+        low.precision = lib.mkOption {
+          type = lib.types.nullOr (lib.types.enum [ "int8" "float32" ]);
+          default = null;
+          description = "Which recogniser and keyword-spotter files the always-loaded CPU profile prefers, written to `assistant.voice_profiles.low.precision`; `null` leaves it to the user's config (`int8`).";
+        };
+        high.enable = lib.mkOption {
+          type = lib.types.nullOr lib.types.bool;
+          default = null;
+          description = ''
+            Let Tohru load the high-VRAM voice profile on the GPU when she appears and
+            VRAM use is below the threshold (`assistant.voice_profiles.high.enabled`).
+            It runs under a `gpu-run` reservation for as long as its models are
+            loaded; the CPU profile stays loaded and answers until it is ready.
+            `null` leaves it to the user's config (off).
+          '';
+        };
+        high.precision = lib.mkOption {
+          type = lib.types.nullOr (lib.types.enum [ "bfloat16" "float16" "float32" ]);
+          default = null;
+          description = "Tensor precision of the high-VRAM models, written to `assistant.voice_profiles.high.precision`; `null` leaves it to the user's config (`bfloat16`).";
+        };
+        high.python = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "/opt/tohru-voice-gpu/bin/python3";
+          description = "An interpreter with torch (CUDA), numpy and faster-qwen3-tts (and faster-whisper when `asrModel` is set), written to `assistant.voice_profiles.high.python`. Tohru installs nothing; enabled without it, the high profile is refused with an error.";
+        };
+        high.ttsModel = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "The `$MODEL_ROOT/by-name` alias of a Qwen3-TTS CustomVoice checkpoint, written to `assistant.voice_profiles.high.tts_model`; `null` leaves it to the user's config (`voice-tts`).";
+        };
+        high.ttsSpeaker = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "The Qwen3-TTS built-in speaker, written to `assistant.voice_profiles.high.tts_speaker`; `null` leaves it to the user's config (`Serena`).";
+        };
+        high.asrModel = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "The `$MODEL_ROOT/by-name` alias of a faster-whisper checkpoint that re-transcribes each finished turn on the GPU, written to `assistant.voice_profiles.high.asr_model`. Empty keeps the CPU streaming recogniser; `null` leaves it to the user's config (empty).";
+        };
+        high.vramMib = lib.mkOption {
+          type = lib.types.nullOr (lib.types.ints.between 0 262144);
+          default = null;
+          description = "The `gpu-run --vram` budget in MiB; 0 estimates it from the catalog's file sizes. Written to `assistant.voice_profiles.high.vram_mib`; `null` leaves it to the user's config (0).";
+        };
       };
       tts.loadOnConversation = lib.mkOption {
         type = lib.types.nullOr lib.types.bool;

@@ -75,6 +75,20 @@ pub enum Key {
     AssistantTtsLoadOnConversation,
     AssistantVoiceWake,
     AssistantKwsModel,
+    AssistantVoiceProfileThreshold,
+    AssistantVoiceProfileUnloadSeconds,
+    AssistantVoiceProfileQueueSeconds,
+    AssistantVoiceProfileModelRoot,
+    AssistantVoiceLowDevice,
+    AssistantVoiceLowPrecision,
+    AssistantVoiceHighEnabled,
+    AssistantVoiceHighDevice,
+    AssistantVoiceHighPrecision,
+    AssistantVoiceHighPython,
+    AssistantVoiceHighTtsModel,
+    AssistantVoiceHighTtsSpeaker,
+    AssistantVoiceHighAsrModel,
+    AssistantVoiceHighVramMib,
     AssistantBackend,
     AssistantOrcaBot,
     AssistantOrcaVoiceChat,
@@ -116,6 +130,28 @@ pub const TTS_ENGINES: [&str; 2] = ["kokoro", "espeak-ng"];
 /// How the voice service spots the wake word: a keyword spotter, or the full recogniser.
 pub const VOICE_WAKE: [&str; 2] = ["kws", "asr"];
 
+/// The low-VRAM voice profile always runs on the CPU.
+pub const VOICE_LOW_DEVICES: [&str; 1] = ["cpu"];
+
+/// Which ONNX files the low-VRAM recogniser and keyword spotter prefer.
+pub const VOICE_LOW_PRECISIONS: [&str; 2] = ["int8", "float32"];
+
+/// Where the high-VRAM voice profile loads its models.
+pub const VOICE_HIGH_DEVICES: [&str; 1] = ["cuda"];
+
+/// The tensor precision the high-VRAM voice profile loads its models in.
+pub const VOICE_HIGH_PRECISIONS: [&str; 3] = ["bfloat16", "float16", "float32"];
+
+/// A `$MODEL_ROOT/by-name` alias: lowercase words joined by `.`, `_` or `-`, never a path.
+fn valid_model_alias(text: &str) -> bool {
+    (1..=128).contains(&text.len())
+        && text.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
+        && text
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "._-".contains(c))
+        && !text.contains("..")
+}
+
 /// Whether the assistant gets Orca CLI context: detect when installed, always on, or off.
 pub const ASSISTANT_ORCA: [&str; 3] = ["auto", "true", "false"];
 
@@ -129,7 +165,7 @@ pub const ORCA_VOICE_CHATS: [&str; 3] = ["home", "new", "foreground"];
 pub const ORCA_OFFLINE_MODES: [&str; 2] = ["error", "local"];
 
 impl Key {
-    pub const ALL: [Self; 98] = [
+    pub const ALL: [Self; 112] = [
         Self::ShortcutsMode,
         Self::ShortcutLauncher,
         Self::ShortcutSession,
@@ -194,6 +230,20 @@ impl Key {
         Self::AssistantTtsLoadOnConversation,
         Self::AssistantVoiceWake,
         Self::AssistantKwsModel,
+        Self::AssistantVoiceProfileThreshold,
+        Self::AssistantVoiceProfileUnloadSeconds,
+        Self::AssistantVoiceProfileQueueSeconds,
+        Self::AssistantVoiceProfileModelRoot,
+        Self::AssistantVoiceLowDevice,
+        Self::AssistantVoiceLowPrecision,
+        Self::AssistantVoiceHighEnabled,
+        Self::AssistantVoiceHighDevice,
+        Self::AssistantVoiceHighPrecision,
+        Self::AssistantVoiceHighPython,
+        Self::AssistantVoiceHighTtsModel,
+        Self::AssistantVoiceHighTtsSpeaker,
+        Self::AssistantVoiceHighAsrModel,
+        Self::AssistantVoiceHighVramMib,
         Self::AssistantBackend,
         Self::AssistantOrcaBot,
         Self::AssistantOrcaVoiceChat,
@@ -299,6 +349,26 @@ impl Key {
             Self::AssistantTtsLoadOnConversation => "assistant.tts_load_on_conversation",
             Self::AssistantVoiceWake => "assistant.voice_wake",
             Self::AssistantKwsModel => "assistant.kws_model",
+            Self::AssistantVoiceProfileThreshold => {
+                "assistant.voice_profiles.vram_threshold_percent"
+            }
+            Self::AssistantVoiceProfileUnloadSeconds => {
+                "assistant.voice_profiles.hidden_unload_seconds"
+            }
+            Self::AssistantVoiceProfileQueueSeconds => {
+                "assistant.voice_profiles.queue_timeout_seconds"
+            }
+            Self::AssistantVoiceProfileModelRoot => "assistant.voice_profiles.model_root",
+            Self::AssistantVoiceLowDevice => "assistant.voice_profiles.low.device",
+            Self::AssistantVoiceLowPrecision => "assistant.voice_profiles.low.precision",
+            Self::AssistantVoiceHighEnabled => "assistant.voice_profiles.high.enabled",
+            Self::AssistantVoiceHighDevice => "assistant.voice_profiles.high.device",
+            Self::AssistantVoiceHighPrecision => "assistant.voice_profiles.high.precision",
+            Self::AssistantVoiceHighPython => "assistant.voice_profiles.high.python",
+            Self::AssistantVoiceHighTtsModel => "assistant.voice_profiles.high.tts_model",
+            Self::AssistantVoiceHighTtsSpeaker => "assistant.voice_profiles.high.tts_speaker",
+            Self::AssistantVoiceHighAsrModel => "assistant.voice_profiles.high.asr_model",
+            Self::AssistantVoiceHighVramMib => "assistant.voice_profiles.high.vram_mib",
             Self::AssistantBackend => "assistant.backend",
             Self::AssistantOrcaBot => "assistant.orca_bot",
             Self::AssistantOrcaVoiceChat => "assistant.orca_voice_chat",
@@ -445,6 +515,42 @@ impl Key {
             Self::AssistantTtsLoadOnConversation => (&["assistant"], "tts_load_on_conversation"),
             Self::AssistantVoiceWake => (&["assistant"], "voice_wake"),
             Self::AssistantKwsModel => (&["assistant"], "kws_model"),
+            Self::AssistantVoiceProfileThreshold => {
+                (&["assistant", "voice_profiles"], "vram_threshold_percent")
+            }
+            Self::AssistantVoiceProfileUnloadSeconds => {
+                (&["assistant", "voice_profiles"], "hidden_unload_seconds")
+            }
+            Self::AssistantVoiceProfileQueueSeconds => {
+                (&["assistant", "voice_profiles"], "queue_timeout_seconds")
+            }
+            Self::AssistantVoiceProfileModelRoot => {
+                (&["assistant", "voice_profiles"], "model_root")
+            }
+            Self::AssistantVoiceLowDevice => (&["assistant", "voice_profiles", "low"], "device"),
+            Self::AssistantVoiceLowPrecision => {
+                (&["assistant", "voice_profiles", "low"], "precision")
+            }
+            Self::AssistantVoiceHighEnabled => {
+                (&["assistant", "voice_profiles", "high"], "enabled")
+            }
+            Self::AssistantVoiceHighDevice => (&["assistant", "voice_profiles", "high"], "device"),
+            Self::AssistantVoiceHighPrecision => {
+                (&["assistant", "voice_profiles", "high"], "precision")
+            }
+            Self::AssistantVoiceHighPython => (&["assistant", "voice_profiles", "high"], "python"),
+            Self::AssistantVoiceHighTtsModel => {
+                (&["assistant", "voice_profiles", "high"], "tts_model")
+            }
+            Self::AssistantVoiceHighTtsSpeaker => {
+                (&["assistant", "voice_profiles", "high"], "tts_speaker")
+            }
+            Self::AssistantVoiceHighAsrModel => {
+                (&["assistant", "voice_profiles", "high"], "asr_model")
+            }
+            Self::AssistantVoiceHighVramMib => {
+                (&["assistant", "voice_profiles", "high"], "vram_mib")
+            }
             Self::AssistantBackend => (&["assistant"], "backend"),
             Self::AssistantOrcaBot => (&["assistant"], "orca_bot"),
             Self::AssistantOrcaVoiceChat => (&["assistant"], "orca_voice_chat"),
@@ -521,6 +627,10 @@ impl Key {
             Self::AssistantEntranceSeed | Self::AssistantWaitingSeed => Some((0, 2147483646)),
             Self::AssistantTtsSpeed => Some((50, 200)),
             Self::AssistantTtsPitch => Some((-12, 12)),
+            Self::AssistantVoiceProfileThreshold => Some((1, 100)),
+            Self::AssistantVoiceProfileUnloadSeconds => Some((0, 86400)),
+            Self::AssistantVoiceProfileQueueSeconds => Some((1, 3600)),
+            Self::AssistantVoiceHighVramMib => Some((0, 262_144)),
             _ => None,
         }
     }
@@ -558,6 +668,7 @@ impl Key {
             | Self::PolkitAgent
             | Self::AssistantTtsLoadOnConversation
             | Self::AssistantWaitingChatter
+            | Self::AssistantVoiceHighEnabled
             | Self::AssistantReducedMotion => Value::Bool(false),
             Self::Corners
             | Self::AssistantVoice
@@ -577,6 +688,9 @@ impl Key {
             | Self::AssistantPersonaFile
             | Self::AssistantTtsModel
             | Self::AssistantKwsModel
+            | Self::AssistantVoiceHighPython
+            | Self::AssistantVoiceHighAsrModel
+            | Self::AssistantVoiceProfileModelRoot
             | Self::AssistantModel(_)
             | Self::AssistantEffort(_)
             | Self::AssistantVoiceModel(_)
@@ -596,6 +710,16 @@ impl Key {
             Self::AssistantEntranceVariant => Value::Text("auto".to_owned()),
             Self::AssistantTtsSpeed => Value::Integer(100),
             Self::AssistantTtsPitch => Value::Integer(3),
+            Self::AssistantVoiceProfileThreshold => Value::Integer(50),
+            Self::AssistantVoiceProfileUnloadSeconds => Value::Integer(120),
+            Self::AssistantVoiceProfileQueueSeconds => Value::Integer(60),
+            Self::AssistantVoiceHighVramMib => Value::Integer(0),
+            Self::AssistantVoiceLowDevice => Value::Text(VOICE_LOW_DEVICES[0].to_owned()),
+            Self::AssistantVoiceLowPrecision => Value::Text(VOICE_LOW_PRECISIONS[0].to_owned()),
+            Self::AssistantVoiceHighDevice => Value::Text(VOICE_HIGH_DEVICES[0].to_owned()),
+            Self::AssistantVoiceHighPrecision => Value::Text(VOICE_HIGH_PRECISIONS[0].to_owned()),
+            Self::AssistantVoiceHighTtsModel => Value::Text("voice-tts".to_owned()),
+            Self::AssistantVoiceHighTtsSpeaker => Value::Text("Serena".to_owned()),
             Self::CornerSize => Value::Integer(32),
             Self::Palette => Value::Palette(Palette::Mocha),
             Self::LockStyle => Value::LockStyle(LockStyle::DEFAULT),
@@ -682,6 +806,26 @@ impl Key {
                 true
             }
             Self::AssistantVoiceWake if VOICE_WAKE.contains(&text) => true,
+            Self::AssistantVoiceLowDevice if VOICE_LOW_DEVICES.contains(&text) => true,
+            Self::AssistantVoiceLowPrecision if VOICE_LOW_PRECISIONS.contains(&text) => true,
+            Self::AssistantVoiceHighDevice if VOICE_HIGH_DEVICES.contains(&text) => true,
+            Self::AssistantVoiceHighPrecision if VOICE_HIGH_PRECISIONS.contains(&text) => true,
+            Self::AssistantVoiceHighTtsModel if valid_model_alias(text) => true,
+            Self::AssistantVoiceHighAsrModel if text.is_empty() || valid_model_alias(text) => true,
+            Self::AssistantVoiceHighTtsSpeaker
+                if (1..=64).contains(&text.len())
+                    && text.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') =>
+            {
+                true
+            }
+            Self::AssistantVoiceHighPython | Self::AssistantVoiceProfileModelRoot
+                if text.is_empty()
+                    || text.len() <= 4096
+                        && text.starts_with('/')
+                        && !text.chars().any(char::is_control) =>
+            {
+                true
+            }
             Self::AssistantOrca if ASSISTANT_ORCA.contains(&text) => true,
             Self::AssistantBackend if ASSISTANT_BACKENDS.contains(&text) => true,
             Self::AssistantOrcaBot
@@ -759,7 +903,8 @@ impl Key {
                 | Self::AssistantReducedMotion
                 | Self::AssistantPersona
                 | Self::AssistantMemory
-                | Self::AssistantTtsLoadOnConversation,
+                | Self::AssistantTtsLoadOnConversation
+                | Self::AssistantVoiceHighEnabled,
                 Value::Bool(_),
             )
             | (Self::Palette, Value::Palette(_))

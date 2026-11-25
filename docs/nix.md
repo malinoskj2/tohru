@@ -77,6 +77,9 @@ With a standalone Home Manager flake, pass `inputs` through `extraSpecialArgs`, 
 | `programs.tohru.assistant.voice.kwsModel` | `null` | Sets the managed `assistant.kws_model` |
 | `programs.tohru.assistant.tts.model` | `null` | Sets the managed `assistant.tts_model` |
 | `programs.tohru.assistant.tts.loadOnConversation` | `null` | Sets the managed `assistant.tts_load_on_conversation` |
+| `programs.tohru.assistant.voiceProfiles.vramThresholdPercent`, `.hiddenUnloadSeconds`, `.queueTimeoutSeconds`, `.modelRoot` | `null` | Set the managed `assistant.voice_profiles.*`. See [Voice profiles](configuration.md#voice-profiles) |
+| `programs.tohru.assistant.voiceProfiles.low.precision` | `null` | Sets the managed `assistant.voice_profiles.low.precision` |
+| `programs.tohru.assistant.voiceProfiles.high.enable`, `.precision`, `.python`, `.ttsModel`, `.ttsSpeaker`, `.asrModel`, `.vramMib` | `null` | Set the managed `assistant.voice_profiles.high.*` (`enable` writes `enabled`) |
 | `programs.tohru.assistant.provider` | `null` | Sets the managed `assistant.provider` |
 | `programs.tohru.assistant.backend` | `null` | Sets the managed `assistant.backend` (`local` or `orca`) |
 | `programs.tohru.assistant.orcaBot.enable` | `false` | Opt-in: sets `assistant.backend = "orca"` so popup and voice route through an Orca bot (inert when false) |

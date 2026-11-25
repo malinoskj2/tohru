@@ -1144,3 +1144,123 @@ fn portability_settings_use_native_validation_and_managed_ownership() {
             .contains("enabled = true")
     );
 }
+
+#[test]
+fn voice_profiles_defaults_validation_and_nested_tables() {
+    let files = Fixture::new();
+    let mut owner = Owner::load(files.user(), None).unwrap();
+    assert_eq!(
+        owner.get(Key::AssistantVoiceHighEnabled).value,
+        Value::Bool(false)
+    );
+    assert_eq!(
+        owner.get(Key::AssistantVoiceProfileThreshold).value,
+        Value::Integer(50)
+    );
+    assert_eq!(
+        owner.get(Key::AssistantVoiceLowDevice).value,
+        Value::Text("cpu".into())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantVoiceLowPrecision).value,
+        Value::Text("int8".into())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantVoiceHighDevice).value,
+        Value::Text("cuda".into())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantVoiceHighPrecision).value,
+        Value::Text("bfloat16".into())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantVoiceHighTtsModel).value,
+        Value::Text("voice-tts".into())
+    );
+    assert_eq!(
+        owner.get(Key::AssistantVoiceHighAsrModel).value,
+        Value::Text(String::new())
+    );
+    assert_eq!(
+        Key::parse("assistant.voice_profiles.high.tts_model").unwrap(),
+        Key::AssistantVoiceHighTtsModel
+    );
+    for (key, invalid) in [
+        (Key::AssistantVoiceProfileThreshold, Value::Integer(0)),
+        (Key::AssistantVoiceProfileThreshold, Value::Integer(101)),
+        (Key::AssistantVoiceProfileQueueSeconds, Value::Integer(0)),
+        (Key::AssistantVoiceHighVramMib, Value::Integer(-1)),
+        (Key::AssistantVoiceLowDevice, Value::Text("cuda".into())),
+        (
+            Key::AssistantVoiceLowPrecision,
+            Value::Text("bfloat16".into()),
+        ),
+        (Key::AssistantVoiceHighDevice, Value::Text("cpu".into())),
+        (Key::AssistantVoiceHighPrecision, Value::Text("int4".into())),
+        (Key::AssistantVoiceHighTtsModel, Value::Text(String::new())),
+        (
+            Key::AssistantVoiceHighTtsModel,
+            Value::Text("/mnt/models/voice-tts".into()),
+        ),
+        (
+            Key::AssistantVoiceHighTtsModel,
+            Value::Text("Voice-TTS".into()),
+        ),
+        (
+            Key::AssistantVoiceHighAsrModel,
+            Value::Text("../voice-asr".into()),
+        ),
+        (
+            Key::AssistantVoiceHighTtsSpeaker,
+            Value::Text("Serena Smith".into()),
+        ),
+        (Key::AssistantVoiceHighPython, Value::Text("python3".into())),
+        (Key::AssistantVoiceHighEnabled, Value::Text("true".into())),
+    ] {
+        assert!(
+            owner.set(key, invalid.clone()).is_err(),
+            "{key:?} accepted {invalid:?}"
+        );
+    }
+    owner
+        .set(Key::AssistantVoiceHighEnabled, Value::Bool(true))
+        .unwrap();
+    owner
+        .set(Key::AssistantVoiceProfileThreshold, Value::Integer(35))
+        .unwrap();
+    owner
+        .set(
+            Key::AssistantVoiceHighAsrModel,
+            Value::Text("whisper-large-v3-turbo".into()),
+        )
+        .unwrap();
+    owner
+        .set(
+            Key::AssistantVoiceHighPython,
+            Value::Text("/opt/voice-gpu/bin/python3".into()),
+        )
+        .unwrap();
+    let written = fs::read_to_string(files.user()).unwrap();
+    assert!(
+        written.contains("[assistant.voice_profiles]")
+            && written.contains("vram_threshold_percent = 35")
+    );
+    assert!(
+        written.contains("[assistant.voice_profiles.high]") && written.contains("enabled = true")
+    );
+    let restarted = Owner::load(files.user(), None).unwrap();
+    assert_eq!(
+        restarted.get(Key::AssistantVoiceProfileThreshold).value,
+        Value::Integer(35)
+    );
+    assert_eq!(
+        restarted.get(Key::AssistantVoiceHighAsrModel).value,
+        Value::Text("whisper-large-v3-turbo".into())
+    );
+    fs::write(
+        files.user(),
+        "[assistant.voice_profiles.high]\nprecision = 'int4'\n",
+    )
+    .unwrap();
+    assert!(Owner::load(files.user(), None).is_err());
+}

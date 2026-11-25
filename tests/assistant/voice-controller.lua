@@ -13,9 +13,10 @@ local ticking = {}
 _G.every = function(ms, f) ticking[#ticking + 1] = f; return #ticking end
 _G.cancel = function(t) ticking[t] = nil end
 _G.kill = function(id, how) killed[#killed + 1] = {id, how} end
-local diagnostics = {}
+local diagnostics, presences = {}, {}
 _G.write = function(id, line)
     if line.value.cmd == "diagnostic" then diagnostics[#diagnostics + 1] = line.value
+    elseif line.value.cmd == "presence" then presences[#presences + 1] = line.value.visible
     else written[#written + 1] = {id = id, message = line.value} end
 end
 _G.spawn = function(command, args, line, exit, how)
@@ -23,7 +24,7 @@ _G.spawn = function(command, args, line, exit, how)
     return #spawned
 end
 
-local asked, remembered, stopped, listeners, alert_listeners = {}, {}, 0, {}, {}
+local asked, remembered, stopped, listeners, alert_listeners, visibility_listeners = {}, {}, 0, {}, {}, {}
 local drafted, discarded, cancelled, rolled_back = {}, 0, 0, {}
 local refusing = false
 local draft_ok = true
@@ -41,6 +42,7 @@ local assistant = {
     show = function(id) shown = id end,
     on_answer = function(listener) listeners[#listeners + 1] = listener end,
     on_alert = function(listener) alert_listeners[#alert_listeners + 1] = listener end,
+    on_visibility = function(listener) visibility_listeners[#visibility_listeners + 1] = listener end,
 }
 local speech_listener
 assistant.on_speech = function(listener) speech_listener = listener end
@@ -537,3 +539,46 @@ assert(asked[#asked][2]==nil)
 final_count=#written
 listeners[1]("done","local-old","Old local reply.",true,final_generation)
 assert(#written==final_count)
+
+
+-- The service hears when she comes onto the screen, by dragon or popup, once per change.
+local function arg(list, name)
+    for i = 1, #list - 1 do if list[i] == name then return list[i + 1] end end
+end
+local profiled = {["assistant.voice"] = true, ["assistant.voice_profiles.high.enabled"] = true,
+    ["assistant.voice_profiles.high.python"] = "/gpu/bin/python3", ["assistant.voice_profiles.vram_threshold_percent"] = 40,
+    ["assistant.voice_profiles.low.precision"] = "int8"}
+local before_profiles = #spawned
+voice.configure(settings(profiled))
+assert(#spawned == before_profiles + 1, "enabling the high profile restarts the service")
+local profile_args = spawned[#spawned].args
+local encoded_profiles = arg(profile_args, "--profiles").value
+assert(encoded_profiles.high.enabled == true and encoded_profiles.high.python == "/gpu/bin/python3")
+assert(encoded_profiles.vram_threshold_percent == 40 and encoded_profiles.low.precision == "int8")
+assert(arg(profile_args, "--source") == "")
+voice.configure(settings(profiled))
+assert(#spawned == before_profiles + 1, "unchanged profiles keep the running service")
+local profile_service = spawned[#spawned]
+presences = {}
+fact.ai_open = false
+profile_service.line({event = "conversation", on = true})
+assert(#presences == 1 and presences[1] == true)
+profile_service.line({event = "speaking", on = true})
+assert(#presences == 1, "a second reason to stay visible sends nothing")
+fact.ai_open = true
+visibility_listeners[1](true)
+assert(#presences == 1)
+events.assistant_dragon()
+assert(#presences == 1, "the open popup keeps her present after the dragon hides")
+fact.ai_open = false
+visibility_listeners[1](false)
+assert(#presences == 2 and presences[2] == false)
+fact.ai_open = true
+visibility_listeners[1](true)
+assert(#presences == 3 and presences[3] == true)
+-- A restarted service is told at once that she is already visible.
+profiled["assistant.voice_profiles.high.tts_speaker"] = "Vivian"
+voice.configure(settings(profiled))
+assert(#spawned == before_profiles + 2 and presences[#presences] == true)
+fact.ai_open = false
+print("Voice profile settings and presence passed")
