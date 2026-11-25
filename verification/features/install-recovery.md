@@ -12,9 +12,9 @@ rehearsal, harmless independent unit, separately authorized actual restart.
 
 ## How to get to it (user POV)
 
-Use `bin/tohru session-units --output PRIVATE_DIRECTORY --components bar,launcher`
-to prepare standalone session integration. The output contains the bar, launcher
-and on-demand lock services; attempting to generate again refuses replacement.
+Use `bin/tohru session-units --output PRIVATE_DIRECTORY --components bar,session,launcher`
+to prepare standalone session integration. The output contains the bar, session,
+launcher and on-demand lock services; attempting to generate again refuses replacement.
 
 Run the exact packaged command with minimal PATH and observe useful help/action.
 For recovery prove ownership and readiness of the same profile after automatic
@@ -36,7 +36,7 @@ private HOME/XDG/TMPDIR and no inherited caller, desktop sockets or credentials.
 It does not substitute a runtime or service-manager fixture. Launch sets up
 private directories; the user action is the actual CLI invocation.
 
-Required observable outcome: three persisted service files with exact executable
+Required observable outcome: four persisted service files with exact executable
 paths, graphical-session target binding, launcher KillMode=process and the lock's
 notify/on-demand policy. A repeat invocation must fail without changing any byte;
 an invalid target must fail without creating its output directory. Exit status

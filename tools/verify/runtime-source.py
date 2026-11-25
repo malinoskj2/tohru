@@ -10,7 +10,7 @@ import re
 import subprocess
 import sys
 
-ROOT = Path(__file__).resolve().parents[4]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def query(*argv):

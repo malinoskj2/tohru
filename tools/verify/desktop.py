@@ -13,7 +13,7 @@ import tempfile
 import time
 import traceback
 
-ROOT = Path(__file__).resolve().parents[4]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def digest(path):
@@ -195,30 +195,6 @@ class Run:
         (self.evidence / "settings-status.json").write_text(self.cli("status", "--json").stdout)
         self.capture("settings")
 
-    def staging(self):
-        self.phase("doctor")
-        if (self.scratch / "units").exists():
-            raise RuntimeError("Staging output must start absent")
-        self.cli("help")
-        self.phase("drive", feature="session-units")
-        out = self.scratch / "units"
-        self.cli("session-units", "--output", str(out), "--prefix", str(ROOT / "bin"), "--components", "bar,session,launcher")
-        expected = {"tohru-bar.service", "tohru-session.service", "tohru-launcher.service", "tohru-lock.service"}
-        if {p.name for p in out.iterdir()} != expected:
-            raise RuntimeError("Unexpected generated unit set")
-        before = {p.name: digest(p) for p in out.iterdir()}
-        bar = (out / "tohru-bar.service").read_text()
-        if str(ROOT / "bin/tohru-run") not in bar or "WantedBy=graphical-session.target" not in bar:
-            raise RuntimeError("Staged bar has incorrect executable/target")
-        if "Type=notify" not in (out / "tohru-lock.service").read_text():
-            raise RuntimeError("Locker readiness type lost")
-        repeat = self.cli("session-units", "--output", str(out), check=False)
-        if repeat.returncode == 0 or before != {p.name: digest(p) for p in out.iterdir()}:
-            raise RuntimeError("Repeat generation overwrote existing staging files")
-        shutil.copytree(out, self.evidence / "units")
-        (self.evidence / "staging.json").write_text(json.dumps({"result": "passed", "sha256": before,
-            "scope": "generated files and no-overwrite; no service installation or activation"}, indent=2) + "\n")
-
     def cleanup(self):
         self.phase("cleanup")
         failures = []
@@ -270,7 +246,7 @@ def main():
     signal.signal(signal.SIGTERM, interrupted)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("operation", choices=("doctor", "run"))
-    parser.add_argument("--feature", choices=("calendar", "settings", "session-units"), default="calendar")
+    parser.add_argument("--feature", choices=("calendar", "settings"), default="calendar")
     parser.add_argument("--runtime", type=lambda p: Path(p).resolve())
     args = parser.parse_args()
     if args.operation == "doctor":
@@ -282,18 +258,14 @@ def main():
     try:
         head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
         source = subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True)
-        metadata = dict(head=head, dirty=source, feature=args.feature, started=run.started, runtime=None)
-        if args.feature != "session-units":
-            metadata["runtime"] = preflight(args.runtime)
+        metadata = dict(head=head, dirty=source, feature=args.feature, started=run.started,
+                        runtime=preflight(args.runtime))
         (run.evidence / "launch.json").write_text(json.dumps(metadata, indent=2) + "\n")
-        if args.feature == "session-units":
-            run.staging()
-        else:
-            if not os.environ.get("GPU_LEASE_ID"):
-                raise RuntimeError("Native drive requires gpu-run reservation through cleanup")
-            run.launch()
-            run.doctor()
-            getattr(run, args.feature)()
+        if not os.environ.get("GPU_LEASE_ID"):
+            raise RuntimeError("Native drive requires gpu-run reservation through cleanup")
+        run.launch()
+        run.doctor()
+        getattr(run, args.feature)()
     except BaseException as error:
         failure = repr(error)
         (run.evidence / "failure.txt").write_text(traceback.format_exc())

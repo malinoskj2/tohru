@@ -202,15 +202,28 @@ class PublicJourneyTests(unittest.TestCase):
         assertions = read(run / 'assertions.json')['checks']
         self.assertEqual(len(assertions), 3)
         self.assertTrue(all(a['passed'] for a in assertions))
-        self.assertEqual(len(session_units.snapshot(run / 'units')), 3)
+        self.assertEqual(len(session_units.snapshot(run / 'units')), 4)
         self.assertTrue(read(run / 'after.json')['generated_files_unchanged'])
         self.assertEqual(verify.cleanup(run), 'passed')
         self.assertEqual(validate(run)['outcome'], 'passed')
         self.assertFalse((run / 'rejected-units').exists())
 
+    def test_inherited_live_selectors_cannot_redirect_the_journey(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.tmp') as directory:
+            env = {**os.environ, 'HOME': directory, 'XDG_CONFIG_HOME': directory,
+                   'XDG_RUNTIME_DIR': directory, 'PLEAMAR_SOCKETS': directory,
+                   'TOHRU_RUNTIME': '/bin/false', 'BASH_ENV': directory + '/missing',
+                   'TOHRU_MANAGED_CONFIG': directory + '/missing',
+                   'DBUS_SESSION_BUS_ADDRESS': 'unix:path=' + directory + '/host'}
+            result = subprocess.run([sys.executable, str(ROOT / 'tools/verify/verify.py'),
+                                     'run', 'session-units', '--target', 'sandbox'],
+                                    env=env, capture_output=True, text=True, timeout=15)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
     def test_content_assertion_rejects_wrong_exec_and_missing_files(self):
         files = {name: {'text': '[Unit]\n[Service]\n', 'sha256': 'irrelevant'}
-                 for name in ['tohru-bar.service', 'tohru-launcher.service', 'tohru-lock.service']}
+                 for name in ['tohru-bar.service', 'tohru-launcher.service', 'tohru-lock.service', 'tohru-session.service']}
         self.assertFalse(session_units.generated_units_valid(files, ROOT / 'bin'))
         self.assertFalse(session_units.generated_units_valid({}, ROOT / 'bin'))
 

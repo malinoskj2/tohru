@@ -21,11 +21,11 @@ close it without leaving a stale popup behind.
   NAME is sound, network, media, bluetooth, wallpaper, tray, info or about.
 - Sound controls also have `tohru audio` commands documented by `tohru help`.
 
-## Driving it with drive.py
+## Driving it with the desktop driver
 
-Preconditions: baseline private native instance and runtime/GPU lease from SKILL.md.
+Preconditions: baseline private native instance and runtime/GPU lease from the [index](README.md#desktop-driver).
 
-- **CLI journey.** Run `drive.py run --feature calendar --runtime "$verify_runtime"`
+- **CLI journey.** Run `tools/verify/desktop.py run --feature calendar --runtime "$verify_runtime"`
   inside the lease. It drives the actual `bin/tohru panel` commands; `cal_open`
   must become false → true → false → true → false, with nonempty `cal_title`.
 - **Visible proof.** Inspect `calendar-before.png`, `calendar-open.png`,
@@ -34,7 +34,7 @@ Preconditions: baseline private native instance and runtime/GPU lease from SKILL
 - **Other entries.** The private pointer/keyboard harness in
   `tests/WINDOW-RUNNER.md` and `tests/native-settings.sh --sound` drives root
   sound/calendar interaction; it requires compiled pointer/keyboard helpers and
-  an owned Pulse null sink. It is not run by `drive.py` and must be separately
+  an owned Pulse null sink. It is not run by `tools/verify/desktop.py` and must be separately
   checked for its hardware adapter prerequisites. Do not direct it at host audio.
 
 ## Gotchas

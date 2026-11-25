@@ -34,7 +34,7 @@ suite's loader setup. Read `tests/session/native.sh`/`native.py` and its argumen
 
 ## Gotchas
 
-- This seed did not execute the notification harness. `drive.py` starts only the
+- The desktop driver does not execute the notification harness. `tools/verify/desktop.py` starts only the
   bar; its private bus has no notification owner. Those paths remain blocked there.
 - The session harness uses recorded fake power commands; those records cannot
   establish real lock or suspend behavior. Never substitute live power commands.

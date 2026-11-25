@@ -11,6 +11,7 @@ def snapshot(directory):
 def generated_units_valid(files, prefix):
     expected = {'tohru-bar.service': 'tohru-run',
                 'tohru-launcher.service': 'tohru-launcher-run',
+                'tohru-session.service': 'tohru-session-run',
                 'tohru-lock.service': 'tohru-lock'}
     if set(files) != set(expected):
         return False
@@ -25,14 +26,15 @@ def generated_units_valid(files, prefix):
             and 'Type=notify' in files['tohru-lock.service']['text'].splitlines()
             and 'NotifyAccess=all' in files['tohru-lock.service']['text'].splitlines()
             and 'WantedBy=' not in files['tohru-lock.service']['text']
-            and 'WantedBy=graphical-session.target' in files['tohru-bar.service']['text'].splitlines())
+            and all('WantedBy=graphical-session.target' in files[name]['text'].splitlines()
+                    for name in ('tohru-bar.service', 'tohru-session.service')))
 
 
 def drive(root, run, timeout):
     executable = root / 'bin/tohru'
     units = run / 'units'
     command = [str(executable), 'session-units', '--output', str(units),
-               '--components', 'bar,launcher', '--prefix', str(root / 'bin')]
+               '--components', 'bar,session,launcher', '--prefix', str(root / 'bin')]
     actions, observations, assertions = [], [], []
     before = snapshot(units)
     commands = [('generate', command), ('refuse-overwrite', command),
@@ -57,7 +59,7 @@ def drive(root, run, timeout):
         else:
             passed = healthy and action['exit'] != 0 and not (run / 'rejected-units').exists() and files == original
         assertions.append({'action_id': name, 'passed': passed,
-                           'expected': {'generate': 'three correctly bound session files',
+                           'expected': {'generate': 'four correctly bound session files',
                                         'refuse-overwrite': 'nonzero exit and identical persisted files',
                                         'reject-invalid-target': 'nonzero exit, no rejected directory, original files unchanged'}[name]})
         if not passed:

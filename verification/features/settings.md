@@ -17,12 +17,12 @@ effective value and the writable configuration.
 - Run `tohru config set appearance.corner_size 29`, then `tohru config reload`.
 - Read `tohru status --json` and `tohru settings-error` for results.
 
-## Driving it with drive.py
+## Driving it with the desktop driver
 
 Preconditions: fresh baseline with writable disposable configuration, patched
 runtime and a GPU lease. No managed overlay is installed in this journey.
 
-- **CLI edit.** Run `drive.py run --feature settings --runtime "$verify_runtime"`
+- **CLI edit.** Run `tools/verify/desktop.py run --feature settings --runtime "$verify_runtime"`
   inside the lease. The public config command must write corner size 29.
 - **Second views.** The driver captures actual persisted `config.toml` and public
   `settings-status.json` after reload; both must show 29 and no settings error.
@@ -30,7 +30,7 @@ runtime and a GPU lease. No managed overlay is installed in this journey.
 - **UI path.** Use the existing private `tests/native-settings.sh --settings`
   harness with required pointer/keyboard/wtype arguments from
   `tests/WINDOW-RUNNER.md`. It drives an evidence-only focus canary for Ctrl+F;
-  document that scene change. `drive.py` never opens an unowned Settings process.
+  document that scene change. `tools/verify/desktop.py` never opens an unowned Settings process.
 
 ## Gotchas
 

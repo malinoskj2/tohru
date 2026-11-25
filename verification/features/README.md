@@ -1,10 +1,11 @@
 # Tohru verification
 
-Start with `python3 tools/verify/verify.py --help` from the selected checkout.
-Both project `verify` skills use this same runner. `session-units` invokes the
-actual shipped CLI and verifies persisted private files plus negative cases;
-`native-authority` is the distinct native engineering suite. Other scenarios
-return blocked (3) without effects. A native pass proves the pinned test fixture's real CLI envelope,
+Two drivers back the project `verify` skill. `tools/verify/verify.py` is the
+lifecycle runner: `session-units` invokes the actual shipped CLI and verifies
+persisted private files plus negative cases; `native-authority` is the distinct
+native engineering suite. Other runner scenarios return blocked (3) without
+effects. `tools/verify/desktop.py` drives the bar's public CLI on an owned
+headless display; see [Desktop driver](#desktop-driver). A native pass proves the pinned test fixture's real CLI envelope,
 schema, queue, RPC, SQLite journal and child IPC boundaries. Provider transports
 and audio are scripted. It does not prove live Home, desktop UX or hearing.
 
@@ -13,10 +14,41 @@ and audio are scripted. It does not prove live Home, desktop UX or hearing.
 | [Home conversation](home-conversation.md) | Desktop voice, typed popup, Orca GUI continuation | Unverified live journey |
 | [Background work](background-work.md) | Native background admission, Home status, completion, visibility | Native fixture supported; actual Home unverified |
 | [Capture and playback](voice-capture-playback.md) | Python/Rust replay, capture, player, retirement | Existing drivers; unified model/host journey unverified |
-| [Desktop controls](desktop-controls.md) | Settings CLI/window, launcher, sound, session | Existing runners; unified journey unverified |
+| [Panels and calendar](panels.md) | Calendar CLI, clock click, popups, sound side effects | Calendar CLI open/toggle/close supported by the desktop driver |
+| [Settings](settings.md) | `tohru config`, Settings window, managed overlays | CLI edit, TOML persistence and reload supported by the desktop driver |
+| [Launcher](launcher.md) | Launcher window and search | Existing native harness; not driven here |
+| [Notifications](notifications.md) | Notification daemon and popups | Existing private-bus harness; not driven here |
+| [Desktop controls](desktop-controls.md) | Settings window, launcher, sound, session actions | Existing runners; unified journey unverified |
 | [Install and recovery](install-recovery.md) | Shipped session-units CLI, packaged CLI, supervisor, GUI startup | Private CLI file effects supported; package/live recovery unverified |
 
-## Launch, Doctor, Drive, Evidence, Cleanup
+## Desktop driver
+
+`tools/verify/desktop.py run --feature calendar|settings --runtime PLEAMAR` owns
+launch, instance doctor, drive, capture and cleanup in one foreground process.
+Run it inside `gpu-run --vram 4GiB` (or directly when `GPU_LEASE_ID` is set); it
+refuses to drive without a lease. Pass the patched Pleamar 0.7.27 executable
+explicitly, never the first store match or stock Pleamar.
+`tools/verify/desktop.py doctor --runtime PLEAMAR` is the read-only prerequisite
+check (tools, capability marker, hashes); it does not claim an instance is healthy.
+
+Each run gets fresh HOME/XDG state with voice, Discord, polkit and corners off, a
+private session bus, no system bus or audio server, an owned headless Sway with
+the pixman renderer and private Pleamar IPC. Readiness requires parseable
+`tohru status --json`. Never send commands to a pre-existing host session.
+Evidence stays in `.tmp/verify-UNIQUE/`: `launch.json`, `commands.jsonl`, logs,
+`doctor.json`, before/open/after screenshots with scene descriptions,
+`cleanup.json` and `summary.json` with post-cleanup artifact hashes. Pair a
+screenshot with its scene fact and the action transcript; neither alone is proof.
+Software rendering cannot establish hardware rendering, performance or parity.
+
+`tools/verify/runtime-source.py --runtime PLEAMAR` compares a Nix-built runtime's
+declared source, patches and lock against this checkout. Require `result: passed`
+before claiming they match; exit 2 is a provenance gap, not a reason to rebuild.
+
+This driver lacks the runner's validated completion pointer and stale-run
+rejection, and its command capture is unbounded. Use the exact directory it prints.
+
+## Runner lifecycle: Launch, Doctor, Drive, Evidence, Cleanup
 
 Preflight is read-only; it never imports a model, downloads dependencies, connects
 to desktop sockets, or grants caller authority. A supplied source must resolve

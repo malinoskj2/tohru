@@ -10,8 +10,8 @@ import sys
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / ".agents/skills/verify/scripts/runtime-source.py"
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = ROOT / "tools/verify/runtime-source.py"
 spec = importlib.util.spec_from_file_location("runtime_source", SCRIPT)
 provenance = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(provenance)

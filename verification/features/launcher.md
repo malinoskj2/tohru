@@ -33,7 +33,7 @@ helpers as required by the suite and isolated application desktop entries. Read
 
 ## Gotchas
 
-- This seed did not execute the launcher suites. `drive.py` has no launcher mode.
+- The desktop driver does not execute the launcher suites. `tools/verify/desktop.py` has no launcher mode.
 - Existing suites assert a specific NVIDIA adapter and need compiled helpers;
   software calendar rendering does not satisfy those gates.
 - No app catalog or host desktop entries are copied into the baseline. Missing

@@ -1,66 +1,68 @@
 ---
 name: verify
-description: Verify Tohru through the shipped session-units CLI in private state, isolated native admission, truthful prerequisites and immutable evidence. Use after relevant changes or when asked to verify Tohru behavior; live Home, model, desktop and recovery gates remain separately unverified.
+description: Verify Tohru changes in isolation before reporting them done. Drives the public CLI against private state - standalone session-unit staging, the bar's calendar and settings on an owned headless display, and the native Orca admission suite - and records hashed evidence. Use after changes to the shell, settings, CLI, session integration or Orca voice integration, or when asked to verify Tohru behaviour.
 ---
 
 # Verify Tohru
 
-Use the checkout's shared runner; load only the relevant feature map from
-[the index](../../../verification/features/README.md). A CPU/native pass cannot
-establish host UX, physical hearing or owner acceptance.
+Tohru is a Pleamar desktop shell. A zero CLI exit only means a request was
+accepted; prove the resulting state. Read [the feature index](../../../verification/features/README.md),
+then only the map for the area you changed. Maps list unverified entry points;
+never report those as passed because a neighbouring journey passed.
+
+Run from the checkout under test. Pick the smallest journey that covers the change:
+
+| Change touches | Journey | Needs |
+| --- | --- | --- |
+| CLI, session integration, anything | `python3 tools/verify/verify.py run session-units --target sandbox` | Python 3.11+, bash |
+| Bar scenes, panels, settings | `tools/verify/desktop.py run --feature calendar` or `--feature settings` | Patched Pleamar runtime, sway, grim, dbus-daemon, GPU lease |
+| Orca integration, voice admission | `python3 tools/verify/verify.py run native-authority --target sandbox --orca-source .tmp/native/source` | Prepared Orca source ([background work](../../../verification/features/background-work.md)) |
 
 ## Launch
 
-For the supported shipped command journey, follow
-[installation and recovery](../../../verification/features/install-recovery.md).
-Run `python3 tools/verify/verify.py doctor --scenario session-units --target sandbox --json`,
-then `python3 tools/verify/verify.py run session-units --target sandbox` to launch,
-generate actual private session files with bin/tohru, inspect effects, exercise
-refusal/invalid-target negatives, clean up owned processes and collect evidence.
-No native source, caller identity, display or service manager is needed.
+Desktop runs take the patched Pleamar 0.7.27 executable explicitly and a GPU
+reservation held through cleanup:
 
-Select the exact checkout/source. Follow
-[background work](../../../verification/features/background-work.md) for pinned
-offline native preparation. `python3 tools/verify/verify.py launch native-authority --target sandbox --orca-source .tmp/native/source`
-creates a private UUID run and records its read-only preflight. No host launch.
+```sh
+verify_runtime=/absolute/path/to/patched/bin/pleamar
+gpu-run --vram 4GiB --name 'Tohru desktop verification' -- \
+  tools/verify/desktop.py run --feature calendar --runtime "$verify_runtime"
+```
+
+Invoke it directly when `GPU_LEASE_ID` is already set. Build a runtime with
+`runtime/README.md`; this skill never downloads, installs or rebuilds anything.
 
 ## Doctor
 
-Run `python3 tools/verify/verify.py doctor --scenario native-authority --target sandbox --orca-source .tmp/native/source --json`
-before effects. Missing source/tools/authority is blocked, not a reason to fabricate
-caller environment, weaken isolation, download models or restart the host.
+`tools/verify/desktop.py doctor --runtime "$verify_runtime"` and
+`python3 tools/verify/verify.py doctor --scenario SCENARIO --target sandbox --json`
+are read-only. A missing tool, runtime, source or authority is a blocker to
+report, never a reason to use the host session, fabricate a caller or bypass the
+GPU scheduler. `tohru doctor --json` checks an installed desktop, not these runs.
 
 ## Drive
 
-`python3 tools/verify/verify.py drive --run ABSOLUTE_RUN` runs the declared native
-actions with streaming limits/deadlines. Or compose every phase with
-`python3 tools/verify/verify.py run native-authority --target sandbox --orca-source .tmp/native/source`.
-The distinct native-authority journey remains an engineering test suite; its pass
-does not replace session-units command-effect proof. Other declared scenarios
-currently block; read their maps for remaining prerequisites.
+Each driver launches, checks its own instance, drives the public commands and
+cleans up in one foreground process. The runner also exposes `launch`, `drive`,
+`cleanup`, `collect` and `validate` phases for longer or resumable runs.
+Other runner scenarios exit 3 (blocked) by design.
 
 ## Evidence
 
-After cleanup, `python3 tools/verify/verify.py collect --run ABSOLUTE_RUN`, then
-`python3 tools/verify/verify.py validate --run ABSOLUTE_RUN`. Report immutable
-collection absolute paths, exact commit/commands, scenario outcome and omitted
-boundaries. Accepted receipts are not completed evidence. Preserve failed attempts.
+Report the exact commit, command, outcome and absolute evidence path, plus what
+stayed unverified. The runner writes `.tmp/verify/SCENARIO/UUID/`; check it with
+`verify.py validate --run PATH`. The desktop driver prints `.tmp/verify-UNIQUE/`;
+check `summary.json`, `cleanup.json` and the screenshots against `commands.jsonl`.
+Preserve failed runs. Show three or more images with the media gallery.
 
 ## Cleanup
 
-`python3 tools/verify/verify.py cleanup --run ABSOLUTE_RUN` is repeatable and keeps
-evidence. A crashed driver without reaping proof reports cleanup_failed; do not
-signal guessed PIDs or restore someone else's state. No host/model cleanup exists.
+Both drivers reap only their own process groups and keep evidence;
+`verify.py cleanup --run PATH` is repeatable. Never kill `pleamar`, `sway` or
+Orca by name, restart the host bar or touch host settings.
 
 ## Helpers
 
-Shared implementation: tools/verify/verify.py, tools/verify/process.py,
-tools/verify/evidence.py, tools/verify/prepare-native.py, tools/verify/scenarios.json,
-tools/verify/evidence.schema.json. Check drift and failure boundaries with
-`python3 -m unittest discover -s tests/verification -v`.
-
-Maps: [Home](../../../verification/features/home-conversation.md),
-[background work](../../../verification/features/background-work.md),
-[voice](../../../verification/features/voice-capture-playback.md),
-[desktop](../../../verification/features/desktop-controls.md),
-[installation/recovery](../../../verification/features/install-recovery.md).
+Code lives in `tools/verify/`. After changing it or a map, run
+`python3 -m unittest discover -s tests/verification -v`. This file and
+`.claude/skills/verify/SKILL.md` must stay byte-identical.
