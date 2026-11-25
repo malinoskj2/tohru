@@ -166,9 +166,12 @@ class DragonArt(unittest.TestCase):
             np.testing.assert_array_equal(visible(np.array(strip.crop((4800,0,5100,300)))),visible(np.array(key)))
         with Image.open(pack.OUT/'body.webp') as body:
             self.assertLessEqual(max(body.size),16384)
-            total=0
-            for path in [*pack.OUT.glob('*.webp'),pack.OUT/'heart.png']:
-                with Image.open(path) as image: total+=image.width*image.height*4
-            self.assertLess(total,170*1024*1024)
+            def rgba(path):
+                with Image.open(path) as image:return image.width*image.height*4
+            # AFK art binds only while an idle scene plays and is released after it.
+            resident=sum(rgba(path) for path in [*pack.OUT.glob('*.webp'),pack.OUT/'heart.png'] if not path.name.startswith('afk'))
+            self.assertLess(resident,170*1024*1024)
+            scenes=[{'afk.webp'},{'afk-closeup-motion.webp'},{'afk-closeup-motion.webp','afk-bust-motion.webp'}]
+            self.assertLess(max(sum(rgba(pack.OUT/name) for name in scene) for scene in scenes),200*1024*1024)
 
 if __name__=='__main__': unittest.main()

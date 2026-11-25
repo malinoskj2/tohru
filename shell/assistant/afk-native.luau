@@ -62,6 +62,9 @@ return function(shared, options)
         fact.ai_afk_fog=value.fog
         fact.ai_afk_preparing=hidden==true
         fact.ai_afk_bust_mix=value.bust_mix or 1
+        fact.ai_afk_body_frame=value.body_frame or 0
+        fact.ai_afk_body_next=value.body_next or value.body_frame or 0
+        fact.ai_afk_body_mix=value.body_next and (value.body_mix or 0) or 0
         return value
     end
     local actor={
@@ -78,12 +81,13 @@ return function(shared, options)
                 local ok
                 local bust=sample.scene=="glass_inspection" or sample.scene=="upside_down_peek"
                 if sample.scene=="screen_window" or bust then
-                    ok=shared.register_closeup(base..(bust and "/afk-bust.png" or "/afk-closeup.png"),token)
+                    -- 4x4 generated motion grids: the bust gesture loop and the closeup wingbeat.
+                    ok=shared.register_closeup(base..(bust and "/afk-bust-motion.webp" or "/afk-closeup-motion.webp"),token,4)
                     if bust then
-                        text.ai_afk_body_src=base.."/afk-closeup.png"
+                        text.ai_afk_body_src=base.."/afk-closeup-motion.webp"
                         fact.ai_afk_body_open=true
                     end
-                else ok=shared.register_skin(base.."/afk.webp",12,token) end
+                else ok=shared.register_skin(base.."/afk.webp",28,token) end
                 if not ok then ready(false);return end
                 fact.ai_afk_active=true
             end

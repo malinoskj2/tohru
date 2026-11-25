@@ -1,17 +1,17 @@
 {
-  "cell": 320,
+  "cell": 240,
   "columns": 8,
-  "rows": 12,
-  "frames": 96,
+  "rows": 28,
+  "frames": 224,
   "poses": {
     "fly_left": {
       "first": 0,
       "count": 8,
       "occupied": [
-        22,
-        75,
-        298,
-        244
+        16,
+        57,
+        223,
+        183
       ],
       "original_source_cell": 240
     },
@@ -19,10 +19,10 @@
       "first": 8,
       "count": 8,
       "occupied": [
-        41,
-        37,
-        278,
-        286
+        31,
+        28,
+        209,
+        215
       ],
       "original_source_cell": null
     },
@@ -30,10 +30,10 @@
       "first": 16,
       "count": 8,
       "occupied": [
-        26,
-        57,
-        294,
-        263
+        20,
+        43,
+        220,
+        197
       ],
       "original_source_cell": 240
     },
@@ -41,10 +41,10 @@
       "first": 24,
       "count": 8,
       "occupied": [
-        76,
-        41,
-        262,
-        286
+        57,
+        31,
+        196,
+        214
       ],
       "original_source_cell": null
     },
@@ -52,10 +52,10 @@
       "first": 32,
       "count": 8,
       "occupied": [
-        55,
-        36,
-        264,
-        283
+        41,
+        27,
+        198,
+        213
       ],
       "original_source_cell": 240
     },
@@ -63,10 +63,10 @@
       "first": 40,
       "count": 8,
       "occupied": [
-        77,
-        38,
-        247,
-        286
+        58,
+        29,
+        185,
+        215
       ],
       "original_source_cell": null
     },
@@ -74,10 +74,10 @@
       "first": 48,
       "count": 8,
       "occupied": [
-        77,
-        42,
-        246,
-        286
+        58,
+        31,
+        185,
+        215
       ],
       "original_source_cell": null
     },
@@ -85,10 +85,10 @@
       "first": 56,
       "count": 8,
       "occupied": [
-        77,
-        42,
-        247,
-        286
+        58,
+        32,
+        185,
+        215
       ],
       "original_source_cell": null
     },
@@ -96,10 +96,10 @@
       "first": 64,
       "count": 8,
       "occupied": [
-        59,
-        80,
-        272,
-        272
+        44,
+        60,
+        204,
+        204
       ],
       "original_source_cell": null
     },
@@ -107,10 +107,10 @@
       "first": 72,
       "count": 8,
       "occupied": [
-        89,
-        20,
-        220,
-        308
+        67,
+        15,
+        165,
+        231
       ],
       "original_source_cell": null
     },
@@ -118,10 +118,10 @@
       "first": 80,
       "count": 8,
       "occupied": [
-        33,
-        29,
-        297,
-        269
+        25,
+        21,
+        222,
+        202
       ],
       "original_source_cell": null
     },
@@ -129,10 +129,10 @@
       "first": 88,
       "count": 8,
       "occupied": [
-        35,
-        25,
-        288,
-        268
+        26,
+        19,
+        216,
+        201
       ],
       "original_source_cell": null
     }
@@ -165,6 +165,48 @@
         1254
       ],
       "sha256": "226332852e4ec8f384c5a767b8ef46b23c5168160f9171bfd87b26cb8ff2f3f9"
+    }
+  },
+  "motion": {
+    "turn": {
+      "first": 96,
+      "count": 16,
+      "sha256": "7705e0730d59a0e6618b74eeba9e21ae9465676f0d9a78e147720a8c63310a1c"
+    },
+    "arrive_right": {
+      "first": 112,
+      "count": 16,
+      "sha256": "412898ca584e4f26ca0ddac6890e4b9ad236f789d28dd52ef877dbb7a5510a79"
+    },
+    "arrive_left": {
+      "first": 128,
+      "count": 16,
+      "sha256": "64d269e487d1b1ffb07464e3f02e7e3f3443ab6d69db4474210a3eb404443471"
+    },
+    "curl": {
+      "first": 144,
+      "count": 16,
+      "sha256": "68365355db135e0d02e0a486fe6bded75832865aa7373970d179b6cc94439ebf"
+    },
+    "perch": {
+      "first": 160,
+      "count": 16,
+      "sha256": "a5b99caa2992705bee9cbafb47d0e2e764e603acfe163a5c9a14058bbe450e46"
+    },
+    "bank": {
+      "first": 176,
+      "count": 16,
+      "sha256": "4f295ccfca2382b1c12ff0b7dc44303b103f3601c5b4c35cb59f4d647918d7bb"
+    },
+    "peek": {
+      "first": 192,
+      "count": 16,
+      "sha256": "86dcf55b51213e07680c4c55316923e15b647b6e1c38c5374336e9478564ec7f"
+    },
+    "wave": {
+      "first": 208,
+      "count": 16,
+      "sha256": "3030e7d98d3d2f3ca27be5aa9bb7d56026e8311881be37f0c3fd96f52bbd5408"
     }
   },
   "closeup": {
@@ -216,7 +258,7 @@
     ]
   },
   "annotation_note": "Conservative manually registered head bounds (including horns/frill); transparent sheet size is not head detail.",
-  "atlas_rgba_bytes": 39321600,
+  "atlas_rgba_bytes": 51609600,
   "reused_flight_source": {
     "path": "shell/assistant/dragon/flight.webp",
     "cell": 240,

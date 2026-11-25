@@ -5,7 +5,7 @@ single desktop actor: screen-window camera approach, corner nap, glass
 inspection, upside-down peek, real-window perch, tail chase, sleepy drift,
 distant flight, genuine window hide/peek, wing grooming and waiting at the lower
 edge. The separate `quiet_rest` is stationary and optional with reduced motion.
-No microphone, model, browser simulation or 3D worktree asset is involved.
+No microphone, browser simulation or 3D worktree asset is involved at runtime.
 
 Every maintained desktop idle episode gets at most one seeded chance (50% by
 default) and one scene. Eligibility precedes selection; failed rolls, unavailable
@@ -91,16 +91,26 @@ a real login session.
 
 ## Art, resolution and loading
 
-The separate `afk.webp` has 8×12 cells of 320px (2560×3840), leaving the
-production body atlas intact. It contains canonical flight frames and authored
-nap, perch, tail/contact keys and a stretch. Reused flight detail is originally
-240px, not 320px; normal rendering is capped at 236 physical pixels.
+The separate `afk.webp` has 8×28 cells of 240px (1920×6720), leaving the
+production body atlas intact. Its first 12 rows hold canonical flight frames and
+authored nap, perch, tail/contact keys and a stretch; normal rendering is capped
+at 236 physical pixels, so 240px cells are native. The other 16 rows hold eight
+generated 16-frame in-between sequences: a side-to-side body turn, side-to-front
+arrivals from each direction, gliding down into the curled nap, landing on a
+ledge with the tail dropping, banking into a climb, a curious lean and a
+pop-up wave. Adjacent frames crossfade, so a sequence stays fluid at any
+playback rate.
 Continuous native WGSL moves contact paws, wings, horn rubbing, tail and breath;
 these are not static poses translated around a path. Quiet rest freezes frame,
 root, zoom, bob, bank, squash and effects while ordinary voice lip/blink ownership
 continues normally.
 
-Giant scenes use dedicated **1254×1254 PNGs**, never enlarged atlas cells. Actual
+Giant scenes use dedicated 4×4 grids of **1254×1254 cells**, never enlarged
+atlas cells: `afk-closeup-motion.webp` is a generated two-wingbeat hover loop and
+`afk-bust-motion.webp` a generated bust loop (glances, blinks, a widening smile,
+a wing flutter) whose first frame is the canonical bust. Each grid is 96 MiB
+decoded; the glass and upside-down scenes bind both, and AFK art binds only
+while a scene plays. The canonical 1254px PNGs remain the sources. Actual
 dimensions, alpha-occupied bounds, conservative head annotations, hashes, prompts
 and registration are in `tools/dragon/art/afk/`. A requested 3840px generation
 returned 1254px: no 4K detail is claimed. Registered head detail (including horns)
@@ -119,8 +129,13 @@ The small temporary stylized breath sheen writes no desktop content.
 
 Flights follow eased arcs with wingbeats, banking toward the direction of travel
 and a flare on arrival; the camera approach first swings out into the room and
-then swoops in, with perspective scaling. A change of facing turns her body
-through three-quarter and front views rather than flipping in one frame. Every
+then swoops in, with perspective scaling. A change of facing plays the
+generated body turn, or the generated arrival into a front hover, rather than
+flipping in one frame; rising arcs pitch her nose-up through the generated
+bank frames. Corner nap glides down and curls through generated frames and
+uncurls through them in reverse; the perch lands and takes off through them;
+hide-and-peek leans out on the left edge and pops up waving, mirrored, on the
+right. Every
 scene ends with a flight back to her resting spot at the bottom-right, turning to
 face the front as she arrives, where the resting dragon takes over. While the
 bust is shown, her bob only presses into the output edge so its crop never lifts
@@ -148,8 +163,8 @@ are not resolution evidence. The runtime exposes no GPU-ready/free acknowledgeme
 a conservative three-second warm barrier precedes travel, and all live bindings
 clear after retreat/cancel/disable; renderer caches may remain.
 
-Supplemental RGBA estimates are 37.5 MiB normal, about 6 MiB camera, or 12 MiB
-glass's two needed PNGs. Add existing voice textures (roughly 57 MiB at scale 1,
+Supplemental RGBA estimates are 49.2 MiB normal, 96 MiB camera, or 192 MiB for
+the two grids the glass and upside-down scenes need. Add existing voice textures (roughly 57 MiB at scale 1,
 89 MiB at 1.25, 228 MiB at 2), flight texture, surface buffers and conservatively
 four physical shader layers (31.6 MiB at 1080p; 126.6 MiB at 4K). Decoder
 temporaries, mips, fonts, drivers and caches are additional. These are estimates,
@@ -163,7 +178,7 @@ tests cover real private sockets/children including shutdown resume, effective
 managed config and retained art registration. Native recordings use the actual
 AFK/actor/render modules and real compositor windows. Forced scenes are labelled
 separately from real private-seat swayidle timeout and injected-keyboard resume.
-No microphone, model or host display is used.
+No microphone or host display is used.
 
 Recordings, original PNGs, unscaled crops, traces and manifests are in the
 worktree `.tmp/`. Selected intermediate frames and timing traces do not certify
@@ -173,3 +188,16 @@ skeletal acting. Rust/Nix builds, rebuilt native Settings, real systemd/logind
 lock/suspend and non-Hyprland acceptance were not run when admission/session
 capabilities were unavailable. The task report identifies the exact source
 revision, recordings, gallery and remaining acceptance gates.
+
+## Generated in-betweens
+
+`tools/dragon/afk-motion/` generates the in-betweens with the shared `h3-fl2va`
+first/last-frame video model from `$MODEL_ROOT`, inside one exclusive GPU
+reservation: `generate.py prepare`, then `generate.py run`. Each sequence
+animates between two canonical keys on a uniform background (`sequences.json`
+holds the prompts and seeds). `matte.py` extracts the character, picks 16
+frames at equal steps of motion (loops at equal time) and puts the exact
+canonical keys back at both ends; the 1254px grids are first upscaled with the
+shared `realesrgan-x4plus-anime`. `collect.py` writes the strips and grids with
+`tools/dragon/art/afk/motion/provenance.json`, and `afk-pack.py` packs the
+atlas.

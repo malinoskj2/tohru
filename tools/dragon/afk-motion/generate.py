@@ -138,7 +138,7 @@ def main():
         os.execvp('gpu-run',['gpu-run','--exclusive','--name','Tohru AFK FL2VA in-betweens','--',sys.executable,str(Path(__file__).resolve()),*sys.argv[1:]])
     failed=[]
     for name in names:
-        try:run_sequence(name,model_dir,args.steps,args.seed)
+        try:run_sequence(name,model_dir,args.steps,spec()['sequences'][name].get('seed',args.seed))
         except RuntimeError as e:print(e,file=sys.stderr,flush=True);failed.append(name)
     if failed:print('failed:',' '.join(failed),file=sys.stderr);return 1
     return 0

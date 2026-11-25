@@ -27,7 +27,26 @@ class AfkArt(unittest.TestCase):
             self.assertEqual(size,(1254,1254))
             self.assertTrue(all(a<=b for a,b in zip(packing[name]['head_detail_budget'],size)))
         self.assertEqual(packing['reused_flight_source']['cell'],240)
-        self.assertEqual(packing['atlas_rgba_bytes'],2560*3840*4)
+        self.assertEqual(packing['atlas_rgba_bytes'],1920*6720*4)
+
+    def test_generated_motion_is_packed_with_provenance(self):
+        packing=json.loads((ART/'packing.json').read_text())
+        provenance=json.loads((ART/'motion/provenance.json').read_text())
+        self.assertEqual(packing['rows'],28)
+        for number,(name,motion) in enumerate(packing['motion'].items()):
+            self.assertEqual(motion['first'],96+16*number)
+            self.assertEqual(motion['count'],16)
+            strip=ART/'motion'/(name+'.png')
+            self.assertEqual(hashlib.sha256(strip.read_bytes()).hexdigest(),motion['sha256'])
+            self.assertEqual(provenance['sequences'][name]['output_sha256'],motion['sha256'])
+        for name,file in (('bust','afk-bust-motion.webp'),('closeup','afk-closeup-motion.webp')):
+            record=provenance['sequences'][name]
+            self.assertEqual((record['frames'],record['cell']),(16,1254))
+            self.assertEqual(hashlib.sha256((OUT/file).read_bytes()).hexdigest(),record['output_sha256'])
+            with (OUT/file).open('rb') as stream:header=stream.read(30)
+            self.assertEqual(header[:4]+header[8:16],b'RIFFWEBPVP8L')
+            bits=int.from_bytes(header[21:25],'little')
+            self.assertEqual(((bits&0x3fff)+1,((bits>>14)&0x3fff)+1),(4*1254,4*1254))
 
     def test_body_to_bust_has_one_registered_face_and_native_pixel_budget(self):
         r=json.loads((ART/'registration.json').read_text())

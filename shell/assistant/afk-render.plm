@@ -8,6 +8,9 @@ part AssistantAfk {
     text ai_afk_body_src = ""
     image ai_afk_body = from ai_afk_body_src, 0, 0
     fact ai_afk_body_open = false
+    fact ai_afk_body_frame = 0
+    fact ai_afk_body_next = 0
+    fact ai_afk_body_mix = 0
     fact ai_afk_preparing = false
     fact ai_afk_bust_mix = 1
     text ai_afk_status = "Disabled"

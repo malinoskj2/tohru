@@ -40,9 +40,9 @@ shared.register_skin=function(path,rows,token)
     assert(current and token==current.token)
     registered[#registered+1]={path=path,rows=rows,token=token};return true
 end
-shared.register_closeup=function(path,token)
+shared.register_closeup=function(path,token,grid)
     assert(current and token==current.token)
-    registered[#registered+1]={path=path,token=token};return true
+    registered[#registered+1]={path=path,token=token,grid=grid};return true
 end
 shared.play=function(token,sample)
     if not current or current.token~=token then return false end
@@ -73,7 +73,7 @@ events.afk_resume(77)
 pending.ready(pending.token,geometry) -- An old geometry callback cannot bind art.
 assert(#registered==0 and not current)
 idle();current.ready(current.token,geometry)
-assert(#registered==1 and registered[1].rows==12)
+assert(#registered==1 and registered[1].rows==28)
 advance(.1)
 for _,sample in ipairs(played) do assert(sample.opacity==0) end
 advance(.3)
@@ -94,10 +94,10 @@ assert(not current and not fact.ai_afk_active)
 events.afk_resume(77)
 afk.configure(config('screen_window'));idle()
 current.ready(current.token,geometry)
-assert(registered[#registered].path=='/fixture/art/afk-closeup.png')
+assert(registered[#registered].path=='/fixture/art/afk-closeup-motion.webp' and registered[#registered].grid==4)
 events.afk_resume(77)
 afk.configure(config('glass_inspection'));idle();current.ready(current.token,geometry)
-assert(text.ai_afk_body_src=='/fixture/art/afk-closeup.png' and fact.ai_afk_body_open)
+assert(text.ai_afk_body_src=='/fixture/art/afk-closeup-motion.webp' and fact.ai_afk_body_open)
 afk.configure({['assistant.afk_enabled']={value=false}})
 assert(not current and controls[#controls]=='stop')
 assert(text.ai_afk_body_src=='' and not fact.ai_afk_body_open)

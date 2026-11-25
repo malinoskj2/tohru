@@ -10,7 +10,11 @@ evenly; loops are chosen at equal steps of time.
 """
 import argparse
 import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
+import tempfile
 
 import cv2
 import numpy as np
@@ -49,6 +53,15 @@ def extract(rgb,cropped_bottom):
     return np.dstack([foreground,np.rint(alpha*255)]).astype('uint8')
 
 
+def feather(image):
+    """Wing tips that flutter past the bust's sides fade out instead of
+    ending in a hard canvas-edge cut on screen."""
+    rgba=np.asarray(image).copy();w=rgba.shape[1];edge=max(8,w//32)
+    ramp=np.clip(np.minimum(np.arange(w),w-1-np.arange(w))/edge,0,1)
+    rgba[...,3]=np.rint(rgba[...,3]*(ramp*ramp*(3-2*ramp))[None,:]).astype('uint8')
+    return Image.fromarray(rgba)
+
+
 def key(source,size):
     if 'cell' in source:
         atlas=Image.open(ROOT/'shell/assistant/dragon/afk.webp').convert('RGBA')
@@ -60,16 +73,41 @@ def key(source,size):
 def choose(frames,count,loop,cycle):
     small=[np.asarray(Image.open(p).convert('L').resize((96,96)),dtype=np.float32) for p in frames]
     if cycle:
-        # One wingbeat cycle from the opening pose: the period whose frame
-        # best matches frame 0, so the selected frames loop seamlessly.
-        period=min(range(10,48),key=lambda n:float(np.mean(np.abs(small[n]-small[0]))))
-        return [round(i*period/count) for i in range(count)]
+        # A seamless stretch of steady flapping: the window that closes on
+        # itself best while still moving, sampled at equal time steps.
+        def score(start,period):
+            closure=float(np.mean(np.abs(small[start]-small[start+period])))
+            motion=float(np.mean([np.mean(np.abs(small[start+k]-small[start])) for k in range(period)]))
+            return closure-.3*motion
+        start,period=min(((s,n) for s in range(4,64) for n in range(count,2*count+1) if s+n<len(small)-12),key=lambda c:score(*c))
+        return [start+round(i*period/count) for i in range(count)]
     if loop:return [round(i*(len(frames)-1)/count) for i in range(count)]
     steps=[0.]+[float(np.mean(np.abs(small[i]-small[i-1]))) for i in range(1,len(small))]
     total=np.cumsum(steps);total/=max(total[-1],1e-6)
     picks=[int(np.searchsorted(total,i/(count-1))) for i in range(count)]
     picks[0],picks[-1]=0,len(frames)-1
+    # Never repeat a frame: a held duplicate reads as a hitch.
+    for i in range(1,count-1):picks[i]=max(picks[i],picks[i-1]+1)
+    for i in range(count-2,0,-1):picks[i]=min(picks[i],picks[i+1]-1)
     return picks
+
+
+def upscale(paths,target):
+    """Real-ESRGAN x4 anime (shared alias realesrgan-x4plus-anime) for the
+    large closeups, so a 768 px generation keeps native detail at 1254 px."""
+    model=Path(os.environ['MODEL_ROOT'])/'by-name/realesrgan-x4plus-anime'
+    ready=json.loads((Path(os.environ['MODEL_ROOT'])/'readiness.json').read_text())
+    if ready['entries'].get('realesrgan-x4plus-anime',{}).get('status')!='ready':
+        raise RuntimeError('realesrgan-x4plus-anime is not ready; host: systemctl --user start local-models-sync.service')
+    with tempfile.TemporaryDirectory(dir=OUT) as tmp:
+        src,dst=Path(tmp,'in'),Path(tmp,'out');src.mkdir();dst.mkdir()
+        for i,p in enumerate(paths):shutil.copy(p,src/f'{i:03}.png')
+        tool=['realesrgan-ncnn-vulkan'] if shutil.which('realesrgan-ncnn-vulkan') else ['nix','shell','nixpkgs#realesrgan-ncnn-vulkan','-c','realesrgan-ncnn-vulkan']
+        command=[*tool,'-i',str(src),'-o',str(dst),'-m',str(model),'-n','realesrgan-x4plus-anime','-f','png']
+        if not os.environ.get('GPU_LEASE_ID'):
+            command=['gpu-run','--vram','3GiB','--name','Tohru AFK closeup upscale','--',*command]
+        subprocess.run(command,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        return [Image.open(dst/f'{i:03}.png').convert('RGB').resize((target,target),Image.Resampling.LANCZOS) for i in range(len(paths))]
 
 
 def process(name,count,cell,big):
@@ -84,16 +122,23 @@ def process(name,count,cell,big):
     for old in cells.glob('*.png'):old.unlink()
     target=big if 'image' in manifest['first'] else cell
     keys={'first':key(manifest['first'],target),'last':key(manifest['last'],target)}
+    sources={index:Image.open(frames[index]).convert('RGB') for index in picks}
+    if target>size:sources=dict(zip(picks,upscale([frames[index] for index in picks],target)))
+    scale=sources[picks[0]].width/size
     for i,index in enumerate(picks):
         # Endpoints are the exact canonical keys, so a sequence joins the
         # authored poses without a pop.
-        if index==0:keys['first'].save(cells/f'{i:02}.png');continue
+        if index==0 and not cycle:keys['first'].save(cells/f'{i:02}.png');continue
         if index==len(frames)-1 and not loop:keys['last'].save(cells/f'{i:02}.png');continue
-        rgba=extract(Image.open(frames[index]).convert('RGB'),cropped_bottom=manifest['first'].get('image')=='bust')
-        image=Image.fromarray(rgba).crop((margin,margin,size-margin,size-margin))
-        image.resize((target,target),Image.Resampling.LANCZOS).save(cells/f'{i:02}.png')
+        rgba=extract(sources[index],cropped_bottom=manifest['first'].get('image')=='bust')
+        m=round(margin*scale);edge=sources[index].width
+        image=Image.fromarray(rgba).crop((m,m,edge-m,edge-m))
+        image=image.resize((target,target),Image.Resampling.LANCZOS)
+        if manifest['first'].get('image')=='bust':image=feather(image)
+        image.save(cells/f'{i:02}.png')
     (work/'cells.json').write_text(json.dumps(dict(sequence=name,picks=picks,loop=loop,cell=target,
-        method='border-estimated uniform background, main component with holes filled, interior-paint edge unmix'),indent=2)+'\n')
+        method='border-estimated uniform background, main component with holes filled, interior-paint edge unmix'
+            +(', realesrgan-x4plus-anime upscale' if target>size else '')),indent=2)+'\n')
     print(name,'cells',picks)
 
 
@@ -102,7 +147,7 @@ def main():
     parser.add_argument('names',nargs='*')
     parser.add_argument('--count',type=int,default=16)
     parser.add_argument('--cell',type=int,default=240)
-    parser.add_argument('--big',type=int,default=768)
+    parser.add_argument('--big',type=int,default=1254)
     args=parser.parse_args()
     cv2.setNumThreads(2)
     names=args.names or sorted(p.parent.name for p in OUT.glob('*/raw.mp4'))

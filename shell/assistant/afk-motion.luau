@@ -5,7 +5,12 @@ return function(choreography)
         chin_on_paws=6,hopeful_wave=7,curled_sleep=8,perch_tail_dangle=9,tail_follow_left=10,tail_follow_right=11}
     -- Registered eye scale between the full-body closeup and the bust.
     local BODY=1.9245097100019937
-    local TURN=.5
+    -- Generated FL2VA in-betweens follow the 12 authored rows, 16 frames each.
+    local MOTION={turn=96,arrive_right=112,arrive_left=128,curl=144,perch=160,bank=176,peek=192,wave=208}
+    local LAST=15
+    local TURN,ARRIVE=.8,.6
+    -- One generated bust gesture loop and one closeup wingbeat, 16 frames each.
+    local BUST_LOOP,CLOSEUP_FRAMES=5.2,16
     local function clamp(v,a,b)return math.max(a,math.min(b,v)) end
     local function lerp(a,b,p)return a+(b-a)*p end
     local function smooth(p)p=clamp(p,0,1);return p*p*(3-2*p) end
@@ -58,6 +63,9 @@ return function(choreography)
         end
         return result,reasons
     end
+    -- Which way the perch and nap poses face: the generated landing starts
+    -- facing left, so a rightward arrival mirrors the whole sequence.
+    local function side(from,to)return to.x>from.x and -1 or 1 end
     local function anchors(s,id)
         local _,camera,glass=dimensions(s)
         local home={x=s.w-123,y=s.h-133,scale=1}
@@ -99,7 +107,10 @@ return function(choreography)
             local normal=math.min(1,236/(150*(s.scale or 1)))
             for _,anchor in pairs(a) do anchor.scale=anchor.scale*normal end
         end
+        -- She arrives at the corner flying right, so the nap curls mirrored.
+        a.nap_turn=-1
         if a.window_top then
+            a.perch_turn=side(home,a.window_top);a.leave_turn=side(a.window_top,home)
             -- The perch frame's seat sits 21 px below the cell center; the
             -- body rests on the edge and the tail drops behind the window.
             a.window_top.y=target.y-21*a.window_top.scale+1
@@ -133,6 +144,20 @@ return function(choreography)
     local function wing(progress,duration,period)
         local cycles=math.max(1,math.floor(duration/period+.5))
         return progress*cycles
+    end
+    -- Plays a generated sequence at q, crossfading between neighbouring frames.
+    local function play(sample,name,q,reverse)
+        q=clamp(q,0,1)
+        if reverse then q=1-q end
+        local f=q*LAST;local i=math.min(LAST,math.floor(f))
+        sample.pose="skin";sample.generated=true
+        sample.skin_frame=MOTION[name]+i
+        if i<LAST then sample.skin_next=sample.skin_frame+1;sample.skin_mix=f-i end
+        return sample
+    end
+    local function cycle(sample,frames,position)
+        local f=(position%1)*frames;local i=math.floor(f)%frames
+        sample.closeup_frame=i;sample.closeup_next=(i+1)%frames;sample.closeup_mix=f-math.floor(f)
     end
     local function raw(id,s,elapsed)
         local semantic=choreography.sample(id,elapsed)
@@ -214,19 +239,36 @@ return function(choreography)
                     sample.y=sample.y-.01*150*sample.scale*(1-math.cos(2*math.pi*elapsed/1.9))/2
                 end
             end
-            if flying then sample.action=1
+            if flying then
+                -- Generated wingbeats: one 16-frame loop holds two beats.
+                cycle(sample,CLOSEUP_FRAMES,sample.phase/2)
+                sample.body_frame=sample.closeup_frame;sample.body_next=sample.closeup_next;sample.body_mix=sample.closeup_mix
+                if bust_scenes[id] then sample.closeup_frame,sample.closeup_next,sample.closeup_mix=0,nil,nil end
+            elseif bust_scenes[id] then
+                -- The generated bust gesture loop: glances, a blink, a paw tap.
+                cycle(sample,CLOSEUP_FRAMES,elapsed/BUST_LOOP)
+            else
+                -- Hovering at the glass, she keeps a slower generated wingbeat.
+                cycle(sample,CLOSEUP_FRAMES,elapsed/1.1)
+            end
+            if flying then sample.action=bust_scenes[id] and 1 or 0
             elseif pose=="glass_paw" then sample.action=3
-            else sample.action=2 end
+            else sample.action=bust_scenes[id] and 0 or 2 end
             if pose=="glass_paw" then sample.fog=math.sin(math.pi*semantic.progress)^4 end
             if not flying then sample.phase=elapsed/.7 end
             return sample
         end
         if rows[pose] then
             sample.pose="skin";sample.skin_frame=rows[pose]*8+math.floor(elapsed/.14)%8
+            if pose=="curled_sleep" then sample.turn=a.nap_turn;sample.facing=-a.nap_turn
+            elseif pose=="perch_tail_dangle" then sample.turn=a.perch_turn;sample.facing=0 end
         elseif pose=="curl_down" or pose=="sleep_wake" then
-            sample.pose="skin";sample.skin_frame=(pose=="curl_down" and 8 or 1)*8
-        elseif pose=="wings_fold" or pose=="wings_unfold" then
-            sample.pose="skin";sample.skin_frame=9*8
+            play(sample,"curl",semantic.progress,pose=="sleep_wake")
+            sample.turn=a.nap_turn;sample.facing=-a.nap_turn
+        elseif pose=="wings_fold" then
+            sample.pose="skin";sample.skin_frame=9*8;sample.turn=a.perch_turn;sample.facing=0
+        elseif pose=="wings_unfold" then
+            sample.pose="skin";sample.skin_frame=9*8;sample.turn=a.leave_turn;sample.facing=0
         elseif pose=="hopeful_glances" then
             sample.pose="skin";sample.skin_frame=6*8+math.floor(elapsed/.2)%8
         elseif pose=="tail_catch_recover" then
@@ -239,23 +281,27 @@ return function(choreography)
         elseif pose=="quiet_rest" then
             sample.pose="nested_hover";sample.airborne=0;sample.phase=0
         elseif pose:sub(1,4)=="peek" then
-            sample.pose="skin"
+            -- Left-edge peeks use the generated lean (front → three-quarter
+            -- looking left); the right edge mirrors the generated pop-and-wave.
             local q=semantic.progress
+            sample.facing=0
             if pose=="peek_shy" then
                 -- Only her head leans past the edge, then she thinks better of it.
-                sample.skin_frame=3*8
                 local e=smooth(q/.55)
+                play(sample,"peek",e)
                 sample.x=lerp(from.x,to.x,e)
                 sample.y=lerp(from.y,to.y,e)
-                sample.rotation=-16*e+3*math.sin(math.pi*clamp((q-.55)/.45,0,1))
+                sample.rotation=-5*e+3*math.sin(math.pi*clamp((q-.55)/.45,0,1))
             elseif pose=="peek_duck" then
                 local e=q*q
                 sample.x=lerp(from.x,to.x,e);sample.y=lerp(from.y,to.y,e)
-                sample.skin_frame=8
-                sample.rotation=(from.x<to.x and -10 or 10)*(1-e)
-                sample.turn=1-.12*math.sin(math.pi*q)
+                if semantic.from=="window_right" then
+                    play(sample,"wave",smooth(q),true);sample.turn=-1
+                else
+                    play(sample,"peek",smooth(q),true)
+                end
             elseif pose=="peek_wait" then
-                sample.skin_frame=8
+                sample.pose="skin";sample.skin_frame=8
                 sample.y=sample.y+4*math.sin(2*math.pi*q)
             elseif pose=="peek_lean" then
                 -- Bolder second look: out with a little overshoot, head tilts,
@@ -265,22 +311,22 @@ return function(choreography)
                 sample.x=lerp(from.x,to.x,e-retreat)
                 sample.y=lerp(from.y,to.y,math.min(e,1))-10*math.sin(math.pi*clamp((q-.35)/.3,0,1))
                 local tilt=math.sin(2*math.pi*clamp((q-.4)/.45,0,1))
-                sample.skin_frame=q<.3 and 3*8 or 8
-                sample.rotation=-12*smooth(q/.3)+8*smooth((q-.3)/.15)-7*tilt
+                play(sample,"peek",smooth(q/.35)-.35*smooth((q-.8)/.2))
+                sample.rotation=-4*smooth(q/.3)-6*tilt
             elseif pose=="peek_pop" then
                 local e=back(q)
                 sample.x=lerp(from.x,to.x,e);sample.y=lerp(from.y,to.y,math.min(e,1))
-                sample.skin_frame=7*8
-                sample.rotation=16*(1-smooth(q))
-                sample.turn=1+.08*math.sin(math.pi*math.min(1,q*1.4))
+                play(sample,"wave",smooth(q/.9))
+                sample.turn=-(1+.06*math.sin(math.pi*math.min(1,q*1.4)))
+                sample.rotation=8*(1-smooth(q))
             elseif pose=="peek_wave" then
-                sample.skin_frame=7*8
+                sample.pose="skin";sample.skin_frame=7*8;sample.turn=-1
                 local hop=math.abs(math.sin(2*math.pi*q*2))
                 sample.y=sample.y-9*hop
-                sample.turn=1-.05*hop
-                sample.rotation=6*math.sin(2*math.pi*q*1.5)
+                sample.turn=-(1-.05*hop)
+                sample.rotation=-6*math.sin(2*math.pi*q*1.5)
             else
-                sample.skin_frame=8
+                sample.pose="skin";sample.skin_frame=8
             end
         elseif flying then
             local dx=to.x-from.x
@@ -307,13 +353,37 @@ return function(choreography)
                 sample.bank=clamp(pitch,-22,22)*(sample.facing or 1)
                 if up then sample.bank=clamp(vx/math.max(speed,1)*14,-14,14) end
             end
-            if pose=="flight_home" and semantic.progress>.78 then
+            -- Generated bank into a climb: side flight pitches nose-up through
+            -- these frames as the arc rises, and a climb opens with them.
+            local mirror=sample.facing<0 and -1 or 1
+            if up and semantic.progress<.35 then
+                play(sample,"bank",semantic.progress/.35);sample.turn=mirror
+                sample.bank=sample.bank*smooth(semantic.progress/.35)
+            elseif not up and facing~=0 and speed>1 then
+                local climb=clamp((-math.deg(math.atan(vy/math.max(math.abs(vx),.001)))-10)/35,0,1)
+                if climb>0 then
+                    play(sample,"bank",clamp(climb*.55+.04*climb*math.sin(2*math.pi*beats),0,1));sample.turn=mirror
+                    sample.bank=sample.bank*(1-.6*climb)
+                end
+            end
+            -- Climb frames are flight variants, so a body turn may still override them.
+            sample.generated=nil
+            if id=="window_perch" and pose=="flight_land" and semantic.progress>.5 then
+                -- Generated landing: upright, a braking flap, onto the edge.
+                local q=(semantic.progress-.5)/.5
+                play(sample,"perch",q);sample.turn=a.perch_turn;sample.facing=-a.perch_turn
+                sample.bank=sample.bank*(1-smooth(q/.4))
+            elseif id=="window_perch" and pose=="flight_home" and semantic.progress<.4 then
+                play(sample,"perch",semantic.progress/.4,true);sample.turn=a.leave_turn;sample.facing=-a.leave_turn
+                sample.bank=sample.bank*smooth((semantic.progress-.2)/.2)
+            elseif id=="corner_nap" and pose=="flight_home" and semantic.progress<.3 then
+                -- Awake and airborne, she swings round to face the room.
+                play(sample,"arrive_right",semantic.progress/.3);sample.facing=0
+            end
+            if pose=="flight_home" and semantic.progress>.78 and not sample.generated then
                 -- Hover in front-on for the last stretch, matching her rest pose.
                 sample.skin_frame=8;sample.facing=0;sample.turn=1
                 sample.bank=sample.bank*(1-smooth((semantic.progress-.78)/.22))
-            end
-            if pose=="flight_land" and semantic.progress>.86 then
-                sample.skin_frame=9*8;sample.facing=0;sample.turn=1;sample.bank=0
             end
         elseif semantic.moving then
             local dx=to.x-from.x
@@ -372,34 +442,37 @@ return function(choreography)
         end
         return sample
     end
-    -- A facing change becomes a body turn through three-quarter and front
-    -- views, centered on the authored switch, rather than a one-frame flip.
+    -- A facing change plays a generated body turn, centered on the authored
+    -- switch: side to side through the front view, or side to front hover.
     local function turned(id,s,elapsed,sample)
-        if sample.pose~="skin" or id=="quiet_rest" then return sample end
+        if sample.pose~="skin" or id=="quiet_rest" or sample.generated then return sample end
         local half=TURN/2
-        local function facing(t)return raw(id,s,math.max(0,t)).facing end
-        local before,after=facing(elapsed-half),facing(elapsed+half)
+        local function at(t)return raw(id,s,math.max(0,t)) end
+        local b,f=at(elapsed-half),at(elapsed+half)
+        if b.generated or f.generated then return sample end
+        local before,after=b.facing,f.facing
         if before==nil or after==nil or before==after then return sample end
         local lo,hi=elapsed-half,elapsed+half
         for _=1,12 do
             local mid=(lo+hi)/2
-            if facing(mid)==before then lo=mid else hi=mid end
+            if at(mid).facing==before then lo=mid else hi=mid end
         end
         local switch=(lo+hi)/2
-        local q=smooth((elapsed-switch)/TURN+.5)
-        local yaw=lerp(before,after,q)*90
-        local side=math.abs(yaw)
-        if side>=62 then
-            sample.turn=(sample.turn<0 and -1 or 1)*(.5+.5*(side-62)/28)
-        elseif side>=24 then
-            -- The authored three-quarter view looks left; mirror it to the right.
-            sample.skin_frame=3*8;sample.action=0
-            sample.turn=(yaw>0 and -1 or 1)*(.84+.1*(side-24)/38)
+        local span=(before~=0 and after~=0) and TURN or ARRIVE
+        local q=(elapsed-switch)/span+.5
+        if q<=0 or q>=1 then return sample end
+        local bank=sample.bank
+        if before~=0 and after~=0 then
+            play(sample,"turn",q,before>0)
+            sample.bank=bank*math.abs(1-2*q)
+        elseif after==0 then
+            play(sample,before<0 and "arrive_left" or "arrive_right",q)
+            sample.bank=bank*(1-q)
         else
-            sample.skin_frame=8;sample.action=11
-            sample.turn=.9+.1*(1-side/24)
+            play(sample,after<0 and "arrive_left" or "arrive_right",q,true)
+            sample.bank=bank*q
         end
-        sample.bank=sample.bank*(side/90)
+        sample.turn=1;sample.action=0
         return sample
     end
     return {
@@ -411,7 +484,7 @@ return function(choreography)
         end,
         sample=function(id,s,elapsed)
             local sample=turned(id,s,elapsed,raw(id,s,elapsed))
-            sample.facing=nil
+            sample.facing=nil;sample.generated=nil
             if sample.beat==1 then
                 local semantic=choreography.sample(id,elapsed)
                 sample.opacity=math.min(1,semantic.progress*8)

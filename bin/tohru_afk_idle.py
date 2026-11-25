@@ -328,7 +328,7 @@ def main():
     args = parser.parse_args()
     if args.command == "assets":
         for path in (BIN.parent/"shell/assistant/dragon",BIN.parent/"share/tohru/shell/assistant/dragon"):
-            if all((path/name).is_file() for name in ("afk.webp","afk-closeup.png","afk-bust.png")):
+            if all((path/name).is_file() for name in ("afk.webp","afk-closeup-motion.webp","afk-bust-motion.webp")):
                 print(json.dumps({"art":str(path.resolve())}));return 0
         raise ValueError("AFK artwork unavailable")
     if args.command == "serve":

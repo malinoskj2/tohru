@@ -210,6 +210,10 @@ return function(puppet, host)
         local reach = 256 + 75 * math.abs(type(scale) == "number" and scale or 0)
         local pose = s.pose
         local skin, closeup = pose == "skin", pose == "closeup"
+        local function frame(n, last)
+            return n == nil or (finite(n, 0, last) and n == math.floor(n))
+        end
+        local frames = closeup_grid * closeup_grid - 1
         if
             not finite(s.x, -reach, lease.w + reach)
             or not finite(s.y, -reach, lease.h + reach)
@@ -222,22 +226,18 @@ return function(puppet, host)
             or not finite(air, 0, 1)
             or (s.behind and not lease.target)
             or (closeup and closeup_path == "")
-            or (
-                closeup
-                and s.closeup_frame ~= nil
-                and (
-                    not finite(s.closeup_frame, 0, closeup_grid * closeup_grid - 1)
-                    or s.closeup_frame ~= math.floor(s.closeup_frame)
-                )
-            )
+            or (closeup and not (frame(s.closeup_frame, frames) and frame(s.closeup_next, frames)))
             or (
                 skin
                 and (
                     skin_path == ""
-                    or not finite(s.skin_frame, 0, skin_rows * 8 - 1)
-                    or s.skin_frame ~= math.floor(s.skin_frame)
+                    or s.skin_frame == nil
+                    or not frame(s.skin_frame, skin_rows * 8 - 1)
+                    or not frame(s.skin_next, skin_rows * 8 - 1)
                 )
             )
+            or (s.skin_mix ~= nil and not finite(s.skin_mix, 0, 1))
+            or (s.closeup_mix ~= nil and not finite(s.closeup_mix, 0, 1))
         then
             stop("sample")
             return false
@@ -310,11 +310,17 @@ return function(puppet, host)
             end
         end
         fact.ai_actor_skin_open, fact.ai_actor_closeup_open = skin, closeup
+        -- An optional next frame crossfades over the current one, so a short
+        -- generated sequence reads as continuous motion at any playback rate.
         if skin then
             fact.ai_actor_skin_frame = s.skin_frame
+            fact.ai_actor_skin_next = s.skin_next or s.skin_frame
+            fact.ai_actor_skin_mix = s.skin_next and (s.skin_mix or 0) or 0
         end
         if closeup then
             fact.ai_actor_closeup_frame = s.closeup_frame or 0
+            fact.ai_actor_closeup_next = s.closeup_next or s.closeup_frame or 0
+            fact.ai_actor_closeup_mix = s.closeup_next and (s.closeup_mix or 0) or 0
         end
         if lease.flying then
             puppet.wingbeat((now - lease.beat) / 0.42)

@@ -82,7 +82,8 @@
         "image": "bust"
       },
       "size": 768,
-      "action": "This is a close-up of her head and raised paws, cropped at the chest by the bottom edge of the frame, exactly as in Picture 1. Over the clip she curiously peers outward as though through a window: she gently presses and taps both rounded paws against the invisible glass, tilts her head to one side, glances to her left and then to her right, blinks once, and smiles, then returns to exactly the pose of Picture 2. The chest crop stays at the bottom edge and her head stays the same size."
+      "action": "This is a close-up of her head and raised paws, cropped at the chest by the bottom edge of the frame, exactly as in Picture 1. Her head, horns, paws and chest stay perfectly still at exactly the same position, angle and size for the whole clip; nothing moves toward any edge of the frame. Only her face is alive: she curiously peers outward as though through a window, her eyes glance to her left, then to her right, she blinks once, her smile widens happily and her small wings give a tiny flutter, then she returns to exactly the pose of Picture 2.",
+      "seed": 11
     },
     "closeup": {
       "first": {
