@@ -185,7 +185,7 @@ return function(assistant, puppet, flight, service_executable)
             end
         elseif event == "hearing" then
             hearing = message.on == true
-            if message.on then task_speech.interrupt() end
+            if message.on then task_speech.silence() end
             if message.on then greeting_serial = greeting_serial + 1 end
             if not message.on then
                 local mine = transcript_serial
@@ -257,7 +257,7 @@ return function(assistant, puppet, flight, service_executable)
             fact.ai_mouth = tonumber(message.level) or 0
             puppet.mouth(fact.ai_mouth, tonumber(message.viseme))
         elseif event == "barge" then
-            task_speech.interrupt()
+            task_speech.silence()
             voice_return.interrupt()
             turn_generation = turn_generation + 1
             streaming_speech = false
@@ -347,21 +347,21 @@ return function(assistant, puppet, flight, service_executable)
             if assistant.voice_ready and request and request ~= "" then assistant.voice_ready(conv, request) end
             return
         elseif kind == "delta" then
-            task_speech.interrupt()
+            task_speech.silence()
             if streaming_speech and answer and answer ~= "" then
                 streamed_text = true
                 send({cmd = "speech_delta", generation = turn_generation, text = answer})
             end
             return
         elseif kind == "done" then
-            task_speech.interrupt()
+            task_speech.silence()
             if streaming_speech then
                 send({cmd = "speech_end", generation = turn_generation, text = not streamed_text and (answer or "") or nil})
             else
                 send({cmd = "say", text = answer or "", conversation = conversation, generation = turn_generation, turn_id = capture_id})
             end
         elseif kind == "error" then
-            task_speech.interrupt()
+            task_speech.silence()
             send({cmd = "say", text = "Hmm, that didn't work. The details are in the chat.", conversation = conversation})
         else
             send({cmd = "hush"})
@@ -426,7 +426,8 @@ return function(assistant, puppet, flight, service_executable)
             task_speech.interrupt()
             accepted, reason = false, "hidden"
         elseif hearing then
-            task_speech.interrupt()
+            task_speech.silence()
+            task_speech.update(event, true)
             accepted, reason = false, "hearing"
         else
             accepted, reason = task_speech.update(event)

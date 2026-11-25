@@ -497,6 +497,35 @@ for _, visible in ipairs({false, true}) do
 end
 assistant.streaming = real_stream
 fact.ai_dragon_open = true
+-- A capture onset that never becomes a turn (a VAD blip) stops task audio but
+-- keeps the voice origin, so a background launch's ack and readiness still speak.
+assistant.detach_voice = function() return false end
+assistant.voice_ready = function() end
+speech_listener("origin", "task-chat", "orca:blip-canonical", true, nil, "blip-request")
+current_service.line({event="hearing", on=true})
+current_service.line({event="hearing", on=false})
+task_update("ack", 1, "I have accepted that work.", "blip-request")
+assert(diagnostics[#diagnostics].stage == "task_update", diagnostics[#diagnostics].reason)
+assert(written[#written].message.cmd == "speech_end" and written[#written].message.text == "I have accepted that work.")
+local blip_ack = written[#written].message.generation
+current_service.line({event="speaking", on=true, generation=blip_ack, conversation="task-chat"})
+local before_blip = #written
+current_service.line({event="hearing", on=true})
+assert(#written == before_blip + 1 and written[#written].message.cmd == "hush")
+task_update("progress", 2, "Recorded while the owner has the floor.", "blip-request")
+assert(diagnostics[#diagnostics].stage == "task_update_dropped" and diagnostics[#diagnostics].reason == "hearing")
+current_service.line({event="hearing", on=false})
+current_service.line({event="speaking", on=false, generation=blip_ack})
+ticking[1]()
+assert(written[#written].message.cmd == "hush", "a progress muted during capture is never replayed")
+task_update("progress", 3, "The background worker is ready.", "blip-request")
+assert(diagnostics[#diagnostics].stage == "task_update", diagnostics[#diagnostics].reason)
+assert(written[#written].message.cmd == "speech_end" and written[#written].message.text == "The background worker is ready.")
+current_service.line({event="turn", text="A committed owner turn"})
+local after_committed = #written
+task_update("done", 4, "Superseded completion", "blip-request")
+assert(#written == after_committed and diagnostics[#diagnostics].reason == "origin_mismatch")
+print("Task updates: a capture blip keeps the origin; the next ack and progress speak")
 print("Task updates: prompt acknowledgement, microphone open, progress, completion priority, replay, follow-up input and hide passed")
 
 -- Switching backends invalidates old audio and never reuses a local conversation ID.

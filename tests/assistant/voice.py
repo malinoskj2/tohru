@@ -288,6 +288,13 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(self.events, [{"on": True, "event": "hearing"}, {"on": False, "event": "hearing"},
                                        {"text": "And tomorrow", "event": "turn"}])
 
+    def test_a_wordless_onset_in_a_conversation_never_takes_the_floor(self):
+        voice = make_voice(FakeRecognizer([""], ""))
+        voice.extend_conversation()
+        self.speak(voice, 5, 40)
+        self.assertFalse(voice.in_speech)
+        self.assertEqual(self.events, [])
+
     def test_the_keyword_spotter_wakes_the_recognizer_with_the_buffered_speech(self):
         recognizer = FakeRecognizer(["TOHRU WHAT"], "TOHRU WHAT TIME IS IT")
         voice = make_voice(recognizer, FakeSpotter(hit_at=12))
@@ -446,6 +453,7 @@ class VoiceTests(unittest.TestCase):
             self.assertEqual(voice.speaker.hushed, 0)
             self.assertNotIn("barge", [e["event"] for e in self.events])
             self.assertNotIn("turn", [e["event"] for e in self.events])
+            self.assertNotIn("hearing", [e["event"] for e in self.events])
 
     @unittest.skipIf(numpy is None, "needs numpy")
     def test_pause_then_barge_on_real_words(self):

@@ -35,6 +35,7 @@ pub struct Voice {
     pending: String,
     in_speech: bool,
     hearing: bool,
+    hearing_eligible: bool,
     start_run: u32,
     quiet_ms: u32,
     speech_ms: u32,
@@ -108,6 +109,7 @@ impl Voice {
             pending: String::new(),
             in_speech: false,
             hearing: false,
+            hearing_eligible: false,
             start_run: 0,
             quiet_ms: 0,
             speech_ms: 0,
@@ -272,10 +274,7 @@ impl Voice {
         self.audio = self.preroll.iter().flatten().copied().collect();
         self.preroll.clear();
         self.spotting = self.spotter.is_some() && !self.active();
-        if self.active() {
-            self.hearing = true;
-            emit(json!({"event":"hearing","on":true}));
-        }
+        self.hearing_eligible = self.active();
         if self.spotting {
             if let Some(spotter) = &mut self.spotter {
                 spotter.start();

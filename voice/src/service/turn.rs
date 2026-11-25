@@ -119,6 +119,18 @@ impl Voice {
         } else {
             self.asr.partial()
         };
+        // VAD onset alone is not the owner taking the floor: a blip that never
+        // yields words must not silence speech. Barge-in waits for the same
+        // non-backchannel words before it confirms, so the speaker's own pause
+        // covers the gap and a backchannel can still resume.
+        if self.hearing_eligible
+            && !self.hearing
+            && !partial.trim().is_empty()
+            && !(self.barge_pending && policy::backchannel(&partial))
+        {
+            self.hearing = true;
+            emit(json!({"event":"hearing","on":true}));
+        }
         let visible = if self.rejected || self.spotting {
             String::new()
         } else {
