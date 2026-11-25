@@ -14,7 +14,7 @@ return function(choreography)
     local LAST=15
     -- Source frame (of 124) behind each edge-clip cell: cells are picked half
     -- by motion and half by time, and playback follows the generated timing.
-    local EDGE_PICKS={edge_reach={0,3,6,9,11,15,17,20,22,25,27,31,34,37,41,43,47,48,51,54,57,59,62,65,67,69,71,73,75,76,78,80,82,84,87,89,91,93,96,98,100,103,107,109,113,117,120,123},edge_pull={0,4,7,10,14,17,21,23,25,28,31,33,36,39,42,45,48,51,53,56,59,60,62,64,65,66,68,69,70,71,72,73,74,76,77,78,79,80,82,83,85,87,88,90,91,93,94,95,96,97,98,99,100,102,103,104,106,108,110,112,115,118,121,123},edge_head={0,3,6,9,12,16,18,22,25,28,31,34,36,39,42,43,46,48,50,52,55,57,59,61,64,67,69,72,74,76,78,81,83,85,87,89,91,94,96,98,100,102,106,109,113,117,120,123}}
+    local EDGE_PICKS={edge_reach={0,3,6,9,11,15,17,20,22,25,27,31,34,37,41,43,47,48,51,54,57,59,62,65,67,69,71,73,75,76,78,80,82,84,87,89,91,93,96,98,100,103,107,109,113,117,120,123},edge_pull={0,3,6,9,13,16,18,21,24,28,30,33,36,38,41,43,46,50,52,55,57,59,62,64,67,69,71,74,75,77,78,79,80,81,82,83,84,85,86,87,89,90,91,92,93,94,96,97,98,99,100,101,102,103,105,106,108,109,111,113,115,118,120,123},edge_head={0,3,6,9,12,16,18,22,25,28,31,34,36,39,42,43,46,48,50,52,55,57,59,61,64,67,69,72,74,76,78,81,83,85,87,89,91,94,96,98,100,102,106,109,113,117,120,123}}
     -- Last source frame of the glance that opens the pull clip, before its dip.
     local EDGE_GLANCE=14
     local TURN,ARRIVE=.8,.6
@@ -356,12 +356,15 @@ return function(choreography)
                 local look=smooth(math.min(1,1.8*math.sin(math.pi*q)))
                 clip(sample,"edge_pull",0,EDGE_GLANCE,look*(1-.3*math.sin(math.pi*smooth((q-.25)/.5))))
             elseif pose=="peek_hide" then
-                -- Ducks back quickly, the paw letting go last.
-                clip(sample,"edge_head",123,20,smooth(q))
+                -- Her paw lets go of the edge and slips back, then her head
+                -- ducks after it, blended like the way out.
+                local src=q<.5 and 123-42*smooth(q/.5) or 81-61*smooth((q-.5)/.5)
+                clip(sample,"edge_head",20,123,(src-20)/103,true)
             elseif pose=="peek_pull" then
-                -- Her quick dip as she lets go (source 56-72) gets a full
-                -- second; the glance before it and the glide after run brisker.
-                local src=q<.36 and 56*q/.36 or q<.6 and 56+16*(q-.36)/.24 or 72+51*(q-.6)/.4
+                -- Her slide out from behind the edge (source 50-86) runs at
+                -- its generated pace; the glance and grip before it and the
+                -- glide after run brisker.
+                local src=q<.3 and 50*q/.3 or q<.65 and 50+36*(q-.3)/.35 or 86+37*(q-.65)/.35
                 clip(sample,"edge_pull",0,123,src/123)
             elseif pose=="peek_wave" then
                 -- The pull ends on the horned wave key: two happy hops

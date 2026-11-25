@@ -234,7 +234,7 @@
     "edge_pull": {
       "first": 240,
       "count": 64,
-      "sha256": "b0871aa0663d90d769d93e37c5fc8d4ee3de51816c402f569d15703843a2634a"
+      "sha256": "1f3dde45ef2658adf9f22956204ca8ee6486f232c27b75638847af44ab65414a"
     },
     "edge_head": {
       "first": 304,
