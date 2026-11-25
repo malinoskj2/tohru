@@ -1486,9 +1486,7 @@ class Voice:
         self.utterance = list(preroll)
         self.preroll = []
         self.spotting = self.spotter is not None and not self.in_conversation()
-        if self.in_conversation():
-            self.hearing = True
-            emit("hearing", on=True)
+        self.hearing_eligible = self.in_conversation()
         if self.spotting:
             self.spotter.start()
             for w in preroll:
@@ -1550,6 +1548,14 @@ class Voice:
         elif not self.rejected and (speech or self.quiet_ms <= TAIL_MS):
             self.recognizer.feed(window)
         partial = "" if (self.rejected or self.spotting) else self.recognizer.partial()
+        # VAD onset alone is not the owner taking the floor: a blip that never
+        # yields words must not silence speech. Barge-in waits for the same
+        # non-backchannel words before it confirms, so the speaker's own pause
+        # covers the gap and a backchannel can still resume.
+        if (getattr(self, "hearing_eligible", False) and not self.hearing and partial.strip()
+                and not (self.barge_pending and is_backchannel(partial))):
+            self.hearing = True
+            emit("hearing", on=True)
         visible = self.draft_candidate(partial) if not self.rejected and not self.spotting else ""
         if visible != getattr(self, "display_transcript", ""):
             self.display_transcript = visible

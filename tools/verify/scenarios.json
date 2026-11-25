@@ -1,0 +1,72 @@
+{
+  "native-authority": {
+    "tier": "N",
+    "feature": "verification/features/background-work.md",
+    "implemented": true,
+    "status": "candidate native gate; validate current evidence",
+    "prerequisites": "Prepared pinned Orca 1.4.268 under this checkout .tmp; Node, Python, Git, built workspace packages, generated Nix modules, native SQLite dependencies; scripted provider and audio adapters explicitly excluded"
+  },
+  "home-direct": {
+    "tier": "H",
+    "feature": "verification/features/home-conversation.md",
+    "implemented": false,
+    "status": "unverified: executable runner not implemented",
+    "prerequisites": "Authentic local coordinating Home caller; same provider/history; captured synthetic phrase, typed popup and GUI continuation; private capture/IPC and real models"
+  },
+  "job-conversation": {
+    "tier": "H",
+    "feature": "verification/features/background-work.md",
+    "implemented": false,
+    "status": "unverified: executable runner not implemented",
+    "prerequisites": "Authentic Home caller, exact accepted dispatch/run, actual 75-second private work, one packaged tohru-voice-status call per status, renewed interest and analyzed completion"
+  },
+  "task-floor": {
+    "tier": "H",
+    "feature": "verification/features/background-work.md",
+    "implemented": false,
+    "status": "unverified: executable runner not implemented",
+    "prerequisites": "Real visibility/hearing/capture and owner revisions; replay and late callbacks; hidden result retention; native plus Lua controller evidence"
+  },
+  "capture-parity": {
+    "tier": "M",
+    "feature": "verification/features/voice-capture-playback.md",
+    "implemented": false,
+    "status": "unverified: executable runner not implemented",
+    "prerequisites": "MODEL_ROOT catalog/readiness/README, compatible pinned base/adapter and runtime, scheduler reservation through teardown, authored corpus, private Pulse endpoints; host capture separately gated"
+  },
+  "desktop-controls": {
+    "tier": "N",
+    "feature": "verification/features/desktop-controls.md",
+    "implemented": false,
+    "status": "unverified: executable runner not implemented",
+    "prerequisites": "Sandbox private display/bus/Pulse, native Settings/launcher input and persistence runners; recorded stand-ins for power actions"
+  },
+  "package-runtime": {
+    "tier": "Package",
+    "feature": "verification/features/install-recovery.md",
+    "implemented": false,
+    "status": "unverified: executable runner not implemented",
+    "prerequisites": "Exact committed local source and locked NAR pin, candidate Nix derivation, minimal-PATH packaged help and isolated smoke; full host build separately scoped"
+  },
+  "owned-recovery": {
+    "tier": "H",
+    "feature": "verification/features/install-recovery.md",
+    "implemented": false,
+    "status": "unverified: executable runner not implemented",
+    "prerequisites": "Reviewed supervisor rehearsal then harmless owned unit; authentic task-specific coordinator authorization for GUI restart; exact PID/birth/runtime/profile and denied environment"
+  },
+  "expiry-restoration": {
+    "tier": "H",
+    "feature": "verification/features/voice-capture-playback.md",
+    "implemented": false,
+    "status": "unverified: executable runner not implemented",
+    "prerequisites": "Authentic typed retirement before routing restoration, independent expiry, owned routing ledger and hashes, external-edit conflict checks, completed fresh post-restoration observation"
+  },
+  "session-units": {
+    "tier": "C",
+    "feature": "verification/features/install-recovery.md",
+    "implemented": true,
+    "status": "supported isolated shipped CLI file-generation journey; not package or desktop proof",
+    "prerequisites": "Executable shipped bin/tohru, Python 3.11+, bash, dirname, readlink and shipped session specification; private output/XDG state; no display, caller, service manager or model"
+  }
+}

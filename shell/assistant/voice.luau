@@ -201,7 +201,7 @@ return function(assistant, puppet, flight, service_executable)
             end
         elseif event == "hearing" then
             hearing = message.on == true
-            if message.on then task_speech.interrupt() end
+            if message.on then task_speech.silence() end
             if message.on then greeting_serial = greeting_serial + 1 end
             if not message.on then
                 local mine = transcript_serial
@@ -280,7 +280,7 @@ return function(assistant, puppet, flight, service_executable)
             puppet.mouth(fact.ai_mouth, tonumber(message.viseme))
         elseif event == "barge" then
             notice_reply = nil
-            task_speech.interrupt()
+            task_speech.silence()
             voice_return.interrupt()
             turn_generation = turn_generation + 1
             streaming_speech = false
@@ -390,7 +390,7 @@ return function(assistant, puppet, flight, service_executable)
             end
             return
         elseif kind == "delta" then
-            task_speech.interrupt()
+            task_speech.silence()
             if notice_reply and notice_reply.generation == turn_generation then
                 notice_reply.text = notice_reply.text .. (answer or "")
                 return
@@ -405,7 +405,7 @@ return function(assistant, puppet, flight, service_executable)
             end
             return
         elseif kind == "done" then
-            task_speech.interrupt()
+            task_speech.silence()
             if notice_reply and notice_reply.generation == turn_generation then
                 notice_reply.text = answer or notice_reply.text
                 notice_reply.done = true
@@ -420,7 +420,7 @@ return function(assistant, puppet, flight, service_executable)
             end
         elseif kind == "error" then
             notice_reply = nil
-            task_speech.interrupt()
+            task_speech.silence()
             send({cmd = "say", text = "Hmm, that didn't work. The details are in the chat.", conversation = conversation})
         else
             notice_reply = nil
@@ -487,7 +487,8 @@ return function(assistant, puppet, flight, service_executable)
             task_speech.interrupt()
             accepted, reason = false, "hidden"
         elseif hearing then
-            task_speech.interrupt()
+            task_speech.silence()
+            task_speech.update(event, true)
             accepted, reason = false, "hearing"
         else
             accepted, reason = task_speech.update(event)

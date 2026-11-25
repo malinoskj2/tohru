@@ -99,7 +99,7 @@ return function(clock, speak, hush)
                 if active and active.kind == "chatter" then hush(); active = nil end
             end
         end,
-        update = function(event)
+        update = function(event, muted)
             if not chat or not request or request == "" or event.chat ~= chat or event.request ~= request then return false, "origin_mismatch" end
             local rank = priority[event.kind]
             if not rank or event.kind == "chatter" or type(event.task) ~= "string" or event.task == "" or #event.task > 128
@@ -120,6 +120,9 @@ return function(clock, speak, hush)
                 if active and (active.task == event.task or active.kind == "chatter") then hush(); active = nil end
                 return true
             end
+            -- The owner has the floor: track the task so later updates still
+            -- speak, but never play this one afterwards.
+            if muted then return false, "hearing" end
             if task.last_text == event.text then return true end
             task.last_text = event.text
             enqueue({task = event.task, kind = event.kind, priority = rank, text = event.text})
@@ -129,6 +132,12 @@ return function(clock, speak, hush)
             if active and active.generation == generation then active = nil end
         end,
         interrupt = interrupt,
+        -- Stops audio only. The origin and task records survive capture onsets
+        -- and the turn's own reply; only a committed turn, conversation end or
+        -- hush unbinds them through interrupt().
+        silence = function()
+            if active then hush(); active = nil end
+        end,
         tick = tick,
     }
 end
