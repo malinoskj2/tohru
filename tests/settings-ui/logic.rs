@@ -94,7 +94,12 @@ fn microphone_choices_and_metadata_refresh_follow_the_selected_source() {
         tohru_settings={snapshot=function() return config end, set=function(k,v) config[k].value=v; return config end}
         json={decode=function(out) return {sources={'usb-microphone','echo-cancel-by-name'},selected='usb-microphone',aec='unknown'} end}
         queries=0
+        shortcut_queries=0
         function run(command,args,callback)
+            if command=='tohru' then
+                assert(args[1]=='shortcuts' and args[2]=='status')
+                shortcut_queries=shortcut_queries+1; callback('{}',0); return
+            end
             assert(command=='tohru-voice' and args[1]=='--devices')
             queries=queries+1; callback('{}',0)
         end
@@ -108,6 +113,7 @@ fn microphone_choices_and_metadata_refresh_follow_the_selected_source() {
         .unwrap();
     lua.load(
         r#"
+        assert(shortcut_queries==1)
         handlers.settings_category(3)
         local microphone, aec
         for i,row in ipairs(model.settings_rows) do
