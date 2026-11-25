@@ -123,7 +123,7 @@ return function(puppet, host)
             lease.raw, lease.snapshot = raw, s
             puppet.lease_art(s.art or "")
         end
-        local ok, id = pcall(spawn, "tohru_flight_scene.py", { "--actor" }, receive, function()
+        local ok, id = pcall(spawn, "tohru-flight-scene", { "--actor" }, receive, function()
             if active == lease then
                 lease.process = nil
                 stop("observer")

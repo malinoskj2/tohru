@@ -146,7 +146,7 @@ From the checkout, run the following with Lua 5.4 and Python 3. The recording co
 ```sh
 lua tests/assistant/flight.lua
 lua tests/assistant/flight-voice.lua
-python3 tests/assistant/flight-scene.py
+cargo test --manifest-path desktop/Cargo.toml flight_scene
 python3 tests/assistant/flight-demo.py --voice
 "$FLIGHT_RUNTIME" --check shell/bar.plm
 "$FLIGHT_RUNTIME" --check .tmp/flight-voice-demo/flight.plm

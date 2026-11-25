@@ -14,7 +14,7 @@ let
   };
   source = lib.fileset.toSource {
     root = ../.;
-    fileset = lib.fileset.unions [ ../bin ../shell ../share ../docs ../LICENSE ../tests/assistant/home-guard.py ];
+    fileset = lib.fileset.unions [ ../bin ../shell ../share ../docs ../LICENSE ];
   };
   runtimeUnwrapped = rustPlatform.buildRustPackage {
     pname = "pleamar-tohru";
@@ -55,6 +55,7 @@ let
   runtime = callPackage ./runtime-wrapper.nix { runtime = runtimeUnwrapped; };
   portalPython = python3.withPackages (p: [ p.dbus-fast ]);
   nativeVoice = callPackage ./voice-native.nix { };
+  desktop = callPackage ./desktop.nix { };
 in stdenvNoCC.mkDerivation {
   pname = "tohru-shell";
   version = "0.1.0";
@@ -63,23 +64,26 @@ in stdenvNoCC.mkDerivation {
   buildInputs = [ python3 ];
   dontBuild = true;
   doInstallCheck = true;
+  nativeInstallCheckInputs = [ jq ];
+  # The Home hook wraps a foreground command in the installed guard, which must then run it.
   installCheckPhase = ''
-    TOHRU_HOME_GUARD=$out/bin/tohru-home-guard python3 tests/assistant/home-guard.py InstalledHookCommand
+    plan=$(echo '{"tool":"Bash","input":{"command":"printf guarded"}}' | $out/bin/tohru-home-guard plan --remaining-ms 5000)
+    [[ $(jq -r .decision <<<"$plan") == wrap ]]
+    [[ $(bash -c "$(jq -r .input.command <<<"$plan")" 2>/dev/null) == guarded ]]
   '';
   installPhase = ''
     runHook preInstall
     mkdir -p $out/bin $out/share/tohru
+    install -m755 ${desktop}/bin/* $out/bin/
     cp -r shell $out/share/tohru/
     cp -r share/tohru/. $out/share/tohru/
     cp -r docs $out/share/tohru/
-    cp bin/tohru_*.py bin/tohru-idle bin/tohru-session-action bin/tohru-wallpaper-media $out/bin/
+    cp bin/tohru_*.py bin/tohru-idle bin/tohru-wallpaper-media $out/bin/
     cp LICENSE $out/share/tohru/LICENSE
     cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-session-run \
       bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-wallpaper bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev bin/tohru-assistant bin/tohru-discord bin/tohru_discord.py $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}"
-    install -Dm755 bin/tohru-voice-status $out/bin/tohru-voice-status
-    install -Dm755 bin/tohru-home-guard $out/bin/tohru-home-guard
-    install -m644 bin/tohru_home_guard.py bin/tohru_status_ledger.py $out/bin/
+    install -m644 bin/tohru_status_ledger.py $out/bin/
     wrapProgram $out/bin/tohru-home-guard --prefix PATH : ${lib.makeBinPath [ bash ]}
     wrapProgram $out/bin/tohru-assistant --prefix PATH : ${lib.makeBinPath [ libnotify ]}
     wrapProgram $out/bin/tohru-run \
@@ -138,6 +142,6 @@ in stdenvNoCC.mkDerivation {
     done
     runHook postInstall
   '';
-  passthru = { inherit runtime nativeVoice withVoice; };
+  passthru = { inherit runtime nativeVoice desktop withVoice; };
   meta = { license = lib.licenses.mit; platforms = lib.platforms.linux; mainProgram = "tohru-run"; };
 }

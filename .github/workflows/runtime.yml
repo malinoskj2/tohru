@@ -49,6 +49,9 @@ jobs:
       - name: Build pleamar
         run: cargo build --release --locked --manifest-path .tmp/pleamar-runtime/Cargo.toml --bin pleamar
 
+      - name: Build the desktop helpers
+        run: cargo build --release --locked --manifest-path desktop/Cargo.toml
+
       - name: Test Tohru's runtime additions
         run: cargo test --release --locked --manifest-path .tmp/pleamar-runtime/Cargo.toml --lib tohru_
 

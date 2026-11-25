@@ -18,7 +18,7 @@ state = state[: state.index("    let ai_colour")].replace('file "', 'file "assis
 (out / "state.plm").write_text(state + "}\n")
 (out / "flight.plm").write_text("""scene FlightTest {
 surface { size: 1, 1; keyboard: none; reserve: -1 }
-permissions { run: "tohru_flight_scene.py" }
+permissions { run: "tohru-flight-scene" }
 fact notices_dnd = false
 fact test_hits = 0
 text test_output = ""
@@ -56,8 +56,8 @@ if voice:
     scene = out / "flight.plm"
     scene.write_text(
         scene.read_text().replace(
-            'run: "tohru_flight_scene.py"',
-            'services: "window"; run: "tohru_flight_scene.py", "tohru-flight-fixture-voice"',
+            'run: "tohru-flight-scene"',
+            'services: "window"; run: "tohru-flight-scene", "tohru-flight-fixture-voice"',
         )
     )
     (out / "flight.luau").write_text("""

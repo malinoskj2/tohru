@@ -66,7 +66,7 @@ _G.json = {
 _G.spawn = function(command, args, line, exit)
     sequence = sequence + 1
     processes[command] = { id = sequence, line = line, exit = exit }
-    if command == "tohru_flight_scene.py" then
+    if command == "tohru-flight-scene" then
         after(12, function()
             line(sample)
         end)
@@ -371,7 +371,7 @@ assert(not fact.ai_flight_art and not fact.ai_actor_skin_open and puppet.pose() 
 assert(text.ai_actor_skin_src == "" and text.ai_actor_closeup_src == "")
 frame.pose = "closeup"
 assert(actor.play(lease, frame))
-local stale = processes["tohru_flight_scene.py"]
+local stale = processes["tohru-flight-scene"]
 flight.hearing(true)
 assert(reason == "activity" and not fact.ai_flying and not fact.ai_actor_open and fact.ai_actor_scale == 1)
 assert(not actor.play(lease, frame) and not actor.release(lease))
@@ -385,7 +385,7 @@ for _, interrupt in ipairs({ "voice", "geometry", "lock", "input", "output", "DN
     local t = assert(actor.acquire(ready, stopped))
     advance(3250)
     assert(observed == t and scene)
-    local watcher = processes["tohru_flight_scene.py"]
+    local watcher = processes["tohru-flight-scene"]
     if interrupt == "voice" then
         flight.show()
     elseif interrupt == "geometry" then

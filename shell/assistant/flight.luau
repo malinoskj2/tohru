@@ -204,7 +204,7 @@ return function(paths, puppet, make_actor)
                 interrupt()
             end
         end
-        local ok, id = pcall(spawn, "tohru_flight_scene.py", {}, receive, function()
+        local ok, id = pcall(spawn, "tohru-flight-scene", {}, receive, function()
             if mine ~= serial then
                 return
             end

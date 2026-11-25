@@ -19,7 +19,7 @@ state=state[:state.index('    let ai_colour')].replace('file "','file "assistant
 (out/'state.plm').write_text(state+'}\n')
 (out/'afk.plm').write_text('''scene AfkNativeTest {
 surface { size: 1, 1; keyboard: none; reserve: -1 }
-permissions { services: "window"; run: "tohru_flight_scene.py" }
+permissions { services: "window"; run: "tohru-flight-scene" }
 fact notices_dnd = false
 text test_output = ""
 event test_scene ->

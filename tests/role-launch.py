@@ -15,12 +15,12 @@ class RoleLaunch(unittest.TestCase):
         (ROOT / '.tmp').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='flight-launch-', dir=ROOT / '.tmp') as directory:
             recorder = Path(directory) / 'runtime'
-            recorder.write_text('#!/usr/bin/env python3\nimport shutil\nprint(shutil.which("tohru_flight_scene.py"))\n')
+            recorder.write_text('#!/usr/bin/env python3\nimport shutil\nprint(shutil.which("tohru-flight-scene"))\n')
             recorder.chmod(0o755)
             environment = dict(os.environ, TOHRU_RUNTIME=str(recorder))
             environment.pop('TOHRU_RUNTIME_OVERRIDE', None)
             result = subprocess.run([str(ROOT / 'bin/tohru-run')], env=environment, text=True, capture_output=True, check=True)
-            self.assertEqual(result.stdout.strip(), str(ROOT / 'bin/tohru_flight_scene.py'))
+            self.assertEqual(result.stdout.strip(), str(ROOT / 'bin/tohru-flight-scene'))
 
     def test_wrappers_override_inherited_shell_role(self):
         (ROOT / '.tmp').mkdir(exist_ok=True)

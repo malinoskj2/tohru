@@ -14,4 +14,4 @@ Unknown, starting, idle, stopped or completed work does not receive a running-st
 
 This command combines verification and acknowledgement in one tool slot. It does not make Home's own inference or synchronous tools concurrent, periodically chatter, change models or create another public conversation. Long work should use persisted `worker-start --background` admission and private executors. Acceptance is distinct from readiness; verified completion remains a separate, once-only analyzed result.
 
-The command is shipped in the Tohru package and can also be invoked as `python3 /path/to/tohru/bin/tohru-voice-status` from a committed checkout. It requires the existing local coordinating-bot environment and supported Orca voice APIs; it never creates or overrides a caller or voice origin.
+The command is shipped in the Tohru package and can also be run as `/path/to/tohru/bin/tohru-voice-status` from a checkout after `cargo build --release --manifest-path desktop/Cargo.toml`. It requires the existing local coordinating-bot environment and supported Orca voice APIs; it never creates or overrides a caller or voice origin.

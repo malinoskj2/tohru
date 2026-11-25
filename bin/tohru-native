@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Each Rust command in this checkout is a link to this script, which runs the build of the same name.
+set -euo pipefail
+here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+name=$(basename -- "${BASH_SOURCE[0]}")
+target=${TOHRU_DESKTOP_TARGET:-${CARGO_TARGET_DIR:-$here/../desktop/target}/release}
+if [[ ! -x $target/$name ]]; then
+    printf '%s: not built; run cargo build --release --manifest-path %s/desktop/Cargo.toml\n' "$name" "$(dirname -- "$here")" >&2
+    exit 127
+fi
+export TOHRU_BIN_DIR=${TOHRU_BIN_DIR:-$here}
+exec "$target/$name" "$@"

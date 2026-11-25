@@ -19,7 +19,7 @@ and typed answers stay text-only. Missing seed state fails the journey.
 reports blocked. Required before implementation: real local coordinating caller,
 private bus/display/Pulse/IPC instance, history/registry identity, event subscription
 before action, real provider and model readiness with scheduler reservation.
-Reuse bin/tohru-voice-status and tests/voice-status.py for its bounded status boundary;
+Reuse bin/tohru-voice-status and its tests in desktop/ for its bounded status boundary;
 its simulated replies do not establish native admission or this journey.
 
 ## Gotchas

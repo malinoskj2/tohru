@@ -1,0 +1,39 @@
+[package]
+name = "tohru-desktop"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT"
+publish = false
+
+[lints.rust]
+unsafe_code = "deny"
+unreachable_pub = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "warn"
+multiple_unsafe_ops_per_block = "warn"
+allow_attributes_without_reason = "warn"
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
+[dependencies]
+anyhow = "1.0.105"
+clap = { version = "4.6.10", features = ["derive"] }
+jiff = "1.0.3"
+regex = "1.13.2"
+rusqlite = { version = "0.43.0", features = ["bundled"] }
+rustix = { version = "1.1.6", features = ["event", "fs", "net", "pipe", "process", "time"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+sha2 = "0.11.1"
+signal-hook = "0.4.6"
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+toml = "1.2.3"
+uuid = { version = "1.29.3", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

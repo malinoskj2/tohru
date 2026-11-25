@@ -4,7 +4,7 @@ For supported one-call background status from Home, use
 [`tohru-voice-status`](../../docs/voice-status.md). It snapshots the actual owner,
 verifies the worker and calls the existing native producer with that exact
 request; it does not replace native caller admission or create a new origin.
-Run its boundary tests with `python3 tests/voice-status.py`.
+Run its boundary tests with `cargo test --manifest-path desktop/Cargo.toml voice_status`.
 
 The responsive Home stack adds `desktop-voice-quick.patch` after
 `desktop-voice-completion-observability.patch`, then the Nix package's
