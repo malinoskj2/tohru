@@ -141,7 +141,7 @@ pub fn run(args: &Args) -> Result<()> {
                     Ok(json!({"output":path,"shape":[1,80,800]}))
                 }
                 "policy" => Ok(
-                    json!({"wake":policy::wake_split(text),"possible":policy::wake_possible(text),"sentence":policy::sentence(text),"backchannel":policy::backchannel(text),"unfinished":policy::unfinished(text),"hold":policy::explicit_hold(text),"handoff":policy::explicit_handoff(text),"speakable":policy::speakable(text),"chunks":policy::chunks(text)}),
+                    json!({"wake":policy::wake_split(text),"sentence":policy::sentence(text),"backchannel":policy::backchannel(text),"unfinished":policy::unfinished(text),"hold":policy::explicit_hold(text),"handoff":policy::explicit_handoff(text),"speakable":policy::speakable(text),"chunks":policy::chunks(text)}),
                 ),
                 "stream" => {
                     let mut buffer = policy::SpeechBuffer::default();

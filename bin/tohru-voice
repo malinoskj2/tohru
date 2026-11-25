@@ -65,7 +65,6 @@ ECHO_TAIL_S = 0.4
 TURN_COMPLETE = 0.5
 TURN_WINDOW = SAMPLE_RATE * 8
 CONVERSATION_SECONDS = 60
-WAKE_DECIDE_MS = 1600
 MOUTH_FPS = 30
 SPOKEN_CHARS = 16384
 SEMANTIC = os.environ.get("TOHRU_VOICE_SEMANTIC", "off") == "on"
@@ -85,6 +84,9 @@ KWS_THRESHOLD = 0.05
 WAKE_FORMS = {"tohru", "toru", "taro", "tarou", "taru", "tauru", "teru", "tooru", "tohro", "toro", "toroo", "torou", "torru", "torue", "toeru"}
 WAKE_SPLIT_FIRST = {"to", "too", "two", "toe", "tow", "toh"}
 WAKE_SPLIT_SECOND = {"ru", "rue", "roo", "rew", "ro", "row", "who"}
+WAKE_FILLERS = {"hey", "hi", "hello", "hiya", "yo", "okay", "ok", "oh", "um", "uh", "umm", "uhm", "er", "erm", "ah", "hm", "hmm", "mm", "alright"}
+# Ordinary English words the recognizer also hears for the name; they wake only in the addressing position.
+WAKE_LEADING_ONLY = {"taro", "toro", "rue", "row", "who"}
 BACKCHANNEL_WORDS = {
     "mm", "mmm", "mhm", "mhmm", "hm", "hmm", "hmmm", "m",
     "uh", "um", "umm", "ah", "oh", "eh", "er", "huh", "uhuh", "aha",
@@ -343,31 +345,34 @@ def find_echo_cancel(kind):
     return None
 
 
+def wake_match(tokens):
+    """(index, length) of the first name form addressing Tohru, or None."""
+    lead = 0
+    while lead < len(tokens) and tokens[lead] in WAKE_FILLERS:
+        lead += 1
+    for i, token in enumerate(tokens):
+        if token in WAKE_FORMS:
+            form = (token,)
+        elif i + 1 < len(tokens) and token in WAKE_SPLIT_FIRST and tokens[i + 1] in WAKE_SPLIT_SECOND:
+            form = (token, tokens[i + 1])
+        else:
+            continue
+        if i == lead or not WAKE_LEADING_ONLY.intersection(form):
+            return i, len(form)
+    return None
+
+
 def wake_split(transcript):
-    """Returns the request after a leading wake word, "" for the wake word alone, or None without one."""
+    """Returns the request with the name and leading fillers removed, "" for the name alone, or None without it."""
     tokens = words(transcript)
-    if not tokens:
+    match = wake_match(tokens)
+    if match is None:
         return None
-    used = 0
-    if tokens[0] in WAKE_FORMS:
-        used = 1
-    elif len(tokens) >= 2 and tokens[0] in WAKE_SPLIT_FIRST and tokens[1] in WAKE_SPLIT_SECOND:
-        used = 2
-    else:
-        return None
-    rest = tokens[used:]
-    return sentence(" ".join(rest))
-
-
-def wake_possible(transcript):
-    """Whether a partial transcript can still turn out to start with the wake word."""
-    tokens = words(transcript)
-    if not tokens:
-        return True
-    first = tokens[0]
-    if len(tokens) == 1:
-        return any(form.startswith(first) for form in WAKE_FORMS) or first in WAKE_SPLIT_FIRST
-    return wake_split(transcript) is not None
+    at, length = match
+    before = tokens[:at]
+    while before and before[0] in WAKE_FILLERS:
+        before.pop(0)
+    return sentence(" ".join(before + tokens[at + length:]))
 
 
 def sentence(text):
@@ -1294,7 +1299,6 @@ class Voice:
         self.quiet_ms = 0.0
         self.speech_ms = 0.0
         self.utterance = []
-        self.rejected = False
         self.turn_checked = False
         self.turn_complete = None
         self.barge_ms = 0.0
@@ -1467,7 +1471,9 @@ class Voice:
     def wake_decision(self, accepted, reason, candidate=""):
         tokens = words(candidate)
         # Only the bounded wake candidate, never the request or a full transcript.
-        leading = [re.sub("[^a-z]", "", token.lower())[:16] for token in tokens[:(2 if tokens and tokens[0] in WAKE_SPLIT_FIRST else 1)]]
+        match = wake_match(tokens)
+        at, length = match if match else (0, 2 if tokens and tokens[0] in WAKE_SPLIT_FIRST else 1)
+        leading = [re.sub("[^a-z]", "", token)[:16] for token in tokens[at:at + length]]
         diagnostic("wake_decision", turn_id=getattr(self, "turn_id", None), accepted=accepted,
                    reason=reason, candidate=leading, speech_ms=round(getattr(self, "final_speech_ms", 0) if accepted else getattr(self, "speech_ms", 0)),
                    mode="kws" if self.spotter is not None else "asr")
@@ -1482,7 +1488,6 @@ class Voice:
         self.speech_ms = 0.0
         self.turn_checked = False
         self.turn_complete = None
-        self.rejected = False
         self.utterance = list(preroll)
         self.preroll = []
         self.spotting = self.spotter is not None and not self.in_conversation()
@@ -1517,7 +1522,7 @@ class Voice:
     def maybe_draft(self, partial):
         if SEMANTIC and self.semantic_decision in ('error', 'unsupported'):
             return
-        if self.rejected or self.spotting or self.barge_pending or self.thinking or self.draft_count >= MAX_DRAFTS:
+        if self.spotting or self.barge_pending or self.thinking or self.draft_count >= MAX_DRAFTS:
             return
         if self.draft_text or (not SEMANTIC and self.turn_complete is False):
             return
@@ -1545,9 +1550,9 @@ class Voice:
             self.quiet_ms += WINDOW_MS
         if self.spotting:
             self.spot(window, speech)
-        elif not self.rejected and (speech or self.quiet_ms <= TAIL_MS):
+        elif speech or self.quiet_ms <= TAIL_MS:
             self.recognizer.feed(window)
-        partial = "" if (self.rejected or self.spotting) else self.recognizer.partial()
+        partial = "" if self.spotting else self.recognizer.partial()
         # VAD onset alone is not the owner taking the floor: a blip that never
         # yields words must not silence speech. Barge-in waits for the same
         # non-backchannel words before it confirms, so the speaker's own pause
@@ -1556,7 +1561,7 @@ class Voice:
                 and not (self.barge_pending and is_backchannel(partial))):
             self.hearing = True
             emit("hearing", on=True)
-        visible = self.draft_candidate(partial) if not self.rejected and not self.spotting else ""
+        visible = "" if self.spotting else self.draft_candidate(partial)
         if visible != getattr(self, "display_transcript", ""):
             self.display_transcript = visible
             emit("transcript", text=visible[:240], final=False)
@@ -1567,40 +1572,31 @@ class Voice:
             elif self.barge_decide_ms >= BARGE_DECIDE_MS:
                 self.end_turn()
                 return
-        elif self.thinking and self.in_conversation() and not self.spotting and not self.rejected:
+        elif self.thinking and self.in_conversation() and not self.spotting:
             if not is_backchannel(partial):
                 self.cancel_thinking()
-        if not self.rejected and not self.spotting and not self.in_conversation() and self.speech_ms >= 320:
-            prefix_rejected = not wake_possible(partial)
-            if prefix_rejected or (self.speech_ms >= WAKE_DECIDE_MS and wake_split(partial) is None):
-                self.wake_decision(False, "prefix_mismatch" if prefix_rejected else "decision_timeout", partial)
-                self.discard_draft()
-                self.rejected = True
-                self.recognizer.drop()
-        if self.draft_text and not self.rejected:
+        if self.draft_text:
             current_norm = normalize_transcript(self.draft_candidate(partial))
             if current_norm != self.draft_text:
                 self.discard_draft()
-        if self.quiet_ms >= PAUSE_MS and not self.turn_checked:
+        if self.quiet_ms >= PAUSE_MS and not self.turn_checked and not self.spotting:
             self.turn_checked = True
-            if self.turn is not None and not self.rejected:
+            if self.turn is not None:
                 audio = np_concat(self.np, self.utterance)
                 self.turn_complete = self.turn.probability(audio) > TURN_COMPLETE
         if not speech and self.quiet_ms >= DRAFT_PAUSE_MS:
             self.maybe_draft(partial)
-        unfinished = not self.rejected and not self.spotting and is_unfinished(partial)
+        unfinished = not self.spotting and is_unfinished(partial)
         if unfinished or self.turn_complete is False:
             hold = INCOMPLETE_HOLD_MS
         elif self.draft_text or self.turn_complete is True:
             hold = DRAFT_HOLD_MS
         else:
             hold = COMPLETE_HOLD_MS
-        if self.rejected and self.quiet_ms >= PAUSE_MS:
-            self.discard_draft()
-            self.reset_utterance()
-            return
         if self.quiet_ms >= hold or self.speech_ms >= MAX_UTTERANCE_MS:
-            if SEMANTIC and not self.rejected and not self.spotting and not self.barge_pending and self.draft_candidate(partial):
+            if self.spotting and not self.spot_end():
+                return
+            if SEMANTIC and not self.spotting and not self.barge_pending and self.draft_candidate(partial):
                 request = self.draft_candidate(partial)
                 if self.semantic_decision != 'wait' and explicit_handoff(request):
                     self.semantic_decision = "respond"
@@ -1622,19 +1618,24 @@ class Voice:
             self.end_turn()
 
     def spot(self, window, speech):
-        heard = (speech or self.quiet_ms <= TAIL_MS) and self.spotter.feed(window)
-        if not heard and (self.speech_ms >= WAKE_DECIDE_MS or self.quiet_ms >= PAUSE_MS):
-            heard = self.spotter.flush()
-            if not heard:
-                self.wake_decision(False, "kws_no_match")
-                self.rejected = True
-        if heard or self.rejected:
-            self.spotting = False
-            self.spotter.drop()
-        if heard:
-            self.recognizer.start()
-            for w in self.utterance:
-                self.recognizer.feed(w)
+        if (speech or self.quiet_ms <= TAIL_MS) and self.spotter.feed(window):
+            self.spotted()
+
+    def spot_end(self):
+        """At the end of the utterance, flushes the spotter; False when the name never came."""
+        if self.spotter.flush():
+            self.spotted()
+            return True
+        self.wake_decision(False, "kws_no_match")
+        self.reset_utterance()
+        return False
+
+    def spotted(self):
+        self.spotting = False
+        self.spotter.drop()
+        self.recognizer.start()
+        for w in self.utterance:
+            self.recognizer.feed(w)
 
     def confirm_barge(self):
         self.barge_pending = False
@@ -1674,8 +1675,8 @@ class Voice:
         active_draft = self.draft_text
         self.final_speech_ms = self.speech_ms
         diagnostic("asr_finalize_start", turn_id=getattr(self, "turn_id", None), last_speech_ns=getattr(self, "last_speech_ns", None))
-        transcript = "" if self.rejected else self.recognizer.finish()
-        if SEMANTIC and not pending and not self.rejected:
+        transcript = self.recognizer.finish()
+        if SEMANTIC and not pending:
             final_request = self.draft_candidate(transcript)
             same = normalize_transcript(final_request) == self.semantic_text
             if final_request and ((same and self.semantic_decision == 'wait') or explicit_hold(final_request)):
@@ -1690,7 +1691,7 @@ class Voice:
                 diagnostic('semantic_fallback', reason='final_unclassified', policy='ordinary')
                 self.discard_draft()
                 active_draft = ''
-        diagnostic("asr_finalize_end", turn_id=getattr(self, "turn_id", None), result_chars=len(transcript), rejected=self.rejected)
+        diagnostic("asr_finalize_end", turn_id=getattr(self, "turn_id", None), result_chars=len(transcript))
         if pending:
             if is_backchannel(transcript):
                 self.resume_barge()

@@ -10,6 +10,12 @@ const WAKE: &[&str] = &[
 ];
 const FIRST: &[&str] = &["to", "too", "two", "toe", "tow", "toh"];
 const SECOND: &[&str] = &["ru", "rue", "roo", "rew", "ro", "row", "who"];
+const FILLERS: &[&str] = &[
+    "hey", "hi", "hello", "hiya", "yo", "okay", "ok", "oh", "um", "uh", "umm", "uhm", "er", "erm",
+    "ah", "hm", "hmm", "mm", "alright",
+];
+// Ordinary English words the recognizer also hears for the name; they wake only in the addressing position.
+const LEADING_ONLY: &[&str] = &["taro", "toro", "rue", "row", "who"];
 const BACK: &[&str] = &[
     "mm", "mmm", "mhm", "mhmm", "hm", "hmm", "hmmm", "m", "uh", "um", "umm", "ah", "oh", "eh",
     "er", "huh", "uhuh", "aha", "yeah", "yep", "yup", "ya", "ok", "okay", "right", "sure",
@@ -52,30 +58,43 @@ pub fn sentence(text: &str) -> String {
         .unwrap_or_default()
 }
 
-pub fn wake_split(text: &str) -> Option<String> {
-    let tokens = words(text);
-    let used = if tokens.first().is_some_and(|t| WAKE.contains(&t.as_str())) {
-        1
-    } else if tokens.len() >= 2
-        && FIRST.contains(&tokens[0].as_str())
-        && SECOND.contains(&tokens[1].as_str())
-    {
-        2
-    } else {
-        return None;
-    };
-    Some(sentence(&tokens[used..].join(" ")))
+/// The index and length of the first name form addressing Tohru.
+pub fn wake_match(tokens: &[String]) -> Option<(usize, usize)> {
+    let is = |set: &[&str], t: &String| set.contains(&t.as_str());
+    let lead = tokens.iter().take_while(|t| is(FILLERS, t)).count();
+    tokens.iter().enumerate().find_map(|(i, token)| {
+        let form = if is(WAKE, token) {
+            &tokens[i..=i]
+        } else if is(FIRST, token) && tokens.get(i + 1).is_some_and(|t| is(SECOND, t)) {
+            &tokens[i..i + 2]
+        } else {
+            return None;
+        };
+        (i == lead || !form.iter().any(|t| is(LEADING_ONLY, t))).then_some((i, form.len()))
+    })
 }
 
-pub fn wake_possible(text: &str) -> bool {
-    let tokens = words(text);
-    if tokens.is_empty() {
-        true
-    } else if tokens.len() == 1 {
-        WAKE.iter().any(|form| form.starts_with(&tokens[0])) || FIRST.contains(&tokens[0].as_str())
+/// How many leading tokens a rejected candidate's diagnostic may show.
+pub fn wake_split_width(tokens: &[String]) -> usize {
+    if tokens.first().is_some_and(|t| FIRST.contains(&t.as_str())) {
+        2
     } else {
-        wake_split(text).is_some()
+        1
     }
+}
+
+/// The request with the name and leading fillers removed, empty for the name alone.
+pub fn wake_split(text: &str) -> Option<String> {
+    let tokens = words(text);
+    let (at, length) = wake_match(&tokens)?;
+    let before = tokens[..at]
+        .iter()
+        .skip_while(|t| FILLERS.contains(&t.as_str()));
+    let request: Vec<&str> = before
+        .chain(&tokens[at + length..])
+        .map(String::as_str)
+        .collect();
+    Some(sentence(&request.join(" ")))
 }
 
 pub fn backchannel(text: &str) -> bool {
@@ -288,14 +307,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_name_wakes_anywhere_and_leaves_the_request() {
+        for (transcript, request) in [
+            ("Tohru what time is it", Some("What time is it")),
+            ("toru", Some("")),
+            ("TO RU tell me a joke", Some("Tell me a joke")),
+            ("hey Tohru, what's the weather", Some("What's the weather")),
+            (
+                "okay tohru what's on my calendar",
+                Some("What's on my calendar"),
+            ),
+            ("hey tohru", Some("")),
+            ("so Tohru, what's next", Some("So what's next")),
+            (
+                "can you check this Tohru what's failing",
+                Some("Can you check this what's failing"),
+            ),
+            ("can you check this Tohru", Some("Can you check this")),
+            ("hey can you check this tohru", Some("Can you check this")),
+            ("can you check this to ru", Some("Can you check this")),
+            ("Tohru tell me about Tohru", Some("Tell me about tohru")),
+            ("taro what's up", Some("What's up")),
+            ("hey toro", Some("")),
+            ("too roo what is this", Some("What is this")),
+            ("what time is it", None),
+            ("hello there", None),
+            ("the tour tore through a torus of tarot cards totally", None),
+            ("I had taro for lunch", None),
+            ("let's order some toro", None),
+            ("who did you give it to who", None),
+            ("I want to row", None),
+            ("that is Tohru's", None),
+        ] {
+            assert_eq!(wake_split(transcript).as_deref(), request, "{transcript}");
+        }
+    }
+
+    #[test]
     fn wake_and_continuation() {
         assert_eq!(
             wake_split("too roo what is this"),
             Some("What is this".into())
         );
-        assert_eq!(wake_split("Hello Tohru"), None);
-        assert!(wake_possible("toh"));
-        assert!(!wake_possible("tell me"));
         assert_eq!(join("I think…", "Maybe a map"), "I think maybe a map");
     }
 

@@ -86,35 +86,15 @@ impl Voice {
             self.quiet_ms += 32;
         }
         if self.spotting {
-            let mut heard = false;
-            if let Some(spotter) = &mut self.spotter {
-                heard = (speech || self.quiet_ms <= 160) && spotter.feed(frame);
-                if !heard && (self.speech_ms >= 1600 || self.quiet_ms >= 220) {
-                    heard = spotter.feed(&vec![0.; 4800]);
-                    if !heard {
-                        self.rejected = true;
-                    }
-                }
+            if (speech || self.quiet_ms <= 160)
+                && self.spotter.as_mut().is_some_and(|s| s.feed(frame))
+            {
+                self.spotted();
             }
-            if self.rejected {
-                self.wake_decision(false, "kws_no_match", "");
-            }
-            if heard || self.rejected {
-                self.spotting = false;
-                if let Some(spotter) = &mut self.spotter {
-                    spotter.clear();
-                }
-            }
-            if heard {
-                self.asr.start();
-                for frame in self.audio.chunks(WINDOW) {
-                    self.asr.feed(frame);
-                }
-            }
-        } else if !self.rejected && (speech || self.quiet_ms <= 160) {
+        } else if speech || self.quiet_ms <= 160 {
             self.asr.feed(frame);
         }
-        let partial = if self.rejected || self.spotting {
+        let partial = if self.spotting {
             String::new()
         } else {
             self.asr.partial()
@@ -131,7 +111,7 @@ impl Voice {
             self.hearing = true;
             emit(json!({"event":"hearing","on":true}));
         }
-        let visible = if self.rejected || self.spotting {
+        let visible = if self.spotting {
             String::new()
         } else {
             self.candidate(&partial)
@@ -150,42 +130,16 @@ impl Voice {
                 self.end_turn();
                 return Ok(());
             }
-        } else if self.thinking
-            && self.active()
-            && !self.spotting
-            && !self.rejected
-            && !policy::backchannel(&partial)
+        } else if self.thinking && self.active() && !self.spotting && !policy::backchannel(&partial)
         {
             self.cancel_thinking();
         }
-        if !self.rejected && !self.spotting && !self.active() && self.speech_ms >= 320 {
-            let prefix = !policy::wake_possible(&partial);
-            if prefix || (self.speech_ms >= 1600 && policy::wake_split(&partial).is_none()) {
-                self.wake_decision(
-                    false,
-                    if prefix {
-                        "prefix_mismatch"
-                    } else {
-                        "decision_timeout"
-                    },
-                    &partial,
-                );
-                self.discard();
-                self.rejected = true;
-                self.asr.clear();
-            }
-        }
-        if !self.draft.is_empty()
-            && !self.rejected
-            && policy::normalize(&self.candidate(&partial)) != self.draft
-        {
+        if !self.draft.is_empty() && policy::normalize(&self.candidate(&partial)) != self.draft {
             self.discard();
         }
-        if self.quiet_ms >= 220 && !self.turn_checked {
+        if self.quiet_ms >= 220 && !self.turn_checked && !self.spotting {
             self.turn_checked = true;
-            if !self.rejected
-                && let Some(turn) = &mut self.turn
-            {
+            if let Some(turn) = &mut self.turn {
                 match turn.probability(&self.audio) {
                     Ok(p) => self.turn_complete = Some(p > 0.5),
                     Err(error) => {
@@ -198,7 +152,7 @@ impl Voice {
         if !speech && self.quiet_ms >= 220 {
             self.maybe_draft(&partial);
         }
-        let unfinished = !self.rejected && !self.spotting && policy::unfinished(&partial);
+        let unfinished = !self.spotting && policy::unfinished(&partial);
         let hold = if unfinished || self.turn_complete == Some(false) {
             1050
         } else if !self.draft.is_empty() || self.turn_complete == Some(true) {
@@ -206,14 +160,11 @@ impl Voice {
         } else {
             650
         };
-        if self.rejected && self.quiet_ms >= 220 {
-            self.discard();
-            self.reset();
-            return Ok(());
-        }
         if self.quiet_ms >= hold || self.speech_ms >= 30000 {
+            if self.spotting && !self.spot_end() {
+                return Ok(());
+            }
             if self.semantic
-                && !self.rejected
                 && !self.spotting
                 && !self.barge_pending
                 && !self.candidate(&partial).is_empty()
@@ -285,6 +236,31 @@ impl Voice {
         emit(event);
     }
 
+    fn spot_end(&mut self) -> bool {
+        if self
+            .spotter
+            .as_mut()
+            .is_some_and(|s| s.feed(&vec![0.; 4800]))
+        {
+            self.spotted();
+            return true;
+        }
+        self.wake_decision(false, "kws_no_match", "");
+        self.reset();
+        false
+    }
+
+    fn spotted(&mut self) {
+        self.spotting = false;
+        if let Some(spotter) = &mut self.spotter {
+            spotter.clear();
+        }
+        self.asr.start();
+        for frame in self.audio.chunks(WINDOW) {
+            self.asr.feed(frame);
+        }
+    }
+
     pub(super) fn end_turn(&mut self) {
         let pending = self.barge_pending;
         let mut draft = self.draft.clone();
@@ -293,12 +269,8 @@ impl Voice {
             "asr_finalize_start",
             json!({"turn_id":self.turn_id,"last_speech_ns":self.last_speech_ns}),
         );
-        let transcript = if self.rejected {
-            String::new()
-        } else {
-            self.asr.finish()
-        };
-        if self.semantic && !pending && !self.rejected {
+        let transcript = self.asr.finish();
+        if self.semantic && !pending {
             let request = self.candidate(&transcript);
             let same = policy::normalize(&request) == self.semantic_text;
             if !request.is_empty()
@@ -324,7 +296,7 @@ impl Voice {
         }
         diagnostic(
             "asr_finalize_end",
-            json!({"turn_id":self.turn_id,"result_chars":transcript.chars().count(),"rejected":self.rejected}),
+            json!({"turn_id":self.turn_id,"result_chars":transcript.chars().count()}),
         );
         if pending {
             if policy::backchannel(&transcript) {

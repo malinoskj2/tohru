@@ -147,12 +147,12 @@ def make_voice(recognizer, spotter=None):
 
 class VoiceTests(unittest.TestCase):
     def test_wake_rejection_logs_bounded_candidate_and_reason_without_request(self):
-        voice = make_voice(FakeRecognizer(["TOTALLY PRIVATE REQUEST CONTENT"], ""))
+        voice = make_voice(FakeRecognizer(["TOTALLY PRIVATE"], "TOTALLY PRIVATE REQUEST CONTENT"))
         with patch.object(voice_module, "diagnostic") as logged:
             self.speak(voice, 20, 40)
         decisions = [call.kwargs for call in logged.call_args_list if call.args[0] == "wake_decision"]
         self.assertEqual(len(decisions), 1)
-        self.assertEqual(decisions[0]["reason"], "prefix_mismatch")
+        self.assertEqual(decisions[0]["reason"], "final_name_mismatch")
         self.assertEqual(decisions[0]["candidate"], ["totally"])
         self.assertNotIn("PRIVATE", repr(logged.call_args_list))
 
@@ -255,15 +255,91 @@ class VoiceTests(unittest.TestCase):
                 break
             voice.hear(b"", False)
 
-    def test_wake_word_forms(self):
-        self.assertEqual(voice_module.wake_split("TOHRU WHAT TIME IS IT"), "What time is it")
-        self.assertEqual(voice_module.wake_split("toru"), "")
-        self.assertEqual(voice_module.wake_split("TO RU tell me a joke"), "Tell me a joke")
-        self.assertEqual(voice_module.wake_split("TERU WHAT'S THE WEATHER"), "What's the weather")
-        self.assertIsNone(voice_module.wake_split("WHAT TIME IS IT TOHRU"))
-        self.assertIsNone(voice_module.wake_split("TOTALLY"))
-        self.assertTrue(voice_module.wake_possible("TO"))
-        self.assertFalse(voice_module.wake_possible("WHAT"))
+    WAKE_CASES = (
+        ('Tohru what time is it', 'What time is it'),
+        ('toru', ''),
+        ('TO RU tell me a joke', 'Tell me a joke'),
+        ("hey Tohru, what's the weather", "What's the weather"),
+        ("okay tohru what's on my calendar", "What's on my calendar"),
+        ('hey tohru', ''),
+        ("so Tohru, what's next", "So what's next"),
+        ("can you check this Tohru what's failing", "Can you check this what's failing"),
+        ('can you check this Tohru', 'Can you check this'),
+        ('hey can you check this tohru', 'Can you check this'),
+        ('can you check this to ru', 'Can you check this'),
+        ('Tohru tell me about Tohru', 'Tell me about tohru'),
+        ("taro what's up", "What's up"),
+        ('hey toro', ''),
+        ('too roo what is this', 'What is this'),
+        ('what time is it', None),
+        ('hello there', None),
+        ('the tour tore through a torus of tarot cards totally', None),
+        ('I had taro for lunch', None),
+        ("let's order some toro", None),
+        ('who did you give it to who', None),
+        ('I want to row', None),
+        ("that is Tohru's", None),
+    )
+
+    def test_the_name_wakes_anywhere_and_leaves_the_request(self):
+        for transcript, request in self.WAKE_CASES:
+            with self.subTest(transcript=transcript):
+                self.assertEqual(voice_module.wake_split(transcript), request)
+
+    def test_a_name_late_in_the_utterance_wakes_without_earlier_partials_showing(self):
+        recognizer = FakeRecognizer(["CAN", "CAN YOU CHECK", "CAN YOU CHECK THIS", "CAN YOU CHECK THIS TOHRU"],
+                                    "CAN YOU CHECK THIS TOHRU")
+        voice = make_voice(recognizer)
+        with patch.object(voice_module, "diagnostic") as logged:
+            self.speak(voice, 80, 40)
+        self.assertEqual({t["text"] for t in self.transcripts}, {"Can you check this"})
+        self.assertEqual([e["event"] for e in self.events], ["conversation", "turn"])
+        self.assertEqual(self.events[1]["text"], "Can you check this")
+        decision = next(call.kwargs for call in logged.call_args_list if call.args[0] == "wake_decision")
+        self.assertEqual((decision["accepted"], decision["candidate"]), (True, ["tohru"]))
+
+    def test_the_name_after_hey_wakes_with_only_the_request(self):
+        voice = make_voice(FakeRecognizer(["HEY", "HEY TOHRU WHAT"], "HEY TOHRU WHAT'S THE WEATHER"))
+        self.speak(voice, 20, 40)
+        self.assertEqual([e["event"] for e in self.events][-2:], ["conversation", "turn"])
+        self.assertEqual(self.events[-1]["text"], "What's the weather")
+
+    def test_the_name_mid_sentence_wakes_with_both_sides(self):
+        voice = make_voice(FakeRecognizer(["SO"], "SO TOHRU CAN YOU CHECK THE BUILD"))
+        self.speak(voice, 20, 40)
+        self.assertEqual(self.events[-1], {"text": "So can you check the build", "event": "turn"})
+
+    def test_a_common_word_form_mid_sentence_does_not_wake(self):
+        voice = make_voice(FakeRecognizer(["I HAD"], "I HAD TARO FOR LUNCH"))
+        self.speak(voice, 20, 40)
+        self.assertEqual(self.events, [])
+
+    def test_the_spotter_hears_a_late_name_and_replays_the_whole_utterance(self):
+        recognizer = FakeRecognizer(["CAN YOU CHECK THIS TOHRU"], "CAN YOU CHECK THIS TOHRU")
+        spotter = FakeSpotter(hit_at=70)
+        voice = make_voice(recognizer, spotter)
+        self.speak(voice, 80, 40)
+        self.assertGreaterEqual(recognizer.fed, 70)
+        self.assertEqual(spotter.flushed, 0)
+        self.assertEqual(self.events[-1], {"text": "Can you check this", "event": "turn"})
+
+    def test_the_spotter_keeps_listening_through_a_short_pause(self):
+        recognizer = FakeRecognizer(["CHECK THIS TOHRU"], "CHECK THIS TOHRU")
+        spotter = FakeSpotter(hit_at=26)
+        voice = make_voice(recognizer, spotter)
+        voice.begin([])
+        for _ in range(20):
+            voice.hear(b"", True)
+        for _ in range(int(voice_module.PAUSE_MS / voice_module.WINDOW_MS) + 2):
+            voice.hear(b"", False)
+        self.assertTrue(voice.spotting and voice.in_speech)
+        for _ in range(10):
+            voice.hear(b"", True)
+        for _ in range(40):
+            if not voice.in_speech:
+                break
+            voice.hear(b"", False)
+        self.assertEqual(self.events[-1], {"text": "Check this", "event": "turn"})
 
     def test_speech_without_the_wake_word_is_discarded_unheard(self):
         recognizer = FakeRecognizer(["WHAT", "WHAT TIME IS IT"], "WHAT TIME IS IT")
