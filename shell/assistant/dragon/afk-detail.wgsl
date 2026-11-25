@@ -9,7 +9,7 @@ fn shade(s: Shader) -> vec4<f32> {
     if (s.a.y > 0.5 && s.a.y < 1.5 && s.a.x < 1.5) {
         let span = max(1.0-smoothstep(0.14,0.40,uv.x),smoothstep(0.63,0.82,uv.x));
         let wing = exp(-pow((uv.y-mix(0.50,0.76,s.a.x))/0.075,2.0));
-        delta.y = 0.036 * span * wing * sin(s.a.z*6.2831853);
+        delta.y = 0.05 * span * wing * sin(s.a.z*6.2831853);
     }
     if (s.a.y > 1.5 && s.a.x < 1.5) {
         let center = mix(vec2<f32>(0.53,0.27),vec2<f32>(0.50,0.40),s.a.x);

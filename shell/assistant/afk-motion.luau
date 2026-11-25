@@ -3,7 +3,18 @@
 return function(choreography)
     local rows={glass_paw=0,head_tilt=1,wing_begin=2,wing_straighten=3,horn_low=4,horn_polish=5,
         chin_on_paws=6,hopeful_wave=7,curled_sleep=8,perch_tail_dangle=9,tail_follow_left=10,tail_follow_right=11}
+    -- Registered eye scale between the full-body closeup and the bust.
+    local BODY=1.9245097100019937
+    local TURN=.5
+    local function clamp(v,a,b)return math.max(a,math.min(b,v)) end
     local function lerp(a,b,p)return a+(b-a)*p end
+    local function smooth(p)p=clamp(p,0,1);return p*p*(3-2*p) end
+    local function smoother(p)p=clamp(p,0,1);return p*p*p*(p*(p*6-15)+10) end
+    local function back(p)
+        p=clamp(p,0,1)
+        local c=1.4
+        return 1+(c+1)*(p-1)^3+c*(p-1)^2
+    end
     local function dimensions(s)
         local scale=s.scale or 1
         -- Camera approach fills the output vertically and intentionally crops
@@ -12,6 +23,7 @@ return function(choreography)
         local glass=math.min(s.w*.92,s.h)
         return scale,camera,glass
     end
+    local bust_scenes={glass_inspection=true,upside_down_peek=true}
     local function availability(s)
         local result,reasons={},{}
         for _,scene in ipairs(choreography.catalog) do result[scene.id]=true end
@@ -30,8 +42,10 @@ return function(choreography)
             reasons.screen_window="1254px camera source cannot provide required face coverage at native physical resolution"
         end
         if glass*scale>1254 or glass*scale*1020/1254 < short*.65 then
-            result.glass_inspection=false
-            reasons.glass_inspection="1254px glass-paw source cannot provide required face coverage at native physical resolution"
+            for id in pairs(bust_scenes) do
+                result[id]=false
+                reasons[id]="1254px bust source cannot provide required face coverage at native physical resolution"
+            end
         end
         local t=s.target
         local top=t and math.max(75,t.x+75)
@@ -48,32 +62,345 @@ return function(choreography)
         local _,camera,glass=dimensions(s)
         local home={x=s.w-123,y=s.h-133,scale=1}
         local target=s.target
+        local bust=glass/150
         local a={home=home,
             air={x=s.w*.58,y=s.h*.43,scale=1},lower_air={x=s.w*.58,y=s.h*.43+55,scale=1},
             depth_far={x=s.w*.40,y=s.h*.36,scale=.18},depth_return={x=s.w*.65,y=s.h*.30,scale=.32},
             depth_near={x=s.w*.50,y=s.h*.56,scale=camera/150},
-            glass={x=s.w*.50,y=s.h*.50,scale=glass/150},
+            glass={x=s.w*.50,y=s.h*.50,scale=bust},
             bottom_corner={x=s.w-113,y=s.h-73,scale=1},
-            top_hidden={x=s.w*.47,y=-95,scale=1},top_peek={x=s.w*.47,y=-20,scale=1},
             upper_air={x=s.w*.54,y=s.h*.20,scale=1},lower_edge={x=s.w*.55,y=s.h+5,scale=1}}
-        if id=="screen_window" then a.home={x=s.w-123,y=s.h-133,scale=1} end
-        if id=="glass_inspection" then
+        if id=="screen_window" then
+            -- Out into the room first, then a swooping approach to the glass.
+            a.approach_via={x=s.w*.24,y=s.h*.18,scale=.36}
+            a.retreat_via={x=s.w*.78,y=s.h*.16,scale=.34}
+        end
+        if bust_scenes[id] then
             -- Eye-registered full-body → bust handoff. The full body flies
-            -- first; both eye centers coincide through the small crossfade.
-            a.home.scale=1/1.9245097100019937
-            a.home.y=a.home.y-26.2
+            -- with the registered body transform at its normal size.
+            home.scale=1/BODY
+            home.y=home.y-26.2
+        end
+        if id=="upside_down_peek" then
+            -- The bust hangs from the top edge, rotated: its chest crop stays
+            -- above the output while the head fills the upper screen.
+            a.top_exit={x=s.w*.47,y=-140,scale=1/BODY}
+            a.top_hidden={x=s.w*.47,y=-75*bust-24,scale=bust}
+            a.top_peek={x=s.w*.47,y=33*bust,scale=bust}
         end
         if target then
-            a.window_top={x=math.max(75,math.min(s.w-75,target.x+target.w*.62)),y=target.y-14,scale=1}
+            a.window_top={x=math.max(75,math.min(s.w-75,target.x+target.w*.62)),y=target.y,scale=1}
             a.window_hidden={x=target.x+target.w*.50,y=target.y+target.h*.50,scale=1}
-            a.window_left={x=target.x-20,y=target.y+target.h*.40,scale=1}
-            a.window_right={x=target.x+target.w+20,y=target.y+target.h*.64,scale=1}
+            a.window_left={x=target.x-22,y=target.y+target.h*.40,scale=1}
+            a.window_left_shy={x=target.x+14,y=target.y+target.h*.36,scale=1}
+            a.window_right={x=target.x+target.w+24,y=target.y+target.h*.58,scale=1}
         end
-        if id~="screen_window" and id~="glass_inspection" then
+        if id~="screen_window" and not bust_scenes[id] then
             local normal=math.min(1,236/(150*(s.scale or 1)))
             for _,anchor in pairs(a) do anchor.scale=anchor.scale*normal end
         end
+        if a.window_top then
+            -- The perch frame's seat sits 21 px below the cell center; the
+            -- body rests on the edge and the tail drops behind the window.
+            a.window_top.y=target.y-21*a.window_top.scale+1
+        end
         return a
+    end
+    local function travel(from,to,via,p)
+        local e=smoother(p)
+        local dx,dy=to.x-from.x,to.y-from.y
+        if not via then
+            local lift=clamp(math.sqrt(dx*dx+dy*dy)*.2,24,150)
+            via={x=(from.x+to.x)/2,y=math.min(from.y,to.y)-lift,
+                scale=2/(1/from.scale+1/to.scale)}
+        end
+        local u=1-e
+        local x=u*u*from.x+2*u*e*via.x+e*e*to.x
+        local y=u*u*from.y+2*u*e*via.y+e*e*to.y
+        -- Depth moves linearly in 1/scale, so growth reads as perspective.
+        local z=u*u/from.scale+2*u*e/via.scale+e*e/to.scale
+        return x,y,1/z
+    end
+    local function flight_state(from,to,via,p,duration)
+        local x,y,scale=travel(from,to,via,p)
+        local h=.01
+        local x0,y0=travel(from,to,via,math.max(0,p-h))
+        local x1,y1=travel(from,to,via,math.min(1,p+h))
+        local span=(math.min(1,p+h)-math.max(0,p-h))*duration
+        return x,y,scale,(x1-x0)/span,(y1-y0)/span
+    end
+    -- Whole wing cycles per beat, so the flap rests level on arrival.
+    local function wing(progress,duration,period)
+        local cycles=math.max(1,math.floor(duration/period+.5))
+        return progress*cycles
+    end
+    local function raw(id,s,elapsed)
+        local semantic=choreography.sample(id,elapsed)
+        local scene=choreography.get(id)
+        local a=anchors(s,id)
+        local from,to=assert(a[semantic.from]),assert(a[semantic.to])
+        local p=semantic.ease
+        local duration=scene.beats[semantic.beat][1]
+        local sample={x=lerp(from.x,to.x,p),y=lerp(from.y,to.y,p),scale=lerp(from.scale,to.scale,p),
+            opacity=1,airborne=1,bank=0,rotation=0,turn=1,pose="nested_hover",finished=semantic.finished,
+            beat=semantic.beat,action=0,art_kind=0,phase=elapsed/.7,fog=0}
+        local pose=semantic.pose
+        local flying=semantic.moving and (pose:sub(1,6)=="flight" or pose=="startled_wingbeat")
+        local vx,vy=0,0
+        if flying then
+            local via
+            if pose=="flight_forward" and a.approach_via then via=a.approach_via
+            elseif pose=="flight_back" and a.retreat_via then via=a.retreat_via
+            elseif pose=="flight_land" and a.window_top then
+                via={x=lerp(from.x,to.x,.7),y=to.y-170,scale=to.scale}
+            end
+            sample.x,sample.y,sample.scale,vx,vy=flight_state(from,to,via,semantic.progress,duration)
+        end
+        if id=="screen_window" or bust_scenes[id] then
+            -- One dedicated source through the complete approach and retreat
+            -- avoids a cold low-res→closeup swap and duplicate faces.
+            sample.pose="closeup"
+            sample.art_kind=bust_scenes[id] and 1 or 0
+            if flying then
+                local beats=wing(semantic.progress,duration,.34)
+                sample.phase=beats
+                -- Downstroke lifts; the bob fades as she flares to a stop.
+                local size=150*sample.scale*(id=="screen_window" and 1 or BODY)
+                local settle=1-smooth((semantic.progress-.82)/.18)
+                sample.y=sample.y-.035*size*math.sin(2*math.pi*beats)*settle
+                local lateral=vx/math.max(size,1)
+                sample.bank=clamp(lateral*9,-16,16)*math.sin(math.pi*semantic.progress)
+            end
+            if id=="glass_inspection" then
+                local physical=150*sample.scale*(s.scale or 1)
+                local blend=math.max(0,math.min(1,(physical-350)/(651.59-350)))
+                sample.bust_mix=blend*blend*(3-2*blend)
+                -- Move the camera framing onto the lower output edge
+                -- before the bust contributes. Its intentional chest crop
+                -- then stays outside the desktop, rather than floating as
+                -- a rectangular cutout during the handoff.
+                local framing=math.max(0,math.min(1,(physical-150)/200))
+                framing=framing*framing*(3-2*framing)
+                local edge=s.h+4-75*sample.scale
+                sample.y=lerp(sample.y,math.max(sample.y,edge),framing)
+                if sample.bust_mix>0 then
+                    -- Bob only downward: the crop edge never lifts off the
+                    -- bottom of the output.
+                    sample.anchored=true
+                    sample.y=sample.y+.012*150*sample.scale*(1-math.cos(2*math.pi*elapsed/1.7))/2*sample.bust_mix
+                end
+            elseif id=="upside_down_peek" then
+                local inverted=pose:sub(1,8)=="inverted"
+                sample.bust_mix=inverted and 1 or 0
+                if inverted then
+                    sample.rotation=180
+                    sample.anchored=true
+                    if pose=="inverted_peek" then
+                        local e=back(semantic.progress)
+                        sample.y=lerp(from.y,to.y,e)
+                    elseif pose=="inverted_withdraw" then
+                        local e=semantic.progress^2
+                        sample.y=lerp(from.y,to.y,e)
+                    end
+                    local sway=math.sin(2*math.pi*elapsed/2.4)
+                    if pose=="inverted_look" then
+                        -- Hanging from her tail: a slow pendulum toward each side.
+                        local look=math.sin(math.pi*2*semantic.progress)
+                        sample.rotation=180+7*look+1.5*sway
+                        sample.x=sample.x-.06*150*sample.scale*look
+                    else
+                        sample.rotation=180+1.5*sway
+                    end
+                    sample.y=sample.y-.01*150*sample.scale*(1-math.cos(2*math.pi*elapsed/1.9))/2
+                end
+            end
+            if flying then sample.action=1
+            elseif pose=="glass_paw" then sample.action=3
+            else sample.action=2 end
+            if pose=="glass_paw" then sample.fog=math.sin(math.pi*semantic.progress)^4 end
+            if not flying then sample.phase=elapsed/.7 end
+            return sample
+        end
+        if rows[pose] then
+            sample.pose="skin";sample.skin_frame=rows[pose]*8+math.floor(elapsed/.14)%8
+        elseif pose=="curl_down" or pose=="sleep_wake" then
+            sample.pose="skin";sample.skin_frame=(pose=="curl_down" and 8 or 1)*8
+        elseif pose=="wings_fold" or pose=="wings_unfold" then
+            sample.pose="skin";sample.skin_frame=9*8
+        elseif pose=="hopeful_glances" then
+            sample.pose="skin";sample.skin_frame=6*8+math.floor(elapsed/.2)%8
+        elseif pose=="tail_catch_recover" then
+            sample.pose="skin";sample.skin_frame=11*8+math.floor(elapsed/.14)%8
+        elseif pose=="sleepy_nod" or pose=="sleepy_fall" then
+            sample.pose="skin";sample.skin_frame=8*8+math.floor(elapsed/.2)%8
+            sample.rotation=4*math.sin(math.pi*semantic.progress)
+        elseif pose=="groom_stretch" then sample.pose="skin";sample.skin_frame=15
+        elseif pose=="settle_hover" then sample.pose="nested_hover"
+        elseif pose=="quiet_rest" then
+            sample.pose="nested_hover";sample.airborne=0;sample.phase=0
+        elseif pose:sub(1,4)=="peek" then
+            sample.pose="skin"
+            local q=semantic.progress
+            if pose=="peek_shy" then
+                -- Only her head leans past the edge, then she thinks better of it.
+                sample.skin_frame=3*8
+                local e=smooth(q/.55)
+                sample.x=lerp(from.x,to.x,e)
+                sample.y=lerp(from.y,to.y,e)
+                sample.rotation=-16*e+3*math.sin(math.pi*clamp((q-.55)/.45,0,1))
+            elseif pose=="peek_duck" then
+                local e=q*q
+                sample.x=lerp(from.x,to.x,e);sample.y=lerp(from.y,to.y,e)
+                sample.skin_frame=8
+                sample.rotation=(from.x<to.x and -10 or 10)*(1-e)
+                sample.turn=1-.12*math.sin(math.pi*q)
+            elseif pose=="peek_wait" then
+                sample.skin_frame=8
+                sample.y=sample.y+4*math.sin(2*math.pi*q)
+            elseif pose=="peek_lean" then
+                -- Bolder second look: out with a little overshoot, head tilts,
+                -- a curious bob, then a slight retreat before ducking away.
+                local e=back(clamp(q/.4,0,1))
+                local retreat=smooth((q-.8)/.2)*.25
+                sample.x=lerp(from.x,to.x,e-retreat)
+                sample.y=lerp(from.y,to.y,math.min(e,1))-10*math.sin(math.pi*clamp((q-.35)/.3,0,1))
+                local tilt=math.sin(2*math.pi*clamp((q-.4)/.45,0,1))
+                sample.skin_frame=q<.3 and 3*8 or 8
+                sample.rotation=-12*smooth(q/.3)+8*smooth((q-.3)/.15)-7*tilt
+            elseif pose=="peek_pop" then
+                local e=back(q)
+                sample.x=lerp(from.x,to.x,e);sample.y=lerp(from.y,to.y,math.min(e,1))
+                sample.skin_frame=7*8
+                sample.rotation=16*(1-smooth(q))
+                sample.turn=1+.08*math.sin(math.pi*math.min(1,q*1.4))
+            elseif pose=="peek_wave" then
+                sample.skin_frame=7*8
+                local hop=math.abs(math.sin(2*math.pi*q*2))
+                sample.y=sample.y-9*hop
+                sample.turn=1-.05*hop
+                sample.rotation=6*math.sin(2*math.pi*q*1.5)
+            else
+                sample.skin_frame=8
+            end
+        elseif flying then
+            local dx=to.x-from.x
+            local beats=wing(semantic.progress,duration,.5)
+            local up=pose=="flight_up" or pose=="startled_wingbeat" or (math.abs(dx)<60 and to.y<from.y-60)
+            local facing=dx<0 and -1 or 1
+            if math.abs(dx)<30 and not up then facing=0 end
+            sample.facing=facing
+            sample.pose="skin"
+            if up then
+                sample.skin_frame=4*8+math.floor(beats*8)%8
+                -- The climbing art faces right; mirror it for a leftward climb.
+                if dx<0 then sample.turn=-1;sample.facing=-1 else sample.facing=1 end
+            elseif facing==0 then
+                sample.skin_frame=8
+            else
+                sample.skin_frame=(facing<0 and 0 or 2)*8+math.floor(beats*8)%8
+            end
+            local settle=1-smooth((semantic.progress-.8)/.2)
+            sample.y=sample.y-3*sample.scale*math.sin(2*math.pi*beats)*settle
+            local speed=math.sqrt(vx*vx+vy*vy)
+            if speed>1 and facing~=0 then
+                local pitch=math.deg(math.atan(vy/math.max(math.abs(vx),.001)))*.45
+                sample.bank=clamp(pitch,-22,22)*(sample.facing or 1)
+                if up then sample.bank=clamp(vx/math.max(speed,1)*14,-14,14) end
+            end
+            if pose=="flight_home" and semantic.progress>.78 then
+                -- Hover in front-on for the last stretch, matching her rest pose.
+                sample.skin_frame=8;sample.facing=0;sample.turn=1
+                sample.bank=sample.bank*(1-smooth((semantic.progress-.78)/.22))
+            end
+            if pose=="flight_land" and semantic.progress>.86 then
+                sample.skin_frame=9*8;sample.facing=0;sample.turn=1;sample.bank=0
+            end
+        elseif semantic.moving then
+            local dx=to.x-from.x
+            sample.pose=dx<0 and "fly-left" or "fly-right"
+            sample.bank=math.sin(math.pi*semantic.progress)*(dx<0 and -8 or 8)
+        end
+        if semantic.effect=="tail_circle_one" or semantic.effect=="tail_circle_two" then
+            local theta=semantic.progress*math.pi*2
+            local side=semantic.effect=="tail_circle_one" and 1 or -1
+            sample.x=sample.x+32*math.sin(theta)*side
+            sample.y=sample.y+20*(1-math.cos(theta))
+            sample.bank=16*math.sin(theta)*side
+        elseif semantic.effect=="broad_depth_loop" then
+            local theta=semantic.progress*math.pi*2
+            sample.x=sample.x+s.w*.22*math.sin(theta)
+            sample.y=sample.y+s.h*.12*(1-math.cos(theta))
+            sample.scale=.18+.18*(1-math.cos(theta))/2
+            sample.pose=math.cos(theta)<0 and "fly-left" or "fly-right"
+            sample.bank=18*math.sin(theta)
+        end
+        if pose=="flight_circle" then
+            local theta=semantic.progress*math.pi*2
+            sample.x=sample.x+38*math.sin(theta)
+            sample.y=sample.y-28*(1-math.cos(theta))
+            sample.pose=math.cos(theta)<0 and "fly-left" or "fly-right"
+            sample.bank=12*math.sin(theta)
+        end
+        if id=="hide_peek" then sample.behind=true end
+        if id=="window_perch" and (pose=="wings_fold" or pose=="perch_tail_dangle" or pose=="wings_unfold"
+            or (pose=="flight_land" and semantic.progress>.7)
+            or (pose=="flight_home" and semantic.progress<.25)) then
+            -- She settles onto the back of the top edge, so anything below
+            -- it, the hanging tail included, is behind the window.
+            sample.behind=true
+        end
+        -- Keep the selected normal-size scene in one finite skin binding:
+        -- exact canonical flight frames share this atlas with authored AFK
+        -- actions, so a landing never blanks for another texture warm-up.
+        if sample.pose=="fly-left" or sample.pose=="fly-right" or sample.pose=="fly-up" then
+            local row=sample.pose=="fly-left" and 0 or sample.pose=="fly-right" and 2 or 4
+            sample.facing=row==0 and -1 or 1
+            sample.pose="skin";sample.skin_frame=row*8+math.floor(elapsed/.07)%8
+        elseif sample.pose=="nested_hover" then sample.pose="skin";sample.skin_frame=8 end
+        if sample.pose=="skin" then
+            sample.art_kind=2;sample.phase=elapsed/1.12
+            local row=math.floor(sample.skin_frame/8)
+            if sample.facing==nil then sample.facing=row==8 and -1 or 0 end
+            local actions={[3]=4,[5]=5,[7]=6,[8]=7,[9]=8,[10]=9,[11]=10}
+            if actions[row] then
+                sample.action=actions[row]
+                sample.skin_frame=row*8
+            elseif row==1 and sample.skin_frame~=15 then
+                sample.action=11;sample.skin_frame=8
+            end
+            if id=="quiet_rest" then sample.action=0;sample.phase=0 end
+        end
+        return sample
+    end
+    -- A facing change becomes a body turn through three-quarter and front
+    -- views, centered on the authored switch, rather than a one-frame flip.
+    local function turned(id,s,elapsed,sample)
+        if sample.pose~="skin" or id=="quiet_rest" then return sample end
+        local half=TURN/2
+        local function facing(t)return raw(id,s,math.max(0,t)).facing end
+        local before,after=facing(elapsed-half),facing(elapsed+half)
+        if before==nil or after==nil or before==after then return sample end
+        local lo,hi=elapsed-half,elapsed+half
+        for _=1,12 do
+            local mid=(lo+hi)/2
+            if facing(mid)==before then lo=mid else hi=mid end
+        end
+        local switch=(lo+hi)/2
+        local q=smooth((elapsed-switch)/TURN+.5)
+        local yaw=lerp(before,after,q)*90
+        local side=math.abs(yaw)
+        if side>=62 then
+            sample.turn=(sample.turn<0 and -1 or 1)*(.5+.5*(side-62)/28)
+        elseif side>=24 then
+            -- The authored three-quarter view looks left; mirror it to the right.
+            sample.skin_frame=3*8;sample.action=0
+            sample.turn=(yaw>0 and -1 or 1)*(.84+.1*(side-24)/38)
+        else
+            sample.skin_frame=8;sample.action=11
+            sample.turn=.9+.1*(1-side/24)
+        end
+        sample.bank=sample.bank*(side/90)
+        return sample
     end
     return {
         availability=availability,
@@ -83,107 +410,13 @@ return function(choreography)
             return supported
         end,
         sample=function(id,s,elapsed)
-            local semantic=choreography.sample(id,elapsed)
-            local a=anchors(s,id)
-            local from,to=assert(a[semantic.from]),assert(a[semantic.to])
-            local p=semantic.ease
-            local sample={x=lerp(from.x,to.x,p),y=lerp(from.y,to.y,p),scale=lerp(from.scale,to.scale,p),
-                opacity=1,airborne=1,bank=0,rotation=0,pose="nested_hover",finished=semantic.finished,
-                beat=semantic.beat,action=0,art_kind=0,phase=elapsed/.7,fog=0}
-            local pose=semantic.pose
-            if id=="screen_window" or id=="glass_inspection" then
-                -- One dedicated source through the complete approach and retreat
-                -- avoids a cold low-res→closeup swap and duplicate faces.
-                sample.pose="closeup"
-                sample.art_kind=id=="glass_inspection" and 1 or 0
-                if id=="glass_inspection" then
-                    local physical=150*sample.scale*(s.scale or 1)
-                    local blend=math.max(0,math.min(1,(physical-350)/(651.59-350)))
-                    sample.bust_mix=blend*blend*(3-2*blend)
-                    -- Move the camera framing onto the lower output edge
-                    -- before the bust contributes. Its intentional chest crop
-                    -- then stays outside the desktop, rather than floating as
-                    -- a rectangular cutout during the handoff.
-                    local framing=math.max(0,math.min(1,(physical-150)/200))
-                    framing=framing*framing*(3-2*framing)
-                    local edge=s.h+4-75*sample.scale
-                    sample.y=lerp(sample.y,math.max(sample.y,edge),framing)
-                end
-                sample.action=semantic.moving and 1 or (pose=="glass_paw" and 3 or 2)
-                if pose=="glass_paw" then sample.fog=math.sin(math.pi*semantic.progress)^4 end
-            elseif rows[pose] then
-                sample.pose="skin";sample.skin_frame=rows[pose]*8+math.floor(elapsed/.14)%8
-            elseif pose=="curl_down" or pose=="sleep_wake" then
-                sample.pose="skin";sample.skin_frame=(pose=="curl_down" and 8 or 1)*8
-            elseif pose=="wings_fold" or pose=="wings_unfold" then
-                sample.pose="skin";sample.skin_frame=9*8
-            elseif pose=="hopeful_glances" then
-                sample.pose="skin";sample.skin_frame=6*8+math.floor(elapsed/.2)%8
-            elseif pose=="tail_catch_recover" then
-                sample.pose="skin";sample.skin_frame=11*8+math.floor(elapsed/.14)%8
-            elseif pose=="sleepy_nod" or pose=="sleepy_fall" then
-                sample.pose="skin";sample.skin_frame=8*8+math.floor(elapsed/.2)%8
-                sample.rotation=4*math.sin(math.pi*semantic.progress)
-            elseif pose=="inverted_peek" or pose=="inverted_look" then
-                sample.pose="skin";sample.skin_frame=1*8+math.floor(elapsed/.2)%7
-                sample.rotation=180
-            elseif pose=="controlled_tumble" then
-                sample.pose="skin";sample.skin_frame=1*8+math.floor(elapsed/.14)%7
-                sample.rotation=180+180*p
-            elseif pose=="groom_stretch" then sample.pose="skin";sample.skin_frame=15
-            elseif pose=="settle_hover" then sample.pose="nested_hover"
-            elseif pose=="quiet_rest" then
-                sample.pose="nested_hover";sample.airborne=0;sample.phase=0
-            elseif pose:sub(1,4)=="peek" then
-                sample.pose="skin";sample.skin_frame=1*8+math.floor(elapsed/.2)%7
-            elseif semantic.moving or pose:sub(1,6)=="flight" or pose=="startled_wingbeat" then
-                local dx=to.x-from.x
-                sample.pose=(pose=="flight_up" or pose=="startled_wingbeat") and "fly-up" or (dx<0 and "fly-left" or "fly-right")
-                sample.bank=math.sin(math.pi*semantic.progress)*(dx<0 and -8 or 8)
+            local sample=turned(id,s,elapsed,raw(id,s,elapsed))
+            sample.facing=nil
+            if sample.beat==1 then
+                local semantic=choreography.sample(id,elapsed)
+                sample.opacity=math.min(1,semantic.progress*8)
             end
-            if semantic.effect=="tail_circle_one" or semantic.effect=="tail_circle_two" then
-                local theta=semantic.progress*math.pi*2
-                local side=semantic.effect=="tail_circle_one" and 1 or -1
-                sample.x=sample.x+32*math.sin(theta)*side
-                sample.y=sample.y+20*(1-math.cos(theta))
-                sample.bank=16*math.sin(theta)*side
-            elseif semantic.effect=="broad_depth_loop" then
-                local theta=semantic.progress*math.pi*2
-                sample.x=sample.x+s.w*.22*math.sin(theta)
-                sample.y=sample.y+s.h*.12*(1-math.cos(theta))
-                sample.scale=.18+.18*(1-math.cos(theta))/2
-                sample.pose=math.cos(theta)<0 and "fly-left" or "fly-right"
-                sample.bank=18*math.sin(theta)
-            end
-            if pose=="flight_circle" then
-                local theta=semantic.progress*math.pi*2
-                sample.x=sample.x+38*math.sin(theta)
-                sample.y=sample.y-28*(1-math.cos(theta))
-                sample.pose=math.cos(theta)<0 and "fly-left" or "fly-right"
-                sample.bank=12*math.sin(theta)
-            end
-            if id=="hide_peek" then sample.behind=true end
-            -- Keep the selected normal-size scene in one finite skin binding:
-            -- exact canonical flight frames share this atlas with authored AFK
-            -- actions, so a landing never blanks for another texture warm-up.
-            if sample.pose=="fly-left" or sample.pose=="fly-right" or sample.pose=="fly-up" then
-                local row=sample.pose=="fly-left" and 0 or sample.pose=="fly-right" and 2 or 4
-                sample.pose="skin";sample.skin_frame=row*8+math.floor(elapsed/.07)%8
-            elseif sample.pose=="nested_hover" then sample.pose="skin";sample.skin_frame=8 end
-            if sample.pose=="skin" then
-                sample.art_kind=2;sample.phase=elapsed/1.12
-                local row=math.floor(sample.skin_frame/8)
-                local actions={[3]=4,[5]=5,[7]=6,[8]=7,[9]=8,[10]=9,[11]=10}
-                if actions[row] then
-                    sample.action=actions[row]
-                    sample.skin_frame=row*8
-                elseif row==1 and sample.skin_frame~=15 then
-                    sample.action=11;sample.skin_frame=8
-                end
-                if id=="quiet_rest" then sample.action=0;sample.phase=0 end
-            end
-            if semantic.beat==1 then sample.opacity=math.min(1,semantic.progress*8) end
-            if semantic.finished then sample.opacity=0 end
+            if sample.finished then sample.opacity=0 end
             return sample
         end,
     }

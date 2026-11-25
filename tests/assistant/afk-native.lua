@@ -78,6 +78,9 @@ advance(.1)
 for _,sample in ipairs(played) do assert(sample.opacity==0) end
 advance(.3)
 assert(fact.ai_afk_active and #played>3)
+local warm=#played
+advance(2.4) -- crosses the first beat boundary with the binding warm
+for i=warm+1,#played do assert(played[i].opacity>0) end
 local count=#controls
 afk.configure(config('tail_chase'))
 assert(#controls==count) -- A policy-only edit does not restart idle/lock ownership.

@@ -70,12 +70,16 @@ return function(shared, options)
         prepare=function(sample,ready)
             if not lease or not geometry then ready(false);return end
             local token,mine=lease,epoch
-            if not fact.ai_afk_active then
+            -- Only a cold binding stages hidden; a warm scene keeps drawing
+            -- through beat changes instead of blinking for one frame.
+            local cold=not fact.ai_afk_active
+            if cold then
                 local base=options.art or ""
                 local ok
-                if sample.scene=="screen_window" or sample.scene=="glass_inspection" then
-                    ok=shared.register_closeup(base..(sample.scene=="screen_window" and "/afk-closeup.png" or "/afk-bust.png"),token)
-                    if sample.scene=="glass_inspection" then
+                local bust=sample.scene=="glass_inspection" or sample.scene=="upside_down_peek"
+                if sample.scene=="screen_window" or bust then
+                    ok=shared.register_closeup(base..(bust and "/afk-bust.png" or "/afk-closeup.png"),token)
+                    if bust then
                         text.ai_afk_body_src=base.."/afk-closeup.png"
                         fact.ai_afk_body_open=true
                     end
@@ -85,7 +89,7 @@ return function(shared, options)
             end
             local function poll()
                 if mine~=epoch or lease~=token or not geometry then return end
-                local ok,state=shared.play(token,native_sample(sample,true))
+                local ok,state=shared.play(token,native_sample(sample,cold))
                 if not ok or state=="ready" then
                     if prepare_timer then cancel(prepare_timer);prepare_timer=nil end
                     ready(ok==true)

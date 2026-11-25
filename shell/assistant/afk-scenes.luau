@@ -2,9 +2,9 @@
 -- by its existing output/window adapter; this module owns no surface or geometry.
 local scenes = {
     {id="screen_window", broad=true, beats={
-        {2.8,"flight_forward","depth_far","depth_near"},
+        {3.6,"flight_forward","home","depth_near"},
         {5.4,"window_gaze","depth_near",nil,"curious_gaze"},
-        {3.0,"flight_back","depth_near","home"}}},
+        {3.4,"flight_back","depth_near","home"}}},
     {id="corner_nap", broad=true, beats={
         {2.8,"flight_circle","home","bottom_corner"},
         {2.0,"curl_down","bottom_corner"}, {12,"curled_sleep","bottom_corner",nil,"breathing"},
@@ -14,9 +14,9 @@ local scenes = {
         {3.5,"glass_paw","glass",nil,"breath_fog"}, {1.4,"glass_withdraw","glass"},
         {2.8,"flight_home","glass","home"}}},
     {id="upside_down_peek", broad=true, beats={
-        {2.4,"flight_up","home","top_hidden"}, {1.6,"inverted_peek","top_hidden","top_peek"},
-        {3.4,"inverted_look","top_peek",nil,"look_both_ways"},
-        {1.5,"controlled_tumble","top_peek","upper_air"}, {2.8,"flight_home","upper_air","home"}}},
+        {2.6,"flight_up","home","top_exit"}, {1.8,"inverted_peek","top_hidden","top_peek"},
+        {3.6,"inverted_look","top_peek",nil,"look_both_ways"},
+        {1.1,"inverted_withdraw","top_peek","top_hidden"}, {3.0,"flight_home","top_exit","home"}}},
     {id="window_perch", broad=true, window=true, beats={
         {2.8,"flight_land","home","window_top"}, {1.4,"wings_fold","window_top"},
         {5.0,"perch_tail_dangle","window_top",nil,"tail_sway"},
@@ -35,10 +35,15 @@ local scenes = {
         {1.8,"flight_bank","depth_far","depth_return"}, {3.2,"flight_forward","depth_return","home"}}},
     {id="hide_peek", broad=true, window=true, occlusion=true, beats={
         {2.5,"flight_behind","home","window_hidden"},
-        {2.0,"peek_left","window_hidden","window_left", "behind"},
-        {1.3,"peek_withdraw","window_left","window_hidden","behind"},
-        {2.0,"peek_right","window_hidden","window_right","behind"},
-        {1.4,"peek_withdraw","window_right","window_hidden","behind"},
+        {1.1,"peek_shy","window_hidden","window_left_shy","behind"},
+        {0.45,"peek_duck","window_left_shy","window_hidden","behind"},
+        {0.5,"peek_wait","window_hidden",nil,"behind"},
+        {2.1,"peek_lean","window_hidden","window_left","behind"},
+        {0.5,"peek_duck","window_left","window_hidden","behind"},
+        {0.4,"peek_wait","window_hidden",nil,"behind"},
+        {0.8,"peek_pop","window_hidden","window_right","behind"},
+        {2.2,"peek_wave","window_right",nil,"behind"},
+        {0.55,"peek_duck","window_right","window_hidden","behind"},
         {3.0,"flight_home","window_hidden","home"}}},
     {id="wing_grooming", broad=true, beats={
         {2.0,"flight_out","home","air"}, {1.4,"settle_hover","air"},

@@ -17,7 +17,9 @@ for _,s in ipairs(cases) do
         for i=0,100 do
             local sample=motion.sample(scene.id,s,scene.duration*i/100)
             assert(type(sample.pose)=='string')
-            assert(sample.x>=-256 and sample.x<=s.w+256 and sample.y>=-256 and sample.y<=s.h+256)
+            local reach=256+75*sample.scale
+            assert(sample.x>=-reach and sample.x<=s.w+reach and sample.y>=-reach and sample.y<=s.h+reach)
+            assert(math.abs(sample.turn)>=.05 and math.abs(sample.turn)<=1.2)
             assert(sample.scale>0 and sample.scale<=12)
             if sample.skin_frame then assert(sample.skin_frame>=0 and sample.skin_frame<=95) end
             if scene.id=='quiet_rest' then

@@ -107,14 +107,27 @@ returned 1254px: no 4K detail is claimed. Registered head detail (including horn
 is conservatively 580×610px for full body and 1020×1000px for bust; transparent
 padding is not counted as character detail.
 
-Camera uses one full-body source through approach/gaze/retreat. Glass stages
+Camera uses one full-body source through approach/gaze/retreat. Upside-down
+peek uses the same two sources as glass: she climbs out of view with the full
+body, then the bust hangs from the top edge rotated half a turn, its chest crop
+kept above the output. Glass stages
 both needed sources before approach, then transitions from full-body flight to
 head/paws using eye registration (1.9245×, 4.257°); the mouth agrees within six
 source pixels. The body hides before its physical canvas exceeds 1254px; the
 bust's intentional chest crop is framed below the output edge before it appears.
 The small temporary stylized breath sheen writes no desktop content.
 
-| Real output case | Camera physical canvas | Glass physical canvas |
+Flights follow eased arcs with wingbeats, banking toward the direction of travel
+and a flare on arrival; the camera approach first swings out into the room and
+then swoops in, with perspective scaling. A change of facing turns her body
+through three-quarter and front views rather than flipping in one frame. Every
+scene ends with a flight back to her resting spot at the bottom-right, turning to
+face the front as she arrives, where the resting dragon takes over. While the
+bust is shown, her bob only presses into the output edge so its crop never lifts
+away from it. On a window perch she sits on the back of the top edge and her tail
+drops behind the window.
+
+| Real output case | Camera physical canvas | Glass and upside-down physical canvas |
 | --- | --- | --- |
 | 1920×1080, scale 1 | 1242; available | 1080; available |
 | 1920×1080, scale 1.25 (1536×864 logical) | 1242; available | 1080; available |

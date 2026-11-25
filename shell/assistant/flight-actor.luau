@@ -25,6 +25,7 @@ return function(puppet, host)
         fact.ai_actor_closeup_open, fact.ai_actor_quiet = false, false
         text.ai_actor_closeup_src, text.ai_actor_skin_src = "", ""
         fact.ai_actor_scale, fact.ai_actor_rotation = 1, 0
+        fact.ai_actor_turn, fact.ai_actor_anchored = 1, false
         puppet.hold_pose(nil)
         puppet.flight(nil)
         puppet.lease_art("")
@@ -194,13 +195,17 @@ return function(puppet, host)
             stop("sample")
             return false
         end
-        local scale, rotation, alpha, bank, air =
-            s.scale or 1, s.rotation or 0, s.opacity or 1, s.bank or 0, s.airborne or 0
+        local scale, rotation, alpha, bank, air, turn =
+            s.scale or 1, s.rotation or 0, s.opacity or 1, s.bank or 0, s.airborne or 0, s.turn or 1
+        -- A center may sit beyond an edge by its own drawn half-size.
+        local reach = 256 + 75 * math.abs(type(scale) == "number" and scale or 0)
         local pose = s.pose
         local skin, closeup = pose == "skin", pose == "closeup"
         if
-            not finite(s.x, -256, lease.w + 256)
-            or not finite(s.y, -256, lease.h + 256)
+            not finite(s.x, -reach, lease.w + reach)
+            or not finite(s.y, -reach, lease.h + reach)
+            or not finite(turn, -1.2, 1.2)
+            or math.abs(turn) < 0.05
             or not finite(scale, 0.05, 12)
             or not finite(rotation, -360, 360)
             or not finite(alpha, 0, 1)
@@ -228,6 +233,7 @@ return function(puppet, host)
                 or scale > 1
                 or rotation ~= 0
                 or bank ~= 0
+                or turn ~= 1
                 or air ~= 0
                 or s.behind
                 or not finite(s.x, 0, lease.w)
@@ -292,6 +298,7 @@ return function(puppet, host)
         end
         fact.ai_flight_behind = s.behind == true
         fact.ai_actor_scale, fact.ai_actor_rotation = scale, rotation
+        fact.ai_actor_turn, fact.ai_actor_anchored = turn, s.anchored == true
         fact.ai_flight_bank, fact.ai_flight_altitude = bank, air
         if now < lease.prepared_at then
             if not lease.anchor then

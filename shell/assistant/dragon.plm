@@ -1,7 +1,7 @@
 part AssistantDragon {
     // Body cells are 240 px, drawn at 150 logical px; puppet.luau registers the body, face features and hearts.
     shader ai_dg_glass = file "dragon/glass.wgsl"
-    let ai_float = if(ai_dg_reduced or ai_actor_quiet, 0, 4 * sin(time * 90))
+    let ai_float = if(ai_dg_reduced or ai_actor_quiet or ai_actor_anchored, 0, 4 * sin(time * 90))
     let ai_dg_x = 30
     let ai_dg_y = 40
     image ai_wingbeat = file "dragon/flight.webp", 1800, 450
@@ -15,6 +15,8 @@ part AssistantDragon {
     fact ai_actor_skin_open = false
     fact ai_actor_scale = 1
     fact ai_actor_rotation = 0
+    fact ai_actor_turn = 1
+    fact ai_actor_anchored = false
     fact ai_actor_released = false
     fact ai_actor_quiet = false
     fact ai_actor_open = false
@@ -50,7 +52,7 @@ part AssistantDragon {
             opacity: if(ai_actor_released, 0, ai_flight_alpha) * max(ai_dragon_k, if(ai_dg_warm, 0.2%, 0%))
             move: dx, dy
             pivot: 105, 115
-            scale: ai_actor_scale, ai_actor_scale
+            scale: ai_actor_scale * ai_actor_turn, ai_actor_scale
             rotate: ai_actor_rotation * 1deg
             ellipse { at: 105, 214; radius: 46; scale: ai_dg_shadow_s, 0.16; color: #000000; opacity: (1 - ai_flight_altitude) * (18% - 6% * ai_float / 4) }
             group {
