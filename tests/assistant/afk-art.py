@@ -43,6 +43,10 @@ class AfkArt(unittest.TestCase):
             strip=ART/'motion'/(name+'.png')
             self.assertEqual(hashlib.sha256(strip.read_bytes()).hexdigest(),motion['sha256'])
             self.assertEqual(provenance['sequences'][name]['output_sha256'],motion['sha256'])
+        # The hide-and-peek wave keys follow the motion, horned pose then horned hover.
+        for index,name in enumerate(('horned-56','horned-8')):
+            self.assertEqual(packing['keys'][name]['frame'],first+index)
+            self.assertEqual(hashlib.sha256((ART/(name+'.png')).read_bytes()).hexdigest(),packing['keys'][name]['sha256'])
         # Edge-clip playback follows the generated timing through the same picks.
         lua=(ROOT/'shell/assistant/afk-motion.luau').read_text()
         for name in ('edge_reach','edge_pull','edge_head'):

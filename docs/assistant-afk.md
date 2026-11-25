@@ -99,7 +99,7 @@ generated 16-frame in-between sequences: a side-to-side body turn, side-to-front
 arrivals from each direction, gliding down into the curled nap, landing on a
 ledge with the tail dropping and banking into a climb. The last 20 rows hold the
 hide-and-peek edge clips: 48 frames each for the head-first and paw-first peeks
-and 64 for the pull-out; a final row holds the horned wave pose. Adjacent frames crossfade, so a sequence stays fluid at
+and 64 for the pull-out; a final row holds the horned wave and hover poses. Adjacent frames crossfade, so a sequence stays fluid at
 any playback rate; the denser edge clips step frame to frame instead, so quick
 moves stay crisp instead of doubled.
 Continuous native WGSL moves contact paws, wings, horn rubbing, tail and breath;
@@ -214,6 +214,9 @@ the runtime places on the real window edge, drawing the clip in front of the
 window, mirrored for the head-first peek at the right edge. One model-drawn peek,
 `tools/dragon/art/afk/edge-peek-source.png`, joins the head-first, paw-first
 and pull-out clips. The peek's two tall horns stay on her through the pull-out
-and the wave: its end and its half-out and overshoot guides are horned versions
-of the canonical wave and reach keys (`horned-56.png`, `horned-24.png`, image
+and the wave: its end and its overshoot guide are horned versions of the
+canonical wave and reach keys (`horned-56.png`, `horned-24.png`, image
 edits that only replace the swept crest), and the wave holds that horned pose.
+It settles first into a horned copy of the front hover (`horned-8.png`), so the
+paws move without her head changing, and only then do the horns fade into the
+crest of the shared hover her turn home starts on.

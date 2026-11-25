@@ -8,14 +8,15 @@ return function(choreography)
     -- Generated FL2VA in-betweens follow the 12 authored rows, 16 frames each.
     local MOTION={turn=96,arrive_right=112,arrive_left=128,curl=144,perch=160,bank=176,
         edge_reach=192,edge_pull=240,edge_head=304}
-    -- The horned pose the pull-out ends on, centred like the canonical cells.
+    -- The horned pose the pull-out ends on, then the horned front hover,
+    -- centred like the canonical cells.
     local EDGE_WAVE=352
     local LAST=15
     -- Source frame (of 124) behind each edge-clip cell: cells are picked half
     -- by motion and half by time, and playback follows the generated timing.
-    local EDGE_PICKS={edge_reach={0,3,6,9,11,15,17,20,22,25,27,31,34,37,41,43,47,48,51,54,57,59,62,65,67,69,71,73,75,76,78,80,82,84,87,89,91,93,96,98,100,103,107,109,113,117,120,123},edge_pull={0,3,6,10,13,16,19,23,26,30,34,36,38,42,45,48,51,52,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,77,80,82,83,85,86,87,88,90,91,92,94,95,97,98,100,102,104,107,110,114,117,120,123},edge_head={0,3,6,9,12,16,18,22,25,28,31,34,36,39,42,43,46,48,50,52,55,57,59,61,64,67,69,72,74,76,78,81,83,85,87,89,91,94,96,98,100,102,106,109,113,117,120,123}}
+    local EDGE_PICKS={edge_reach={0,3,6,9,11,15,17,20,22,25,27,31,34,37,41,43,47,48,51,54,57,59,62,65,67,69,71,73,75,76,78,80,82,84,87,89,91,93,96,98,100,103,107,109,113,117,120,123},edge_pull={0,4,7,10,14,17,21,23,25,28,31,33,36,39,42,45,48,51,53,56,59,60,62,64,65,66,68,69,70,71,72,73,74,76,77,78,79,80,82,83,85,87,88,90,91,93,94,95,96,97,98,99,100,102,103,104,106,108,110,112,115,118,121,123},edge_head={0,3,6,9,12,16,18,22,25,28,31,34,36,39,42,43,46,48,50,52,55,57,59,61,64,67,69,72,74,76,78,81,83,85,87,89,91,94,96,98,100,102,106,109,113,117,120,123}}
     -- Last source frame of the glance that opens the pull clip, before its dip.
-    local EDGE_GLANCE=13
+    local EDGE_GLANCE=14
     local TURN,ARRIVE=.8,.6
     -- One generated bust gesture loop and one closeup wingbeat, 16 frames each.
     local BUST_LOOP,CLOSEUP_FRAMES=5.2,16
@@ -358,15 +359,15 @@ return function(choreography)
                 -- Ducks back quickly, the paw letting go last.
                 clip(sample,"edge_head",123,20,smooth(q))
             elseif pose=="peek_pull" then
-                -- Her glide out past the edge (source 56-74) is one held
-                -- drawing, so it goes by as a quick swoop, not a slow slide.
-                local f=q<.42 and .455*q/.42 or q<.5 and .455+.145*(q-.42)/.08 or .6+.4*(q-.5)/.5
-                clip(sample,"edge_pull",0,123,f)
+                -- Her quick dip as she lets go (source 56-72) gets a full
+                -- second; the glance before it and the glide after run brisker.
+                local src=q<.36 and 56*q/.36 or q<.6 and 56+16*(q-.36)/.24 or 72+51*(q-.6)/.4
+                clip(sample,"edge_pull",0,123,src/123)
             elseif pose=="peek_wave" then
                 -- The pull ends on the horned wave key: two happy hops
                 -- with a tilt and the paw wave, all back at rest before she
                 -- settles into the front hover the turn home starts on.
-                local waving=duration-.7
+                local waving=duration-.9
                 local w=math.min(beat_time,waving)/waving
                 local hop=math.abs(math.sin(2*math.pi*w))
                 sample.pose="skin";sample.skin_frame=EDGE_WAVE
@@ -374,8 +375,16 @@ return function(choreography)
                 sample.rotation=-6*math.sin(3*math.pi*w)
                 sample.wave_phase=2*w
                 sample.y=sample.y-9*sample.scale*hop
-                local settle=smooth((beat_time-waving)/.4)
-                if settle>0 then sample.skin_next=8;sample.skin_mix=settle end
+                -- Paws first, on the horned front hover, then only her horns
+                -- change into the crest of the shared hover, all before the
+                -- turn home starts on it.
+                local settle=smooth((beat_time-waving)/.3)
+                local crest=smooth((beat_time-waving-.3)/.3)
+                if crest>0 then
+                    sample.skin_frame=EDGE_WAVE+1;sample.skin_next=8;sample.skin_mix=crest
+                elseif settle>0 then
+                    sample.skin_next=EDGE_WAVE+1;sample.skin_mix=settle
+                end
             end
         elseif flying then
             local dx=to.x-from.x

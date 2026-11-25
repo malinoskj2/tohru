@@ -23,8 +23,9 @@ CELL=240
 MOTION=['turn','arrive_right','arrive_left','curl','perch','bank','edge_reach','edge_pull','edge_head']
 MOTION_FRAMES=16
 # Authored keys packed whole after the motion: the hide-and-peek wave holds
-# the horned pose its pull-out ends on, centred like the canonical cells.
-KEYS=['horned-56']
+# the horned pose its pull-out ends on and settles through a horned front
+# hover, both centred like the canonical cells.
+KEYS=['horned-56','horned-8']
 NAMES=['fly_left','head_tilt','fly_right','wing_straighten','fly_up','horn_polish',
        'chin_on_paws','hopeful_wave','curled_sleep','perch_tail_dangle','tail_follow_left','tail_follow_right']
 

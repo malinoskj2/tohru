@@ -96,9 +96,12 @@ do
     local last=motion.sample('hide_peek',wide,pull_end-1e-6)
     assert(last.skin_frame==303 or (last.skin_next==303 and last.skin_mix>.999))
     assert(motion.sample('hide_peek',wide,wave_start+1e-6).phase<1e-3)
-    -- The wave settles, unmirrored, into the front hover her turn home starts on.
+    -- The wave settles, unmirrored, through the horned front hover and only
+    -- then into the front hover her turn home starts on.
+    local horned=motion.sample('hide_peek',wide,wave_start+2.2-.6-1e-3)
+    assert(horned.skin_frame==352 and horned.skin_next==353 and horned.skin_mix>.99)
     local settled=motion.sample('hide_peek',wide,wave_start+2.2-.3-1e-3)
-    assert(math.abs(settled.turn-1)<1e-9 and math.abs(settled.rotation)<1e-9 and settled.skin_frame==352 and settled.skin_next==8 and settled.skin_mix>.99 and math.abs(settled.phase-2)<1e-9)
+    assert(math.abs(settled.turn-1)<1e-9 and math.abs(settled.rotation)<1e-9 and settled.skin_frame==353 and settled.skin_next==8 and settled.skin_mix>.99 and math.abs(settled.phase-2)<1e-9)
     -- A crossfade always blends toward the following generated frame.
     local nap=motion.sample('corner_nap',wide,2.8+1)
     assert(nap.skin_frame>=144 and nap.skin_frame<159 and nap.skin_next==nap.skin_frame+1 and nap.turn==-1)

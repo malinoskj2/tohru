@@ -145,6 +145,13 @@
       ],
       "sha256": "6ee630ba3b44457e2b5f39eee1fbcf3377ae4c084eb0ab06761c5cec660f2395"
     },
+    "horned-8.png": {
+      "size": [
+        240,
+        240
+      ],
+      "sha256": "a7182517a026a64ebf5733879cd7f8107b2b04097f006df9cee3f6ae7e9cfb46"
+    },
     "nap-perch-tail-source.png": {
       "size": [
         1254,
@@ -227,7 +234,7 @@
     "edge_pull": {
       "first": 240,
       "count": 64,
-      "sha256": "9b03bf9c18493147748590948f5abcb45e8dee4c548292b9f53eb04ade4bf9f2"
+      "sha256": "b0871aa0663d90d769d93e37c5fc8d4ee3de51816c402f569d15703843a2634a"
     },
     "edge_head": {
       "first": 304,
@@ -239,6 +246,10 @@
     "horned-56": {
       "frame": 352,
       "sha256": "c859183a033c80f68aa7aacc7b64eec60315fd5e4a91dfdb40af863d40bb17b4"
+    },
+    "horned-8": {
+      "frame": 353,
+      "sha256": "a7182517a026a64ebf5733879cd7f8107b2b04097f006df9cee3f6ae7e9cfb46"
     }
   },
   "closeup": {
