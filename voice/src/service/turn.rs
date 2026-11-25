@@ -104,10 +104,11 @@ impl Voice {
         // yields words must not silence speech. Barge-in waits for the same
         // non-backchannel words before it confirms, so the speaker's own pause
         // covers the gap and a backchannel can still resume.
+        let backchannel_barge = self.barge_pending && policy::backchannel(&partial);
         if self.hearing_eligible
             && !self.hearing
             && !partial.trim().is_empty()
-            && !(self.barge_pending && policy::backchannel(&partial))
+            && !backchannel_barge
         {
             self.hearing = true;
             emit(json!({"event":"hearing","on":true}));
