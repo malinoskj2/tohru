@@ -255,11 +255,11 @@ def off_trend(series, whole, half=4, predicted=None):
     return out
 
 
-def rigid_step(clip, i):
-    """Shift (dy, dx) that maps frame i-1 onto frame i pixel for pixel, or None when the
+def rigid_step(clip, i, before=1):
+    """Shift (dy, dx) that maps frame i-before onto frame i pixel for pixel, or None when the
     drawing itself changed. Revealed or occluded pixels are ignored, so a sprite sliding
     out from behind a window still counts as rigid."""
-    a, b = clip.masks[i - 1], clip.masks[i]
+    a, b = clip.masks[i - before], clip.masks[i]
     if not a.any() or not b.any():
         return None
     box = bbox(a | b)
@@ -272,7 +272,7 @@ def rigid_step(clip, i):
         if clip.alpha:
             value *= frame[..., 3] / 255
         return np.where(mask[y0:y1, x0:x1], value, 0)
-    ga, gb = grey(i - 1, a), grey(i, b)
+    ga, gb = grey(i - before, a), grey(i, b)
     spectrum = np.fft.fft2(gb) * np.conj(np.fft.fft2(ga))
     peak = np.unravel_index(np.abs(np.fft.ifft2(spectrum / (np.abs(spectrum) + 1e-6))).argmax(), ga.shape)
     dy, dx = [p if p <= n // 2 else p - n for p, n in zip(peak, ga.shape)]
@@ -285,7 +285,9 @@ def rigid_step(clip, i):
     if not inner.any():
         return None
     residual = np.abs(gb - shifted)[inner]
-    if residual.mean() >= 3.0 or (residual > 16).mean() >= 0.01:
+    # Video compression adds noise that exact alpha frames do not have.
+    mean_limit, outlier_limit = (3.0, 0.01) if clip.alpha else (5.0, 0.04)
+    if residual.mean() >= mean_limit or (residual > 16).mean() >= outlier_limit:
         return None
     # Pixels revealed or hidden by a window form a band as thick as the shift; a limb that
     # moved on its own leaves a thicker difference.
@@ -485,7 +487,11 @@ def analyse(clip, sensitivity=6.0, loop=False, regions=None, edge_anchor=None):
     for label in range(1, found + 1):
         index = np.flatnonzero(labels == label)
         travelled = sum(math.hypot(*steps[i]) for i in index if steps[i])
-        if len(index) >= span and travelled > 0.3 * radius:
+        # Art held on twos while the sprite travels matches step by step; a static drawing
+        # also matches itself several frames later.
+        gap = 4
+        spans = [rigid_step(clip, i, gap) is not None for i in index[gap:]]
+        if len(index) >= span and travelled > 0.3 * radius and spans and np.mean(spans) >= 0.6:
             rigid[index] = np.maximum(rigid[index], travelled / radius)
     flags += events("rigid-motion", rigid, 0.3, clip, [f"drawing unchanged while moving {r:.1f} body sizes" for r in rigid],
                     detail="subject travels or scales while its drawing stays the same (static image sliding, bobbing or zooming)")
