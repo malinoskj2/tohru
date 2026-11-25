@@ -102,8 +102,12 @@ fn microphone_choices_and_metadata_refresh_follow_the_selected_source() {
     "#).exec().unwrap();
     let callback: mlua::Function = lua.globals().get("applied").unwrap();
     lua.load(include_str!("../../shell/settings/controller.luau"))
-        .eval::<mlua::Function>().unwrap().call::<mlua::Function>(callback).unwrap();
-    lua.load(r#"
+        .eval::<mlua::Function>()
+        .unwrap()
+        .call::<mlua::Function>(callback)
+        .unwrap();
+    lua.load(
+        r#"
         handlers.settings_category(3)
         local microphone, aec
         for i,row in ipairs(model.settings_rows) do
@@ -119,5 +123,8 @@ fn microphone_choices_and_metadata_refresh_follow_the_selected_source() {
         assert(string.find(model.settings_rows[aec].detail,'unknown'))
         handlers.settings_row(microphone-1)
         assert(config['assistant.voice_source'].value=='')
-    "#).exec().unwrap();
+    "#,
+    )
+    .exec()
+    .unwrap();
 }

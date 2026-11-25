@@ -39,18 +39,32 @@ fn declared_shaders() -> Vec<PathBuf> {
 #[test]
 fn every_deck_shader_parses_and_validates_with_eight_inputs() {
     let shaders = declared_shaders();
-    let names: Vec<_> = shaders.iter().map(|path| path.file_name().unwrap().to_string_lossy().into_owned()).collect();
+    let names: Vec<_> = shaders
+        .iter()
+        .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
     for expected in ["ribbon.wgsl", "water.wgsl", "tile.wgsl", "reveal.wgsl"] {
-        assert!(names.iter().any(|name| name == expected), "the deck declares {expected}: {names:?}");
+        assert!(
+            names.iter().any(|name| name == expected),
+            "the deck declares {expected}: {names:?}"
+        );
     }
     for path in shaders {
         let source = format!("{PRELUDE}{}", read(&path));
-        let module = naga::front::wgsl::parse_str(&source)
-            .unwrap_or_else(|error| panic!("{}: {}", path.display(), error.emit_to_string(&source)));
-        naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all())
-            .validate(&module)
-            .unwrap_or_else(|error| panic!("{}: {error:?}", path.display()));
-        assert!(!source.contains("s.c.") && !source.contains("s.d."), "{} reads past the eight values", path.display());
+        let module = naga::front::wgsl::parse_str(&source).unwrap_or_else(|error| {
+            panic!("{}: {}", path.display(), error.emit_to_string(&source))
+        });
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .unwrap_or_else(|error| panic!("{}: {error:?}", path.display()));
+        assert!(
+            !source.contains("s.c.") && !source.contains("s.d."),
+            "{} reads past the eight values",
+            path.display()
+        );
     }
 }
 
@@ -59,15 +73,33 @@ fn every_deck_shader_parses_and_validates_with_eight_inputs() {
 #[test]
 fn rules_that_must_run_live_inside_the_launcher_layer() {
     let scene = read(&root().join("shell/launcher/entry.plm"));
-    let layer = scene.find("surface launcher_layer {").expect("the launcher layer");
-    for include in ["include \"../panel-ink.plm\"", "include \"../bar/rail-rules.plm\""] {
-        let at = scene.find(include).unwrap_or_else(|| panic!("the scene has {include}"));
+    let layer = scene
+        .find("surface launcher_layer {")
+        .expect("the launcher layer");
+    for include in [
+        "include \"../panel-ink.plm\"",
+        "include \"../bar/rail-rules.plm\"",
+    ] {
+        let at = scene
+            .find(include)
+            .unwrap_or_else(|| panic!("the scene has {include}"));
         assert!(at > layer, "{include} is inside launcher_layer");
     }
-    let springs = scene.find("include \"../bar/rail-springs.plm\"").expect("the rail's springs");
-    assert!(springs < layer, "the rail's arrays are declared at the scene's level");
-    assert!(scene.contains("bright: panel_bright"), "the deck's glass reads how bright the desktop behind it is");
-    assert!(read(&root().join("shell/bar/rail-state.plm")).contains("include \"rail-rules.plm\""), "the bar still runs its rails' rules");
+    let springs = scene
+        .find("include \"../bar/rail-springs.plm\"")
+        .expect("the rail's springs");
+    assert!(
+        springs < layer,
+        "the rail's arrays are declared at the scene's level"
+    );
+    assert!(
+        scene.contains("bright: panel_bright"),
+        "the deck's glass reads how bright the desktop behind it is"
+    );
+    assert!(
+        read(&root().join("shell/bar/rail-state.plm")).contains("include \"rail-rules.plm\""),
+        "the bar still runs its rails' rules"
+    );
 }
 
 // The sidebar's rail shares the bar's driver, which Luau can only require from the scene's own folder.

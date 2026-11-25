@@ -30,6 +30,9 @@ fn ribbon_takes_its_track_ink_and_bead_presence_from_its_inputs() {
             .lines()
             .find(|line| line.contains("shader rail_shader"))
             .expect("every rail draws the shared ribbon");
-        assert!(!call.contains("#000000"), "presence rides in the bead's sign, not a black ink: {call}");
+        assert!(
+            !call.contains("#000000"),
+            "presence rides in the bead's sign, not a black ink: {call}"
+        );
     }
 }

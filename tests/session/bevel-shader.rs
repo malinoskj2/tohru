@@ -29,13 +29,17 @@ fn capillary_alpha(p: (f32, f32), size: (f32, f32), left: f32) -> f32 {
     let total = edge + std::f32::consts::FRAC_PI_2 * r + (w - r);
     let (at, inset) = if p.0 < r && p.1 > edge {
         let d = (p.0 - r, p.1 - edge);
-        (edge + r * d.1.max(0.0).atan2((-d.0).max(0.0001)), r - (d.0 * d.0 + d.1 * d.1).sqrt())
+        (
+            edge + r * d.1.max(0.0).atan2((-d.0).max(0.0001)),
+            r - (d.0 * d.0 + d.1 * d.1).sqrt(),
+        )
     } else if p.0 < h - p.1 {
         (p.1, p.0)
     } else {
         (edge + std::f32::consts::FRAC_PI_2 * r + (p.0 - r), h - p.1)
     };
-    let near = (-((inset.max(0.0) - 1.2) / 0.85).powi(2)).exp() + (-inset.max(0.0) / 5.0).exp() * 0.32;
+    let near =
+        (-((inset.max(0.0) - 1.2) / 0.85).powi(2)).exp() + (-inset.max(0.0) / 5.0).exp() * 0.32;
     let head = (1.0 - left) * total;
     let t = ((at - (head - 1.5)) / 7.5).clamp(0.0, 1.0);
     near * t * t * (3.0 - 2.0 * t)
@@ -49,10 +53,14 @@ fn the_light_drains_down_the_left_edge_then_along_the_bottom() {
         "let lit = smoothstep(head - 1.5, head + 6.0, at.x)",
         "return vec2<f32>(p.y, p.x);",
     ] {
-        assert!(SOURCE.contains(needle), "the mirror is out of date: {needle}");
+        assert!(
+            SOURCE.contains(needle),
+            "the mirror is out of date: {needle}"
+        );
     }
     let size = (374.0, 104.0);
-    let (top_left, low_left, bottom_mid, bottom_right) = ((1.2, 10.0), (1.2, 80.0), (187.0, 102.8), (360.0, 102.8));
+    let (top_left, low_left, bottom_mid, bottom_right) =
+        ((1.2, 10.0), (1.2, 80.0), (187.0, 102.8), (360.0, 102.8));
     let full = |p| capillary_alpha(p, size, 1.0);
     assert!(full(top_left) > 0.8 && full(bottom_mid) > 0.8 && full(bottom_right) > 0.8);
     // A tenth gone: the top of the left edge is dark, its foot still lit.

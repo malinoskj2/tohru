@@ -890,10 +890,7 @@ impl Key {
             {
                 true
             }
-            Self::AssistantQuickVoiceEffort if ASSISTANT_EFFORTS[1..].contains(&text) =>
-            {
-                true
-            }
+            Self::AssistantQuickVoiceEffort if ASSISTANT_EFFORTS[1..].contains(&text) => true,
             Self::AssistantQuickVoiceModel
                 if text.starts_with("claude-")
                     && text.len() <= 128

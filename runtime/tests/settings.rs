@@ -953,7 +953,10 @@ fn assistant_backend_defaults_to_local_and_validates_opt_in_orca_settings() {
         (Key::AssistantOrcaOffline, Value::Text("fallback".into())),
         (Key::AssistantQuickVoiceModel, Value::Text("gpt-6".into())),
         (Key::AssistantQuickVoiceModel, Value::Text(String::new())),
-        (Key::AssistantQuickVoiceModel, Value::Text("claude-x y".into())),
+        (
+            Key::AssistantQuickVoiceModel,
+            Value::Text("claude-x y".into()),
+        ),
         (Key::AssistantQuickVoiceEffort, Value::Text(String::new())),
         (Key::AssistantQuickVoiceEffort, Value::Text("loud".into())),
         (Key::AssistantQuickVoiceCache, Value::Text("yes".into())),
@@ -1390,12 +1393,24 @@ fn needs_you_interval_defaults_to_five_minutes_and_zero_turns_it_off() {
     assert_eq!(key.name(), "assistant.orca_needs_you_minutes");
     let mut owner = Owner::load(files.user(), None).unwrap();
     assert_eq!(owner.get(key).value, Value::Integer(5));
-    for invalid in [Value::Integer(-1), Value::Integer(1441), Value::Bool(false), Value::Text("5".into())] {
+    for invalid in [
+        Value::Integer(-1),
+        Value::Integer(1441),
+        Value::Bool(false),
+        Value::Text("5".into()),
+    ] {
         assert!(owner.set(key, invalid).is_err());
     }
     owner.set(key, Value::Integer(0)).unwrap();
-    assert_eq!(Owner::load(files.user(), None).unwrap().get(key).value, Value::Integer(0));
-    assert!(fs::read_to_string(files.user()).unwrap().contains("[assistant]\norca_needs_you_minutes = 0"));
+    assert_eq!(
+        Owner::load(files.user(), None).unwrap().get(key).value,
+        Value::Integer(0)
+    );
+    assert!(
+        fs::read_to_string(files.user())
+            .unwrap()
+            .contains("[assistant]\norca_needs_you_minutes = 0")
+    );
     fs::write(files.user(), "[assistant]\norca_needs_you_minutes = 1440\n").unwrap();
     owner.reload().unwrap();
     assert_eq!(owner.get(key).value, Value::Integer(1440));

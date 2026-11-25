@@ -7,10 +7,7 @@ fn vessel_shader_parses_and_validates() {
         "color2: vec4<f32>, origin: vec2<f32>, layer: i32, };\n",
         "fn inside(s: Shader, p: vec2<f32>) -> vec4<f32> { return vec4<f32>(0.0, 0.0, 0.0, s.uv.x * p.x); }\n",
     );
-    let source = format!(
-        "{prelude}{}",
-        include_str!("../../shell/water/vessel.wgsl")
-    );
+    let source = format!("{prelude}{}", include_str!("../../shell/water/vessel.wgsl"));
     let module = naga::front::wgsl::parse_str(&source)
         .unwrap_or_else(|error| panic!("{}", error.emit_to_string(&source)));
     naga::valid::Validator::new(

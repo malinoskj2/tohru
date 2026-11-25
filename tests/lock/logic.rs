@@ -48,7 +48,9 @@ fn lua_with(settings: &str) -> (Lua, mlua::Function) {
 fn style_for(settings: &str, env_style: Option<&str>) -> (i64, Lua) {
     let (lua, controller) = lua_with(settings);
     if let Some(s) = env_style {
-        lua.load(format!("env.TOHRU_LOCK_STYLE = {s:?}")).exec().unwrap();
+        lua.load(format!("env.TOHRU_LOCK_STYLE = {s:?}"))
+            .exec()
+            .unwrap();
     }
     controller.call::<()>(true).unwrap();
     let style = lua.load("return fact.style").eval::<i64>().unwrap();
@@ -73,21 +75,36 @@ fn every_configured_style_is_chosen_by_its_name() {
 fn unknown_missing_or_broken_settings_fall_back_to_flooded_monolith() {
     let (index, lua) = style_for(&configured("aurora"), None);
     assert_eq!(index, 3);
-    assert!(lua.load("return logged(\"unknown lock.style 'aurora'\")").eval::<bool>().unwrap());
+    assert!(
+        lua.load("return logged(\"unknown lock.style 'aurora'\")")
+            .eval::<bool>()
+            .unwrap()
+    );
 
     let (index, _) = style_for("tohru_settings = nil", None);
     assert_eq!(index, 3);
 
-    let (index, lua) = style_for("tohru_settings = { snapshot = function() error('config unreadable') end }", None);
+    let (index, lua) = style_for(
+        "tohru_settings = { snapshot = function() error('config unreadable') end }",
+        None,
+    );
     assert_eq!(index, 3);
-    assert!(lua.load("return logged('settings are unavailable')").eval::<bool>().unwrap());
+    assert!(
+        lua.load("return logged('settings are unavailable')")
+            .eval::<bool>()
+            .unwrap()
+    );
 
     let (index, lua) = style_for(
         "tohru_settings = { snapshot = function() return {} end, warnings = function() return {'config.toml: unknown lock.style \"x\"'} end }",
         None,
     );
     assert_eq!(index, 3);
-    assert!(lua.load("return logged('warning: config.toml')").eval::<bool>().unwrap());
+    assert!(
+        lua.load("return logged('warning: config.toml')")
+            .eval::<bool>()
+            .unwrap()
+    );
 }
 
 #[test]
@@ -96,7 +113,11 @@ fn the_environment_overrides_the_setting_and_an_unknown_one_falls_back() {
     assert_eq!(index, 9);
     let (index, lua) = style_for(&configured("still-glass"), Some("nonsense"));
     assert_eq!(index, 3);
-    assert!(lua.load("return logged(\"TOHRU_LOCK_STYLE 'nonsense'\")").eval::<bool>().unwrap());
+    assert!(
+        lua.load("return logged(\"TOHRU_LOCK_STYLE 'nonsense'\")")
+            .eval::<bool>()
+            .unwrap()
+    );
 }
 
 #[test]

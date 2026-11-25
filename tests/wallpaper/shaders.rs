@@ -15,18 +15,33 @@ fn validate(name: &str, body: &str) {
     )
     .validate(&module)
     .unwrap_or_else(|error| panic!("{name} does not validate: {error:?}"));
-    assert!(module.functions.iter().any(|(_, f)| f.name.as_deref() == Some("shade")), "{name} has no shade");
-    assert!(!body.contains("@group") && !body.contains("@binding") && !body.contains("var<"), "{name} declares bindings");
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|(_, f)| f.name.as_deref() == Some("shade")),
+        "{name} has no shade"
+    );
+    assert!(
+        !body.contains("@group") && !body.contains("@binding") && !body.contains("var<"),
+        "{name} declares bindings"
+    );
 }
 
 #[test]
 fn meniscus_shader_parses_and_validates() {
-    validate("meniscus.wgsl", include_str!("../../shell/wallpaper/meniscus.wgsl"));
+    validate(
+        "meniscus.wgsl",
+        include_str!("../../shell/wallpaper/meniscus.wgsl"),
+    );
 }
 
 #[test]
 fn tile_scrim_shader_parses_and_validates() {
-    validate("scrim.wgsl", include_str!("../../shell/wallpaper/scrim.wgsl"));
+    validate(
+        "scrim.wgsl",
+        include_str!("../../shell/wallpaper/scrim.wgsl"),
+    );
 }
 
 // The sound tank and fill are reused as they are; the wallpaper tank feeds them its own values.

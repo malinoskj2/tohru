@@ -43,8 +43,13 @@ fn controller() -> Lua {
     )
     .exec()
     .unwrap();
-    let make = lua.load(include_str!("../../shell/polkit/controller.luau")).eval::<mlua::Function>().unwrap();
-    lua.globals().set("polkit", make.call::<mlua::Table>(()).unwrap()).unwrap();
+    let make = lua
+        .load(include_str!("../../shell/polkit/controller.luau"))
+        .eval::<mlua::Function>()
+        .unwrap();
+    lua.globals()
+        .set("polkit", make.call::<mlua::Table>(()).unwrap())
+        .unwrap();
     lua
 }
 

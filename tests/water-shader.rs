@@ -18,14 +18,18 @@ fn shared_water_shader_parses_and_validates() {
     .validate(&module)
     .expect("shared water shader validates against the upstream ABI");
     assert!(!source.contains("s.c.") && !source.contains("s.d."));
-    assert!(!source.contains("behind("), "a group's shader cannot read behind the surface");
+    assert!(
+        !source.contains("behind("),
+        "a group's shader cannot read behind the surface"
+    );
 }
 
 #[test]
 fn bluetooth_tank_hands_the_shared_water_eight_values() {
-    for (scene, name) in [
-        (include_str!("../shell/bluetooth/tank.plm"), "bt_water_shader"),
-    ] {
+    for (scene, name) in [(
+        include_str!("../shell/bluetooth/tank.plm"),
+        "bt_water_shader",
+    )] {
         assert!(
             scene.contains(&format!("shader {name} = file \"../water.wgsl\"")),
             "{name} is the shared water"
@@ -47,8 +51,24 @@ fn bluetooth_tank_hands_the_shared_water_eight_values() {
                 *c == ',' && depth == 0
             })
             .count();
-        assert_eq!(commas + 1, 8, "{name} takes fold, waterline, slosh, width, numeral width, pk, level + 2 quiet, clock");
+        assert_eq!(
+            commas + 1,
+            8,
+            "{name} takes fold, waterline, slosh, width, numeral width, pk, level + 2 quiet, clock"
+        );
     }
-    assert!(!std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../shell/network/water.wgsl")).exists());
-    assert!(!std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../shell/network/water.plm")).exists());
+    assert!(
+        !std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../shell/network/water.wgsl"
+        ))
+        .exists()
+    );
+    assert!(
+        !std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../shell/network/water.plm"
+        ))
+        .exists()
+    );
 }
