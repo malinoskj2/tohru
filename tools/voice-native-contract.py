@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise real helpers and real models through fake audio utilities.
+"""Exercise the native voice service and real models through fake audio utilities.
 
 This proves process/protocol behavior and submitted PCM, not physical speaker output.
 """
@@ -202,12 +202,7 @@ def main(args):
     common=["--tts-engine",args.engine,"--vad-model",str(MODEL/"silero-vad/silero-vad-v6.2.3.onnx"),"--asr-model",str(MODEL/"voice-asr"),
             "--turn-model",str(MODEL/"voice-turn/smart-turn-v3.2-cpu.onnx"),"--tts-model",str(MODEL/"voice-kokoro")]
     results={}
-    reference=Path(args.reference).resolve() if args.reference else ROOT/"bin/tohru-voice"
-    results["python"]=exercise([sys.executable,str(reference),*common],out/"python",{},args.new_contracts)
     results["native"]=exercise([str(native),*common,"--assets",str(ROOT/"shell/assistant/voice")],out/"native",dict(ORT_DYLIB_PATH=args.ort_library),args.new_contracts)
-    a=(out/"python/complete.pcm").read_bytes()
-    b=(out/"native/complete.pcm").read_bytes()
-    results["submitted_pcm_identical"]=a==b
     results["classification"]="protocol and cancellation assertions passed; timings are one-run diagnostic observations"
     (out/"contract.json").write_text(json.dumps(results,indent=2)+"\n")
     print(json.dumps(results,indent=2))
@@ -218,7 +213,6 @@ if __name__=="__main__":
     parser.add_argument("--native",required=True)
     parser.add_argument("--ort-library",required=True)
     parser.add_argument("--engine",choices=("kokoro","espeak-ng"),default="kokoro")
-    parser.add_argument("--reference",help="Explicit committed/reference Python voice helper")
     parser.add_argument("--new-contracts",action="store_true",help="Verify admitted background speech and bounded task diagnostics")
     parser.add_argument("--output",default=".tmp/docs/rust-voice/contract")
     main(parser.parse_args())

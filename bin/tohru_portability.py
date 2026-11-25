@@ -353,22 +353,6 @@ def echo_cancel(args):
         print(content, end="")
 
 
-def voice_environment():
-    values, _ = config()
-    environment = os.environ.copy()
-    file = values["assistant.voice_environment"]
-    if file:
-        data = read_toml(Path(file)).get("environment", {})
-        for key, value in data.items():
-            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) or not isinstance(value, str) or '\0' in value:
-                raise ValueError("voice environment must contain string environment entries")
-            environment[key] = value
-    environment.setdefault("HF_HUB_OFFLINE", "1")
-    environment.setdefault("TRANSFORMERS_OFFLINE", "1")
-    environment.setdefault("OPENBLAS_NUM_THREADS", "1")
-    return values["assistant.voice_python"], environment
-
-
 def greeter_check(args):
     import pwd
     import shlex

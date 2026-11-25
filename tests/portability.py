@@ -125,13 +125,6 @@ interface: 'zxdg_output_manager_v1', version: 3, name: 9
             data=p.shortcuts();self.assertFalse(data['editable']);self.assertEqual(data['bindings'],[])
         with patch.dict(os.environ,{'HYPRLAND_INSTANCE_SIGNATURE':'','SWAYSOCK':''}):self.assertEqual(p.shortcuts()['state'],'unsupported')
 
-    def test_voice_environment_only_reexecs_explicit_interpreter(self):
-        env=self.root/'voice-env.toml';env.write_text('[environment]\nOMP_NUM_THREADS="2"\n')
-        self.write_config(f'[assistant]\nvoice_python="/opt/voice/bin/python"\nvoice_environment="{env}"\n')
-        executable,environment=p.voice_environment()
-        self.assertEqual(executable,'/opt/voice/bin/python');self.assertEqual(environment['OMP_NUM_THREADS'],'2')
-        self.assertEqual(environment['HF_HUB_OFFLINE'],'1')
-
     def test_doctor_missing_tools_is_structured_and_redacts(self):
         self.write_config('[assistant.discord]\ntoken_file="/secret/do-not-report"\n')
         with patch.object(tohru_doctor,'probe',return_value=(None,'missing')),patch.object(tohru_doctor,'json_probe',return_value=(None,'missing')),patch.object(tohru_doctor,'protocols',return_value=(None,'missing')),patch.object(tohru_doctor,'outputs',return_value=([],'missing')),patch.object(tohru_doctor,'shortcuts',return_value={'state':'unsupported','owner':'unknown','bindings':[]}),patch.object(tohru_doctor.shutil,'which',return_value=None),contextlib.redirect_stdout(io.StringIO()) as out:

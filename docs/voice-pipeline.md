@@ -163,50 +163,16 @@ follow-up, speculative draft, backchannel or conversation timeout rules.
 
 ## Reproduce
 
-From the repository root, preserve a baseline before changes:
-
-```sh
-mkdir -p .tmp/voice-baseline
-cp bin/tohru-voice .tmp/voice-baseline/tohru-voice
-python3 tools/voice-benchmark.py --module .tmp/voice-baseline/tohru-voice > .tmp/before.json
-python3 tools/voice-benchmark.py > .tmp/after.json
-python3 tools/voice-benchmark.py --sentences 12 --repetitions 3 > .tmp/long.json
-python3 tools/voice-benchmark.py --interrupt-ms 40 > .tmp/interruption.json
-```
-
-For this work's original baseline, use revision
-`364545c53998d86a7817852a8b4e70d402a5685a:bin/tohru-voice` with `git show`.
-The benchmark's provider always delivers identical text at 120 ms intervals;
-synthetic TTS takes 60 ms per chunk and emits 100 ms of PCM. It drives the production
-Speaker and parser, but does not measure capture, ASR or a live provider. `--real-tts`
-uses real espeak-ng instead. `--pulse-sink NAME` uses actual pacat rather than a fake
-player; select an explicit private null sink for unattended tests, not a host output.
-
-For real Kokoro, first inspect `/etc/resource-scheduler/mode` and the shared
-`$MODEL_ROOT/{catalog.json,readiness.json,README.md}`. Use the packaged voice Python
-environment (numpy, onnxruntime, misaki and its English data); `python3` alone may
-lack it. Do not download weights or create another model copy. Example when the
-installed scheduler uses gpu-run:
-
-```sh
-gpu-run --vram 1GiB --name 'voice CPU Kokoro benchmark' -- \
-  /path/to/voice-python/bin/python3 tools/voice-benchmark.py \
-  --module .tmp/voice-baseline/tohru-voice \
-  --kokoro-folder "$MODEL_ROOT/by-name/voice-kokoro" --pulse-sink PRIVATE_SINK \
-  --repetitions 5 > .tmp/kokoro-before.json
-# Repeat with --module bin/tohru-voice, then repeat both with --warm.
-```
-
-On Slurm use resource-run instead, with the site's CPU/RAM admission settings.
-The model command must remain foreground within its reservation through unload.
-Fresh engine means a new model worker each repetition; it does **not** mean cold
-OS page cache. `--warm` preloads and reuses a worker outside the timed interval.
-The harness timestamps entry into the application write call (before child write/flush);
-the service event timestamps write/flush completion. Neither is acoustic onset.
-Samples report first application write, completion, synthesis times, raw synthesized waveform
-padding, pacing-based gaps, and (when interrupted) hush-return/player-reap times and
-writes after hush. For 5/8 repetitions nearest-rank p95 is the sample maximum;
-it is not a reliable population p95. Increase repetitions for tail-latency claims.
+`cargo test --manifest-path voice/Cargo.toml` drives the service's state machine,
+streaming speech parser, speaker and voice profiles with fake recognizers,
+speakers and audio devices. For real models, follow
+[native-voice.md](native-voice.md#verify-without-microphone-access): `--evaluate`
+runs single operations, `--replay` runs a WAV through the real VAD, ASR and turn
+state machine, and `tools/voice-native-contract.py` runs the packaged service
+with fake `parec`, `pacat` and `pactl` inside a `gpu-run` reservation. First
+inspect the shared `$MODEL_ROOT/{catalog.json,readiness.json,README.md}`; do not
+download weights or create another model copy. The model command must remain
+foreground within its reservation through unload.
 
 For live end-to-end checks, run the same fixed prompts (short answer, long answer,
 interruption, unfinished request resumed while thinking, tool action, follow-up)

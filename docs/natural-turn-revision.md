@@ -125,7 +125,7 @@ provider settings were changed. Billing/token usage was not measured.
 
 ## Reproduction and remaining gates
 
-From this worktree (all evidence lives beneath `.tmp/`):
+From this worktree (all evidence lives beneath `.tmp/`). These commands use the Python voice service and its replay tools, which the native service replaced. Run them from a checkout of `e3161719` or earlier.
 
 ```sh
 git show 25a5c9b:bin/tohru-voice > .tmp/voice-v1

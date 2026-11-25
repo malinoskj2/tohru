@@ -16,8 +16,8 @@ post-restoration observation interval with zero later writes for retired IDs.
 ## Driving it with the shared runner
 
 `python3 tools/verify/verify.py doctor --scenario capture-parity --target sandbox --json`
-reports blocked. Existing tools/voice-native-contract.py and tools/voice-native-replay.py
-provide finite CPU/model entrypoints; tools/voice-native-compare.py compares adapters.
+reports blocked. tools/voice-native-contract.py and `tohru-voice-native --replay`
+provide finite CPU/model entrypoints.
 Before choosing a model read MODEL_ROOT/catalog.json, readiness.json and README.md,
 check files plus runtime/base/adapter compatibility, then use a foreground gpu-run
 reservation including teardown (reuse GPU_LEASE_ID, never nest). Missing models

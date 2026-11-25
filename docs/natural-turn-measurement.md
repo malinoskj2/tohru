@@ -30,7 +30,7 @@ models, provider accounts, GPU, microphone or speaker.
 Raw bounded per-case data: [natural-turns.json](measurements/natural-turns.json).
 The baseline file SHA-256 is
 `288c42f82dd6cb19aa23a3302f7eff2518687098e13694a193fff76050085a38`.
-Replay commands (from the worktree root):
+Replay commands (from the worktree root). These commands use the Python voice service and its replay tools, which the native service replaced. Run them from a checkout of `e3161719` or earlier.
 
 ```sh
 git show 337530073ae51c5f5e5a16c60c99ccd3776d2ddb:bin/tohru-voice > .tmp/baseline-voice

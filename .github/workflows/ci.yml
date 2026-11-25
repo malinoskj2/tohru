@@ -71,8 +71,6 @@ jobs:
           tests/assistant/service.py
           tests/assistant/discord.py
           tests/assistant/discord-dm.py
-          tests/assistant/voice.py
-          tests/assistant/voice-profiles.py
           tests/assistant/flight-scene.py
           tests/cli.py
           tests/dev.py

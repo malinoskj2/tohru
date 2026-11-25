@@ -74,8 +74,8 @@ These are administrator instructions, never executed by Tohru. Install mpvpaper
 through your distro or build the [upstream project](https://github.com/GhostNaN/mpvpaper)
 against its documented Wayland/libmpv dependencies; do not fetch an arbitrary
 binary. Optional voice dependencies are described below. Nix packaging supplies
-these client tools and speech Python dependencies (when withVoice is true), but
-never downloads models. Release tarballs include helpers, scenes, `share/tohru`
+these client tools and the voice service (when withVoice is true), but never
+downloads models. Release tarballs include helpers, scenes, `share/tohru`
 setup data and these docs; they rely on distribution packages for external tools.
 Keep that layout intact, for example under `/opt/tohru`, and put its `bin` on PATH.
 
@@ -323,42 +323,14 @@ else's audio configuration. See [PipeWire's module documentation](https://docs.p
 ## Voice without Nix
 
 There is **no dependency installer or model downloader**. Chat works with
-`assistant.voice = false`. Choose an existing CPython 3.11 virtual environment or
-provide one yourself. A reproducible **candidate**, not an inference-tested new
-lock, is numpy 2.2.6, onnxruntime 1.23.2 (CPU), sherpa-onnx 1.12.40, misaki 0.9.4,
-spaCy 3.8.11, phonemizer 3.3.0 and num2words 0.5.14. The upstream PyPI metadata,
-selected CPython 3.11 Linux wheels/source artifact URLs and SHA-256 hashes are in
-[provenance/voice-python.json](provenance/voice-python.json), checked 2026-11-22.
-Transitive dependencies are not hash-locked; retain your environment's resolved
-freeze/lock and review it. Nix keeps using its pinned package-set dependencies.
-
-For an administrator/user performing setup themselves:
-
-```sh
-python3.11 -m venv ~/.local/share/tohru/voice-env
-~/.local/share/tohru/voice-env/bin/python -m pip install \
-  numpy==2.2.6 onnxruntime==1.23.2 sherpa-onnx==1.12.40 \
-  'misaki[en]==0.9.4' spacy==3.8.11 phonemizer==3.3.0 num2words==0.5.14
-# Explicit spaCy data install, required by misaki's English phonemizer:
-~/.local/share/tohru/voice-env/bin/python -m pip install \
-  https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
-```
-
-Install espeak-ng and its native shared library, plus `parec`, `pacat` and `pactl`
-(usually pulseaudio-utils), through your distro. Use a CPU onnxruntime wheel
-matching Python/architecture/glibc; do not install the GPU extra just for Tohru.
-The [spaCy model release](https://github.com/explosion/spacy-models/releases/tag/en_core_web_sm-3.8.0)
-is explicit data setup, separate from speech weights. Its digest is not recorded
-here; verify upstream provenance. Tohru checks for it before using misaki and will
-not invoke spaCy's implicit downloader. No installation commands above run from
-the service. An environment missing optional Kokoro dependencies uses espeak-ng;
-the missing dependency is reported.
+`assistant.voice = false`. Voice needs the `tohru-voice` program built from
+[`voice/`](../voice) as described in [native-voice.md](native-voice.md#build),
+installed on the bar's `PATH` with `ORT_DYLIB_PATH` naming an ONNX Runtime
+shared library. Install espeak-ng and its native shared library, plus `parec`,
+`pacat` and `pactl` (usually pulseaudio-utils), through your distro.
 
 ```toml
 [assistant]
-voice_python = "/home/alice/.local/share/tohru/voice-env/bin/python"
-# Optional explicit environment TOML; not a shell script and never sourced:
-voice_environment = "/home/alice/.config/tohru/voice-environment.toml"
 vad_model = "/srv/models/silero-vad/silero_vad.onnx"
 asr_model = "/srv/models/zipformer-en"
 # turn_model = "/srv/models/smart-turn/smart-turn-v3.2-cpu.onnx"
@@ -368,11 +340,10 @@ tts_engine = "espeak-ng" # or kokoro with its artifacts below
 # tts_model = "/srv/models/kokoro"
 ```
 
-An optional environment file contains `[environment]` string entries, e.g.
-`LD_LIBRARY_PATH`, `PATH` and `OMP_NUM_THREADS`. It is read only by voice, never
-sourced as code or printed by doctor. Existing `TOHRU_VOICE_SOURCE`, native model
-paths and Nix interpreter wrappers remain supported. Offline environment defaults
-are set before service startup. Restart the bar/voice process after changes.
+`assistant.voice_python` and `assistant.voice_environment` configured the
+former Python voice service. They are still accepted and have no effect.
+`TOHRU_VOICE_SOURCE` and the model path settings remain supported. Restart the
+bar or voice process after changes.
 
 Speech artifacts are listed with revisions, licenses, sizes and available hashes
 in [configuration.md#voice-models](configuration.md#voice-models):
@@ -388,12 +359,9 @@ in [configuration.md#voice-models](configuration.md#voice-models):
   stock voices need the matching upstream voices files. Arbitrary absolute model
   paths remain supported; MODEL_ROOT/by-name is not consulted at runtime.
 
-Obtain and hash-check artifacts yourself using that table. Doctor checks paths and
-Python module discoverability without loading models, accessing the microphone,
-contacting providers or downloading anything. Existing isolated worker lifecycle,
-stream cancellation, chunk playback and journal diagnostics are retained. A
-configured environment file requires checking dependencies inside that environment
-manually; doctor labels that observation unknown rather than ignoring its env.
+Obtain and hash-check artifacts yourself using that table. Doctor checks paths,
+the `tohru-voice` program and the audio tools without starting voice, loading
+models, accessing the microphone, contacting providers or downloading anything.
 
 ## Optional greetd installation
 

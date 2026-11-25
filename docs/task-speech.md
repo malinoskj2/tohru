@@ -64,7 +64,7 @@ These commands exercise production scheduling and desktop adapters with fake clo
 lua5.4 tests/assistant/task-speech.lua
 lua5.4 tests/assistant/controller.lua
 lua5.4 tests/assistant/voice-controller.lua
-python3 -B tests/assistant/voice.py
+cargo test --manifest-path voice/Cargo.toml
 python3 -B tests/cli.py
 cargo test --locked --manifest-path runtime/Cargo.toml waiting_chatter
 ```

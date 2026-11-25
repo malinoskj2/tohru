@@ -174,14 +174,14 @@ The spotter is about five times cheaper but fails the bar for the default (recal
 ## Voice of the dragon
 
 - Cute, quirky, cartoony, younger-sounding and original, not a clone of an existing character.
-- Locked: **tide**, a fitted Kokoro-82M v1.0 voicepack shipped as `shell/assistant/voice/tohru-tide.bin` (provenance in its README), at speed 1.0 with no DSP. Kokoro runs fp32 ONNX on onnxruntime's CPU provider with 4 threads, misaki G2P (espeak-ng fallback for unknown words), in a child process so it can be freed. espeak-ng stays as the fallback engine.
+- Locked: **tide**, a fitted Kokoro-82M v1.0 voicepack shipped as `shell/assistant/voice/tohru-tide.bin` (provenance in its README), at speed 1.0 with no DSP. Kokoro runs fp32 ONNX on onnxruntime's CPU provider with 4 threads, misaki G2P (espeak-ng fallback for unknown words), inside the voice service, which drops the model to free it. espeak-ng stays as the fallback engine.
 - Loading: by default Kokoro loads when the voice service starts and stays loaded while voice is on; `assistant.tts_load_on_conversation = true` loads it when a conversation starts and frees it when it ends. First audio about 0.7 s after the answer arrives, real-time factor 0.10.
 
 ## Cost budget
 
 At idle, only the mic and VAD run, at about 1 % of a core. Recognition runs only on speech. The desktop uses no GPU for any of this.
 
-Measured on 2026-11-21 in the sandbox (Python 3.14, onnxruntime CPU):
+Measured on 2026-11-21 in the sandbox with the former Python voice service (Python 3.14, onnxruntime CPU); the native service is unmeasured on this table:
 
 | State | CPU (one core) | RAM |
 |---|---|---|

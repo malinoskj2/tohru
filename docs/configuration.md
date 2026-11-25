@@ -160,7 +160,7 @@ The voice service has two profiles. The low-VRAM profile is the CPU setup under 
 
 1. Each time Tohru comes onto the screen (the dragon or the chat popup becomes visible), the service reads `gpu-status --json`. Committed VRAM is measured use plus, for every running `gpu-run` reservation, any part of its budget it has not allocated yet; an exclusive reservation counts as full. The scheduler's desktop headroom is a reserve, not use, so it is not counted. At or above `vram_threshold_percent` she keeps the low profile.
 2. Below it, the high profile's aliases are resolved through `$MODEL_ROOT/catalog.json` and `readiness.json`. An alias that is absent, disabled, not `ready` or missing files keeps the low profile, and the log names the alias. Nothing is downloaded or copied.
-3. The models load in one worker started as `gpu-run --vram BUDGET --name "Tohru voice (high VRAM)" --timeout queue_timeout_seconds -- PYTHON ...`. The budget is `vram_mib`, or an estimate: the catalog's file sizes (doubled for `float32`) plus 10 %, 1.5 GiB working memory for speech, 1 GiB for recognition and 512 MiB of CUDA context, rounded up to 512 MiB. A queued reservation waits in the scheduler; nothing bypasses it.
+3. The models load in one worker started as `gpu-run --vram BUDGET --name "Tohru voice (high VRAM)" --timeout queue_timeout_seconds -- PYTHON tohru-voice-qwen3-worker --socket ...`, which talks to the service over a private Unix socket. The budget is `vram_mib`, or an estimate: the catalog's file sizes (doubled for `float32`) plus 10 %, 1.5 GiB working memory for speech, 1 GiB for recognition and 512 MiB of CUDA context, rounded up to 512 MiB. A queued reservation waits in the scheduler; nothing bypasses it.
 4. Until the worker reports its models loaded, answers use the low profile. A voice turn never waits for the high one. Each new answer then speaks through it; a sentence it cannot make, a worker that dies or a reservation that times out falls back to the low profile.
 5. When she has been hidden for `hidden_unload_seconds`, the worker exits and the reservation is released. Showing her again cancels the unload; the next appearance after an unload checks VRAM again. Stopping the voice service also releases it.
 
@@ -207,8 +207,8 @@ restart their services after changing ownership, executable/options or environme
 | `idle.owner` | `"external"` | `external`, `disabled` or `tohru`; never starts a second known idle owner |
 | `idle.lock_seconds` | `300` | 0 disables idle lock, otherwise 1–86400 seconds |
 | `idle.suspend_seconds` | `0` | 0 disables idle suspend; otherwise greater than lock_seconds, up to 86400 |
-| `assistant.voice_python` | `"python3"` | Keep packaged interpreter by default; select another executable/absolute venv Python explicitly |
-| `assistant.voice_environment` | `""` | Optional absolute TOML file with `[environment]` string entries; never shell-sourced |
+| `assistant.voice_python` | `"python3"` | No effect; configured the former Python voice service |
+| `assistant.voice_environment` | `""` | No effect; configured the former Python voice service |
 
 Font controls are in Appearance; managed font values are read-only there. Font
 changes apply on component restart and include greeter/lock. Settings → Shortcuts

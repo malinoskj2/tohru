@@ -191,17 +191,16 @@ def doctor(as_json=False):
     add("echo-cancel.selection","selected" if selected else "automatic-or-other","Explicit voice source selection" if selected else "Voice source not explicitly selected")
     add("echo-cancel.effectiveness","unknown","No physical acoustic validation performed","Select both the virtual source and playback sink; module presence alone proves no cancellation")
     enabled=values.get("assistant.voice",False)
-    interpreter=values.get("assistant.voice_python","python3")
-    # find_spec in the selected interpreter only; never imports native speech runtimes.
-    code="import importlib.util,json; print(json.dumps({n:importlib.util.find_spec(n) is not None for n in ['numpy','onnxruntime','sherpa_onnx','misaki','en_core_web_sm']}))"
-    envfile=values.get("assistant.voice_environment", "")
-    deps,state=json_probe([interpreter,"-c",code]) if enabled and not envfile else (None,"disabled" if not enabled else "environment-specific inspection requires manual check")
-    add("voice.dependencies","disabled" if not enabled else "ok" if isinstance(deps,dict) and all(deps.get(name) for name in ("numpy","onnxruntime","sherpa_onnx")) else "missing" if isinstance(deps,dict) else "unknown",
-        "Required modules discoverable (not loaded)" if isinstance(deps,dict) and all(deps.get(name) for name in ("numpy","onnxruntime","sherpa_onnx")) else state,
-        "Follow docs/standalone.md; activate the configured environment before checking dependencies")
+    service=shutil.which("tohru-voice") or (str(BIN/"tohru-voice") if (BIN/"tohru-voice").is_file() else None)
+    tools=[name for name in ("parec","pacat","pactl") if not shutil.which(name)]
+    add("voice.dependencies","disabled" if not enabled else "ok" if service and not tools else "missing",
+        "tohru-voice and the PulseAudio clients found (not started)" if service and not tools else "disabled" if not enabled else "Missing: "+", ".join((["tohru-voice"] if not service else [])+tools),
+        "Install the tohru-voice binary from voice/ (docs/standalone.md) and the PulseAudio client tools")
     kokoro = values.get("assistant.tts_engine") == "kokoro" and bool(values.get("assistant.tts_model"))
-    add("voice.tts.dependencies", "optional-unset" if not kokoro else "present-unverified" if isinstance(deps,dict) and deps.get("misaki") and deps.get("en_core_web_sm") else "missing-or-unknown",
-        "Kokoro needs misaki and en_core_web_sm; espeak-ng is the fallback", "Install the explicit environment from docs/standalone.md; no implicit downloader runs")
+    espeak = shutil.which("espeak-ng") is not None
+    add("voice.tts.dependencies", "disabled" if not enabled else "present-unverified" if espeak else "missing",
+        "espeak-ng found; it phonemizes Kokoro and is the speech fallback" if espeak else "espeak-ng is required for Kokoro phonemes and the fallback voice",
+        "Install espeak-ng; Kokoro also needs assistant.tts_model" if not kokoro else "Install espeak-ng")
     for key,required in (("vad_model",True),("asr_model",True),("turn_model",False),("kws_model",values.get("assistant.voice_wake")=="kws"),("tts_model",False)):
         path=values.get("assistant."+key,"")
         present=bool(path) and Path(path).exists()

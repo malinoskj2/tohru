@@ -96,7 +96,7 @@ on-demand locker uses native compositor-confirmed readiness before suspend.
 
 See [the complete standalone voice environment instructions](standalone.md#voice-without-nix) for pinned dependency metadata, explicit environment configuration and offline behavior.
 
-`bin/tohru-voice` needs Python 3.11+ with numpy, onnxruntime, sherpa-onnx and misaki (for Kokoro), and `parec`, `pacat`, `pactl` and `espeak-ng` on `PATH`. Without them, set `assistant.voice = false`; the chat popup works either way.
+Voice needs the `tohru-voice` program built from `voice/` ([native-voice.md](native-voice.md#build)), with `ORT_DYLIB_PATH` naming an ONNX Runtime library, and `parec`, `pacat`, `pactl` and `espeak-ng` on `PATH`. Without them, set `assistant.voice = false`; the chat popup works either way.
 
 ### Voice models
 
