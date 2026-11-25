@@ -12,11 +12,13 @@ fn run() -> Result<()> {
     if args.evaluate {
         return tohru_voice_native::evaluate::run(&args);
     }
+    let check = args.check_models();
     ensure!(
-        args.vad_model.is_file() && args.asr_model.is_dir(),
-        "voice requires --vad-model and --asr-model"
+        check.errors.is_empty(),
+        "Voice is off until its models are set. {}",
+        check.errors.join("; ")
     );
-    tohru_voice_native::service::run(&args)
+    tohru_voice_native::service::run(&args, check)
 }
 
 fn main() {

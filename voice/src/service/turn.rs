@@ -271,7 +271,10 @@ impl Voice {
             "asr_finalize_start",
             json!({"turn_id":self.turn_id,"last_speech_ns":self.last_speech_ns}),
         );
-        let transcript = self.asr.finish();
+        let mut transcript = self.asr.finish();
+        if !transcript.trim().is_empty() {
+            transcript = self.high_transcript(transcript);
+        }
         if self.semantic && !pending {
             let request = self.candidate(&transcript);
             let same = policy::normalize(&request) == self.semantic_text;
@@ -311,6 +314,39 @@ impl Voice {
         }
         self.reset();
         self.deliver(&transcript, &draft);
+    }
+
+    /// The high profile's final-pass recogniser when it is loaded; the streaming transcript
+    /// otherwise, or on any failure.
+    pub(super) fn high_transcript(&self, streaming: String) -> String {
+        let Some((id, high)) = self.profiles.high().filter(|(_, high)| high.transcribes()) else {
+            return streaming;
+        };
+        match high.transcribe(&self.audio, Instant::now() + HIGH_ASR_TIMEOUT) {
+            Ok(Some(text)) => {
+                diagnostic(
+                    "asr_profile",
+                    json!({"profile":"high","empty":text.is_empty()}),
+                );
+                if text.is_empty() { streaming } else { text }
+            }
+            Ok(None) => {
+                log(
+                    "voice profile: high was busy speaking; this turn keeps the streaming transcript",
+                );
+                streaming
+            }
+            Err(HighError::Reply(error)) => {
+                log(&format!(
+                    "voice profile: high could not transcribe this turn ({error}); using low"
+                ));
+                streaming
+            }
+            Err(error @ HighError::Broken(_)) => {
+                self.profiles.failed(id, error.to_string());
+                streaming
+            }
+        }
     }
 
     pub fn deliver(&mut self, transcript: &str, draft: &str) {

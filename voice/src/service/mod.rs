@@ -1,9 +1,14 @@
 use crate::{
-    acoustic::{self, Recognizer, Spotter, Turn, Vad, WINDOW},
+    acoustic::{
+        self, Activity, LowPrecision, Recognizer, Spotter, Transcriber, Turn, TurnEnd, Vad, WINDOW,
+        WakeSpotter,
+    },
     policy,
     process::OwnedChild,
-    protocol::{diagnostic, emit},
-    speaker::Control,
+    profile::HighError,
+    profile::Profiles,
+    protocol::{diagnostic, emit, log},
+    speaker::{Control, Speech},
     synthesis::Settings,
 };
 use anyhow::{Context, Result};
@@ -26,6 +31,7 @@ use std::{
 // of quiet after it. A resumed utterance holds it until its words decide.
 const SETTLE_MS: u32 = 352;
 const SETTLE_CAP_MS: u32 = 2496;
+const HIGH_ASR_TIMEOUT: Duration = Duration::from_secs(3);
 
 struct Settling {
     turn_id: String,
@@ -52,12 +58,60 @@ impl Settling {
     }
 }
 
+/// The models one utterance passes through; real sessions, or fakes in tests.
+pub struct Acoustics {
+    pub vad: Box<dyn Activity>,
+    pub asr: Box<dyn Transcriber>,
+    pub turn: Option<Box<dyn TurnEnd>>,
+    pub spotter: Option<Box<dyn WakeSpotter>>,
+}
+
+impl Acoustics {
+    /// Loads the configured sessions. A Smart Turn model that fails to load is a warning:
+    /// turns then end on silence alone.
+    pub fn load(
+        args: &crate::Args,
+        precision: LowPrecision,
+        check: &mut crate::config::ModelCheck,
+    ) -> Result<Self> {
+        let turn: Option<Box<dyn TurnEnd>> = if !check.turn {
+            None
+        } else {
+            match Turn::new(&args.turn_model) {
+                Ok(turn) => Some(Box::new(turn)),
+                Err(error) => {
+                    check.warnings.push(format!(
+                        "turn detection unavailable: {error:#}; turns end on silence only"
+                    ));
+                    None
+                }
+            }
+        };
+        let spotter: Option<Box<dyn WakeSpotter>> = if args.wake == "kws" {
+            Some(Box::new(Spotter::new(
+                &args.kws_model,
+                &args.assets.join("wake-keywords.txt"),
+                precision,
+            )?))
+        } else {
+            None
+        };
+        Ok(Self {
+            vad: Box::new(Vad::new(&args.vad_model)?),
+            asr: Box::new(Recognizer::new(&args.asr_model, precision)?),
+            turn,
+            spotter,
+        })
+    }
+}
+
 pub struct Voice {
-    vad: Vad,
-    asr: Recognizer,
-    turn: Option<Turn>,
-    spotter: Option<Spotter>,
-    pub speaker: Control,
+    vad: Box<dyn Activity>,
+    asr: Box<dyn Transcriber>,
+    turn: Option<Box<dyn TurnEnd>>,
+    spotter: Option<Box<dyn WakeSpotter>>,
+    speaker: Box<dyn Speech>,
+    profiles: Profiles,
     until: Option<Instant>,
     thinking: bool,
     cancelled: bool,
@@ -102,36 +156,25 @@ pub struct Voice {
 }
 
 impl Voice {
-    pub fn new(args: &crate::Args, speaker: Control) -> Result<Self> {
-        let vad = Vad::new(&args.vad_model)?;
-        let asr = Recognizer::new(&args.asr_model)?;
-        let turn = if args.turn_model.as_os_str().is_empty() {
-            None
-        } else {
-            match Turn::new(&args.turn_model) {
-                Ok(turn) => Some(turn),
-                Err(error) => {
-                    emit(
-                        json!({"event":"error","message":format!("turn detection unavailable: {error:#}")}),
-                    );
-                    None
-                }
-            }
-        };
-        let spotter = if args.wake == "kws" {
-            Some(Spotter::new(
-                &args.kws_model,
-                &args.assets.join("wake-keywords.txt"),
-            )?)
-        } else {
-            None
-        };
-        Ok(Self {
+    pub fn new(
+        acoustics: Acoustics,
+        speaker: Box<dyn Speech>,
+        profiles: Profiles,
+        load_on_conversation: bool,
+    ) -> Self {
+        let Acoustics {
+            vad,
+            asr,
+            turn,
+            spotter,
+        } = acoustics;
+        Self {
             vad,
             asr,
             turn,
             spotter,
             speaker,
+            profiles,
             until: None,
             thinking: false,
             cancelled: false,
@@ -169,11 +212,11 @@ impl Voice {
             speech_job: None,
             first_text: false,
             paused: false,
-            load_on_conversation: args.tts_load_on_conversation,
+            load_on_conversation,
             was_playing: false,
             last_vad: (0., 0.),
             suppressed: HashMap::new(),
-        })
+        }
     }
 
     fn active(&self) -> bool {
@@ -378,6 +421,8 @@ impl Voice {
 
 mod capture;
 mod commands;
+#[cfg(test)]
+mod tests;
 mod turn;
 
 pub use capture::{device_report, devices, run};

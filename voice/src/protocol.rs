@@ -16,7 +16,42 @@ pub fn elapsed_ns() -> u64 {
         .saturating_add(time.tv_nsec as u64)
 }
 
+#[cfg(test)]
+thread_local! {
+    static CAPTURE: std::cell::RefCell<Option<Vec<Value>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Tests on this thread record events and diagnostics instead of writing them.
+#[cfg(test)]
+pub fn capture() {
+    CAPTURE.with(|c| *c.borrow_mut() = Some(Vec::new()));
+}
+
+#[cfg(test)]
+pub fn captured() -> Vec<Value> {
+    CAPTURE.with(|c| {
+        c.borrow_mut()
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
+    })
+}
+
+#[cfg(test)]
+fn record(value: &Value) -> bool {
+    CAPTURE.with(|c| {
+        c.borrow_mut()
+            .as_mut()
+            .map(|events| events.push(value.clone()))
+            .is_some()
+    })
+}
+
 pub fn emit(mut event: Value) {
+    #[cfg(test)]
+    if record(&event) {
+        return;
+    }
     if CLOSED.load(Ordering::Relaxed) {
         return;
     }
@@ -121,6 +156,10 @@ pub fn diagnostic_message(message: &Value) -> Option<(&str, Value)> {
     Some((stage, Value::Object(fields)))
 }
 
+pub fn log(message: &str) {
+    eprintln!("tohru-voice: {message}");
+}
+
 pub fn diagnostic(stage: &str, fields: Value) {
     if std::env::var("TOHRU_VOICE_LOG").as_deref() == Ok("off") {
         return;
@@ -144,6 +183,10 @@ pub fn diagnostic(stage: &str, fields: Value) {
                 .as_millis()
         ),
     );
+    #[cfg(test)]
+    if self::record(&Value::Object(record.clone())) {
+        return;
+    }
     eprintln!("tohru-voice: {}", Value::Object(record));
 }
 

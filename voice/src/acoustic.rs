@@ -10,8 +10,36 @@ use std::{
     sync::Arc,
 };
 
+pub use crate::profile::LowPrecision;
+
 pub const RATE: usize = 16000;
 pub const WINDOW: usize = 512;
+
+/// Speech probability for each 512-sample window.
+pub trait Activity {
+    fn probability(&mut self, window: &[f32]) -> Result<f32>;
+    fn reset(&mut self);
+}
+
+/// Streaming recognition of one utterance at a time.
+pub trait Transcriber {
+    fn start(&mut self);
+    fn feed(&mut self, audio: &[f32]);
+    fn partial(&self) -> String;
+    fn finish(&mut self) -> String;
+    fn clear(&mut self);
+}
+
+/// The probability that the owner has finished their turn.
+pub trait TurnEnd {
+    fn probability(&mut self, audio: &[f32]) -> Result<f32>;
+}
+
+pub trait WakeSpotter {
+    fn start(&mut self);
+    fn clear(&mut self);
+    fn feed(&mut self, audio: &[f32]) -> bool;
+}
 
 pub fn initialize() -> Result<()> {
     let path = std::env::var("ORT_DYLIB_PATH")
@@ -198,8 +226,8 @@ impl Turn {
     }
 }
 
-fn transducer(folder: &Path, threads: i32) -> Result<OnlineModelConfig> {
-    fn pick(folder: &Path, prefix: &str) -> Result<String> {
+fn transducer(folder: &Path, threads: i32, precision: LowPrecision) -> Result<OnlineModelConfig> {
+    let pick = |folder: &Path, prefix: &str| -> Result<String> {
         let mut files: Vec<PathBuf> = std::fs::read_dir(folder)?
             .filter_map(|entry| entry.ok().map(|e| e.path()))
             .filter(|path| {
@@ -208,13 +236,17 @@ fn transducer(folder: &Path, threads: i32) -> Result<OnlineModelConfig> {
                     && path.extension().is_some_and(|ext| ext == "onnx")
             })
             .collect();
-        files.sort_by_key(|p| (!p.to_string_lossy().contains(".int8."), p.clone()));
+        // The preferred precision first; a file only present at the other precision still serves.
+        files.sort_by_key(|p| {
+            let int8 = p.to_string_lossy().contains(".int8.");
+            (int8 != (precision == LowPrecision::Int8), p.clone())
+        });
         Ok(files
             .first()
             .with_context(|| format!("no {prefix} ONNX in {}", folder.display()))?
             .to_string_lossy()
             .into_owned())
-    }
+    };
     let tokens = folder.join("tokens.txt");
     ensure!(tokens.is_file(), "missing {}", tokens.display());
     let mut config = OnlineModelConfig {
@@ -234,9 +266,9 @@ pub struct Recognizer {
 }
 
 impl Recognizer {
-    pub fn new(folder: &Path) -> Result<Self> {
+    pub fn new(folder: &Path, precision: LowPrecision) -> Result<Self> {
         let config = OnlineRecognizerConfig {
-            model_config: transducer(folder, 2)?,
+            model_config: transducer(folder, 2, precision)?,
             decoding_method: Some("greedy_search".into()),
             enable_endpoint: false,
             ..Default::default()
@@ -300,10 +332,10 @@ pub struct Spotter {
 }
 
 impl Spotter {
-    pub fn new(folder: &Path, keywords: &Path) -> Result<Self> {
+    pub fn new(folder: &Path, keywords: &Path, precision: LowPrecision) -> Result<Self> {
         ensure!(keywords.is_file(), "missing keyword list");
         let config = KeywordSpotterConfig {
-            model_config: transducer(folder, 1)?,
+            model_config: transducer(folder, 1, precision)?,
             keywords_file: Some(keywords.to_string_lossy().into_owned()),
             keywords_score: 2.,
             keywords_threshold: 0.05,
@@ -340,5 +372,98 @@ impl Spotter {
             }
         }
         false
+    }
+}
+
+impl Activity for Vad {
+    fn probability(&mut self, window: &[f32]) -> Result<f32> {
+        Vad::probability(self, window)
+    }
+
+    fn reset(&mut self) {
+        Vad::reset(self);
+    }
+}
+
+impl Transcriber for Recognizer {
+    fn start(&mut self) {
+        Recognizer::start(self);
+    }
+
+    fn feed(&mut self, audio: &[f32]) {
+        Recognizer::feed(self, audio);
+    }
+
+    fn partial(&self) -> String {
+        Recognizer::partial(self)
+    }
+
+    fn finish(&mut self) -> String {
+        Recognizer::finish(self)
+    }
+
+    fn clear(&mut self) {
+        Recognizer::clear(self);
+    }
+}
+
+impl TurnEnd for Turn {
+    fn probability(&mut self, audio: &[f32]) -> Result<f32> {
+        Turn::probability(self, audio)
+    }
+}
+
+impl WakeSpotter for Spotter {
+    fn start(&mut self) {
+        Spotter::start(self);
+    }
+
+    fn clear(&mut self) {
+        Spotter::clear(self);
+    }
+
+    fn feed(&mut self, audio: &[f32]) -> bool {
+        Spotter::feed(self, audio)
+    }
+}
+
+#[cfg(test)]
+mod precision_tests {
+    use super::*;
+
+    #[test]
+    fn the_low_precision_picks_the_transducer_files() {
+        let dir =
+            std::env::temp_dir().join(format!("tohru-voice-transducer-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in [
+            "tokens.txt",
+            "encoder.onnx",
+            "encoder.int8.onnx",
+            "decoder.onnx",
+            "joiner.int8.onnx",
+        ] {
+            std::fs::write(dir.join(name), "x").unwrap();
+        }
+        let file = |part: &Option<String>| {
+            Path::new(part.as_deref().unwrap())
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        };
+        let int8 = transducer(&dir, 1, LowPrecision::Int8).unwrap();
+        assert_eq!(file(&int8.transducer.encoder), "encoder.int8.onnx");
+        let full = transducer(&dir, 1, LowPrecision::Float32).unwrap();
+        assert_eq!(file(&full.transducer.encoder), "encoder.onnx");
+        assert_eq!(
+            file(&full.transducer.joiner),
+            "joiner.int8.onnx",
+            "an int8-only file still serves"
+        );
+        std::fs::remove_file(dir.join("tokens.txt")).unwrap();
+        assert!(transducer(&dir, 1, LowPrecision::Int8).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

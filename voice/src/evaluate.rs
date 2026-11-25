@@ -92,7 +92,10 @@ pub fn run(args: &Args) -> Result<()> {
                 }
                 "recognize" => {
                     if asr.is_none() {
-                        asr = Some(Recognizer::new(&args.asr_model)?);
+                        asr = Some(Recognizer::new(
+                            &args.asr_model,
+                            crate::acoustic::LowPrecision::Int8,
+                        )?);
                     }
                     let recognizer = asr.as_mut().context("ASR")?;
                     recognizer.start();

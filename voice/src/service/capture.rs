@@ -1,4 +1,5 @@
 use super::*;
+use crate::profile::{self, ProfileConfig, Selector, config::ConfigError};
 
 pub fn devices() -> Result<Value> {
     let bytes = crate::process::output(
@@ -34,16 +35,7 @@ fn source(args: &crate::Args) -> Result<(String, bool)> {
         .filter(|s| !s.is_empty())
         .or_else(|| (!args.source.is_empty()).then(|| args.source.clone()));
     let selected = configured
-        .or_else(|| {
-            list.iter()
-                .find(|d| {
-                    d["name"].as_str().is_some_and(|name| {
-                        name.contains("echo-cancel") && !name.ends_with(".monitor")
-                    })
-                })
-                .and_then(|d| d["name"].as_str())
-                .map(str::to_owned)
-        })
+        .or_else(|| crate::speaker::echo_cancel(&devices))
         .unwrap_or_else(|| {
             crate::process::output(
                 Command::new("pactl").arg("get-default-source"),
@@ -57,12 +49,16 @@ fn source(args: &crate::Args) -> Result<(String, bool)> {
     let aec = list
         .iter()
         .find(|d| d["name"] == selected)
-        .is_some_and(|d| {
-            d["properties"]["factory.name"] != "support.null-audio-sink"
-                && (d["driver"] == "module-echo-cancel.c"
-                    || d["properties"]["aec.method"] == "webrtc")
-        });
+        .is_some_and(echo_cancelled);
     Ok((selected, aec))
+}
+
+/// A name is not evidence: PipeWire exports the factory through node properties, Pulse's
+/// native module its driver.
+fn echo_cancelled(device: &Value) -> bool {
+    device["properties"]["factory.name"] != "support.null-audio-sink"
+        && (device["driver"] == "module-echo-cancel.c"
+            || device["properties"]["aec.method"] == "webrtc")
 }
 
 enum Input {
@@ -126,13 +122,80 @@ fn locked(path: &Path) -> bool {
     rustix::fs::flock(&file, rustix::fs::FlockOperation::NonBlockingLockShared).is_err()
 }
 
-pub fn run(args: &crate::Args) -> Result<()> {
+const TOOLS: [&str; 4] = ["parec", "pacat", "pactl", "espeak-ng"];
+
+/// The low profile's precision and, when the high profile is enabled, its selector; bad
+/// settings keep the low profile only, with a visible warning.
+fn profiles(args: &crate::Args, warnings: &mut Vec<String>) -> (LowPrecision, Selector) {
+    let parsed = if args.profiles.is_empty() {
+        Ok(ProfileConfig::default())
+    } else {
+        serde_json::from_str(&args.profiles)
+            .map_err(|_| ConfigError::NotObject)
+            .and_then(|raw| profile::config::parse(&raw))
+    };
+    match parsed {
+        Ok(config) if args.replay.is_some() => (config.low_precision, Selector::low()),
+        Ok(config) => (
+            config.low_precision,
+            Selector::start(config, args.high_worker.clone()),
+        ),
+        Err(error) => {
+            warnings.push(format!(
+                "voice profiles: {error}; using the low-VRAM profile only"
+            ));
+            log(&format!(
+                "voice profile: invalid settings ({error}); using the low-VRAM profile only"
+            ));
+            (LowPrecision::Int8, Selector::low())
+        }
+    }
+}
+
+pub fn run(args: &crate::Args, mut check: crate::ModelCheck) -> Result<()> {
+    if args.replay.is_none()
+        && let Some(tool) = TOOLS.iter().find(|tool| !crate::process::installed(tool))
+    {
+        anyhow::bail!("{tool} is not installed");
+    }
     acoustic::initialize()?;
-    let (speaker, worker) = Control::spawn(args.settings(), args.assets.clone());
-    let mut voice = Voice::new(args, speaker.clone())?;
-    emit(
-        json!({"event":"ready","turn":voice.turn.is_some(),"warning":speaker.warning(),"dragon":args.dragon_art.clone().unwrap_or_else(||args.assets.parent().unwrap_or(&args.assets).join("dragon"))}),
+    let (precision, selector) = profiles(args, &mut check.warnings);
+    let acoustics = match Acoustics::load(args, precision, &mut check) {
+        Ok(acoustics) => acoustics,
+        Err(error) => {
+            selector.shutdown();
+            return Err(error);
+        }
+    };
+    let (speaker, worker) = Control::spawn(
+        args.settings(),
+        args.assets.clone(),
+        selector.profiles.clone(),
     );
+    let mut voice = Voice::new(
+        acoustics,
+        Box::new(speaker.clone()),
+        selector.profiles.clone(),
+        args.tts_load_on_conversation,
+    );
+    let warning: Vec<String> = check
+        .warnings
+        .into_iter()
+        .chain(Some(speaker.warning()).filter(|w| !w.is_empty()))
+        .collect();
+    emit(
+        json!({"event":"ready","turn":voice.turn.is_some(),"warning":warning.join("; "),"dragon":args.dragon_art.clone().unwrap_or_else(||args.assets.parent().unwrap_or(&args.assets).join("dragon"))}),
+    );
+    let result = listen(args, &mut voice, &speaker);
+    speaker.shutdown();
+    let joined = worker
+        .join()
+        .map_err(|_| anyhow::anyhow!("speaker worker panicked"));
+    selector.shutdown();
+    result.and(joined)
+}
+
+fn listen(args: &crate::Args, voice: &mut Voice, speaker: &Control) -> Result<()> {
     if let Some(path) = &args.replay {
         let wave = sherpa_onnx::Wave::read(&path.to_string_lossy()).context("read replay WAV")?;
         anyhow::ensure!(
@@ -147,10 +210,6 @@ pub fn run(args: &crate::Args) -> Result<()> {
         for _ in 0..200 {
             voice.step(&[0.; WINDOW])?;
         }
-        speaker.shutdown();
-        worker
-            .join()
-            .map_err(|_| anyhow::anyhow!("speaker worker panicked"))?;
         emit(json!({"event":"replay_done"}));
         return Ok(());
     }
@@ -213,7 +272,7 @@ pub fn run(args: &crate::Args) -> Result<()> {
                 }
             }
             if capture_child.is_none() && !voice.paused && Instant::now() >= retry {
-                match source(args).and_then(|(source,aec)|{voice.aec=aec;let result=capture(sender.clone(),epoch,&source)?;emit(json!({"event":"listening","on":true,"source":source,"aec":if aec{"module-reported"}else{"unknown"}}));diagnostic("capture_start",json!({"aec":aec}));Ok(result)}){Ok((child,reader))=>{capture_child=Some(child);readers.push(reader);},Err(error)=>{emit(json!({"event":"error","message":format!("capture: {error:#}")}));retry=Instant::now()+Duration::from_secs(2);}}
+                match source(args).and_then(|(source,aec)|{voice.aec=aec;let result=capture(sender.clone(),epoch,&source)?;emit(json!({"event":"listening","on":true,"source":if source.is_empty(){"default"}else{&source},"aec":if aec{"module-reported (effectiveness unmeasured)"}else{"unknown"}}));diagnostic("capture_start",json!({"aec":aec}));Ok(result)}){Ok((child,reader))=>{capture_child=Some(child);readers.push(reader);},Err(error)=>{emit(json!({"event":"error","message":format!("capture: {error:#}")}));retry=Instant::now()+Duration::from_secs(2);}}
             }
             match receiver.recv_timeout(Duration::from_millis(20)) {
                 Ok(Input::Command(message)) => voice.command(message)?,
@@ -250,9 +309,35 @@ pub fn run(args: &crate::Args) -> Result<()> {
     for reader in readers {
         let _ = reader.join();
     }
-    speaker.shutdown();
-    worker
-        .join()
-        .map_err(|_| anyhow::anyhow!("speaker worker panicked"))?;
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_echo_cancel_name_is_not_verification() {
+        assert!(!echo_cancelled(&json!({"name":"echo-cancel-source"})));
+        assert!(echo_cancelled(&json!({"driver":"module-echo-cancel.c"})));
+        assert!(echo_cancelled(
+            &json!({"properties":{"aec.method":"webrtc"}})
+        ));
+        assert!(!echo_cancelled(
+            &json!({"driver":"module-echo-cancel.c","properties":{"factory.name":"support.null-audio-sink"}})
+        ));
+    }
+
+    #[test]
+    fn pause_follows_the_session_lock_file() {
+        let path = std::env::temp_dir().join(format!("tohru-voice-lock-{}", std::process::id()));
+        let file = std::fs::File::create(&path).unwrap();
+        assert!(!locked(&path));
+        rustix::fs::flock(&file, rustix::fs::FlockOperation::NonBlockingLockExclusive).unwrap();
+        assert!(locked(&path));
+        rustix::fs::flock(&file, rustix::fs::FlockOperation::Unlock).unwrap();
+        assert!(!locked(&path));
+        std::fs::remove_file(&path).unwrap();
+        assert!(!locked(&path), "no lock file means unlocked");
+    }
 }

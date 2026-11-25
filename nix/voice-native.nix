@@ -41,6 +41,7 @@ rustPlatform.buildRustPackage {
       ../voice/THIRD-PARTY.md
       ../voice/licenses
       ../shell/assistant/voice
+      ../bin/tohru-voice-qwen3-worker
       ../LICENSE
     ];
   };
@@ -52,6 +53,7 @@ rustPlatform.buildRustPackage {
   postInstall = ''
     mkdir -p $out/share/tohru/voice
     cp shell/assistant/voice/{tohru-tide.bin,wake-keywords.txt,README.md} $out/share/tohru/voice/
+    install -Dm644 bin/tohru-voice-qwen3-worker $out/libexec/tohru-voice-qwen3-worker
     mkdir -p $out/share/licenses/tohru-voice-native
     cp LICENSE voice/THIRD-PARTY.md voice/licenses/* $out/share/licenses/tohru-voice-native/
     wrapProgram $out/bin/tohru-voice-native \
@@ -62,10 +64,10 @@ rustPlatform.buildRustPackage {
           espeak-ng
         ]
       } \
-      --add-flags "--assets $out/share/tohru/voice"
+      --add-flags "--assets $out/share/tohru/voice --high-worker $out/libexec/tohru-voice-qwen3-worker"
   '';
   meta = {
-    description = "Experimental native Tohru acoustic and speech worker";
+    description = "Tohru voice service: wake, turn taking, recognition and speech";
     license = [
       lib.licenses.mit
       lib.licenses.asl20

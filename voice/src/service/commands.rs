@@ -132,6 +132,7 @@ impl Voice {
                     );
                 }
             }
+            "presence" => self.profiles.presence(message["visible"] == true),
             "tts" => {
                 let settings: Settings = serde_json::from_value(message)?;
                 self.load_on_conversation = settings.load_on_conversation;
@@ -189,8 +190,16 @@ mod tests {
             "espeak-ng",
             "--tts-load-on-conversation",
         ]);
-        let (speaker, worker) = Control::spawn(args.settings(), args.assets.clone());
-        let mut voice = Voice::new(&args, speaker.clone()).unwrap();
+        let mut check = args.check_models();
+        let acoustics = Acoustics::load(&args, LowPrecision::Int8, &mut check).unwrap();
+        let (speaker, worker) =
+            Control::spawn(args.settings(), args.assets.clone(), Profiles::default());
+        let mut voice = Voice::new(
+            acoustics,
+            Box::new(speaker.clone()),
+            Profiles::default(),
+            true,
+        );
         voice.extend();
         voice.thinking = true;
         voice.last_turn = "Create a worktree".into();

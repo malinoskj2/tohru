@@ -91,11 +91,20 @@ pub struct Kokoro {
 
 impl Kokoro {
     pub fn new(settings: &Settings, assets: &Path) -> Result<Self> {
+        ensure!(
+            !settings.model.as_os_str().is_empty(),
+            "assistant.tts_model is not set (the Kokoro folder holding model.onnx, tokenizer.json and voices/)"
+        );
         let model = ["model.onnx", "kokoro-v1.0.onnx", "model_fp32.onnx"]
             .into_iter()
             .map(|name| settings.model.join(name))
-            .find(|p| p.is_file())
-            .context("Kokoro model.onnx missing")?;
+            .find(|p| p.is_file() && settings.model.join("tokenizer.json").is_file())
+            .with_context(|| {
+                format!(
+                    "assistant.tts_model: {} has no model.onnx and tokenizer.json",
+                    settings.model.display()
+                )
+            })?;
         let tokenizer: serde_json::Value =
             serde_json::from_slice(&std::fs::read(settings.model.join("tokenizer.json"))?)?;
         let vocab = tokenizer["model"]["vocab"]
@@ -239,24 +248,7 @@ impl Engine {
             24000 * 60 * 2 + 65536,
         )?;
         let (rate, samples) = espeak_pcm(bytes)?;
-        let ipa = crate::process::output(
-            Command::new("espeak-ng").args([
-                "-q",
-                "--ipa",
-                "-v",
-                &settings.voice,
-                "-s",
-                &wpm.to_string(),
-                "-p",
-                &pitch.to_string(),
-                "--stdin",
-            ]),
-            text.as_bytes(),
-            Duration::from_secs(10),
-            65536,
-        )
-        .unwrap_or_default();
-        let phonemes = String::from_utf8_lossy(&ipa).into_owned();
+        let phonemes = espeak_phonemes(text, &settings.voice, wpm, pitch);
         let timeline = timeline(&samples, rate, &phonemes);
         Ok(Clip {
             samples,
@@ -265,6 +257,28 @@ impl Engine {
             timeline,
         })
     }
+}
+
+/// eSpeak's IPA for `text`, for mouth timing; empty when eSpeak cannot run.
+pub fn espeak_phonemes(text: &str, voice: &str, wpm: i32, pitch: i32) -> String {
+    let ipa = crate::process::output(
+        Command::new("espeak-ng").args([
+            "-q",
+            "--ipa",
+            "-v",
+            voice,
+            "-s",
+            &wpm.to_string(),
+            "-p",
+            &pitch.to_string(),
+            "--stdin",
+        ]),
+        text.as_bytes(),
+        Duration::from_secs(10),
+        65536,
+    )
+    .unwrap_or_default();
+    String::from_utf8_lossy(&ipa).into_owned()
 }
 
 pub fn timeline(samples: &[f32], rate: u32, phonemes: &str) -> Vec<(f64, f64, u8)> {
@@ -420,5 +434,26 @@ mod tests {
         let (rate, samples) = espeak_pcm(bytes).unwrap();
         assert_eq!(rate, 22050);
         assert_eq!(samples, vec![1234. / 32768., -4321. / 32768.]);
+    }
+
+    #[test]
+    fn kokoro_needs_an_explicit_folder() {
+        let unset = Kokoro::new(&Settings::default(), Path::new("/"))
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(unset.contains("assistant.tts_model is not set"), "{unset}");
+        let settings = Settings {
+            model: std::env::temp_dir(),
+            ..Settings::default()
+        };
+        let empty = Kokoro::new(&settings, Path::new("/"))
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(
+            empty.contains("has no model.onnx and tokenizer.json"),
+            "{empty}"
+        );
     }
 }

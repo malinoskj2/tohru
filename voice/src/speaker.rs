@@ -1,8 +1,9 @@
 use crate::{
     policy::{self, SpeechBuffer},
     process::OwnedChild,
-    protocol::{diagnostic, emit},
-    synthesis::{Clip, Engine, Settings},
+    profile::{HighError, HighVoice, Profiles},
+    protocol::{diagnostic, emit, log},
+    synthesis::{self, Clip, Engine, Settings},
 };
 use anyhow::{Context, Result};
 use ort::session::RunOptions;
@@ -51,10 +52,97 @@ struct State {
 pub struct Control {
     state: Arc<(Mutex<State>, Condvar)>,
     player: Arc<Mutex<Option<OwnedChild>>>,
+    profiles: Profiles,
+}
+
+/// One answer's voice: the high profile when it was loaded as the answer began.
+struct Voices<'a> {
+    low: &'a mut Engine,
+    high: Option<(u64, Arc<dyn HighVoice>)>,
+}
+
+/// The echo-cancelling device in a `pactl --format=json list` result, never its monitor.
+pub fn echo_cancel(devices: &Value) -> Option<String> {
+    devices
+        .as_array()?
+        .iter()
+        .filter_map(|d| d["name"].as_str())
+        .find(|name| name.contains("echo-cancel") && !name.ends_with(".monitor"))
+        .map(str::to_owned)
+}
+
+/// What the voice state machine asks of the speaker.
+pub trait Speech {
+    fn start(&self, conversation: Value, generation: Value) -> u64;
+    fn feed(&self, id: u64, text: &str, final_part: bool);
+    fn hush(&self);
+    fn pause(&self);
+    fn resume(&self);
+    fn speaking(&self) -> bool;
+    fn echo_level(&self) -> f32;
+    fn deaf(&self) -> bool;
+    fn spoken(&self) -> String;
+    fn configure(&self, settings: Settings);
+    fn unload(&self);
+    fn preload(&self);
+}
+
+impl Speech for Control {
+    fn start(&self, conversation: Value, generation: Value) -> u64 {
+        Control::start(self, conversation, generation)
+    }
+
+    fn feed(&self, id: u64, text: &str, final_part: bool) {
+        Control::feed(self, id, text, final_part);
+    }
+
+    fn hush(&self) {
+        Control::hush(self);
+    }
+
+    fn pause(&self) {
+        Control::pause(self);
+    }
+
+    fn resume(&self) {
+        Control::resume(self);
+    }
+
+    fn speaking(&self) -> bool {
+        Control::speaking(self)
+    }
+
+    fn echo_level(&self) -> f32 {
+        Control::echo_level(self)
+    }
+
+    fn deaf(&self) -> bool {
+        Control::deaf(self)
+    }
+
+    fn spoken(&self) -> String {
+        Control::spoken(self)
+    }
+
+    fn configure(&self, settings: Settings) {
+        Control::configure(self, settings);
+    }
+
+    fn unload(&self) {
+        Control::unload(self);
+    }
+
+    fn preload(&self) {
+        Control::preload(self);
+    }
 }
 
 impl Control {
-    pub fn spawn(settings: Settings, assets: PathBuf) -> (Self, JoinHandle<()>) {
+    pub fn spawn(
+        settings: Settings,
+        assets: PathBuf,
+        profiles: Profiles,
+    ) -> (Self, JoinHandle<()>) {
         let control = Self {
             state: Arc::new((
                 Mutex::new(State {
@@ -64,6 +152,7 @@ impl Control {
                 Condvar::new(),
             )),
             player: Arc::new(Mutex::new(None)),
+            profiles,
         };
         let worker = control.clone();
         let handle = thread::spawn(move || worker.run(assets));
@@ -370,13 +459,7 @@ impl Control {
                     1024 * 1024,
                 )
                 .ok()?;
-                let devices: Value = serde_json::from_slice(&bytes).ok()?;
-                devices
-                    .as_array()?
-                    .iter()
-                    .filter_map(|d| d["name"].as_str())
-                    .find(|name| name.contains("echo-cancel") && !name.ends_with(".monitor"))
-                    .map(str::to_owned)
+                echo_cancel(&serde_json::from_slice(&bytes).ok()?)
             });
         if let Some(sink) = sink {
             command.arg(format!("--device={sink}"));
@@ -416,6 +499,42 @@ impl Control {
         })
     }
 
+    /// The high profile's clip for one sentence; `Ok(None)` hands the sentence to the low engine.
+    fn high_clip(
+        &self,
+        job: &Job,
+        voices: &mut Voices<'_>,
+        text: &str,
+    ) -> Result<Option<Clip>, ()> {
+        let Some((id, high)) = voices.high.clone() else {
+            return Ok(None);
+        };
+        match high.speak(text, &|| self.stale(job.id)) {
+            Ok(Some((samples, rate))) => {
+                let phonemes = synthesis::espeak_phonemes(text, "en-us+f3", 175, 50);
+                let timeline = synthesis::timeline(&samples, rate, &phonemes);
+                Ok(Some(Clip {
+                    samples,
+                    rate,
+                    phonemes,
+                    timeline,
+                }))
+            }
+            Ok(None) => Err(()),
+            Err(HighError::Reply(error)) => {
+                log(&format!(
+                    "voice profile: high could not speak a sentence ({error}); using low for it"
+                ));
+                Ok(None)
+            }
+            Err(error @ HighError::Broken(_)) => {
+                self.profiles.failed(id, error.to_string());
+                voices.high = None;
+                Ok(None)
+            }
+        }
+    }
+
     fn produce(
         &self,
         job: &Job,
@@ -423,6 +542,14 @@ impl Control {
         settings: &Settings,
         sender: &std::sync::mpsc::SyncSender<Result<(String, Clip)>>,
     ) -> Result<()> {
+        let mut voices = Voices {
+            low: engine,
+            high: self.profiles.high(),
+        };
+        diagnostic(
+            "speech_profile",
+            json!({"profile":if voices.high.is_some(){"high"}else{"low"}}),
+        );
         while let Some(part) = self.next_part(job) {
             for text in policy::chunks(&part) {
                 if self.stale(job.id) {
@@ -437,7 +564,11 @@ impl Control {
                     state.infer = Some(options.clone());
                 }
                 diagnostic("synthesis_start", json!({"generation":job.generation}));
-                let mut clip = engine.synthesize(&text, settings, &options)?;
+                let mut clip = match self.high_clip(job, &mut voices, &text) {
+                    Ok(Some(clip)) => clip,
+                    Ok(None) => voices.low.synthesize(&text, settings, &options)?,
+                    Err(()) => return Ok(()),
+                };
                 lock(&self.state.0).infer = None;
                 if self.stale(job.id) {
                     return Ok(());
@@ -593,5 +724,156 @@ impl Control {
         }
         drop(player);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::{capture, captured};
+
+    #[test]
+    fn the_echo_cancel_sink_is_chosen_but_never_a_monitor() {
+        let devices = json!([{"name":"alsa_output.pci"},{"name":"tohru-echo-cancel-sink.monitor"},{"name":"tohru-echo-cancel-sink"}]);
+        assert_eq!(
+            echo_cancel(&devices).as_deref(),
+            Some("tohru-echo-cancel-sink")
+        );
+        assert_eq!(echo_cancel(&json!([{"name":"alsa_output.pci"}])), None);
+        assert_eq!(echo_cancel(&json!({})), None);
+    }
+
+    fn control(profiles: Profiles) -> Control {
+        Control {
+            state: Arc::new((Mutex::new(State::default()), Condvar::new())),
+            player: Arc::new(Mutex::new(None)),
+            profiles,
+        }
+    }
+
+    #[test]
+    fn a_new_answer_never_inherits_the_previous_playback_evidence() {
+        let speaker = control(Profiles::default());
+        lock(&speaker.state.0)
+            .completed
+            .push("Old completed reply.".into());
+        let id = speaker.start(json!("new-conversation"), json!(2));
+        speaker.feed(id, "New reply awaiting synthesis.", true);
+        let evidence = speaker.spoken();
+        assert!(!evidence.contains("Old"), "{evidence}");
+        assert!(!evidence.contains("New reply"), "{evidence}");
+        assert!(evidence.contains("none"), "{evidence}");
+    }
+
+    #[test]
+    fn pause_and_resume_report_the_paused_answer() {
+        capture();
+        let speaker = control(Profiles::default());
+        let id = speaker.start(json!("c1"), json!(41));
+        assert_eq!(id, 1);
+        lock(&speaker.state.0).speaking = true;
+        captured();
+        speaker.pause();
+        speaker.pause();
+        assert!(lock(&speaker.state.0).paused);
+        assert_eq!(
+            captured(),
+            [
+                json!({"event":"mouth","level":0,"viseme":0}),
+                json!({"event":"speaking","on":false,"paused":true,"conversation":"c1","generation":41})
+            ]
+        );
+        speaker.resume();
+        assert!(!lock(&speaker.state.0).paused);
+        assert_eq!(
+            captured(),
+            [json!({"event":"speaking","on":true,"conversation":"c1","generation":41})]
+        );
+    }
+
+    type Reply = Result<Option<(Vec<f32>, u32)>, HighError>;
+
+    struct Scripted(Mutex<Vec<Reply>>);
+
+    impl HighVoice for Scripted {
+        fn transcribes(&self) -> bool {
+            false
+        }
+
+        fn speak(
+            &self,
+            _: &str,
+            stale: &dyn Fn() -> bool,
+        ) -> Result<Option<(Vec<f32>, u32)>, HighError> {
+            if stale() {
+                return Ok(None);
+            }
+            lock(&self.0).remove(0)
+        }
+
+        fn transcribe(&self, _: &[f32], _: Instant) -> Result<Option<String>, HighError> {
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn high_speech_falls_back_per_sentence_and_drops_a_broken_worker() {
+        let high = Arc::new(Scripted(Mutex::new(vec![
+            Ok(Some((vec![0.5; 2400], 24000))),
+            Err(HighError::Reply("odd text".into())),
+            Err(HighError::Broken("exited".into())),
+        ])));
+        let speaker = control(Profiles::loaded(high.clone()));
+        let id = speaker.start(json!("c1"), json!(1));
+        let job = lock(&speaker.state.0).active.clone().unwrap();
+        assert_eq!(job.id, id);
+        let mut low = Engine::Espeak;
+        let mut voices = Voices {
+            low: &mut low,
+            high: speaker.profiles.high(),
+        };
+        let clip = speaker
+            .high_clip(&job, &mut voices, "Hi.")
+            .unwrap()
+            .unwrap();
+        assert_eq!((clip.rate, clip.samples.len()), (24000, 2400));
+        assert!(
+            speaker
+                .high_clip(&job, &mut voices, "Odd.")
+                .unwrap()
+                .is_none(),
+            "one sentence the worker cannot say goes to low"
+        );
+        assert!(voices.high.is_some());
+        assert!(
+            speaker
+                .high_clip(&job, &mut voices, "One.")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            voices.high.is_none() && speaker.profiles.high().is_none(),
+            "a broken worker is dropped for the answer and the service"
+        );
+        assert!(
+            speaker
+                .high_clip(&job, &mut voices, "Two.")
+                .unwrap()
+                .is_none()
+        );
+
+        let speaker = control(Profiles::loaded(high));
+        let id = speaker.start(json!("c1"), json!(2));
+        let job = lock(&speaker.state.0).active.clone().unwrap();
+        speaker.hush();
+        assert!(speaker.stale(id));
+        let mut voices = Voices {
+            low: &mut low,
+            high: speaker.profiles.high(),
+        };
+        assert!(
+            speaker.high_clip(&job, &mut voices, "Hush.").is_err(),
+            "a hushed answer stops instead of falling back"
+        );
     }
 }

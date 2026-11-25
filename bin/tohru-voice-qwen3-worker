@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+"""The high-VRAM voice profile's models, run by tohru-voice under its gpu-run reservation.
+
+Speaks over the private Unix socket named by --socket: each frame is a 4-byte big-endian
+header length, a JSON header, then `bytes` bytes of body. stdout and stderr stay free for
+the libraries' own output; nothing on them is read as protocol."""
+import argparse
+import json
+import select
+import socket
+import struct
+import sys
+
+PROTOCOL = 1
+HEADER_LIMIT = 64 * 1024
+BODY_LIMIT = 48_000 * 60 * 4
+ASR_LIMIT = 16_000 * 4 * 60
+TEXT_LIMIT = 2000
+
+
+class Closed(Exception):
+    pass
+
+
+def receive(connection, size):
+    data = bytearray()
+    while len(data) < size:
+        chunk = connection.recv(min(65536, size - len(data)))
+        if not chunk:
+            raise Closed()
+        data.extend(chunk)
+    return bytes(data)
+
+
+def read_frame(connection):
+    (length,) = struct.unpack(">I", receive(connection, 4))
+    if length > HEADER_LIMIT:
+        raise ValueError("header exceeds 64 KiB")
+    header = json.loads(receive(connection, length))
+    size = int(header.get("bytes") or 0)
+    if not 0 <= size <= BODY_LIMIT:
+        raise ValueError("body exceeds the limit")
+    return header, receive(connection, size) if size else b""
+
+
+def send(connection, header, body=b""):
+    if body:
+        header = {**header, "bytes": len(body)}
+    encoded = json.dumps(header).encode()
+    connection.sendall(struct.pack(">I", len(encoded)) + encoded + body)
+
+
+def cancelled(connection, request, backlog):
+    """Reads frames that arrived during generation; a cancel for this request ends it."""
+    while select.select([connection], [], [], 0)[0]:
+        header, body = read_frame(connection)
+        if header.get("op") == "cancel" and header.get("id") == request:
+            return True
+        backlog.append((header, body))
+    return False
+
+
+def load(spec):
+    import torch
+    if not torch.cuda.is_available():
+        raise RuntimeError("torch reports no CUDA device in the high-VRAM interpreter")
+    dtype = {"bfloat16": torch.bfloat16, "float16": torch.float16, "float32": torch.float32}[spec["precision"]]
+    try:
+        from faster_qwen3_tts import FasterQwen3TTS
+    except ImportError:
+        raise RuntimeError("faster-qwen3-tts is not installed in the high-VRAM interpreter; nothing was installed") from None
+    tts = FasterQwen3TTS.from_pretrained(spec["models"]["tts"], device=spec["device"], dtype=dtype,
+                                         attn_implementation="sdpa", max_seq_len=1024, local_files_only=True)
+    tts.warmup(prefill_len=128)
+    asr = None
+    if spec["models"].get("asr"):
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError:
+            raise RuntimeError("faster-whisper is not installed in the high-VRAM interpreter; nothing was installed") from None
+        asr = WhisperModel(spec["models"]["asr"], device=spec["device"], compute_type=spec["precision"],
+                           local_files_only=True)
+    return torch, tts, asr
+
+
+def speak(connection, tts, spec, request, text, backlog):
+    import numpy as np
+    for audio, rate, _timing in tts.generate_custom_voice_streaming(
+            text=text[:TEXT_LIMIT], speaker=spec["speaker"], language="English", chunk_size=4, max_new_tokens=900):
+        if cancelled(connection, request, backlog):
+            break
+        body = np.asarray(audio, dtype="<f4").reshape(-1).tobytes()
+        send(connection, {"type": "audio", "id": request, "rate": int(rate)}, body)
+    send(connection, {"type": "done", "id": request})
+
+
+def transcribe(connection, asr, request, body):
+    import numpy as np
+    if len(body) > ASR_LIMIT:
+        raise ValueError("audio too long")
+    segments, _ = asr.transcribe(np.frombuffer(body, dtype="<f4"), language="en", beam_size=1, vad_filter=False,
+                                 condition_on_previous_text=False)
+    send(connection, {"type": "text", "id": request, "text": " ".join(s.text.strip() for s in segments).strip()})
+
+
+def serve(connection, spec, tts, asr):
+    backlog = []
+    while True:
+        header, body = backlog.pop(0) if backlog else read_frame(connection)
+        request, op = header.get("id"), header.get("op")
+        try:
+            if op == "tts":
+                speak(connection, tts, spec, request, str(header.get("text", "")), backlog)
+            elif op == "asr" and asr is not None:
+                transcribe(connection, asr, request, body)
+            elif op == "cancel":
+                continue
+            else:
+                send(connection, {"type": "error", "id": request, "message": f"unsupported request {op!r}"})
+        except (Closed, OSError):
+            raise
+        except Exception as error:
+            send(connection, {"type": "error", "id": request, "message": f"{type(error).__name__}: {error}"[:300]})
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="tohru-voice-qwen3-worker")
+    parser.add_argument("--socket", required=True)
+    parser.add_argument("--spec", required=True)
+    args = parser.parse_args()
+    connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    connection.connect(args.socket)
+    try:
+        spec = json.loads(args.spec)
+        if spec.get("protocol") != PROTOCOL:
+            raise RuntimeError(f"tohru-voice speaks protocol {spec.get('protocol')}, this worker {PROTOCOL}")
+        torch, tts, asr = load(spec)
+    except Exception as error:
+        send(connection, {"type": "error", "message": f"{type(error).__name__}: {error}"[:400]})
+        return 3
+    send(connection, {"type": "ready", "protocol": PROTOCOL, "asr": asr is not None})
+    try:
+        serve(connection, spec, tts, asr)
+    except Closed:
+        pass
+    finally:
+        del tts, asr
+        torch.cuda.empty_cache()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -307,6 +307,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_decision_label_in_speech_is_not_a_handoff() {
+        assert!(!explicit_handoff("RESPOND"));
+        assert!(!explicit_handoff("The string says WAIT"));
+    }
+
+    #[test]
     fn the_name_wakes_anywhere_and_leaves_the_request() {
         for (transcript, request) in [
             ("Tohru what time is it", Some("What time is it")),
@@ -371,5 +377,103 @@ mod tests {
         b.feed(&"a".repeat(SPOKEN_CHARS + 1), false);
         assert_eq!(b.next_part(), Some("The rest is in the chat.".into()));
         assert!(b.finished());
+    }
+
+    fn drain(buffer: &mut SpeechBuffer) -> Vec<String> {
+        std::iter::from_fn(|| buffer.next_part()).collect()
+    }
+
+    #[test]
+    fn every_chunk_boundary_preserves_text_without_duplicates() {
+        let answer = "First sentence. Second sentence! Last fragment";
+        for cut in 0..=answer.len() {
+            let mut b = SpeechBuffer::default();
+            let mut parts = Vec::new();
+            b.feed(&answer[..cut], false);
+            parts.extend(drain(&mut b));
+            b.feed(&answer[cut..], true);
+            parts.extend(drain(&mut b));
+            assert_eq!(parts.join(" "), answer, "cut at {cut}");
+            assert!(b.finished());
+        }
+    }
+
+    #[test]
+    fn an_incomplete_sentence_waits_then_flushes() {
+        let mut b = SpeechBuffer::default();
+        b.feed("Hello", false);
+        assert!(drain(&mut b).is_empty() && !b.finished());
+        b.feed(" there. Next", true);
+        assert_eq!(drain(&mut b), ["Hello there.", "Next"]);
+    }
+
+    #[test]
+    fn punctuation_at_a_live_chunk_boundary_waits_without_repeating() {
+        for (first, rest, early, late) in [
+            (
+                "Hello.",
+                " Next sentence!",
+                &[][..],
+                &["Hello.", "Next sentence!"][..],
+            ),
+            (
+                "The value is 3.",
+                "14. Next sentence!",
+                &[],
+                &["The value is 3.14.", "Next sentence!"],
+            ),
+            (
+                "First. Second.",
+                " Last sentence!",
+                &["First."],
+                &["Second.", "Last sentence!"],
+            ),
+        ] {
+            let mut b = SpeechBuffer::default();
+            b.feed(first, false);
+            assert_eq!(drain(&mut b), early, "{first}");
+            assert!(!b.finished());
+            b.feed(rest, true);
+            assert_eq!(drain(&mut b), late, "{first}");
+        }
+    }
+
+    #[test]
+    fn markdown_code_and_links_across_chunks() {
+        let mut b = SpeechBuffer::default();
+        for text in [
+            "See [the ",
+            "guide](https://host/path). ",
+            "```py\nprint('bad. ')",
+            "\n``` Final words",
+        ] {
+            b.feed(text, false);
+        }
+        b.feed("", true);
+        let spoken = drain(&mut b).join(" ");
+        assert!(spoken.contains("See the guide."), "{spoken}");
+        assert!(
+            !spoken.contains("print") && !spoken.contains("https"),
+            "{spoken}"
+        );
+        assert!(spoken.ends_with("Final words"), "{spoken}");
+    }
+
+    #[test]
+    fn unfinished_code_never_speaks_and_tilde_fences_keep_the_words_between() {
+        let mut b = SpeechBuffer::default();
+        b.feed("```secret code", true);
+        assert!(!drain(&mut b).join(" ").contains("secret"));
+        let mut b = SpeechBuffer::default();
+        b.feed(
+            "~~~py\nsecret one\n~~~ Useful final words. ```secret two",
+            true,
+        );
+        let spoken = drain(&mut b).join(" ");
+        assert!(
+            !spoken.contains("secret") && spoken.contains("Useful final words."),
+            "{spoken}"
+        );
+        assert!(!speakable("See https://example.com/long/path").contains("https"));
     }
 }
