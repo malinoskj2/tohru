@@ -270,9 +270,8 @@ return function(assistant, puppet, flight, service_executable)
                 fact.ai_mouth = 0
                 if state ~= "paused" and not fact.ai_voice_conversation then linger() end
             end
-            if notice_reply and (message.generation == nil or message.generation == notice_reply.generation) then
-                if message.on then notice_reply.ack_seen = true
-                elseif state then notice_reply = nil
+            if notice_reply and not message.on and (message.generation == nil or message.generation == notice_reply.generation) then
+                if state then notice_reply = nil
                 else notice_reply.ack_ended = true; flush_notice_reply() end
             end
         elseif event == "mouth" then
@@ -378,15 +377,8 @@ return function(assistant, puppet, flight, service_executable)
             -- and the acknowledgement have both finished speaking.
             if answer and answer ~= "" and not notice_reply then
                 notice_reply = {generation = turn_generation, chat = conversation, text = "", done = false, ack_ended = false}
-                local mine = notice_reply
                 send({cmd = "speech_end", generation = turn_generation, text = answer})
                 streaming_speech, streamed_text = false, false
-                after(5000, function()
-                    if notice_reply == mine and not mine.ack_seen then
-                        mine.ack_ended = true
-                        flush_notice_reply()
-                    end
-                end)
             end
             return
         elseif kind == "delta" then
