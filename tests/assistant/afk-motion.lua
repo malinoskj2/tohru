@@ -22,7 +22,7 @@ for _,s in ipairs(cases) do
             assert(math.abs(sample.turn)>=.05 and math.abs(sample.turn)<=1.2)
             assert(sample.scale>0 and sample.scale<=12)
             for _,k in ipairs({'skin_frame','skin_next'}) do
-                if sample[k] then assert(sample[k]>=0 and sample[k]<=351 and sample[k]==math.floor(sample[k])) end
+                if sample[k] then assert(sample[k]>=0 and sample[k]<=359 and sample[k]==math.floor(sample[k])) end
             end
             if sample.skin_mix then assert(sample.skin_next and sample.skin_mix>=0 and sample.skin_mix<=1) end
             for _,k in ipairs({'closeup_frame','closeup_next','body_frame','body_next'}) do
@@ -86,7 +86,7 @@ do
     assert(head.turn==-1 and math.abs(head.x-off-(t.x+t.w))<1e-9 and head.skin_frame>=304 and head.skin_frame<352)
     assert(reach.turn==1 and math.abs(reach.x+off-t.x)<1e-9 and reach.skin_frame>=192 and reach.skin_frame<240)
     assert(pull.turn==1 and pull.x==reach.x and pull.skin_frame>=240 and pull.skin_frame<304)
-    assert(wave.turn>=.95 and wave.turn<=1 and wave.skin_frame==56 and math.abs(wave.x-(reach.x+30*150*wave.scale/240))<1e-9)
+    assert(wave.turn>=.95 and wave.turn<=1 and wave.skin_frame==352 and math.abs(wave.x-(reach.x+30*150*wave.scale/240))<1e-9)
     -- The pull ends on the wave key and the wave's articulation starts at rest.
     local pull_end,wave_start=0,0
     for i,beat in ipairs(scenes.get('hide_peek').beats) do
@@ -98,7 +98,7 @@ do
     assert(motion.sample('hide_peek',wide,wave_start+1e-6).phase<1e-3)
     -- The wave settles, unmirrored, into the front hover her turn home starts on.
     local settled=motion.sample('hide_peek',wide,wave_start+2.2-.3-1e-3)
-    assert(math.abs(settled.turn-1)<1e-9 and math.abs(settled.rotation)<1e-9 and settled.skin_frame==56 and settled.skin_next==8 and settled.skin_mix>.99 and math.abs(settled.phase-2)<1e-9)
+    assert(math.abs(settled.turn-1)<1e-9 and math.abs(settled.rotation)<1e-9 and settled.skin_frame==352 and settled.skin_next==8 and settled.skin_mix>.99 and math.abs(settled.phase-2)<1e-9)
     -- A crossfade always blends toward the following generated frame.
     local nap=motion.sample('corner_nap',wide,2.8+1)
     assert(nap.skin_frame>=144 and nap.skin_frame<159 and nap.skin_next==nap.skin_frame+1 and nap.turn==-1)

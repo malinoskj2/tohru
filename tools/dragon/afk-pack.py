@@ -22,6 +22,9 @@ CELL=240
 # Generated in-between sequences, in atlas order after the authored rows.
 MOTION=['turn','arrive_right','arrive_left','curl','perch','bank','edge_reach','edge_pull','edge_head']
 MOTION_FRAMES=16
+# Authored keys packed whole after the motion: the hide-and-peek wave holds
+# the horned pose its pull-out ends on, centred like the canonical cells.
+KEYS=['horned-56']
 NAMES=['fly_left','head_tilt','fly_right','wing_straighten','fly_up','horn_polish',
        'chin_on_paws','hopeful_wave','curled_sleep','perch_tail_dangle','tail_follow_left','tail_follow_right']
 
@@ -90,7 +93,7 @@ def articulate(key,index,phase):
 def main():
     cv2.setNumThreads(1)
     images=keys(ART/'source.png',4,2)+keys(ART/'nap-perch-tail-source.png',2,2)
-    rows=12+sum(SEQUENCES[name].get('cells',MOTION_FRAMES) for name in MOTION)//8
+    rows=12+sum(SEQUENCES[name].get('cells',MOTION_FRAMES) for name in MOTION)//8+(len(KEYS)+7)//8
     sheet=Image.new('RGBA',(CELL*8,CELL*rows))
     flight=Image.open(OUT/'flight.webp').convert('RGBA')
     body=Image.open(OUT/'body.webp').convert('RGBA')
@@ -126,6 +129,12 @@ def main():
         manifest['motion'][name]={'first':first,'count':count,
             'sha256':hashlib.sha256((ART/'motion'/(name+'.png')).read_bytes()).hexdigest()}
         first+=count
+    manifest['keys']={}
+    for index,name in enumerate(KEYS):
+        key=Image.open(ART/(name+'.png')).convert('RGBA')
+        if key.size!=(CELL,CELL):raise SystemExit('unexpected key size for '+name)
+        sheet.paste(key,((first+index)%8*CELL,(first+index)//8*CELL))
+        manifest['keys'][name]={'frame':first+index,'sha256':hashlib.sha256((ART/(name+'.png')).read_bytes()).hexdigest()}
     OUT.mkdir(exist_ok=True)
     sheet.save(OUT/'afk.webp',lossless=True,method=2)
     # Preserve full-resolution canonical closeup separately from the motion atlas.

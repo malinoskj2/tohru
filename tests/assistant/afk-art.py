@@ -28,12 +28,12 @@ class AfkArt(unittest.TestCase):
             self.assertEqual(size,(1254,1254))
             self.assertTrue(all(a<=b for a,b in zip(packing[name]['head_detail_budget'],size)))
         self.assertEqual(packing['reused_flight_source']['cell'],240)
-        self.assertEqual(packing['atlas_rgba_bytes'],1920*10560*4)
+        self.assertEqual(packing['atlas_rgba_bytes'],1920*10800*4)
 
     def test_generated_motion_is_packed_with_provenance(self):
         packing=json.loads((ART/'packing.json').read_text())
         provenance=json.loads((ART/'motion/provenance.json').read_text())
-        self.assertEqual(packing['rows'],44)
+        self.assertEqual(packing['rows'],45)
         first=96
         for name,motion in packing['motion'].items():
             self.assertEqual(motion['first'],first)

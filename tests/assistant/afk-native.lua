@@ -73,7 +73,7 @@ events.afk_resume(77)
 pending.ready(pending.token,geometry) -- An old geometry callback cannot bind art.
 assert(#registered==0 and not current)
 idle();current.ready(current.token,geometry)
-assert(#registered==1 and registered[1].rows==44)
+assert(#registered==1 and registered[1].rows==45)
 advance(.1)
 for _,sample in ipairs(played) do assert(sample.opacity==0) end
 advance(.3)

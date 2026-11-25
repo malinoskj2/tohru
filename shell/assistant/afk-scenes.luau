@@ -35,9 +35,9 @@ local scenes = {
         {1.8,"flight_bank","depth_far","depth_return"}, {3.2,"flight_forward","depth_return","home"}}},
     {id="hide_peek", broad=true, window=true, occlusion=true, beats={
         {2.2,"flight_behind","home","window_hidden"},
-        {0.7,"peek_wait","window_hidden",nil,"behind"},
-        {2.3,"peek_head","edge_right"},
-        {1.7,"peek_look","edge_right"},
+        {0.5,"peek_wait","window_hidden",nil,"behind"},
+        {2.8,"peek_head","edge_right"},
+        {1.4,"peek_look","edge_right"},
         {0.7,"peek_hide","edge_right"},
         {0.85,"peek_wait","window_hidden",nil,"behind"},
         {2.2,"peek_reach","edge_left"},

@@ -47,11 +47,14 @@ def key_image(key,sequence):
     size=sequence.get('size',480);width,height=canvas_size(sequence)
     canvas=Image.new('RGBA',(width,height),BACKGROUND+(255,))
     if 'panel' in sequence:
-        if 'cell' in key:
-            atlas=Image.open(ART/'afk.webp').convert('RGBA')
-            edge=atlas.width//COLUMNS;cell=key['cell'];x,y=cell%COLUMNS*edge,cell//COLUMNS*edge
-            side=round(edge*sequence['scale'])
-            canvas.alpha_composite(atlas.crop((x,y,x+edge,y+edge)).resize((side,side),Image.Resampling.LANCZOS),tuple(key['at']))
+        if 'cell' in key or 'art' in key:
+            if 'art' in key:sprite=Image.open(SOURCES/(key['art']+'.png')).convert('RGBA')
+            else:
+                atlas=Image.open(ART/'afk.webp').convert('RGBA')
+                edge=atlas.width//COLUMNS;cell=key['cell'];x,y=cell%COLUMNS*edge,cell//COLUMNS*edge
+                sprite=atlas.crop((x,y,x+edge,y+edge))
+            side=round(sprite.width*sequence['scale'])
+            canvas.alpha_composite(sprite.resize((side,side),Image.Resampling.LANCZOS),tuple(key['at']))
         elif 'image' in key:return Image.open(SOURCES/(key['image']+'-source.png')).convert('RGB')
         canvas.paste(PANEL+(255,),(sequence['panel'],0,width,height))
     elif 'cell' in key:

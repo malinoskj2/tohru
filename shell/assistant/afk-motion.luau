@@ -8,12 +8,14 @@ return function(choreography)
     -- Generated FL2VA in-betweens follow the 12 authored rows, 16 frames each.
     local MOTION={turn=96,arrive_right=112,arrive_left=128,curl=144,perch=160,bank=176,
         edge_reach=192,edge_pull=240,edge_head=304}
+    -- The horned pose the pull-out ends on, centred like the canonical cells.
+    local EDGE_WAVE=352
     local LAST=15
     -- Source frame (of 124) behind each edge-clip cell: cells are picked half
     -- by motion and half by time, and playback follows the generated timing.
-    local EDGE_PICKS={edge_reach={0,3,6,9,11,15,17,20,22,25,27,31,34,37,41,43,47,48,51,54,57,59,62,65,67,69,71,73,75,76,78,80,82,84,87,89,91,93,96,98,100,103,107,109,113,117,120,123},edge_pull={0,4,6,9,12,16,19,22,25,28,30,33,36,40,44,46,48,49,51,52,54,57,59,62,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,93,95,96,98,100,102,105,108,111,114,117,120,123},edge_head={0,3,6,9,12,16,18,22,25,28,31,34,36,39,42,43,46,48,50,52,55,57,59,61,64,67,69,72,74,76,78,81,83,85,87,89,91,94,96,98,100,102,106,109,113,117,120,123}}
+    local EDGE_PICKS={edge_reach={0,3,6,9,11,15,17,20,22,25,27,31,34,37,41,43,47,48,51,54,57,59,62,65,67,69,71,73,75,76,78,80,82,84,87,89,91,93,96,98,100,103,107,109,113,117,120,123},edge_pull={0,3,6,10,13,16,19,23,26,30,34,36,38,42,45,48,51,52,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,77,80,82,83,85,86,87,88,90,91,92,94,95,97,98,100,102,104,107,110,114,117,120,123},edge_head={0,3,6,9,12,16,18,22,25,28,31,34,36,39,42,43,46,48,50,52,55,57,59,61,64,67,69,72,74,76,78,81,83,85,87,89,91,94,96,98,100,102,106,109,113,117,120,123}}
     -- Last source frame of the glance that opens the pull clip, before its dip.
-    local EDGE_GLANCE=12
+    local EDGE_GLANCE=13
     local TURN,ARRIVE=.8,.6
     -- One generated bust gesture loop and one closeup wingbeat, 16 frames each.
     local BUST_LOOP,CLOSEUP_FRAMES=5.2,16
@@ -174,7 +176,7 @@ return function(choreography)
     -- Plays an edge clip at q (0..1) through generated source frames a..b.
     -- Half follows the generated timing and half the evenly spaced motion,
     -- so held moments still breathe and a fast swing is not a jump cut.
-    local function clip(sample,name,a,b,q)
+    local function clip(sample,name,a,b,q,blend)
         local picks=EDGE_PICKS[name]
         local function cell_at(f)
             local i=1
@@ -187,9 +189,16 @@ return function(choreography)
         local last=#picks-1
         local f=clamp((timed+even)/2,0,last)
         -- Edge clips are dense enough to step from cell to cell; blending
-        -- neighbours would double her outline during quick moves.
+        -- neighbours would double her outline during quick moves. A slow
+        -- stretch may blend the middle of each step instead.
         sample.pose="skin";sample.generated=true
-        sample.skin_frame=MOTION[name]+math.min(last,math.floor(f+.5))
+        if blend then
+            local i=math.min(last,math.floor(f))
+            sample.skin_frame=MOTION[name]+i
+            if i<last then sample.skin_next=sample.skin_frame+1;sample.skin_mix=smooth((f-i-.3)/.4) end
+        else
+            sample.skin_frame=MOTION[name]+math.min(last,math.floor(f+.5))
+        end
         return sample
     end
     local function cycle(sample,frames,position)
@@ -332,8 +341,10 @@ return function(choreography)
                 -- art and position, so a visible wait would flash in front.
                 sample.pose="skin";sample.skin_frame=8;sample.behind=true;sample.opacity=0
             elseif pose=="peek_head" then
-                -- Head first, then her paw comes out and grips the edge.
-                clip(sample,"edge_head",20,123,q)
+                -- Head first; then she pauses and her paw rises from under
+                -- her chin and eases its fingers over the edge into a grip.
+                local f=q<.45 and .563*q/.45 or .563+.437*smooth((q-.45)/.55)
+                clip(sample,"edge_head",20,123,f,true)
             elseif pose=="peek_reach" then
                 -- Her paw pokes out first and grips; her head follows.
                 clip(sample,"edge_reach",14,123,q)
@@ -347,15 +358,18 @@ return function(choreography)
                 -- Ducks back quickly, the paw letting go last.
                 clip(sample,"edge_head",123,20,smooth(q))
             elseif pose=="peek_pull" then
-                clip(sample,"edge_pull",0,123,q)
+                -- Her glide out past the edge (source 56-74) is one held
+                -- drawing, so it goes by as a quick swoop, not a slow slide.
+                local f=q<.42 and .455*q/.42 or q<.5 and .455+.145*(q-.42)/.08 or .6+.4*(q-.5)/.5
+                clip(sample,"edge_pull",0,123,f)
             elseif pose=="peek_wave" then
-                -- The pull ends on the canonical wave key: two happy hops
+                -- The pull ends on the horned wave key: two happy hops
                 -- with a tilt and the paw wave, all back at rest before she
                 -- settles into the front hover the turn home starts on.
                 local waving=duration-.7
                 local w=math.min(beat_time,waving)/waving
                 local hop=math.abs(math.sin(2*math.pi*w))
-                sample.pose="skin";sample.skin_frame=7*8
+                sample.pose="skin";sample.skin_frame=EDGE_WAVE
                 sample.turn=1-.05*hop
                 sample.rotation=-6*math.sin(3*math.pi*w)
                 sample.wave_phase=2*w

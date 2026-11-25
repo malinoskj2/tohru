@@ -116,7 +116,7 @@
         "image": "edge-peek"
       },
       "last": {
-        "cell": 56,
+        "art": "horned-56",
         "at": [
           101,
           40
@@ -133,7 +133,7 @@
       "guides": [
         {
           "frame": 56,
-          "cell": 24,
+          "art": "horned-24",
           "at": [
             187,
             40
@@ -141,7 +141,7 @@
         },
         {
           "frame": 84,
-          "cell": 24,
+          "art": "horned-24",
           "at": [
             60,
             40

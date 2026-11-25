@@ -100,16 +100,19 @@ def key(source,size):
 
 
 def panel_key(source,manifest):
-    """A key on the panel canvas as a cell: the canonical atlas cell shifted
-    into the crop, or the shared model-drawn peek extracted like any frame."""
+    """A key on the panel canvas as a cell: the canonical atlas cell or an
+    authored art cell shifted into the crop, or the shared model-drawn peek extracted like any frame."""
     scale=manifest['scale'];x0,y0=crop_origin(manifest);side=round(CELL*scale)
     cell=Image.new('RGBA',(CELL,CELL))
     if 'empty' in source:return cell
-    if 'cell' in source:
-        atlas=Image.open(ROOT/'shell/assistant/dragon/afk.webp').convert('RGBA');c=source['cell'];e=atlas.width//8
+    if 'cell' in source or 'art' in source:
+        if 'art' in source:sprite=Image.open(ROOT/'tools/dragon/art/afk'/(source['art']+'.png')).convert('RGBA')
+        else:
+            atlas=Image.open(ROOT/'shell/assistant/dragon/afk.webp').convert('RGBA');c=source['cell'];e=atlas.width//8
+            sprite=atlas.crop((c%8*e,c//8*e,c%8*e+e,c//8*e+e))
         dx,dy=(source['at'][0]-x0)/scale,(source['at'][1]-y0)/scale
-        if dx!=round(dx) or dy!=round(dy) or e!=CELL:raise RuntimeError('panel keys must sit on whole cell pixels')
-        cell.alpha_composite(atlas.crop((c%8*e,c//8*e,c%8*e+e,c//8*e+e)),(round(dx),round(dy)))
+        if dx!=round(dx) or dy!=round(dy) or sprite.width!=CELL:raise RuntimeError('panel keys must sit on whole cell pixels')
+        cell.alpha_composite(sprite,(round(dx),round(dy)))
         return cell
     return panel_cell(Image.open(ROOT/'tools/dragon/art/afk'/(source['image']+'-source.png')).convert('RGB'),manifest)
 

@@ -1,8 +1,8 @@
 {
   "cell": 240,
   "columns": 8,
-  "rows": 44,
-  "frames": 352,
+  "rows": 45,
+  "frames": 360,
   "poses": {
     "fly_left": {
       "first": 0,
@@ -138,6 +138,13 @@
     }
   },
   "sources": {
+    "horned-24.png": {
+      "size": [
+        240,
+        240
+      ],
+      "sha256": "6ee630ba3b44457e2b5f39eee1fbcf3377ae4c084eb0ab06761c5cec660f2395"
+    },
     "nap-perch-tail-source.png": {
       "size": [
         1254,
@@ -165,6 +172,13 @@
         1254
       ],
       "sha256": "f9138dc2ace9d0d46b4275a13e93bf7e42f283ce01320c5a3a56582ca07635d6"
+    },
+    "horned-56.png": {
+      "size": [
+        240,
+        240
+      ],
+      "sha256": "c859183a033c80f68aa7aacc7b64eec60315fd5e4a91dfdb40af863d40bb17b4"
     },
     "bust-source.png": {
       "size": [
@@ -213,12 +227,18 @@
     "edge_pull": {
       "first": 240,
       "count": 64,
-      "sha256": "327642aafefe77d86876756fc678ac0f9fa3592237d74daddae8fd3cce2903eb"
+      "sha256": "9b03bf9c18493147748590948f5abcb45e8dee4c548292b9f53eb04ade4bf9f2"
     },
     "edge_head": {
       "first": 304,
       "count": 48,
       "sha256": "ca34d05e3580427c5d12c691c8d248e02c913ed25e7dde49df9fbc0b2d666051"
+    }
+  },
+  "keys": {
+    "horned-56": {
+      "frame": 352,
+      "sha256": "c859183a033c80f68aa7aacc7b64eec60315fd5e4a91dfdb40af863d40bb17b4"
     }
   },
   "closeup": {
@@ -270,7 +290,7 @@
     ]
   },
   "annotation_note": "Conservative manually registered head bounds (including horns/frill); transparent sheet size is not head detail.",
-  "atlas_rgba_bytes": 81100800,
+  "atlas_rgba_bytes": 82944000,
   "reused_flight_source": {
     "path": "shell/assistant/dragon/flight.webp",
     "cell": 240,
