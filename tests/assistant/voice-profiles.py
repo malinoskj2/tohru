@@ -331,7 +331,8 @@ FAKE_GPU_RUN = textwrap.dedent("""\
         sys.exit(1)
     print("gpu-run: granted shared reservation for Tohru voice (high VRAM)", file=sys.stderr, flush=True)
     command = args[args.index("--") + 1:]
-    os.execv(sys.executable, [sys.executable, os.environ["FAKE_WORKER"], *command[2:]])
+    script = command[1] if mode == "real-worker" else os.environ["FAKE_WORKER"]
+    os.execv(sys.executable, [sys.executable, script, *command[2:]])
 """)
 
 FAKE_WORKER = textwrap.dedent("""\
@@ -354,6 +355,32 @@ FAKE_WORKER = textwrap.dedent("""\
             out.write(b'{"text": "turn on the lights"}\\n')
         out.flush()
 """)
+
+
+NOISY_LIBRARIES = {
+    "torch.py": """\
+        class cuda:
+            is_available = staticmethod(lambda: True)
+            empty_cache = staticmethod(lambda: None)
+        bfloat16 = float16 = float32 = object()
+    """,
+    "faster_qwen3_tts.py": """\
+        import os
+        class FasterQwen3TTS:
+            @classmethod
+            def from_pretrained(cls, path, **options):
+                print()
+                print("Could not infer sample rate from base model; defaulting to 24000 Hz.")
+                os.write(1, b"native loader noise\\n")
+                return cls()
+            def warmup(self, **options):
+                print("warmed up")
+            def generate_custom_voice_streaming(self, text, speaker, **options):
+                print("generating", speaker)
+                os.write(1, b"\\n")
+                yield [0.25] * 240, 24000, None
+    """,
+}
 
 
 class WorkerLifecycleTests(unittest.TestCase):
@@ -405,6 +432,29 @@ class WorkerLifecycleTests(unittest.TestCase):
         with self.assertRaises(ProcessLookupError):
             os.kill(pid, 0)
         self.assertTrue(any("reservation granted for 7168 MiB" in line for line in self.logs))
+
+    @unittest.skipUnless(numpy, "numpy is not installed")
+    def test_library_output_on_stdout_never_reaches_the_reply_stream(self):
+        libraries = self.base / "libraries"
+        libraries.mkdir()
+        for name, source in NOISY_LIBRARIES.items():
+            (libraries / name).write_text(textwrap.dedent(source))
+        saved = os.environ.get("PYTHONPATH")
+        os.environ["PYTHONPATH"] = str(libraries)
+        try:
+            worker, failed = self.run_worker("real-worker")
+        finally:
+            if saved is None:
+                os.environ.pop("PYTHONPATH")
+            else:
+                os.environ["PYTHONPATH"] = saved
+        self.assertEqual(failed, [])
+        self.assertTrue(worker.ready)
+        header, body = worker.request({"op": "tts", "text": "Hello."})
+        self.assertEqual((header["rate"], len(body)), (24000, 960))
+        self.assertTrue(worker.stop())
+        self.assertTrue(any("native loader noise" in line for line in self.logs))
+        self.assertTrue(any("generating Serena" in line for line in self.logs))
 
     def test_queue_timeout_reports_and_leaves_nothing_running(self):
         worker, failed = self.run_worker("queue-timeout")

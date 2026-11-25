@@ -500,8 +500,14 @@ class Selector:
 
 
 def worker_main(spec_json):
-    """Runs inside the gpu-run reservation, in the high profile's interpreter: load, report ready, serve."""
-    out = sys.stdout.buffer
+    """Runs inside the gpu-run reservation, in the high profile's interpreter: load, report ready, serve.
+
+    Replies go out on a private copy of stdout; fd 1 itself points at stderr, so anything the model libraries
+    print, from Python or native code, lands in the log instead of corrupting the reply stream."""
+    sys.stdout.flush()
+    out = os.fdopen(os.dup(1), "wb")
+    os.dup2(2, 1)
+    sys.stdout = sys.stderr
 
     def reply(header, body=b""):
         out.write((json.dumps(header) + "\n").encode() + body)
