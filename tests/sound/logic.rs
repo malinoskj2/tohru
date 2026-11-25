@@ -228,6 +228,7 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
             for _,callback in ipairs(handlers[name] or {}) do callback(value) end
         end
         function after(ms,callback) timers[1]=callback; return 1 end
+        function every(ms,callback) return 1 end
         function cancel(id) timers[id]=nil end
         function run(program,args) table.insert(calls,{name='run',value=program..' '..table.concat(args,' ')}) end
         -- Match native direction: emit and fact writes do NOT call Lua handlers.
@@ -313,6 +314,70 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
         (
             "bar/workspace",
             include_str!("../../shell/bar/workspace.luau"),
+        ),
+        (
+            "assistant/afk-controller",
+            include_str!("../../shell/assistant/afk-controller.luau"),
+        ),
+        (
+            "assistant/afk-motion",
+            include_str!("../../shell/assistant/afk-motion.luau"),
+        ),
+        (
+            "assistant/afk-native",
+            include_str!("../../shell/assistant/afk-native.luau"),
+        ),
+        (
+            "assistant/afk-policy",
+            include_str!("../../shell/assistant/afk-policy.luau"),
+        ),
+        (
+            "assistant/afk-scenes",
+            include_str!("../../shell/assistant/afk-scenes.luau"),
+        ),
+        (
+            "assistant/controller",
+            include_str!("../../shell/assistant/controller.luau"),
+        ),
+        (
+            "assistant/flight",
+            include_str!("../../shell/assistant/flight.luau"),
+        ),
+        (
+            "assistant/flight-actor",
+            include_str!("../../shell/assistant/flight-actor.luau"),
+        ),
+        (
+            "assistant/flight-path",
+            include_str!("../../shell/assistant/flight-path.luau"),
+        ),
+        (
+            "assistant/full-body",
+            include_str!("../../shell/assistant/full-body.luau"),
+        ),
+        (
+            "assistant/landing-frames",
+            include_str!("../../shell/assistant/landing-frames.luau"),
+        ),
+        (
+            "assistant/needs-you",
+            include_str!("../../shell/assistant/needs-you.luau"),
+        ),
+        (
+            "assistant/puppet",
+            include_str!("../../shell/assistant/puppet.luau"),
+        ),
+        (
+            "assistant/task-speech",
+            include_str!("../../shell/assistant/task-speech.luau"),
+        ),
+        (
+            "assistant/voice",
+            include_str!("../../shell/assistant/voice.luau"),
+        ),
+        (
+            "assistant/voice-return",
+            include_str!("../../shell/assistant/voice-return.luau"),
         ),
     ] {
         modules
