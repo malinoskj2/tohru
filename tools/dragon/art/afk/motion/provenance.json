@@ -1,6 +1,24 @@
 {
   "model": "h3-fl2va (minimax_h3_fl2va_pruned_nvfp4.safetensors)",
   "backend": "ComfyUI MiniMaxH3 FL2VA",
+  "keys": {
+    "edge": {
+      "note": "frame 60 of this generation is edge-peek-source.png, the shared peek key",
+      "seed": 42,
+      "steps": 20,
+      "canvas": [
+        768,
+        512
+      ],
+      "prompt_sha256": "7772325880fbdfa7fbbe6a585fde83beee339e1baeca0439434354432c855b99",
+      "input_sha256": {
+        "first": "94d221ab76a2ea0f7b7be7adceed90f9dbc097b39d02d255da4bd1da3dbd75c8",
+        "last": "28f35609bab56257e6873409371695c98576d715f70ac7eb62f679b6b113e88d"
+      },
+      "output": "tools/dragon/art/afk/edge-peek-source.png",
+      "output_sha256": "9c0a5427e54af6aa1d42c887800dee7fc51907152a56dec641d42fe2befdb973"
+    }
+  },
   "sequences": {
     "turn": {
       "first": {
@@ -242,85 +260,193 @@
       "output_sha256": "05b34b7cb175d5931128f3a63a0e062f8369b03ed1624b9a8a5bb3106ab76726",
       "matte": "border-estimated uniform background, main component with holes filled, interior-paint edge unmix"
     },
-    "peek": {
+    "edge_reach": {
       "first": {
-        "cell": 8
+        "empty": true
       },
       "last": {
-        "cell": 24
+        "image": "edge-peek"
       },
-      "frames": 16,
+      "frames": 24,
       "cell": 240,
       "picks": [
         0,
-        17,
+        6,
+        12,
+        18,
+        23,
         28,
-        31,
-        34,
-        36,
-        50,
+        35,
+        42,
+        48,
+        52,
         58,
+        63,
+        68,
+        72,
+        76,
+        79,
+        84,
+        88,
+        93,
+        98,
+        102,
+        109,
+        117,
+        123
+      ],
+      "loop": false,
+      "seed": 42,
+      "steps": 20,
+      "canvas": [
+        768,
+        512
+      ],
+      "prompt_sha256": "7fe695b791b62f92d510cb550172cf98e055afc91f3740df88b13990cf3fa128",
+      "input_sha256": {
+        "first": "94d221ab76a2ea0f7b7be7adceed90f9dbc097b39d02d255da4bd1da3dbd75c8",
+        "last": "9c0a5427e54af6aa1d42c887800dee7fc51907152a56dec641d42fe2befdb973"
+      },
+      "output": "tools/dragon/art/afk/motion/edge_reach.png",
+      "output_sha256": "a9bf4acd798eaaa81753e73ce1571ff52fecc113876a84d2554db17ec3b9a905",
+      "matte": "per-frame two-tone plate (open background | stand-in window), main component, interior-paint edge unmix; panel occlusion kept",
+      "panel": 448,
+      "scale": 1.8,
+      "crop": [
+        47,
+        40
+      ],
+      "guide": null
+    },
+    "edge_head": {
+      "first": {
+        "empty": true
+      },
+      "last": {
+        "image": "edge-peek"
+      },
+      "frames": 24,
+      "cell": 240,
+      "picks": [
+        0,
+        6,
+        12,
+        19,
+        26,
+        32,
+        37,
+        42,
+        47,
+        51,
+        56,
         60,
-        62,
+        65,
+        70,
+        75,
+        80,
+        84,
+        88,
+        93,
+        98,
+        102,
+        109,
+        117,
+        123
+      ],
+      "loop": false,
+      "seed": 42,
+      "steps": 20,
+      "canvas": [
+        768,
+        512
+      ],
+      "prompt_sha256": "72ed4c5e6ea714563e73186b75f2a98ea8296032b5dea76451be23e71d9778f7",
+      "input_sha256": {
+        "first": "94d221ab76a2ea0f7b7be7adceed90f9dbc097b39d02d255da4bd1da3dbd75c8",
+        "last": "9c0a5427e54af6aa1d42c887800dee7fc51907152a56dec641d42fe2befdb973"
+      },
+      "output": "tools/dragon/art/afk/motion/edge_head.png",
+      "output_sha256": "5f7715eb8d4b745d77e255ca0ec5b22cba720e7eb56f7eff1ce914b2002ca442",
+      "matte": "per-frame two-tone plate (open background | stand-in window), main component, interior-paint edge unmix; panel occlusion kept",
+      "panel": 448,
+      "scale": 1.8,
+      "crop": [
+        47,
+        40
+      ],
+      "guide": null
+    },
+    "edge_pull": {
+      "first": {
+        "image": "edge-peek"
+      },
+      "last": {
+        "cell": 56,
+        "at": [
+          101,
+          40
+        ]
+      },
+      "frames": 32,
+      "cell": 240,
+      "picks": [
+        0,
+        6,
+        13,
+        20,
+        25,
+        30,
+        37,
+        44,
+        48,
+        51,
+        55,
+        60,
         65,
         68,
-        80,
-        94,
-        108,
-        123
-      ],
-      "loop": false,
-      "seed": 42,
-      "steps": 20,
-      "canvas": 480,
-      "prompt_sha256": "7a885776d43b3eb29bd3b32f8c46d8c273414ae3672e0cdf422088a3d2fb7872",
-      "input_sha256": {
-        "first": "597e05e3fa5d01a763a644ea42b4891e7ca32d097f269b6928ff864077755a25",
-        "last": "714e97604be1b133a8cab058cdf6a741975af400beec3a9a6e62898a5aefb20c"
-      },
-      "output": "tools/dragon/art/afk/motion/peek.png",
-      "output_sha256": "8ba27d3a400346f92ec6955fb5e78b9a8f6cd3c473533113914ea10226c3e8f2",
-      "matte": "border-estimated uniform background, main component with holes filled, interior-paint edge unmix"
-    },
-    "wave": {
-      "first": {
-        "cell": 24
-      },
-      "last": {
-        "cell": 56
-      },
-      "frames": 16,
-      "cell": 240,
-      "picks": [
-        0,
-        11,
-        12,
-        14,
-        16,
-        17,
-        18,
-        19,
-        20,
-        23,
-        25,
-        26,
-        28,
-        51,
+        69,
+        71,
+        72,
+        73,
+        75,
+        78,
+        81,
+        83,
+        84,
         86,
+        89,
+        93,
+        96,
+        99,
+        104,
+        111,
+        117,
         123
       ],
       "loop": false,
       "seed": 42,
       "steps": 20,
-      "canvas": 480,
-      "prompt_sha256": "16b1d74440accf08610f8f5a8d3035fb5a29eba054a732ef0f2bfb1e4bf64583",
+      "canvas": [
+        768,
+        512
+      ],
+      "prompt_sha256": "48c1b9311cceef6ab7e9b7b3cb1e4f6a7d3840b19a4694c3d90df84132571606",
       "input_sha256": {
-        "first": "714e97604be1b133a8cab058cdf6a741975af400beec3a9a6e62898a5aefb20c",
-        "last": "9cff2e14523e3bc82e639a350c47182452f25d45f366044f7ab1f6c2c635a623"
+        "first": "9c0a5427e54af6aa1d42c887800dee7fc51907152a56dec641d42fe2befdb973",
+        "last": "28f35609bab56257e6873409371695c98576d715f70ac7eb62f679b6b113e88d",
+        "guide0": "5175baea6ba6d7b7597993f312f8c37fe33737de234ae58f18eac51f856156fc",
+        "guide1": "37ad80d52d5fcca68fc9fd0cbd5d14b01bf5070f04dd820cec334d40a46dbc2e"
       },
-      "output": "tools/dragon/art/afk/motion/wave.png",
-      "output_sha256": "3040d51c31909139d92e36bc434c97f677845189668b1aaefbecef838d49c40b",
-      "matte": "border-estimated uniform background, main component with holes filled, interior-paint edge unmix"
+      "output": "tools/dragon/art/afk/motion/edge_pull.png",
+      "output_sha256": "0d8f679f7ff98c04a039489dc34b452a75db08fe937c999bc0bcbae9885ffe3a",
+      "matte": "per-frame two-tone plate (open background | stand-in window), main component, interior-paint edge unmix; panel occlusion kept",
+      "panel": 448,
+      "scale": 1.8,
+      "crop": [
+        47,
+        40
+      ],
+      "guide": null
     },
     "bust": {
       "first": {

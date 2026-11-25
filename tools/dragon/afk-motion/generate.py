@@ -28,6 +28,8 @@ BACKEND=Path('/home/jesse/projects/inclusive-skateboarding/.tmp/h3/ComfyUI')
 PYTHON=Path('/home/jesse/projects/inclusive-skateboarding/.tmp/h3/venv/bin/python')
 BACKEND_REV='eee59185ff4f43ae2d9ad122b245619d27d9daad'
 BACKGROUND=(29,29,29)
+# Stand-in for the real window: she hides behind it and grips its left edge.
+PANEL=(66,66,72)
 FRAMES=124
 # Normal keys come from the 8-column AFK atlas.
 CELL,COLUMNS,MARGIN=320,8,24
@@ -36,10 +38,23 @@ CELL,COLUMNS,MARGIN=320,8,24
 def spec():return json.loads((HERE/'sequences.json').read_text())
 
 
-def key_image(key,size):
+def canvas_size(sequence):
+    return tuple(sequence.get('canvas',(sequence.get('size',480),)*2))
+
+
+def key_image(key,sequence):
     """Exact canvas transform for a key; matte.py inverts the same transform."""
-    canvas=Image.new('RGBA',(size,size),BACKGROUND+(255,))
-    if 'cell' in key:
+    size=sequence.get('size',480);width,height=canvas_size(sequence)
+    canvas=Image.new('RGBA',(width,height),BACKGROUND+(255,))
+    if 'panel' in sequence:
+        if 'cell' in key:
+            atlas=Image.open(ART/'afk.webp').convert('RGBA')
+            edge=atlas.width//COLUMNS;cell=key['cell'];x,y=cell%COLUMNS*edge,cell//COLUMNS*edge
+            side=round(edge*sequence['scale'])
+            canvas.alpha_composite(atlas.crop((x,y,x+edge,y+edge)).resize((side,side),Image.Resampling.LANCZOS),tuple(key['at']))
+        elif 'image' in key:return Image.open(SOURCES/(key['image']+'-source.png')).convert('RGB')
+        canvas.paste(PANEL+(255,),(sequence['panel'],0,width,height))
+    elif 'cell' in key:
         atlas=Image.open(ART/'afk.webp').convert('RGBA')
         edge=atlas.width//COLUMNS;cell=key['cell'];x,y=cell%COLUMNS*edge,cell//COLUMNS*edge
         sprite=atlas.crop((x,y,x+edge,y+edge)).resize((size-2*MARGIN,)*2,Image.Resampling.LANCZOS)
@@ -58,19 +73,24 @@ def prompt(data,sequence):
         'pearlescent glass baby dragon, on a perfectly uniform dark gray background, matching the two supplied drawings. '
         'The entire character stays comfortably inside the frame unless a picture crops her. '+data['identity']+' '
         +sequence['action']+' The motion reads as one complete living dragon with soft coherent contours and stable '
-        'attachments throughout. '+data['background']+'\n\noverall_soundscape: Silence.\n\nnon_diegetic_music: None.\n')
+        'attachments throughout. '+sequence.get('background',data['background'])+'\n\noverall_soundscape: Silence.\n\nnon_diegetic_music: None.\n')
 
 
 def prepare(names):
     data=spec()
     for name in names:
-        sequence=data['sequences'][name];size=sequence.get('size',480);work=OUT/name
+        sequence=data['sequences'][name];width,height=canvas_size(sequence);work=OUT/name
         inputs=work/'inputs';inputs.mkdir(parents=True,exist_ok=True)
-        for role in ('first','last'):key_image(sequence[role],size).save(inputs/(role+'.png'))
+        guides=sequence.get('guides',[])
+        roles=('first','last')+tuple(f'guide{i}' for i in range(len(guides)))
+        for role,key in zip(roles,[sequence['first'],sequence['last'],*guides]):key_image(key,sequence).save(inputs/(role+'.png'))
         (inputs/'prompt.txt').write_text(prompt(data,sequence))
-        (inputs/'manifest.json').write_text(json.dumps(dict(sequence=name,size=size,margin=MARGIN if 'cell' in sequence['first'] else 0,
+        (inputs/'manifest.json').write_text(json.dumps(dict(sequence=name,size=width,width=width,height=height,
+            margin=MARGIN if 'cell' in sequence['first'] and 'panel' not in sequence else 0,
+            panel=sequence.get('panel'),panel_color=PANEL if 'panel' in sequence else None,scale=sequence.get('scale'),
             cell=CELL,first=sequence['first'],last=sequence['last'],background=BACKGROUND,
-            sha256={role:hashlib.sha256((inputs/(role+'.png')).read_bytes()).hexdigest() for role in ('first','last')}),indent=2)+'\n')
+            guides=guides,
+            sha256={role:hashlib.sha256((inputs/(role+'.png')).read_bytes()).hexdigest() for role in roles}),indent=2)+'\n')
         print(inputs)
 
 
@@ -102,8 +122,9 @@ def run_sequence(name,model_dir,steps,seed):
     manifest=json.loads((inputs/'manifest.json').read_text())
     job=dict(variant='FL2VA',models=str(model_dir),backend=str(BACKEND),backend_revision=BACKEND_REV,
         first=str(inputs/'first.png'),last=str(inputs/'last.png'),prompt=(inputs/'prompt.txt').read_text(),
-        width=manifest['size'],height=manifest['size'],frames=FRAMES,fps=24,steps=steps,seed=seed,checkpoint_sha256=EXPECTED_SHA,
+        width=manifest.get('width',manifest['size']),height=manifest.get('height',manifest['size']),frames=FRAMES,fps=24,steps=steps,seed=seed,checkpoint_sha256=EXPECTED_SHA,
         input_sha256=manifest['sha256'])
+    job['guides']=[dict(frame=g['frame'],path=str(inputs/f'guide{i}.png')) for i,g in enumerate(manifest.get('guides') or [])]
     jobpath=work/'job.json';jobpath.write_text(json.dumps(job,indent=2)+'\n')
     env=os.environ.copy();env.update(PYTHONDONTWRITEBYTECODE='1',HF_HUB_OFFLINE='1',TRANSFORMERS_OFFLINE='1',OPENBLAS_NUM_THREADS='1',MALLOC_ARENA_MAX='2',PYTHONNOUSERSITE='1')
     for key in ('HF_TOKEN','HUGGING_FACE_HUB_TOKEN','PYTHONPATH','PYTHONHOME'):env.pop(key,None)

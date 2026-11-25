@@ -1,8 +1,8 @@
 {
   "cell": 240,
   "columns": 8,
-  "rows": 28,
-  "frames": 224,
+  "rows": 34,
+  "frames": 272,
   "poses": {
     "fly_left": {
       "first": 0,
@@ -152,6 +152,13 @@
       ],
       "sha256": "971098c9b3e192aa2537d56c53780787c55d6f502075ad8698cc028230496804"
     },
+    "edge-peek-source.png": {
+      "size": [
+        768,
+        512
+      ],
+      "sha256": "9c0a5427e54af6aa1d42c887800dee7fc51907152a56dec641d42fe2befdb973"
+    },
     "closeup-source.png": {
       "size": [
         1254,
@@ -198,15 +205,20 @@
       "count": 16,
       "sha256": "05b34b7cb175d5931128f3a63a0e062f8369b03ed1624b9a8a5bb3106ab76726"
     },
-    "peek": {
+    "edge_reach": {
       "first": 192,
-      "count": 16,
-      "sha256": "8ba27d3a400346f92ec6955fb5e78b9a8f6cd3c473533113914ea10226c3e8f2"
+      "count": 24,
+      "sha256": "a9bf4acd798eaaa81753e73ce1571ff52fecc113876a84d2554db17ec3b9a905"
     },
-    "wave": {
-      "first": 208,
-      "count": 16,
-      "sha256": "3040d51c31909139d92e36bc434c97f677845189668b1aaefbecef838d49c40b"
+    "edge_pull": {
+      "first": 216,
+      "count": 32,
+      "sha256": "0d8f679f7ff98c04a039489dc34b452a75db08fe937c999bc0bcbae9885ffe3a"
+    },
+    "edge_head": {
+      "first": 248,
+      "count": 24,
+      "sha256": "5f7715eb8d4b745d77e255ca0ec5b22cba720e7eb56f7eff1ce914b2002ca442"
     }
   },
   "closeup": {
@@ -258,7 +270,7 @@
     ]
   },
   "annotation_note": "Conservative manually registered head bounds (including horns/frill); transparent sheet size is not head detail.",
-  "atlas_rgba_bytes": 51609600,
+  "atlas_rgba_bytes": 62668800,
   "reused_flight_source": {
     "path": "shell/assistant/dragon/flight.webp",
     "cell": 240,

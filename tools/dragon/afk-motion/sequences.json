@@ -56,23 +56,99 @@
       },
       "action": "At the opening she flies facing right exactly as in Picture 1, wings beating. Over the clip she banks into a climbing arc: she tilts her body nose-up, sweeps her wings in strong deep downstrokes and rises into the steep climbing pose of Picture 2, her tail trailing and curling behind her through the bank."
     },
-    "peek": {
+    "edge": {
       "first": {
-        "cell": 8
+        "empty": true
       },
       "last": {
-        "cell": 24
+        "cell": 56,
+        "at": [
+          101,
+          40
+        ]
       },
-      "action": "At the opening she hovers facing the viewer exactly as in Picture 1. Over the clip she gets curious and playful: she tilts her head, leans her whole body sideways as if peeking around a corner, her eyes widen, and she reaches one paw outward, ending exactly in the curious three-quarter reaching pose of Picture 2. Her wings keep a gentle hovering beat."
+      "canvas": [
+        768,
+        512
+      ],
+      "panel": 448,
+      "scale": 1.8,
+      "background": "A flat plain gray panel, like the side of a window, fills the right part of the frame; its straight vertical left edge stays exactly where it is and the panel never moves, changes or casts shadows. Left of the panel the background stays perfectly uniform dark gray and empty; there is no floor, scenery, camera move, zoom, shot change, text or other character. The camera stays locked.",
+      "action": "At the opening she is completely hidden behind the gray panel and nothing of her is visible, exactly as in Picture 1. After a short pause, one small rounded front paw pokes out from behind the panel's left edge, high up, and its little fingers curl around the edge, gripping the front of the panel. A moment later her head slowly peeks out head-first from behind the edge, just below her gripping paw: her eyes look around curiously and she tilts her head. Then she grips the edge firmly with her paw, pulls herself out from behind the panel and swings out to the left with a playful little overshoot, her wings opening, bounces happily and lifts her paw into a wave, ending exactly as in Picture 2, hovering beside the panel. Her body never passes in front of the panel; only her gripping fingers overlap its front edge.",
+      "key_only": "frame 60 of this generation is edge-peek-source.png, the shared peek key"
     },
-    "wave": {
+    "edge_reach": {
       "first": {
-        "cell": 24
+        "empty": true
       },
       "last": {
-        "cell": 56
+        "image": "edge-peek"
       },
-      "action": "At the opening she is in the curious three-quarter reaching pose of Picture 1. Over the clip she pops back upright with a happy little bounce, turns to face the viewer with a delighted smile, tucks one paw under her chin and lifts the other paw to wave playfully, ending exactly in the waving pose of Picture 2. Her wings flutter happily."
+      "canvas": [
+        768,
+        512
+      ],
+      "panel": 448,
+      "scale": 1.8,
+      "background": "A flat plain gray panel, like the side of a window, fills the right part of the frame; its straight vertical left edge stays exactly where it is and the panel never moves, changes or casts shadows. Left of the panel the background stays perfectly uniform dark gray and empty; there is no floor, scenery, camera move, zoom, shot change, text or other character. The camera stays locked.",
+      "action": "At the opening she is completely hidden behind the gray panel and nothing of her is visible, exactly as in Picture 1. After a short pause, one small rounded front paw slowly pokes out from behind the panel's left edge, its little fingers wiggle, then curl around the edge and grip the front of the panel; from then on the paw stays gripping in exactly that spot. Then, just above her gripping paw, the tips of her horns appear and her head slowly slides out head-first from behind the edge, a little at a time, until her face peeks out curiously exactly as in Picture 2. Her body stays hidden behind the panel; only her gripping fingers overlap its front edge.",
+      "cells": 24
+    },
+    "edge_head": {
+      "first": {
+        "empty": true
+      },
+      "last": {
+        "image": "edge-peek"
+      },
+      "canvas": [
+        768,
+        512
+      ],
+      "panel": 448,
+      "scale": 1.8,
+      "background": "A flat plain gray panel, like the side of a window, fills the right part of the frame; its straight vertical left edge stays exactly where it is and the panel never moves, changes or casts shadows. Left of the panel the background stays perfectly uniform dark gray and empty; there is no floor, scenery, camera move, zoom, shot change, text or other character. The camera stays locked.",
+      "action": "At the opening she is completely hidden behind the gray panel and nothing of her is visible, exactly as in Picture 1. After a short pause, the tips of her horns appear at the panel's left edge and her head slowly slides out head-first from behind the edge, a little at a time, her eyes peeking around curiously and her head tilting. Then one small rounded front paw comes out from behind the edge just below her chin, and its little fingers curl around the edge and grip the front of the panel, ending exactly as in Picture 2. Her body stays hidden behind the panel; only her gripping fingers overlap its front edge.",
+      "cells": 24
+    },
+    "edge_pull": {
+      "first": {
+        "image": "edge-peek"
+      },
+      "last": {
+        "cell": 56,
+        "at": [
+          101,
+          40
+        ]
+      },
+      "canvas": [
+        768,
+        512
+      ],
+      "panel": 448,
+      "scale": 1.8,
+      "background": "A flat plain gray panel, like the side of a window, fills the right part of the frame; its straight vertical left edge stays exactly where it is and the panel never moves, changes or casts shadows. Left of the panel the background stays perfectly uniform dark gray and empty; there is no floor, scenery, camera move, zoom, shot change, text or other character. The camera stays locked.",
+      "action": "At the opening her head peeks out from behind the gray panel's left edge with her paw gripping the edge, exactly as in Picture 1. She glances around curiously, then gives a small anticipation dip, her paw still gripping the edge. Then, holding the edge, she pulls herself out from behind the panel: her shoulders, chest, wing and tail slide gradually and smoothly out from behind the edge as she leans out to the left, never appearing all at once. Fully out, she glides on a little past her resting place to the left in a playful overshoot, then drifts back, turns to face the viewer with a happy little bounce and settles into a hover beside the panel, lifting her paw to wave, ending exactly as in Picture 2. She stays upright and sharp the whole time and never tumbles, flips or spins.",
+      "guides": [
+        {
+          "frame": 56,
+          "cell": 24,
+          "at": [
+            187,
+            40
+          ]
+        },
+        {
+          "frame": 84,
+          "cell": 24,
+          "at": [
+            60,
+            40
+          ]
+        }
+      ],
+      "cells": 32
     },
     "bust": {
       "first": {

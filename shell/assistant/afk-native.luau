@@ -87,7 +87,7 @@ return function(shared, options)
                         text.ai_afk_body_src=base.."/afk-closeup-motion.webp"
                         fact.ai_afk_body_open=true
                     end
-                else ok=shared.register_skin(base.."/afk.webp",28,token) end
+                else ok=shared.register_skin(base.."/afk.webp",34,token) end
                 if not ok then ready(false);return end
                 fact.ai_afk_active=true
             end

@@ -78,7 +78,7 @@ with torch.inference_mode():
     elif stage=='anchors':
         vae=video_vae();anchors=[]
         keyframes=[(0,job['first']),(job['frames']-1,job['last'])]
-        if job.get('guide'):keyframes.append((job['guide']['frame'],job['guide']['path']))
+        keyframes+=[(g['frame'],g['path']) for g in job.get('guides',[])]
         for frame,path in sorted(keyframes):
             anchors.append(dict(resolved_frame_index=frame,latent=vae.encode(image(path)).detach().cpu()))
             event('anchor:'+str(frame))
@@ -90,7 +90,7 @@ with torch.inference_mode():
         tokens=clip.tokenize(job['prompt'],images=[image(job['first']),image(job['last'])])
         positive=clip.encode_from_tokens_scheduled(tokens)
         anchors=load('anchors.pt')
-        expected=sorted([0,job['frames']-1]+([job['guide']['frame']] if job.get('guide') else []))
+        expected=sorted([0,job['frames']-1]+[g['frame'] for g in job.get('guides',[])])
         if [a['resolved_frame_index'] for a in anchors]!=expected:raise RuntimeError('Incorrect image anchor indices')
         print('Native minimax_keyframes indices:',expected,flush=True)
         positive=node_helpers.conditioning_set_values(positive,{'minimax_keyframes':anchors})

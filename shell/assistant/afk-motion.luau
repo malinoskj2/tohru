@@ -6,8 +6,14 @@ return function(choreography)
     -- Registered eye scale between the full-body closeup and the bust.
     local BODY=1.9245097100019937
     -- Generated FL2VA in-betweens follow the 12 authored rows, 16 frames each.
-    local MOTION={turn=96,arrive_right=112,arrive_left=128,curl=144,perch=160,bank=176,peek=192,wave=208}
+    local MOTION={turn=96,arrive_right=112,arrive_left=128,curl=144,perch=160,bank=176,
+        edge_reach=192,edge_pull=216,edge_head=248}
     local LAST=15
+    -- Source frame (of 124) behind each edge-clip cell: cells are picked half
+    -- by motion and half by time, and playback follows the generated timing.
+    local EDGE_PICKS={edge_reach={0,6,12,18,23,28,35,42,48,52,58,63,68,72,76,79,84,88,93,98,102,109,117,123},edge_pull={0,6,13,20,25,30,37,44,48,51,55,60,65,68,69,71,72,73,75,78,81,83,84,86,89,93,96,99,104,111,117,123},edge_head={0,6,12,19,26,32,37,42,47,51,56,60,65,70,75,80,84,88,93,98,102,109,117,123}}
+    -- Last source frame of the glance that opens the pull clip, before its dip.
+    local EDGE_GLANCE=13
     local TURN,ARRIVE=.8,.6
     -- One generated bust gesture loop and one closeup wingbeat, 16 frames each.
     local BUST_LOOP,CLOSEUP_FRAMES=5.2,16
@@ -58,7 +64,7 @@ return function(choreography)
         if not t or t.w<180 or t.h<160 or t.y<80 or t.y>s.h-120 or top>right then
             result.window_perch=false;reasons.window_perch="no supported visible upper window edge"
         end
-        if not t or t.x<80 or t.x+t.w>s.w-80 or t.y<80 or t.y+t.h>s.h-60 then
+        if not t or t.x<120 or t.x+t.w>s.w-80 or t.y<80 or t.y+t.h>s.h-60 or t.h<200 then
             result.hide_peek=false;reasons.hide_peek="window needs visible left/right edges for genuine occluded peeks"
         end
         return result,reasons
@@ -107,6 +113,16 @@ return function(choreography)
             local normal=math.min(1,236/(150*(s.scale or 1)))
             for _,anchor in pairs(a) do anchor.scale=anchor.scale*normal end
         end
+        if target then
+            -- Edge clips: the cell center sits 185 canvas px (at 432 canvas
+            -- px per cell) outside the stand-in edge; the wave key sits 30
+            -- cell px right of the clip's crop.
+            local k=a.window_hidden.scale
+            local off,y=185*150*k/432,target.y+math.max(target.h*.36,75*k)
+            a.edge_left={x=target.x-off,y=y,scale=k}
+            a.edge_right={x=target.x+target.w+off,y=y,scale=k}
+            a.edge_left_wave={x=a.edge_left.x+30*150*k/240,y=y,scale=k}
+        end
         -- She arrives at the corner flying right, so the nap curls mirrored.
         a.nap_turn=-1
         if a.window_top then
@@ -153,6 +169,30 @@ return function(choreography)
         sample.pose="skin";sample.generated=true
         sample.skin_frame=MOTION[name]+i
         if i<LAST then sample.skin_next=sample.skin_frame+1;sample.skin_mix=f-i end
+        return sample
+    end
+    -- Plays an edge clip at q (0..1) through generated source frames a..b.
+    -- Half follows the generated timing and half the evenly spaced motion,
+    -- so held moments still breathe and a fast swing is not a jump cut.
+    local function clip(sample,name,a,b,q)
+        local picks=EDGE_PICKS[name]
+        local function cell_at(f)
+            local i=1
+            while i<#picks-1 and picks[i+1]<=f do i=i+1 end
+            return i-1+clamp((f-picks[i])/(picks[i+1]-picks[i]),0,1)
+        end
+        local from,to=cell_at(a),cell_at(b)
+        local timed=cell_at(lerp(a,b,clamp(q,0,1)))
+        local even=lerp(from,to,clamp(q,0,1))
+        local last=#picks-1
+        local f=clamp((timed+even)/2,0,last)
+        local i=math.min(last,math.floor(f))
+        sample.pose="skin";sample.generated=true
+        sample.skin_frame=MOTION[name]+i
+        -- Neighbouring cells can sit far apart in fast motion, so each one
+        -- holds and only the middle of the step crossfades, which keeps
+        -- quick moves crisp instead of doubled.
+        if i<last and f>i then sample.skin_next=sample.skin_frame+1;sample.skin_mix=smooth((f-i-.3)/.4) end
         return sample
     end
     local function cycle(sample,frames,position)
@@ -281,52 +321,44 @@ return function(choreography)
         elseif pose=="quiet_rest" then
             sample.pose="nested_hover";sample.airborne=0;sample.phase=0
         elseif pose:sub(1,4)=="peek" then
-            -- Left-edge peeks use the generated lean (front → three-quarter
-            -- looking left); the right edge mirrors the generated pop-and-wave.
+            -- Generated edge clips keep the stand-in window's occlusion: the
+            -- hidden body is absent and the gripping paw is drawn over the
+            -- real edge, so they play in front of the window, edge on edge.
+            -- The right edge mirrors them; she comes out at the left, where
+            -- the pull ends on the canonical wave her turn home starts from.
             local q=semantic.progress
-            sample.facing=0
-            if pose=="peek_shy" then
-                -- Only her head leans past the edge, then she thinks better of it.
-                local e=smooth(q/.55)
-                play(sample,"peek",e)
-                sample.x=lerp(from.x,to.x,e)
-                sample.y=lerp(from.y,to.y,e)
-                sample.rotation=-5*e+3*math.sin(math.pi*clamp((q-.55)/.45,0,1))
-            elseif pose=="peek_duck" then
-                local e=q*q
-                sample.x=lerp(from.x,to.x,e);sample.y=lerp(from.y,to.y,e)
-                if semantic.from=="window_right" then
-                    play(sample,"wave",smooth(q),true);sample.turn=-1
-                else
-                    play(sample,"peek",smooth(q),true)
-                end
-            elseif pose=="peek_wait" then
-                sample.pose="skin";sample.skin_frame=8
-                sample.y=sample.y+4*math.sin(2*math.pi*q)
-            elseif pose=="peek_lean" then
-                -- Bolder second look: out with a little overshoot, head tilts,
-                -- a curious bob, then a slight retreat before ducking away.
-                local e=back(clamp(q/.4,0,1))
-                local retreat=smooth((q-.8)/.2)*.25
-                sample.x=lerp(from.x,to.x,e-retreat)
-                sample.y=lerp(from.y,to.y,math.min(e,1))-10*math.sin(math.pi*clamp((q-.35)/.3,0,1))
-                local tilt=math.sin(2*math.pi*clamp((q-.4)/.45,0,1))
-                play(sample,"peek",smooth(q/.35)-.35*smooth((q-.8)/.2))
-                sample.rotation=-4*smooth(q/.3)-6*tilt
-            elseif pose=="peek_pop" then
-                local e=back(q)
-                sample.x=lerp(from.x,to.x,e);sample.y=lerp(from.y,to.y,math.min(e,1))
-                play(sample,"wave",smooth(q/.9))
-                sample.turn=-(1+.06*math.sin(math.pi*math.min(1,q*1.4)))
-                sample.rotation=8*(1-smooth(q))
+            local beat_time=q*duration
+            sample.facing=0;sample.anchored=true
+            sample.turn=semantic.from:find("right") and -1 or 1
+            if pose=="peek_wait" then
+                sample.pose="skin";sample.skin_frame=8;sample.behind=true
+            elseif pose=="peek_head" then
+                -- Head first, then her paw comes out and grips the edge.
+                clip(sample,"edge_head",20,123,q)
+            elseif pose=="peek_reach" then
+                -- Her paw pokes out first and grips; her head follows.
+                clip(sample,"edge_reach",14,123,q)
+            elseif pose=="peek_look" then
+                -- The pull clip opens on a glance with the paw held still:
+                -- a quick turn out along it, a hold, and a quick turn back.
+                clip(sample,"edge_pull",0,EDGE_GLANCE,smooth(math.min(1,3*math.sin(math.pi*q))))
+            elseif pose=="peek_hide" then
+                -- Ducks back quickly, the paw letting go last.
+                clip(sample,"edge_head",123,36,q*q)
+            elseif pose=="peek_pull" then
+                clip(sample,"edge_pull",0,123,q)
             elseif pose=="peek_wave" then
-                sample.pose="skin";sample.skin_frame=7*8;sample.turn=-1
-                local hop=math.abs(math.sin(2*math.pi*q*2))
-                sample.y=sample.y-9*hop
-                sample.turn=-(1-.05*hop)
-                sample.rotation=-6*math.sin(2*math.pi*q*1.5)
-            else
-                sample.pose="skin";sample.skin_frame=8
+                -- The pull ends on the canonical wave key. Its articulation
+                -- starts from rest so the handoff holds still, and it settles
+                -- into the front hover the turn home starts on.
+                -- Two whole waves and one bob, both back at rest before the
+                -- settle, so nothing jumps when the turn home takes over.
+                local waving=duration-.7
+                sample.pose="skin";sample.skin_frame=7*8;sample.turn=1
+                sample.wave_phase=2*math.min(beat_time,waving)/waving
+                sample.y=sample.y-4*sample.scale*(1-math.cos(2*math.pi*math.min(beat_time,waving)/waving))/2
+                local settle=smooth((beat_time-waving)/.4)
+                if settle>0 then sample.skin_next=8;sample.skin_mix=settle end
             end
         elseif flying then
             local dx=to.x-from.x
@@ -411,7 +443,7 @@ return function(choreography)
             sample.pose=math.cos(theta)<0 and "fly-left" or "fly-right"
             sample.bank=12*math.sin(theta)
         end
-        if id=="hide_peek" then sample.behind=true end
+        if id=="hide_peek" and (pose=="flight_behind" or pose=="peek_wait") then sample.behind=true end
         if id=="window_perch" and (pose=="wings_fold" or pose=="perch_tail_dangle" or pose=="wings_unfold"
             or (pose=="flight_land" and semantic.progress>.7)
             or (pose=="flight_home" and semantic.progress<.25)) then
@@ -439,6 +471,7 @@ return function(choreography)
                 sample.action=11;sample.skin_frame=8
             end
             if id=="quiet_rest" then sample.action=0;sample.phase=0 end
+            if sample.wave_phase then sample.phase=sample.wave_phase;sample.wave_phase=nil end
         end
         return sample
     end

@@ -134,8 +134,10 @@ generated body turn, or the generated arrival into a front hover, rather than
 flipping in one frame; rising arcs pitch her nose-up through the generated
 bank frames. Corner nap glides down and curls through generated frames and
 uncurls through them in reverse; the perch lands and takes off through them;
-hide-and-peek leans out on the left edge and pops up waving, mirrored, on the
-right. Every
+in hide-and-peek she peeks head first around the window's right edge and grips
+it, glances along it and ducks back; at the left edge her paw pokes out and
+grips first, her head follows, and she pulls herself out past the edge with a
+little overshoot into a wave. Every
 scene ends with a flight back to her resting spot at the bottom-right, turning to
 face the front as she arrives, where the resting dragon takes over. While the
 bust is shown, her bob only presses into the output edge so its crop never lifts
@@ -163,7 +165,7 @@ are not resolution evidence. The runtime exposes no GPU-ready/free acknowledgeme
 a conservative three-second warm barrier precedes travel, and all live bindings
 clear after retreat/cancel/disable; renderer caches may remain.
 
-Supplemental RGBA estimates are 49.2 MiB normal, 96 MiB camera, or 192 MiB for
+Supplemental RGBA estimates are 59.8 MiB normal, 96 MiB camera, or 192 MiB for
 the two grids the glass and upside-down scenes need. Add existing voice textures (roughly 57 MiB at scale 1,
 89 MiB at 1.25, 228 MiB at 2), flight texture, surface buffers and conservatively
 four physical shader layers (31.6 MiB at 1080p; 126.6 MiB at 4K). Decoder
@@ -201,3 +203,13 @@ canonical keys back at both ends; the 1254px grids are first upscaled with the
 shared `realesrgan-x4plus-anime`. `collect.py` writes the strips and grids with
 `tools/dragon/art/afk/motion/provenance.json`, and `afk-pack.py` packs the
 atlas.
+
+The hide-and-peek edge clips are generated around a flat gray stand-in for the
+window, so the model draws the occlusion itself: her hidden body is simply
+absent and the fingers gripping the edge overlap its front. The matte removes
+both backdrops, keeps that occlusion, and crops a fixed cell whose stand-in edge
+the runtime places on the real window edge, drawing the clip in front of the
+window, mirrored for the head-first peek at the right edge. One model-drawn peek,
+`tools/dragon/art/afk/edge-peek-source.png`, joins the head-first, paw-first
+and pull-out clips; the pull-out ends on the canonical wave key and is guided
+through two composited half-out and overshoot poses.

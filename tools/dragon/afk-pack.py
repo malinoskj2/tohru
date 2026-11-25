@@ -15,10 +15,12 @@ from PIL import Image
 
 ROOT=Path(__file__).resolve().parents[2]
 ART=ROOT/'tools/dragon/art/afk'
+# The hide-and-peek edge clips carry more frames than the 16 of the others.
+SEQUENCES=json.loads((ROOT/'tools/dragon/afk-motion/sequences.json').read_text())['sequences']
 OUT=ROOT/'shell/assistant/dragon'
 CELL=240
 # Generated in-between sequences, in atlas order after the authored rows.
-MOTION=['turn','arrive_right','arrive_left','curl','perch','bank','peek','wave']
+MOTION=['turn','arrive_right','arrive_left','curl','perch','bank','edge_reach','edge_pull','edge_head']
 MOTION_FRAMES=16
 NAMES=['fly_left','head_tilt','fly_right','wing_straighten','fly_up','horn_polish',
        'chin_on_paws','hopeful_wave','curled_sleep','perch_tail_dangle','tail_follow_left','tail_follow_right']
@@ -88,7 +90,7 @@ def articulate(key,index,phase):
 def main():
     cv2.setNumThreads(1)
     images=keys(ART/'source.png',4,2)+keys(ART/'nap-perch-tail-source.png',2,2)
-    rows=12+len(MOTION)*MOTION_FRAMES//8
+    rows=12+sum(SEQUENCES[name].get('cells',MOTION_FRAMES) for name in MOTION)//8
     sheet=Image.new('RGBA',(CELL*8,CELL*rows))
     flight=Image.open(OUT/'flight.webp').convert('RGBA')
     body=Image.open(OUT/'body.webp').convert('RGBA')
@@ -113,15 +115,17 @@ def main():
             bounds.append(sprite.getchannel('A').point(lambda a:255 if a>180 else 0).getbbox())
         manifest['poses'][NAMES[index]]['occupied']=[min(b[0] for b in bounds),min(b[1] for b in bounds),max(b[2] for b in bounds),max(b[3] for b in bounds)]
         manifest['poses'][NAMES[index]]['original_source_cell']=240 if index in (0,2,4) else None
-    for number,name in enumerate(MOTION):
+    first=96
+    for name in MOTION:
+        count=SEQUENCES[name].get('cells',MOTION_FRAMES)
         strip=Image.open(ART/'motion'/(name+'.png')).convert('RGBA')
-        if strip.size!=(CELL*MOTION_FRAMES,CELL):raise SystemExit('unexpected generated strip size for '+name)
-        first=96+number*MOTION_FRAMES
-        for frame in range(MOTION_FRAMES):
+        if strip.size!=(CELL*count,CELL):raise SystemExit('unexpected generated strip size for '+name)
+        for frame in range(count):
             index=first+frame
             sheet.paste(strip.crop((frame*CELL,0,(frame+1)*CELL,CELL)),(index%8*CELL,index//8*CELL))
-        manifest['motion'][name]={'first':first,'count':MOTION_FRAMES,
+        manifest['motion'][name]={'first':first,'count':count,
             'sha256':hashlib.sha256((ART/'motion'/(name+'.png')).read_bytes()).hexdigest()}
+        first+=count
     OUT.mkdir(exist_ok=True)
     sheet.save(OUT/'afk.webp',lossless=True,method=2)
     # Preserve full-resolution canonical closeup separately from the motion atlas.
