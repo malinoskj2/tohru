@@ -1,6 +1,6 @@
 {
   "orcaVersion": "1.4.268",
-  "patchSha256": "99c4e92be15e1b08658b0155c0a3ca680cda53b9dad73bfcfa3c180536a5d739",
+  "patchSha256": "8d225266e9d42590d4bd55cc749df20164981cbeb6966ca04732335e74a4b888",
   "baseFiles": {
     "src/cli/bots/bot-handler-groups.ts": "f4135283f83680c4133a12438a4e54f14630770731d2c1487189d0001c91be21",
     "src/cli/bots/bot.ts": "7e9821d5015c964e0801ae696510f0364aaaab1a703f14caf9d2a4de9e913453",
@@ -12,6 +12,8 @@
     "src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.ts": "7c8c5a663adc9bf37ea17822f23676cb3ab409c52db844431a9f60b1cf7cc631",
     "src/main/runtime/rpc/methods/bots.ts": "0090fd5056d8dd9cfb5d40891e35d1a1c3753d33c6b621525dc52b83c8e885cd",
     "src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts": "d0ece5b86a88fc1507ddd67df3ae7e912555311e42dd65b278862e15443c4f1e",
+    "src/shared/agent-session/view/structured-agent-session-queued-cards.test.ts": "9046eb3e3ef80ab6fd304e751322108836c63d111f12803dd7ca9f642558ac65",
+    "src/shared/agent-session/view/structured-agent-session-queued-cards.ts": "a28419491697053ae498b4cb4e26611b80b28dd3d11dc0ac5aef4d6b28bfbe4a",
     "src/shared/bots/bot-voice-methods.ts": "1954812d939509bf500f8df0e833285d25ba7418b02495fcc5552b6b570c64b3",
     "src/shared/rpc-contract/rpc-params-catalog.generated.ts": "f110cc70b45275d1ae890842365052d5085fd6e1ed9a22a3430f3c524bef695c"
   },

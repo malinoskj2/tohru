@@ -39,7 +39,7 @@ a fresh output path; no shared store is modified. Preparation alone is no pass.
 
 The native suite drives actual CLI argument/envelope handling, background RPC,
 native SQLite history, queued aliases and child IPC. With the quick-voice and automatic
-steering patches applied, expect fourteen passing test
+steering patches applied, expect fifteen passing test
 files and both typechecks, not merely exit0 from an accepted CLI. Its native
 test action/log receipts and immutable collection supply the observable result.
 

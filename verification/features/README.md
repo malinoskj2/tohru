@@ -81,7 +81,7 @@ python3 tools/verify/verify.py validate --run /absolute/checkout/.tmp/verify/nat
 Replace RUN with the exact returned UUID; do not infer completion from launch.
 The native driver uses an allowlisted environment with private HOME/XDG/TMPDIR,
 no caller, credentials, host bus/display/audio sockets or inherited agent context.
-It runs the fourteen-file admission and responsive Home suite and two typechecks with two native
+It runs the fifteen-file admission and responsive Home suite and two typechecks with two native
 workers. Every subprocess has its own session, a 180-second deadline per command
 (override 0–1800 seconds), and a streaming 2 MiB combined output budget. Its entire
 owned group is killed on completion/overflow/timeout, and its direct child reaped.

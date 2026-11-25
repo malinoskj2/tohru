@@ -770,6 +770,9 @@ if args[:2] == ["bot", "voice-ready"]:
     sys.exit(0)
 
 if args[:2] == ["bot", "voice-side"]:
+    if "--unanswered" in args and os.environ.get("FAKE_SIDE_OLD_CLI") == "1":
+        print(json.dumps({"ok": False, "error": {"code": "invalid_argument", "message": "Unknown flag --unanswered for command: bot voice-side"}}))
+        sys.exit(1)
     phase = args[args.index("--phase") + 1]
     request = args[args.index("--request") + 1]
     text = Path(args[args.index("--text-file") + 1]).read_text()
@@ -886,6 +889,10 @@ class OrcaBotBackend(unittest.TestCase):
         return self.invoke("chat", "--backend", "orca", "--orca-bot", "Tohru", "--provider", "orca:Tohru",
                            "--orca-voice-chat", "quick", "--voice", stdin=prompt, **env)
 
+    def side_finishes(self, calls=None):
+        return [call["argv"] for call in (self.orca_calls() if calls is None else calls)
+                if call["argv"][:2] == ["bot", "voice-side"] and "finish" in call["argv"]]
+
     def busy_home(self):
         state = json.loads(self.orca_state.read_text())
         state["pending"][self.HOME_UUID] = {"polls":1000, "reply":"Home long task result."}
@@ -915,6 +922,9 @@ class OrcaBotBackend(unittest.TestCase):
         self.assertEqual(state["pending"][self.HOME_UUID]["polls"], 1000)
         self.assertEqual(state["entries"][self.HOME_UUID][-1]["text"], answer)
         self.assertFalse(any(call["argv"][:2] == ["bot", "send"] for call in self.orca_calls()))
+        finishes = self.side_finishes()
+        self.assertEqual(len(finishes), 1)
+        self.assertNotIn("--unanswered", finishes[0])
         self.assertTrue(any(call["argv"][:2] == ["orchestration", "worker-show"] and "--full" in call["argv"] for call in self.orca_calls()))
         model = json.loads(self.fake_claude_log.read_text().splitlines()[-1])
         self.assertIn("--no-session-persistence", model["argv"])
@@ -972,6 +982,10 @@ class OrcaBotBackend(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             sent = [call for call in self.orca_calls()[before:] if call["argv"][:2] == ["bot", "send"]]
             self.assertEqual(len(sent), 1)
+            # A handover leaves Home no context note to queue ahead of the owner turn.
+            finishes = self.side_finishes(self.orca_calls()[before:])
+            self.assertEqual(len(finishes), 1)
+            self.assertIn("--unanswered", finishes[0])
             self.assertNotIn("new", sent[0]["argv"])
             self.assertEqual(sent[0]["argv"][sent[0]["argv"].index("--delivery") + 1], "now")
             entries = json.loads(self.orca_state.read_text())["entries"][self.HOME_UUID]
@@ -997,6 +1011,16 @@ class OrcaBotBackend(unittest.TestCase):
         self.assertNotIn('"home":', model["stdin"])
         for line in notices:
             self.assertNotRegex(line, r"\bHome\b")
+
+    def test_quick_handover_through_an_older_orca_cli_still_reaches_home_once(self):
+        self.busy_home()
+        result = self.quick("Build the feature", FAKE_ANSWER='{"route":"home","text":"On it."}', FAKE_SIDE_OLD_CLI="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        finishes = self.side_finishes()
+        self.assertEqual([("--unanswered" in argv) for argv in finishes], [True, False])
+        self.assertEqual(len([call for call in self.orca_calls() if call["argv"][:2] == ["bot", "send"]]), 1)
+        entries = json.loads(self.orca_state.read_text())["entries"][self.HOME_UUID]
+        self.assertEqual([entry.get("text") for entry in entries].count("On it."), 1)
 
     def test_quick_superseded_request_never_speaks_or_starts_work(self):
         self.busy_home()
@@ -1041,6 +1065,7 @@ class OrcaBotBackend(unittest.TestCase):
         state = json.loads(self.orca_state.read_text())
         self.assertEqual(state["entries"][self.HOME_UUID][-1]["text"], "You stopped me before I answered.")
         self.assertFalse(any(call["argv"][:2] == ["bot", "send"] for call in self.orca_calls()))
+        self.assertIn("--unanswered", self.side_finishes()[-1])
         process.stdout.close()
         process.stderr.close()
 

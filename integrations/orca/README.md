@@ -15,7 +15,7 @@ Apply it to a private source tree with
 `python3 integrations/orca/apply-owner-admission.py --stage quick --source .tmp/current-orca-source`.
 Apply the automatic steering patch from the matching Nix package afterward.
 The shared verify runner and `verify-owner-admission.py` require both patches
-and run fourteen test files plus the node and CLI typechecks.
+and run fifteen test files plus the node and CLI typechecks.
 The native fixtures cover the journal, caller gates, owner request correlation,
 automatic steering and tool budget; they do not prove live Home or audible playback.
 See [quick voice and thin Home](../../docs/configuration.md#quick-voice-and-thin-home)

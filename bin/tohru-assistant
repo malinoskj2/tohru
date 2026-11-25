@@ -1655,14 +1655,21 @@ def orca_chat(args, prompt, bot_name, voice_chat, offline):
         return orca_chat_turn(args, prompt, bot_name, voice_chat, offline)
 
 
-def orca_side_record(bot, phase, request, text):
+def orca_side_record(bot, phase, request, text, answered=True):
     fd, path = tempfile.mkstemp(dir=private_dir(SCRATCH), prefix=".voice-side-")
     try:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as output:
             output.write(text)
-        return orca_call(["bot", "voice-side", "--bot", bot, "--phase", phase,
-                          "--request", request, "--text-file", path, "--json"], timeout=15)
+        argv = ["bot", "voice-side", "--bot", bot, "--phase", phase,
+                "--request", request, "--text-file", path, "--json"]
+        if answered:
+            return orca_call(argv, timeout=15)
+        result = orca_call(argv + ["--unanswered"], timeout=15)
+        # A CLI from before the flag refuses it before reaching Orca, so the retry records once.
+        if not result[0] and "--unanswered" in (result[2] or ""):
+            return orca_call(argv, timeout=15)
+        return result
     finally:
         os.unlink(path)
 
@@ -1997,7 +2004,9 @@ def orca_quick_voice(args, prompt, bot_name, offline):
         interrupted = owner_interrupted
         text = ("You stopped me before I answered." if interrupted else
                 decision.get("text") or "I'll take care of that.")
-        ok, recorded, error = orca_side_record(bot_name, "finish", request, text)
+        # Only an answer becomes a context note; a handover sends the question itself to Home.
+        ok, recorded, error = orca_side_record(bot_name, "finish", request, text,
+                                               answered=not interrupted and decision["route"] == "answer")
         if not ok:
             emit({"event": "error", "conversation": chat_id, "message": error or "The exchange could not be recorded; inspect Home before retrying."})
             return 1

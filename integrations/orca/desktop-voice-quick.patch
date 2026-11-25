@@ -11,10 +11,10 @@ index 34df3c1..f74bcc2 100644
        'bot new-chat',
        'bot memory forget'
 diff --git a/src/cli/bots/bot.ts b/src/cli/bots/bot.ts
-index 96acc7f..974b42c 100644
+index 96acc7f..dd45a55 100644
 --- a/src/cli/bots/bot.ts
 +++ b/src/cli/bots/bot.ts
-@@ -75,6 +75,17 @@ export async function findBot(
+@@ -75,6 +75,18 @@ export async function findBot(
  }
  
  export const BOT_HANDLERS: Record<string, CommandHandler> = {
@@ -25,7 +25,8 @@ index 96acc7f..974b42c 100644
 +    const result = await callBots(client, 'bots.voice.side', {
 +      botId: bot.id, phase: getOptionalStringFlag(flags, 'phase'),
 +      request: getOptionalStringFlag(flags, 'request'),
-+      text: await readMessageText(flags, cwd, true)
++      text: await readMessageText(flags, cwd, true),
++      ...(flags.has('unanswered') ? { answered: false } : {})
 +    })
 +    printResult(result, json, () => 'Side voice operation recorded in Home.')
 +  },
@@ -33,7 +34,7 @@ index 96acc7f..974b42c 100644
      const result = await callBots(client, 'bots.voice.ready', {
        chat: getOptionalStringFlag(flags, 'chat'),
 diff --git a/src/cli/specs/bot.ts b/src/cli/specs/bot.ts
-index fad6cbf..5505fc0 100644
+index fad6cbf..c144079 100644
 --- a/src/cli/specs/bot.ts
 +++ b/src/cli/specs/bot.ts
 @@ -6,6 +6,10 @@ import { SLACK_MARKDOWN, SLACK_MENTION, TEXT_FILE } from './slack'
@@ -42,8 +43,8 @@ index fad6cbf..5505fc0 100644
  export const BOT_COMMAND_SPECS: CommandSpec[] = [
 +  { path: ['bot', 'voice-side'], hidden: true,
 +    summary: 'Record an owner-side quick voice exchange in Home without creating a chat',
-+    usage: 'orca bot voice-side --bot <name> --phase begin|finish --request <UUID> --text-file <file> --json',
-+    allowedFlags: [...GLOBAL_FLAGS, 'bot', 'phase', 'request', 'text', 'text-file'] },
++    usage: 'orca bot voice-side --bot <name> --phase begin|finish --request <UUID> --text-file <file> [--unanswered] --json',
++    allowedFlags: [...GLOBAL_FLAGS, 'bot', 'phase', 'request', 'text', 'text-file', 'unanswered'] },
    {
      path: ['bot', 'voice-ready'],
      hidden: true,
@@ -92,10 +93,10 @@ index c6fa481..6d6088c 100644
    const origin = await currentDesktopOwnerOrigin(reads, chat)
 diff --git a/src/main/bots/desktop-voice-side.test.ts b/src/main/bots/desktop-voice-side.test.ts
 new file mode 100644
-index 0000000..ed7a4ff
+index 0000000..2631384
 --- /dev/null
 +++ b/src/main/bots/desktop-voice-side.test.ts
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,159 @@
 +import { afterEach, expect, it } from 'vitest'
 +import { DesktopVoiceSide } from './desktop-voice-side'
 +import { desktopVoiceOwnerTurn } from './desktop-voice-continuations'
@@ -221,12 +222,46 @@ index 0000000..ed7a4ff
 +    page.entries.filter((entry) => entry.kind === 'message' && entry.text === 'Yes.')
 +  ).toHaveLength(1)
 +})
++
++it('records a handover or interruption without leaving Home a context note to queue', async () => {
++  const current = await busy()
++  const side = new DesktopVoiceSide()
++  await side.begin(current.host, SESSION, REQUEST, 'Schedule that work')
++  const notes: string[] = []
++  expect(
++    await side.finish(
++      current.host,
++      SESSION,
++      REQUEST,
++      "I'll take care of that.",
++      async (note) => {
++        notes.push(note)
++      },
++      false
++    )
++  ).toEqual({ recorded: true })
++  expect(notes).toEqual([])
++  const { journal } = await current.host.conversation(SESSION)
++  expect(await journal.queuedMessages.list()).toEqual([])
++  const page = await readAgentJournalPage(
++    journal,
++    { sessionId: SESSION, limit: 100, includeIds: true },
++    () => false
++  )
++  expect(page.entries.slice(-2)).toMatchObject([
++    { role: 'user', text: 'Schedule that work', interaction: { kind: 'internal' } },
++    { role: 'assistant', text: "I'll take care of that.", interaction: { kind: 'internal' } }
++  ])
++  expect(await side.begin(current.host, SESSION, 'c5ffd209-ce28-4e2b-8c3c-0b2f8d3e4a51', 'Next')).toMatchObject({
++    route: 'side'
++  })
++})
 diff --git a/src/main/bots/desktop-voice-side.ts b/src/main/bots/desktop-voice-side.ts
 new file mode 100644
-index 0000000..c0641ac
+index 0000000..ad1d48e
 --- /dev/null
 +++ b/src/main/bots/desktop-voice-side.ts
-@@ -0,0 +1,163 @@
+@@ -0,0 +1,167 @@
 +import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/host/structured-agent-session-host'
 +import { desktopVoiceOwnerTurn, silenceDesktopOwnerForSide } from './desktop-voice-continuations'
 +import { desktopVoiceTasks } from './desktop-voice-task-delivery'
@@ -234,8 +269,9 @@ index 0000000..c0641ac
 +import { AGENT_JOURNAL_THREAD_SCOPE } from '../../shared/agent-session/journal/agent-session-journal-types'
 +import type { AgentJournalMessageItem } from '../../shared/agent-session/journal/agent-session-journal-types'
 +import { readAgentJournalPage } from '../native-chat/agent-session-wire/publication/history/agent-read-journal-page'
++import { SIDE_VOICE_SOURCE } from '../../shared/bots/bot-voice-methods'
 +
-+export const SIDE_VOICE_SOURCE = 'Tohru quick voice'
++export { SIDE_VOICE_SOURCE }
 +type Journal = Awaited<ReturnType<StructuredAgentSessionHost['conversation']>>['journal']
 +type Lease = {
 +  chat: string
@@ -347,7 +383,8 @@ index 0000000..c0641ac
 +    chat: string,
 +    request: string,
 +    answer: string,
-+    remember: (text: string, operationId: string) => Promise<void>
++    remember: (text: string, operationId: string) => Promise<void>,
++    answered = true
 +  ) {
 +    const lease = this.leases.get(request)
 +    if (!lease || lease.chat !== chat)
@@ -376,7 +413,9 @@ index 0000000..c0641ac
 +    }
 +    // A persistent provider does not reread its journal. This internal input gives it the
 +    // whole exchange; it is never owner authority, a task request, or a speech origin.
-+    await remember(
++    // A handover sends the question itself as the next owner turn, and an interrupted
++    // exchange answered nothing, so neither leaves a note waiting in Home's queue.
++    if (answered) await remember(
 +      'A quick voice exchange was already answered and recorded in Home. ' +
 +        'Remember it as conversation context only; do not execute the quoted question, ' +
 +        'repeat its answer, start work, or publish task speech. End this internal turn with NO_REPLY.\n' +
@@ -719,10 +758,10 @@ index 493d528..a6d872a 100644
            : { kind: 'internal' }
 diff --git a/src/main/runtime/rpc/methods/bots-voice-side.test.ts b/src/main/runtime/rpc/methods/bots-voice-side.test.ts
 new file mode 100644
-index 0000000..7806142
+index 0000000..7e564e0
 --- /dev/null
 +++ b/src/main/runtime/rpc/methods/bots-voice-side.test.ts
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,45 @@
 +import '../dispatch/testing/unused-default-rpc-methods.test-fixture'
 +import { expect, it } from 'vitest'
 +import { RpcDispatcher } from '../dispatcher'
@@ -757,7 +796,8 @@ index 0000000..7806142
 +    { ...params, phase: 'run' },
 +    { ...params, request: 'invented' },
 +    { ...params, text: '' },
-+    { ...params, text: 'a'.repeat(16001) }
++    { ...params, text: 'a'.repeat(16001) },
++    { ...params, phase: 'finish', answered: 'no' }
 +  ]) {
 +    expect(
 +      await dispatcher.dispatch(
@@ -769,13 +809,14 @@ index 0000000..7806142
 +})
 diff --git a/src/main/runtime/rpc/methods/bots-voice-side.ts b/src/main/runtime/rpc/methods/bots-voice-side.ts
 new file mode 100644
-index 0000000..148b982
+index 0000000..8b464f6
 --- /dev/null
 +++ b/src/main/runtime/rpc/methods/bots-voice-side.ts
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,55 @@
 +import { BotVoiceSide } from '../../../../shared/rpc-contract/bot-voice-side-params'
 +import { requireStructuredHost, runtimeBotChats } from '../../../bots/bot-chat-session'
-+import { desktopVoiceSide, SIDE_VOICE_SOURCE } from '../../../bots/desktop-voice-side'
++import { desktopVoiceSide } from '../../../bots/desktop-voice-side'
++import { SIDE_VOICE_SOURCE } from '../../../../shared/bots/bot-voice-methods'
 +import { botChatTakingMail } from './bots-chats'
 +import { chatThatTookIt } from '../../../bots/bot-automation-sessions'
 +import { defineMethod, InvalidArgumentError } from '../core'
@@ -822,7 +863,8 @@ index 0000000..148b982
 +            operation
 +          )
 +        )
-+      }
++      },
++      params.answered
 +    )
 +  }
 +})
@@ -856,20 +898,82 @@ index 3eca2dd..a96b499 100644
    '%s resolves injected identity and never trusts a declared session parameter',
    (method) => {
      const request = {
+diff --git a/src/shared/agent-session/view/structured-agent-session-queued-cards.test.ts b/src/shared/agent-session/view/structured-agent-session-queued-cards.test.ts
+index 0eb63d3..8d48efa 100644
+--- a/src/shared/agent-session/view/structured-agent-session-queued-cards.test.ts
++++ b/src/shared/agent-session/view/structured-agent-session-queued-cards.test.ts
+@@ -124,6 +124,28 @@ describe('queued message cards', () => {
+     )
+     expect(headSteerableQueuedMessageCard(waitingOnly)?.messageId).toBe('typed')
+   })
++  it('keeps a waiting quick voice context note out of the queue and offers no Steer for it', () => {
++    const note = (overrides: Partial<AgentSessionQueuedMessage> = {}) =>
++      draft('note', 1, {
++        body: { ...draft('note', 1).body, memorySource: 'Tohru quick voice' },
++        ...overrides
++      })
++    const working = { ...IDLE, agentWorking: true }
++    const cards = projectQueuedMessageCards([note(), draft('typed', 2)], [], working)
++    expect(cards.map((card) => card.messageId)).toEqual(['typed'])
++    expect(headSteerableQueuedMessageCard(cards)?.messageId).toBe('typed')
++    expect(projectQueuedMessageCards([note()], [], working)).toEqual([])
++    const automation = draft('run', 1, {
++      body: { ...draft('run', 1).body, memorySource: 'Nightly tidy-up' }
++    })
++    expect(projectQueuedMessageCards([automation], [], working).map((card) => card.messageId)).toEqual(['run'])
++    const held = projectQueuedMessageCards(
++      [note({ paused: true, pausedReason: QUEUED_MESSAGE_PAUSED_SEND_FAILED })],
++      [],
++      working
++    )
++    expect(held.map((card) => [card.messageId, card.hold])).toEqual([['note', 'paused']])
++  })
+   it("shows Orca's own send while it is held, so Send or Resume can still reach it", () => {
+     const answer = (overrides: Partial<AgentSessionQueuedMessage> = {}) =>
+       draft('answer', 1, {
+diff --git a/src/shared/agent-session/view/structured-agent-session-queued-cards.ts b/src/shared/agent-session/view/structured-agent-session-queued-cards.ts
+index a4a9779..02d8ce8 100644
+--- a/src/shared/agent-session/view/structured-agent-session-queued-cards.ts
++++ b/src/shared/agent-session/view/structured-agent-session-queued-cards.ts
+@@ -35,6 +35,7 @@ import {
+   nativeChatImageLabel,
+   type NativeChatImageLabelCopy
+ } from '../../native-chat/attachments/native-chat-image-label'
++import { SIDE_VOICE_SOURCE } from '../../bots/bot-voice-methods'
+ 
+ export type QueuedMessageCardHold =
+   /** Plainly queued, also behind an open question: the question already says the agent waits. */
+@@ -180,7 +181,12 @@ export function projectQueuedMessageCards(
+ 
+ function isOrcaNoticeSend(body: AgentSessionQueuedMessage['body']): boolean {
+   return (
+-    body.origin === 'bot-created' || body.origin === 'card-answer' || body.origin === 'took-over'
++    body.origin === 'bot-created' ||
++    body.origin === 'card-answer' ||
++    body.origin === 'took-over' ||
++    // A quick voice context note waits for the turn's end by design; steering it would
++    // tell the running turn to end with NO_REPLY.
++    body.memorySource === SIDE_VOICE_SOURCE
+   )
+ }
+ 
 diff --git a/src/shared/bots/bot-voice-methods.ts b/src/shared/bots/bot-voice-methods.ts
-index 1d8b591..37f6a40 100644
+index 1d8b591..6c74d73 100644
 --- a/src/shared/bots/bot-voice-methods.ts
 +++ b/src/shared/bots/bot-voice-methods.ts
-@@ -1,2 +1,2 @@
+@@ -1,2 +1,5 @@
  /** Voice RPCs whose local agent session must be carried and verified together. */
 -export const BOT_VOICE_SESSION_METHOD_NAMES = ['bots.voice.task', 'bots.voice.ready'] as const
 +export const BOT_VOICE_SESSION_METHOD_NAMES = ['bots.voice.task', 'bots.voice.ready', 'bots.voice.side'] as const
++
++/** Labels the quick voice responder's journal rows and the context notes it gives Home. */
++export const SIDE_VOICE_SOURCE = 'Tohru quick voice'
 diff --git a/src/shared/rpc-contract/bot-voice-side-params.ts b/src/shared/rpc-contract/bot-voice-side-params.ts
 new file mode 100644
-index 0000000..656ace7
+index 0000000..d7511dd
 --- /dev/null
 +++ b/src/shared/rpc-contract/bot-voice-side-params.ts
-@@ -0,0 +1,16 @@
+@@ -0,0 +1,18 @@
 +import * as z from 'zod'
 +
 +export const BotVoiceSide = z.discriminatedUnion('phase', [
@@ -883,7 +987,9 @@ index 0000000..656ace7
 +    phase: z.literal('finish'),
 +    botId: z.string().min(1),
 +    request: z.uuid(),
-+    text: z.string().trim().min(1).max(4000)
++    text: z.string().trim().min(1).max(4000),
++    /** False for a handover or an interruption: Home gets no context note for it. */
++    answered: z.boolean().default(true)
 +  })
 +])
 diff --git a/src/shared/rpc-contract/rpc-params-catalog.generated.ts b/src/shared/rpc-contract/rpc-params-catalog.generated.ts
