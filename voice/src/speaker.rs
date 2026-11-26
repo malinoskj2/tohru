@@ -53,6 +53,68 @@ struct State {
 }
 
 const CACHEABLE: usize = 32;
+/// Streamed high-voice audio buffered before a sentence starts, so the worker stays ahead.
+const PREBUFFER_SECONDS: f64 = 0.36;
+
+/// Part of one sentence's audio on its way to the player.
+struct Piece {
+    text: String,
+    clip: Clip,
+    profile: &'static str,
+    first: bool,
+    last: bool,
+}
+
+type Pieces = std::sync::mpsc::SyncSender<Result<Piece>>;
+
+fn streams() -> bool {
+    std::env::var_os("TOHRU_VOICE_HIGH_STREAM").is_none_or(|v| v != "0")
+}
+
+/// Where speech yields to the owner: the first inter-word dip within 300 ms of `index`, else
+/// the quietest point there, with the fade length that follows it.
+fn yield_point(samples: &[f32], rate: u32, index: usize) -> (usize, usize) {
+    let frame = (rate as usize / 100).max(1);
+    let rms = |from: usize| {
+        let window = &samples[from..(from + frame).min(samples.len())];
+        if window.is_empty() {
+            return 0.;
+        }
+        (window.iter().map(|s| s * s).sum::<f32>() / window.len() as f32).sqrt()
+    };
+    let around = index.saturating_sub(rate as usize / 2);
+    let reach = (index + rate as usize * 3 / 10).min(samples.len());
+    let peak = (around..reach)
+        .step_by(frame)
+        .map(rms)
+        .fold(0f32, f32::max);
+    let quiet = (peak * 0.12).max(0.006);
+    let frames = (index..reach).step_by(frame);
+    let (stop, fade) = match frames.clone().find(|&at| rms(at) < quiet) {
+        Some(at) => (at, rate as usize * 3 / 100),
+        None => (
+            frames
+                .min_by(|a, b| rms(*a).total_cmp(&rms(*b)))
+                .unwrap_or(index),
+            rate as usize * 6 / 100,
+        ),
+    };
+    let stop = stop.min(samples.len());
+    (stop, fade.min(samples.len() - stop))
+}
+
+/// A streamed piece's mouth shapes, from the sentence's phonemes spread over an estimated length.
+fn piece_timeline(samples: &[f32], rate: u32, phonemes: &str, offset: f64) -> Vec<(f64, f64, u8)> {
+    let chars: Vec<char> = phonemes.chars().collect();
+    if chars.is_empty() || rate == 0 {
+        return Vec::new();
+    }
+    let estimate = (chars.len() as f64 * 0.075).max(0.5);
+    let length = samples.len() as f64 / f64::from(rate);
+    let at = |t: f64| (((t / estimate).clamp(0., 1.)) * chars.len() as f64) as usize;
+    let slice: String = chars[at(offset)..at(offset + length).max(at(offset))].iter().collect();
+    synthesis::timeline(samples, rate, &slice)
+}
 
 #[derive(Clone)]
 pub struct Control {
@@ -588,14 +650,16 @@ impl Control {
     }
 
     fn play(&self, job: &Job, engine: &mut Engine, settings: &Settings) -> Result<()> {
+        let waiting = std::sync::atomic::AtomicUsize::new(0);
+        let waiting = &waiting;
         thread::scope(|scope| {
-            let (sender, receiver) = std::sync::mpsc::sync_channel(0);
+            let (sender, receiver) = std::sync::mpsc::sync_channel(64);
             let producer = scope.spawn(move || {
-                if let Err(error) = self.produce(job, engine, settings, &sender) {
+                if let Err(error) = self.produce(job, engine, settings, &sender, waiting) {
                     let _ = sender.send(Err(error));
                 }
             });
-            let result = self.play_clips(job, receiver);
+            let result = self.play_clips(job, receiver, waiting);
             if result.is_err() && !self.stale(job.id) {
                 if let Err(error) = &result {
                     emit(json!({"event":"error","message":format!("speech failed: {error:#}")}));
@@ -610,37 +674,104 @@ impl Control {
     }
 
     /// The high profile's clip for one sentence; `Ok(None)` hands the sentence to the low engine.
+    /// With `pieces`, audio goes to the player as it arrives, and `Ok(Some((clip, true)))` says
+    /// the whole sentence was already sent.
     fn high_clip(
         &self,
         job: &Job,
         voices: &mut Voices<'_>,
         text: &str,
-    ) -> Result<Option<Clip>, ()> {
+        pieces: Option<&Pieces>,
+    ) -> Result<Option<(Clip, bool)>, ()> {
         let Some((id, high)) = voices.high.clone() else {
             return Ok(None);
         };
-        match high.speak(text, &|| self.stale(job.id)) {
-            Ok(Some((samples, rate))) => {
-                let phonemes = synthesis::espeak_phonemes(text, "en-us+f3", 175, 50);
-                let timeline = synthesis::timeline(&samples, rate, &phonemes);
-                Ok(Some(Clip {
+        let spoken = thread::scope(|scope| {
+            let phonemes = scope.spawn(|| synthesis::espeak_phonemes(text, "en-us+f3", 175, 50));
+            let mut phonemes = Some(phonemes);
+            let mut known = String::new();
+            let (mut held, mut offset, mut sent) = (Vec::<f32>::new(), 0., false);
+            let mut send = |samples: Vec<f32>, rate: u32, last: bool, known: &str, sent: &mut bool| {
+                let Some(pieces) = pieces else { return };
+                let mut clip = Clip {
+                    timeline: piece_timeline(&samples, rate, known, offset),
                     samples,
                     rate,
-                    phonemes,
-                    timeline,
-                }))
+                    phonemes: String::new(),
+                };
+                if !*sent {
+                    clip.trim_start();
+                }
+                if last {
+                    clip.trim_end();
+                }
+                offset += clip.samples.len() as f64 / f64::from(rate);
+                let _ = pieces.send(Ok(Piece {
+                    text: text.to_owned(),
+                    clip,
+                    profile: "high",
+                    first: !*sent,
+                    last,
+                }));
+                *sent = true;
+            };
+            let mut rate_seen = 0;
+            let result = high.speak_streaming(text, &|| self.stale(job.id), &mut |chunk, rate| {
+                if pieces.is_none() {
+                    return;
+                }
+                rate_seen = rate;
+                held.extend_from_slice(chunk);
+                if !sent && (held.len() as f64) < f64::from(rate) * PREBUFFER_SECONDS {
+                    return;
+                }
+                if let Some(handle) = phonemes.take() {
+                    known = handle.join().unwrap_or_default();
+                    diagnostic("high_stream_start", json!({"generation":job.generation}));
+                }
+                send(std::mem::take(&mut held), rate, false, &known, &mut sent);
+            });
+            let phonemes = match phonemes.take() {
+                Some(handle) => handle.join().unwrap_or_default(),
+                None => known.clone(),
+            };
+            if let Ok(Some(_)) = &result
+                && (sent || !held.is_empty())
+                && pieces.is_some()
+            {
+                send(std::mem::take(&mut held), rate_seen, true, &phonemes, &mut sent);
+            }
+            (result, phonemes, sent)
+        });
+        let (result, phonemes, streamed) = spoken;
+        match result {
+            Ok(Some((samples, rate))) => {
+                let timeline = synthesis::timeline(&samples, rate, &phonemes);
+                Ok(Some((
+                    Clip {
+                        samples,
+                        rate,
+                        phonemes,
+                        timeline,
+                    },
+                    streamed,
+                )))
             }
             Ok(None) => Err(()),
-            Err(HighError::Reply(error)) => {
+            Err(HighError::Reply(error)) if !streamed => {
                 log(&format!(
                     "voice profile: high could not speak a sentence ({error}); using low for it"
                 ));
                 Ok(None)
             }
+            Err(HighError::Reply(error)) => {
+                log(&format!("voice profile: high stopped mid-sentence ({error})"));
+                Err(())
+            }
             Err(error @ HighError::Broken(_)) => {
                 self.profiles.failed(id, error.to_string());
                 voices.high = None;
-                Ok(None)
+                if streamed { Err(()) } else { Ok(None) }
             }
         }
     }
@@ -650,8 +781,10 @@ impl Control {
         job: &Job,
         engine: &mut Engine,
         settings: &Settings,
-        sender: &std::sync::mpsc::SyncSender<Result<(String, Clip, &'static str)>>,
+        sender: &Pieces,
+        waiting: &std::sync::atomic::AtomicUsize,
     ) -> Result<()> {
+        use std::sync::atomic::Ordering;
         let mut voices = Voices {
             low: engine,
             high: self.profiles.high(),
@@ -668,6 +801,12 @@ impl Control {
         );
         while let Some(part) = self.next_part(job) {
             for text in policy::chunks(&part) {
+                while waiting.load(Ordering::Acquire) > 0 {
+                    if self.stale(job.id) {
+                        return Ok(());
+                    }
+                    thread::sleep(Duration::from_millis(5));
+                }
                 if self.stale(job.id) {
                     return Ok(());
                 }
@@ -681,11 +820,20 @@ impl Control {
                 }
                 diagnostic("synthesis_start", json!({"generation":job.generation}));
                 let key = profile_key(&voices);
+                let mut streamed = false;
                 let (clip, profile) = if let Some(clip) = self.cached(&key, &text) {
                     (clip, if voices.high.is_some() { "high" } else { "low" })
                 } else {
-                    let (mut clip, profile) = match self.high_clip(job, &mut voices, &text) {
-                        Ok(Some(clip)) => (clip, "high"),
+                    waiting.fetch_add(1, Ordering::AcqRel);
+                    let high = self.high_clip(job, &mut voices, &text, streams().then_some(sender));
+                    if !matches!(high, Ok(Some((_, true)))) {
+                        waiting.fetch_sub(1, Ordering::AcqRel);
+                    }
+                    let (mut clip, profile) = match high {
+                        Ok(Some((clip, sent))) => {
+                            streamed = sent;
+                            (clip, "high")
+                        }
                         Ok(None) => (voices.low.synthesize(&text, settings, &options)?, "low"),
                         Err(()) => return Ok(()),
                     };
@@ -706,7 +854,18 @@ impl Control {
                     "synthesis_ready",
                     json!({"generation":job.generation,"samples":clip.samples.len(),"rate":clip.rate}),
                 );
-                if sender.send(Ok((text, clip, profile))).is_err() {
+                if streamed {
+                    continue;
+                }
+                waiting.fetch_add(1, Ordering::AcqRel);
+                let piece = Piece {
+                    text,
+                    clip,
+                    profile,
+                    first: true,
+                    last: true,
+                };
+                if sender.send(Ok(piece)).is_err() {
                     return Ok(());
                 }
             }
@@ -717,17 +876,25 @@ impl Control {
     fn play_clips(
         &self,
         job: &Job,
-        receiver: std::sync::mpsc::Receiver<Result<(String, Clip, &'static str)>>,
+        receiver: std::sync::mpsc::Receiver<Result<Piece>>,
+        waiting: &std::sync::atomic::AtomicUsize,
     ) -> Result<()> {
         let mut player = None;
         let mut rate = 0;
         let mut first_audio = true;
+        let mut due: Option<Instant> = None;
         loop {
             if self.stale(job.id) {
                 return Ok(());
             }
-            let (text, clip, profile) = match receiver.recv_timeout(Duration::from_millis(20)) {
-                Ok(clip) => clip?,
+            let Piece {
+                text,
+                clip,
+                profile,
+                first,
+                last,
+            } = match receiver.recv_timeout(Duration::from_millis(20)) {
+                Ok(piece) => piece?,
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
             };
@@ -748,7 +915,17 @@ impl Control {
                     );
                 }
             }
-            emit(json!({"event":"sentence","text":text}));
+            if first {
+                waiting.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+                emit(json!({"event":"sentence","text":text}));
+            } else if let Some(due) = due
+                && Instant::now() > due + Duration::from_millis(30)
+            {
+                diagnostic(
+                    "high_stream_gap",
+                    json!({"generation":job.generation,"ms":(Instant::now() - due).as_secs_f64() * 1e3}),
+                );
+            }
             let step = rate as usize / 30;
             let mut next = Instant::now();
             let mut index = 0;
@@ -759,20 +936,38 @@ impl Control {
                 }
                 if lock(&self.state.0).paused {
                     if index > 0 {
-                        let count = (rate as usize / 10).min(clip.samples.len() - index);
-                        let bytes: Vec<u8> = clip.samples[index..index + count]
+                        let (stop, count) = yield_point(&clip.samples, rate, index);
+                        diagnostic(
+                            "speech_yield",
+                            json!({"generation":job.generation,"ms":(stop + count - index) as f64 * 1e3 / f64::from(rate)}),
+                        );
+                        let tail: Vec<f32> = clip.samples[index..stop]
                             .iter()
-                            .enumerate()
-                            .map(|(n, s)| {
-                                ((*s * (1. - n as f32 / count.saturating_sub(1).max(1) as f32))
-                                    .clamp(-1., 1.)
-                                    * 32767.) as i16
-                            })
-                            .flat_map(i16::to_le_bytes)
+                            .copied()
+                            .chain(clip.samples[stop..stop + count].iter().enumerate().map(|(n, s)| {
+                                s * (1. - n as f32 / count.saturating_sub(1).max(1) as f32)
+                            }))
                             .collect();
-                        if let Some(pipe) = &mut player {
-                            let _ = pipe.write_all(&bytes);
+                        let mut at = Instant::now();
+                        for chunk in tail.chunks(step.max(1)) {
+                            if self.stale(job.id) {
+                                return Ok(());
+                            }
+                            let bytes: Vec<u8> = chunk
+                                .iter()
+                                .map(|s| (s.clamp(-1., 1.) * 32767.) as i16)
+                                .flat_map(i16::to_le_bytes)
+                                .collect();
+                            if let Some(pipe) = &mut player {
+                                let _ = pipe.write_all(&bytes);
+                                let _ = pipe.flush();
+                            }
+                            at += Duration::from_secs_f64(chunk.len() as f64 / f64::from(rate));
+                            thread::sleep(at.saturating_duration_since(Instant::now()));
                         }
+                        // pacat still holds its device latency when the pipe closes.
+                        thread::sleep(Duration::from_millis(80));
+                        index = stop;
                     }
                     self.kill_player();
                     drop(player.take());
@@ -837,7 +1032,7 @@ impl Control {
                 emit(
                     json!({"event":"mouth","level":(level*100.).round_ties_even()/100.,"viseme":if level>0.05{mouth}else{0}}),
                 );
-                if index == 0 {
+                if index == 0 && first {
                     diagnostic("sentence_first_write", json!({"generation":job.generation}));
                     if first_audio {
                         first_audio = false;
@@ -856,7 +1051,10 @@ impl Control {
                     );
                 }
             }
-            lock(&self.state.0).completed.push(text);
+            due = Some(next);
+            if last {
+                lock(&self.state.0).completed.push(text);
+            }
         }
         drop(player);
         Ok(())
@@ -877,6 +1075,37 @@ mod tests {
         );
         assert_eq!(echo_cancel(&json!([{"name":"alsa_output.pci"}])), None);
         assert_eq!(echo_cancel(&json!({})), None);
+    }
+
+    fn tone(seconds: f64, level: f32) -> Vec<f32> {
+        (0..(24000. * seconds) as usize)
+            .map(|n| level * (n as f32 * 0.07).sin())
+            .collect()
+    }
+
+    #[test]
+    fn speech_yields_at_the_next_gap_between_words() {
+        let samples = [tone(0.2, 0.5), tone(0.05, 0.), tone(0.4, 0.5)].concat();
+        let (stop, fade) = yield_point(&samples, 24000, 2400);
+        assert!((4800..=4900).contains(&stop), "{stop}");
+        assert_eq!(fade, 720);
+    }
+
+    #[test]
+    fn without_a_gap_speech_yields_at_its_quietest_point_within_300_ms() {
+        let samples = [tone(0.3, 0.5), tone(0.03, 0.1), tone(0.5, 0.5)].concat();
+        let (stop, fade) = yield_point(&samples, 24000, 4800);
+        assert!((7200..7920).contains(&stop), "{stop}");
+        assert_eq!(fade, 1440);
+        let (stop, _) = yield_point(&tone(1., 0.5), 24000, 24000 - 100);
+        assert!(stop <= 24000);
+    }
+
+    #[test]
+    fn a_streamed_piece_takes_its_share_of_the_sentence_phonemes() {
+        let samples = tone(0.5, 0.5);
+        assert!(piece_timeline(&samples, 24000, "", 0.).is_empty());
+        assert!(!piece_timeline(&samples, 24000, "həlˈoʊ wˈɜːld mˈaɪ fɹˈɛnd", 0.).is_empty());
     }
 
     fn control(profiles: Profiles) -> Control {
@@ -956,6 +1185,7 @@ mod tests {
     fn high_speech_falls_back_per_sentence_and_drops_a_broken_worker() {
         let high = Arc::new(Scripted(Mutex::new(vec![
             Ok(Some((vec![0.5; 2400], 24000))),
+            Ok(Some((vec![0.5; 2400], 24000))),
             Err(HighError::Reply("odd text".into())),
             Err(HighError::Broken("exited".into())),
         ])));
@@ -968,14 +1198,22 @@ mod tests {
             low: &mut low,
             high: speaker.profiles.high(),
         };
-        let clip = speaker
-            .high_clip(&job, &mut voices, "Hi.")
+        let (clip, streamed) = speaker
+            .high_clip(&job, &mut voices, "Hi.", None)
             .unwrap()
             .unwrap();
-        assert_eq!((clip.rate, clip.samples.len()), (24000, 2400));
+        assert_eq!((clip.rate, clip.samples.len(), streamed), (24000, 2400, false));
+        let (sender, receiver) = std::sync::mpsc::sync_channel(8);
+        let (_, streamed) = speaker
+            .high_clip(&job, &mut voices, "Hi.", Some(&sender))
+            .unwrap()
+            .unwrap();
+        let piece = receiver.try_recv().unwrap().unwrap();
+        assert!(streamed && piece.first && piece.last && piece.profile == "high");
+        assert!(receiver.try_recv().is_err(), "a short sentence goes as one piece");
         assert!(
             speaker
-                .high_clip(&job, &mut voices, "Odd.")
+                .high_clip(&job, &mut voices, "Odd.", None)
                 .unwrap()
                 .is_none(),
             "one sentence the worker cannot say goes to low"
@@ -983,7 +1221,7 @@ mod tests {
         assert!(voices.high.is_some());
         assert!(
             speaker
-                .high_clip(&job, &mut voices, "One.")
+                .high_clip(&job, &mut voices, "One.", None)
                 .unwrap()
                 .is_none()
         );
@@ -993,7 +1231,7 @@ mod tests {
         );
         assert!(
             speaker
-                .high_clip(&job, &mut voices, "Two.")
+                .high_clip(&job, &mut voices, "Two.", None)
                 .unwrap()
                 .is_none()
         );
@@ -1008,7 +1246,7 @@ mod tests {
             high: speaker.profiles.high(),
         };
         assert!(
-            speaker.high_clip(&job, &mut voices, "Hush.").is_err(),
+            speaker.high_clip(&job, &mut voices, "Hush.", None).is_err(),
             "a hushed answer stops instead of falling back"
         );
     }

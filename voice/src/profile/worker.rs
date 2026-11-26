@@ -53,6 +53,20 @@ pub trait HighVoice: Send + Sync {
         stale: &dyn Fn() -> bool,
     ) -> Result<Option<(Vec<f32>, u32)>, HighError>;
 
+    /// As `speak`, handing each chunk to `on_audio` as the worker produces it.
+    fn speak_streaming(
+        &self,
+        text: &str,
+        stale: &dyn Fn() -> bool,
+        on_audio: &mut dyn FnMut(&[f32], u32),
+    ) -> Result<Option<(Vec<f32>, u32)>, HighError> {
+        let spoken = self.speak(text, stale)?;
+        if let Some((audio, rate)) = &spoken {
+            on_audio(audio, *rate);
+        }
+        Ok(spoken)
+    }
+
     /// `None` when the worker stayed busy past the deadline; the caller keeps its own transcript.
     fn transcribe(&self, audio: &[f32], deadline: Instant) -> Result<Option<String>, HighError>;
 }
@@ -131,6 +145,15 @@ impl HighVoice for Client {
         text: &str,
         stale: &dyn Fn() -> bool,
     ) -> Result<Option<(Vec<f32>, u32)>, HighError> {
+        self.speak_streaming(text, stale, &mut |_, _| {})
+    }
+
+    fn speak_streaming(
+        &self,
+        text: &str,
+        stale: &dyn Fn() -> bool,
+        on_audio: &mut dyn FnMut(&[f32], u32),
+    ) -> Result<Option<(Vec<f32>, u32)>, HighError> {
         self.check()?;
         let mut stream = self
             .stream
@@ -169,7 +192,11 @@ impl HighVoice for Client {
                     if audio.len() * 4 + body.len() > wire::BODY_LIMIT {
                         return Err(self.broken("answer audio exceeds one minute"));
                     }
-                    audio.extend(wire::samples(&body));
+                    let chunk = wire::samples(&body);
+                    if !cancelled {
+                        on_audio(&chunk, rate);
+                    }
+                    audio.extend(chunk);
                 }
                 Some("done") if cancelled => return Ok(None),
                 Some("done") if rate == 0 => {

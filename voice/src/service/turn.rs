@@ -143,7 +143,13 @@ impl Voice {
             self.turn_checked = true;
             if let Some(turn) = &mut self.turn {
                 match turn.probability(&self.audio) {
-                    Ok(p) => self.turn_complete = Some(p > 0.5),
+                    Ok(p) => {
+                        diagnostic(
+                            "smart_turn",
+                            json!({"probability":(f64::from(p) * 1000.).round() / 1000.}),
+                        );
+                        self.turn_complete = Some(p > 0.5);
+                    }
                     Err(error) => {
                         emit(json!({"event":"error","message":format!("turn: {error:#}")}));
                         self.turn = None;
@@ -165,6 +171,12 @@ impl Voice {
         if self.quiet_ms >= hold || self.speech_ms >= 30000 {
             if self.spotting && !self.spot_end() {
                 return Ok(());
+            }
+            if !self.spotting {
+                diagnostic(
+                    "endpoint",
+                    json!({"hold_ms":hold,"unfinished":unfinished,"turn_complete":self.turn_complete,"draft":!self.draft.is_empty()}),
+                );
             }
             if self.semantic
                 && !self.spotting
