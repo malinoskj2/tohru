@@ -334,7 +334,7 @@ settings["assistant.entrance_variant"].value = "wrap"
 voice.configure(settings)
 assert(not fact.ai_dragon_open and not fact.ai_turn_art)
 assert(text.ai_turn_src == "" and not fact.ai_turn_bound)
--- `tohru dragon turn`: the whole turn and back on its own, then the sheet is released.
+-- `tools/anim-debug sheet-b-turn`: the whole turn and back on its own, then the sheet is released.
 text.ai_turn_request = "/share/turn-sheet-b.webp"
 handlers.assistant_dragon_turn()
 assert(fact.ai_turn_open and fact.ai_turn_warm and not fact.ai_turn_shown and fact.ai_turn_art and text.ai_turn_src == "/share/turn-sheet-b.webp")

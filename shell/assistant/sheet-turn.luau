@@ -1,6 +1,6 @@
 -- The Sheet-B turn in dragon/turn-sheet-b.webp: cells 0-59 turn from profile right to the front,
 -- 60-119 turn back. The sheet binds only while a turn may play: with assistant.sheet_b_turn on and the
--- voice art known, or during `tohru dragon turn`.
+-- voice art known, or during a `tools/anim-debug sheet-b-turn`.
 return function()
     local TICK, FRONT, LAST, DECODE = 42, 59, 119, 800
     local NAME = "turn-sheet-b.webp"
@@ -72,7 +72,7 @@ return function()
         end)
     end
 
-    -- `tohru dragon turn`: the whole turn and back on its own, with no illustrated keys around it.
+    -- `tools/anim-debug sheet-b-turn`: the whole turn and back on its own, with no illustrated keys around it.
     on("assistant_dragon_turn", function()
         local path = text.ai_turn_request or ""
         if path == "" or timer or fact.ai_dragon_open or fact.ai_actor_open or fact.ai_turn_open then return end

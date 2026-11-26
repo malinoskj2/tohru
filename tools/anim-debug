@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat >&2 <<'USAGE'
+Usage: tools/anim-debug ANIMATION
+       tools/anim-debug list
+
+Plays a dragon animation on the running Tohru shell, for development.
+  sheet-b-turn   the whole Sheet-B turn, profile right to front and back
+USAGE
+    exit 2
+}
+
+pleamar=${TOHRU_RUNTIME:-pleamar}
+shell_dir=${TOHRU_SHELL_DIR:-$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/../shell" && pwd)}
+
+sheet() {
+    local path=$shell_dir/assistant/dragon/$1
+    [[ -f $path ]] || { echo "anim-debug: cannot find $path" >&2; exit 1; }
+    printf '%s\n' "$path"
+}
+
+[[ $# == 1 ]] || usage
+case $1 in
+    list) echo sheet-b-turn ;;
+    sheet-b-turn) exec "$pleamar" --say tohru "text ai_turn_request $(sheet turn-sheet-b.webp)" 'emit assistant_dragon_turn' ;;
+    *) usage ;;
+esac
