@@ -2,7 +2,8 @@
 """Shuffle gate review packages into unlabelled clips and have a fresh reviewer, who made none of them, judge each.
 
 The reviewer gets only `review/` (real-size playback, every frame at real size in order, a slowed head
-close-up and time slices) and the owner's rejection checklist: no labels, no metrics, no verdicts. It runs as a
+close-up and time slices), a one-line brief of what each clip should show, the approved character art and the
+owner's rejection checklist: no labels, no metrics, no verdicts. It runs as a
 new headless Claude session with read-only tools, so nothing the author knows reaches it.
 """
 import argparse
@@ -20,10 +21,13 @@ PROMPT = """You are reviewing animations of a small pastel dragon mascot for fau
 find what is wrong, not to approve them. Assume every clip has faults until the evidence shows otherwise. Some clips
 here are known to be bad and some may be fine; the order is random and nothing about a clip's name means anything.
 
-Every folder `clip-*` in this directory is one clip of a head or body turn, shown at its real desktop size (about
-166 px) at 24 fps. In each:
+Every folder `clip-*` in this directory is one clip, shown at its real desktop size (about 166 px) at 24 fps. Its
+`brief.txt` says what the clip is meant to show, such as a head turn or a flight loop; judge it against that brief,
+and do not fault a clip for not doing something its brief does not ask for. Holding a drawing for two or three frames
+(animating on twos or threes) is a deliberate style, not a fault by itself. If `reference-art.png` is here, it is
+the approved look of the character: a clip that does not match it is off-model. In each clip folder:
 - `normal-speed.mp4` and `double-size.mp4`: the clip at real speed. Watch motion by extracting every frame in order,
-  e.g. `ffmpeg -v error -i clip-A/double-size.mp4 /tmp/blind-review/A-%03d.png`, then view runs of consecutive frames
+  e.g. `ffmpeg -v error -i clip-A/double-size.mp4 {scratch}/A-%03d.png`, then view runs of consecutive frames
   side by side or one after another. Snaps, pops, swells, winks and cross-fades exist only between consecutive frames.
 - `every-frame-real-size.png`: every frame in order at real size, numbered, read left to right like a flipbook.
 - `head-quarter-speed.mp4`: the head close-up at quarter speed (extract frames the same way).
@@ -37,7 +41,7 @@ redrawn in a single frame; an eye shrinking, winking or vanishing; colours shift
 ghost shows; one drawing swapped for another instead of rotating; jerky or stalling timing; becoming a different
 creature partway.
 
-For each clip: look at every frame in order, then decide. Do not edit or create files outside /tmp/blind-review.
+For each clip: look at every frame in order, then decide. Do not edit or create files outside {scratch}.
 End your reply with one JSON object on its own line, exactly this shape, covering every clip:
 {"clips": {"clip-A": {"verdict": "reject" | "needs-owner" | "no-faults", "faults": [{"id": "B4", "frames": "12-18",
 "what": "...", "severity": "blocks" | "noticeable" | "minor"}], "could_not_judge": ["..."]}}}
@@ -48,6 +52,9 @@ End your reply with one JSON object on its own line, exactly this shape, coverin
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("packages", nargs="+", help="LABEL=GATE_OUT_DIR, each holding review/")
+    ap.add_argument("--intent", action="append", default=[], help="LABEL=what the clip is meant to show")
+    ap.add_argument("--default-intent", default="a head or body turn")
+    ap.add_argument("--reference", default=None, help="approved character art shown as reference-art.png")
     ap.add_argument("--out", default=None)
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--model", default="claude-opus-5-5")
@@ -60,21 +67,32 @@ def main():
     items = [p.split("=", 1) for p in args.packages]
     rng = random.Random(args.seed if args.seed is not None else stamp)
     rng.shuffle(items)
+    intents = dict(i.split("=", 1) for i in args.intent)
     key = {}
     for i, (label, path) in enumerate(items):
         name = f"clip-{chr(65 + i)}"
         key[name] = label
         shutil.copytree(Path(path) / "review", blind / name)
+        (blind / name / "brief.txt").write_text(intents.get(label, args.default_intent) + "\n")
     shutil.copy(ROOT / "verification/motion/rejections.md", blind / "rejections.md")
-    (blind / "PROMPT.md").write_text(PROMPT)
+    if args.reference:
+        shutil.copy(args.reference, blind / "reference-art.png")
+    # A fresh scratch folder per run: frames left by an earlier run would read as extra frames of this one.
+    scratch = Path("/tmp") / f"blind-review-{stamp}-{rng.randrange(1 << 30):x}"
+    if scratch.exists():
+        shutil.rmtree(scratch)
+    scratch.mkdir(parents=True)
+    prompt = PROMPT.replace("{scratch}", str(scratch))
+    (blind / "PROMPT.md").write_text(prompt)
     (out / "key.json").write_text(json.dumps(key, indent=1))
     if args.dry_run:
         print(json.dumps({"blind": str(blind), "key": str(out / "key.json")}))
         return
-    proc = subprocess.run(["claude", "-p", PROMPT, "--model", args.model, "--output-format", "text",
+    proc = subprocess.run(["claude", "-p", prompt, "--model", args.model, "--output-format", "text",
                            "--allowedTools", "Read,Glob,Bash(ffmpeg:*),Bash(ls:*),Bash(mkdir:*)",
                            "--disallowedTools", "Edit,Write,Agent,WebFetch,WebSearch"],
                           cwd=blind, capture_output=True, text=True, timeout=3600)
+    shutil.rmtree(scratch, ignore_errors=True)
     (out / "review.md").write_text(proc.stdout + ("\n\nSTDERR:\n" + proc.stderr if proc.stderr.strip() else ""))
     found = None
     for line in reversed(proc.stdout.strip().splitlines()):
