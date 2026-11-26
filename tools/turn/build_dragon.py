@@ -24,7 +24,7 @@ ap.add_argument("mode", choices=("toon", "position", "normal", "alpha", "preview
 ap.add_argument("--yaw0", type=float, default=90.0)
 ap.add_argument("--yaw1", type=float, default=0.0)
 ap.add_argument("--hold", type=int, default=4)
-ap.add_argument("--turn", type=int, default=44)
+ap.add_argument("--turn", type=int, default=48)
 ap.add_argument("--hold-end", type=int, default=8)
 ap.add_argument("--ease-blend", type=float, default=1.0)
 ap.add_argument("--dip", type=float, default=2.0)
@@ -135,8 +135,9 @@ def make_wing(name, side=1):
         (0.052, 0.000, -0.052, 0.015),
     ]
     parts.append(make_tube(f"{name}_rib_in", rib_in, res=12, bevel_res=8))
-    # Scalloped membrane webbing (filled smoothly into shoulder root so ZERO armpit pinhole ever opens!)
-    parts.append(make_ellipsoid(f"{name}_web1", (0.072, 0.000, -0.010), (0.062, 0.016, 0.046), (0, -14, 0)))
+    # Scalloped membrane webbing + plump shoulder-root bridge sealing armpit solidly into torso (ZERO transparent-holes!)
+    parts.append(make_ellipsoid(f"{name}_root", (0.018, 0.000, -0.028), (0.062, 0.030, 0.054), (0, -8, 0)))
+    parts.append(make_ellipsoid(f"{name}_web1", (0.072, 0.000, -0.014), (0.066, 0.018, 0.050), (0, -14, 0)))
     parts.append(make_ellipsoid(f"{name}_web2", (0.156, 0.000, -0.022), (0.050, 0.015, 0.042), (0, -30, 0)))
 
     bpy.ops.object.select_all(action="DESELECT")
@@ -254,7 +255,7 @@ def build_tail():
     tail = make_tube("tail", pts, res=48, bevel_res=18, fill_caps=True)
     bpy.ops.object.shade_smooth()
     tail.rotation_euler = (0.0, 0.0, math.radians(34.0))
-    tail.location = (0.048, 0.086, -0.326)
+    tail.location = (0.046, 0.086, -0.334)
     return tail
 
 

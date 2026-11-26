@@ -1,0 +1,35 @@
+{
+  "name": "turn-sheet-b",
+  "activated": false,
+  "sheet": "tools/turn/art/turn-sheet-b.webp",
+  "sheet_sha256": "76480a1889607d7d52c6bf4a34cda893090bfad003c9ef25950bdc966a29b827",
+  "bytes": 859710,
+  "width": 2880,
+  "height": 2400,
+  "cols": 12,
+  "rows": 10,
+  "cell": 240,
+  "logical_cell": 150,
+  "display_cell": 166,
+  "fps": 24,
+  "frame_count": 120,
+  "rgba_bytes": 27648000,
+  "sequences": {
+    "profile_right_to_front": {
+      "start": 0,
+      "count": 60,
+      "yaw0": 90,
+      "yaw1": 0
+    },
+    "front_to_profile_right": {
+      "start": 60,
+      "count": 60,
+      "yaw0": 0,
+      "yaw1": 90
+    }
+  },
+  "generator_sha256": {
+    "tools/turn/build_dragon.py": "0c6d232e5c497b5238bb1280fc15df84cc28c98bb10c7025883a6eaafd72340c",
+    "tools/turn/contour.py": "8a2ed1e3e19bf71da4203cd3d354cbdcb57b4555d947ffb303540cb760889615"
+  }
+}

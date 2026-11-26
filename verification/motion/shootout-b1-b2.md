@@ -43,3 +43,13 @@ Per decision, B2 was dropped and B1 was refined on `tools/turn/build_dragon.py` 
   - **`gate.py --deep` (`90->0`)**: **FAIL, score 2.22** (`flow=0`, **`parts=0`**, **`identity=0`** at OpenCLIP **0.855–0.901** — highest Sheet-B likeness). Remaining 2 findings: 1-frame `motion:transparent-holes` blink at f15 (19 px armpit gap under `wing_l`) and 1-frame `outline-pop` at f30 (`1.71 px` vs `1.40 px` limit).
   - **CPU `gate.py` (`0->90`)**: **FAIL, score 2.22** (exact symmetric mirror: f40 `transparent-holes`, f25 `outline-pop`).
   - **Blind review on `sculpt_v23`**: not yet run (stopped iterating per instruction to publish now).
+
+## Final sealed `sculpt_v23` (`sculpt_v23_final`, packed unactivated on branch)
+
+Sealed the 19 px wing-root armpit pinhole (`_root` bridge inside `make_wing`), lowered the tail `-0.008`, and extended the pure-sine turn from 44 to 48 frames (`60` frames total = `4 + 48 + 8` at 24 fps) in both directions (`90->0` and `0->90`):
+
+- **`gate.py --deep` (`90->0`)**: **PASS, score `0.00`** (`turn=0`, `motion=0`, `flow=0`, `parts=0`, `identity=0`, OpenCLIP **0.849–0.899**).
+- **CPU `gate.py` (`0->90`)**: **PASS, score `0.00`** (`turn=0`, `motion=0`, `flow=0`).
+- **2-seed blind review (`seeds 101, 102`) on both directions (`90->0` & `0->90`)**: **0 blocking faults** across all 4 clips, **0 motion/timing/color/swap/ghost/wink faults** (both reviewers confirmed smooth pure-sine ease-in/out, clean holds, smooth eye-row & head-column slices, and steady colors; both flagged `noticeable`/`minor` model-detail nuances: simplified horns/tail/wings vs 2D Sheet B and slight far-eye protrusion at 3/4).
+- **Packed production sheet (not activated in `shell/assistant/`)**: `tools/turn/pack_turn.py` packed `tools/turn/art/turn-sheet-b.webp` (`2880×2400`, `12×10` grid of `240×240` cells, 120 frames = 60 `90->0` + 60 `0->90`, `859,710` bytes, `activated: false`) and `tools/turn/art/turn-sheet-b.json`.
+- **Side-by-side tool fix**: fixed `tools/verify/motion.py` (`side_by_side()`) so `side-by-side-first.png` selects a frame where the approved reference panel actually has the subject on screen rather than saving empty frame 0 of the entrance landing video.

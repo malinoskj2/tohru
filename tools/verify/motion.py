@@ -755,6 +755,17 @@ def side_by_side(candidate, approved, args, out):
     left_frames = left.frames(count)
     right_frames = list(right.frames(len(approved.frames)))
 
+    # For entrance clips whose opening frames are blank desktop, pick the frame where the
+    # approved reference panel shows the most of its subject for side-by-side-first.png.
+    def subject_px(im):
+        arr = np.asarray(im, np.int16)
+        return int((arr.max(axis=2) - arr.min(axis=2) > 25).sum())
+
+    if subject_px(right_frames[0].crop(crops[1])) >= 2000:
+        snap_i = 0
+    else:
+        snap_i = max(range(count), key=lambda j: subject_px(right_frames[int(j / stride) % len(right_frames)].crop(crops[1])))
+
     def combined():
         for i, frame in enumerate(left_frames):
             canvas = Image.new("RGB", size)
@@ -764,7 +775,7 @@ def side_by_side(candidate, approved, args, out):
             draw.line((size[0] // 2, 0, size[0] // 2, size[1]), fill=(255, 255, 255), width=2)
             draw.text((16, 12), f"candidate #{candidate.label(i % len(candidate.frames))}", fill=(255, 255, 255), font=font(22))
             draw.text((size[0] // 2 + 16, 12), "approved reference", fill=(255, 255, 255), font=font(22))
-            if i == 0:
+            if i == snap_i:
                 canvas.save(out / "side-by-side-first.png")
             yield canvas
 
