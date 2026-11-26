@@ -209,6 +209,13 @@ pub enum Engine {
 }
 
 impl Engine {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Kokoro(_) => "kokoro",
+            Self::Espeak => "espeak-ng",
+        }
+    }
+
     pub fn load(settings: &Settings, assets: &Path) -> Result<Self> {
         match settings.engine.as_str() {
             "kokoro" => Ok(Self::Kokoro(Box::new(Kokoro::new(settings, assets)?))),

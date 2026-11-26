@@ -399,6 +399,10 @@ mod tests {
             false
         }
 
+        fn engine(&self) -> &str {
+            "silent"
+        }
+
         fn speak(
             &self,
             _: &str,
