@@ -14,6 +14,33 @@ To investigate a missed wake, follow `utterance_start`, `wake_decision`, `asr_fi
 
 `assistant_request`, `speech_stream_start`, `first_provider_text`, `provider_done`, `synthesis_ready` and `sentence_first_write` separate recognition, provider, synthesis and playback delays. The UI events acknowledge the desktop controller's observed visibility and flight opacity. They are not proof that the compositor presented a particular frame. Set `TOHRU_VOICE_LOG=off` in the service environment to disable diagnostic output.
 
+## First audio
+
+`first_audio` marks the first write of each reply's audio, with the voice profile and `onset_ms`, the offset of its first audible sample. `speech_stream_start` and `committed_answer_ready` name the reply's path: `draft`, `normal`, `quick`, `home`, `ack` (an acknowledgement), `notice`, `greeting`, `task`, `alert` or `result`. `smart_turn` records the end-of-turn model's score and `endpoint` the hold that ended the turn. `speech_yield` records how long speech ran on to reach a gap between words after the owner interrupted it, and `high_stream_gap` any late chunk while the high voice streams.
+
+Summarize end of speech to first audible sound per path and profile, at p50 and p95:
+
+```sh
+journalctl --user -u tohru-bar.service --since today -o cat | tohru-voice --first-audio-report
+```
+
+End of speech is the last window the voice detector heard as speech, about 80 ms after the last audible sample. For an acknowledged turn, `first_audio_ms` is the acknowledgement and `answer_audio_ms` the answer behind it.
+
+`tools/voice-first-audio.py` measures the same interval end to end with the real models. It plays recorded utterances through a fake microphone in real time and timestamps the first audible sample written to a fake speaker. Device and room latency are excluded.
+
+Measured on an RTX 5090 desktop with synthesized utterances, in milliseconds (p50 / p95):
+
+| Path | Before | After |
+| --- | --- | --- |
+| Canned reply, Kokoro (voice pipeline alone) | 1030 / 1658 | 1216 / 1324 |
+| Canned reply, Tomoko | 1866 / 2324 | 750 / 971 |
+| Quick answer, Kokoro | 4125 / 4849 (Claude CLI) | 2201 / 2984 (Messages API) |
+| Request for work, 4 s reply: first sound | 5034 / 5602 | 831 / 1376 (acknowledgement) |
+| Other turn, 4 s reply: first sound | 5043 / 5155 | 2313 / 2339 (acknowledgement) |
+| Home turn, Opus through the CLI | 4569 / 6669 | unchanged |
+
+The canned-reply p95 fell because a lagging transcript no longer triggers the 1050 ms unfinished-phrase hold.
+
 ## Analyzed background results
 
 An Orca worker completion can return the coordinating bot's final analyzed answer to the voice request that started the work. Raw worker reports, commentary and text-origin requests do not become speech. A new owner turn or voice interruption retires the older request's speech eligibility.

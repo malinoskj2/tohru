@@ -381,8 +381,7 @@ class Harness:
         if self.args.ack:
             self.send(cmd="prepare", texts=ACKS)
         if self.args.profile == "tomoko":
-            self.wait(lambda e: e.get("event") == "profile" and e.get("profile") == "high"
-                      and e.get("state") in ("ready", "loaded", "active"), self.args.load_timeout)
+            self.wait(lambda e: e.get("event") == "profile" and e.get("active") == "high", self.args.load_timeout)
             if self.args.ack:
                 self.send(cmd="prepare", texts=ACKS)
 
@@ -518,8 +517,9 @@ class Harness:
         if self.args.path == "stub":
             time.sleep(self.args.stub_ms / 1000)
             out.start("stub")
-            out.delta("Sure, here is a short answer. ")
-            return out.end("It has two sentences.")
+            first, _, rest = self.args.stub_text.partition(". ")
+            out.delta(first + (". " if rest else ""))
+            return out.end(rest or None)
         if self.args.path == "draft":
             with self.lock:
                 draft, self.draft = self.draft, None
@@ -650,6 +650,7 @@ def main():
     parser.add_argument("--turns", type=int, default=8)
     parser.add_argument("--gap", type=float, default=2.0)
     parser.add_argument("--stub-ms", type=float, default=0)
+    parser.add_argument("--stub-text", default="Sure, here is a short answer. It has two sentences.")
     parser.add_argument("--orca-ms", type=float, default=0, help="Delay added to every fake Orca call")
     parser.add_argument("--model", default="claude-opus-5-5")
     parser.add_argument("--effort", default="medium")

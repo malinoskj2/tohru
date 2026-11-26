@@ -67,10 +67,6 @@ struct Piece {
 
 type Pieces = std::sync::mpsc::SyncSender<Result<Piece>>;
 
-fn streams() -> bool {
-    std::env::var_os("TOHRU_VOICE_HIGH_STREAM").is_none_or(|v| v != "0")
-}
-
 /// Where speech yields to the owner: the first inter-word dip within 300 ms of `index`, else
 /// the quietest point there, with the fade length that follows it.
 fn yield_point(samples: &[f32], rate: u32, index: usize) -> (usize, usize) {
@@ -867,7 +863,7 @@ impl Control {
                     }
                 } else {
                     waiting.fetch_add(1, Ordering::AcqRel);
-                    let high = self.high_clip(job, &mut voices, &text, streams().then_some(sender));
+                    let high = self.high_clip(job, &mut voices, &text, Some(sender));
                     if !matches!(high, Ok(Some((_, true, _)))) {
                         waiting.fetch_sub(1, Ordering::AcqRel);
                     }
