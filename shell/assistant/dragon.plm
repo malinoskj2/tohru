@@ -133,6 +133,7 @@ part AssistantDragon {
         layer_namespace: "tohru-dragon"
         zone box ai_idle_hit { from: 30, 30; size: 150, 170; corner: 40; cursor: pointer; active: ai_dragon_open and not ai_use_flight_surface; label: "Open this conversation" }
         on press ai_idle_hit { emit assistant_dragon }
+        on press right ai_idle_hit { emit assistant_dismiss }
         DragonActor(0, if(ai_dg_reduced, 0, (1 - ai_dragon_k) * 24))
     }
     surface ai_dragon_surface {
@@ -145,5 +146,6 @@ part AssistantDragon {
         DragonActor(flight_left, flight_top)
         zone box ai_dragon_hit { from: flight_left + 30, flight_top + 30; size: 150, 170; corner: 40; cursor: pointer; active: ai_use_flight_surface and ai_dragon_open and ai_flight_alpha > 0.5; label: "Open this conversation" }
         on press ai_dragon_hit { emit assistant_dragon }
+        on press right ai_dragon_hit { emit assistant_dismiss }
     }
 }

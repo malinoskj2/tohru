@@ -129,6 +129,37 @@ struct Voices<'a> {
     high: Option<(u64, Arc<dyn HighVoice>)>,
 }
 
+/// With `TOHRU_VOICE_CLIP_DIR` set, keeps each synthesized clip, untrimmed, named for the
+/// answer, its place in it and the profile and engine that made it.
+fn record_clip(clip: &Clip, job: &Job, index: usize, profile: &str, engine: &str) {
+    let Some(dir) = std::env::var_os("TOHRU_VOICE_CLIP_DIR").filter(|d| !d.is_empty()) else {
+        return;
+    };
+    let name = clip_name(&job.generation, job.id, index, profile, engine);
+    let path = PathBuf::from(dir).join(name);
+    if let Err(error) = clip.write(&path) {
+        log(&format!(
+            "cannot keep the clip {}: {error:#}",
+            path.display()
+        ));
+    }
+}
+
+fn clip_name(generation: &Value, id: u64, index: usize, profile: &str, engine: &str) -> String {
+    let answer = generation
+        .as_u64()
+        .map_or_else(|| format!("job{id}"), |g| format!("g{g}"));
+    let engine: String = engine
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    format!("{answer}-{index:02}-{profile}-{engine}.wav")
+}
+
 /// The echo-cancelling device in a `pactl --format=json list` result, never its monitor.
 pub fn echo_cancel(devices: &Value) -> Option<String> {
     devices
@@ -673,16 +704,16 @@ impl Control {
         })
     }
 
-    /// The high profile's clip for one sentence; `Ok(None)` hands the sentence to the low engine.
-    /// With `pieces`, audio goes to the player as it arrives, and `Ok(Some((clip, true)))` says
-    /// the whole sentence was already sent.
+    /// The high profile's clip for one sentence and the engine that made it; `Ok(None)` hands
+    /// the sentence to the low engine. With `pieces`, audio goes to the player as it arrives, and
+    /// `Ok(Some((clip, true, _)))` says the whole sentence was already sent.
     fn high_clip(
         &self,
         job: &Job,
         voices: &mut Voices<'_>,
         text: &str,
         pieces: Option<&Pieces>,
-    ) -> Result<Option<(Clip, bool)>, ()> {
+    ) -> Result<Option<(Clip, bool, String)>, ()> {
         let Some((id, high)) = voices.high.clone() else {
             return Ok(None);
         };
@@ -755,20 +786,29 @@ impl Control {
                         timeline,
                     },
                     streamed,
+                    high.engine().to_owned(),
                 )))
             }
             Ok(None) => Err(()),
             Err(HighError::Reply(error)) if !streamed => {
                 log(&format!(
-                    "voice profile: high could not speak a sentence ({error}); using low for it"
+                    "voice profile: high ({}) could not speak a sentence ({error}); the low engine speaks it instead",
+                    high.engine()
                 ));
                 Ok(None)
             }
             Err(HighError::Reply(error)) => {
-                log(&format!("voice profile: high stopped mid-sentence ({error})"));
+                log(&format!(
+                    "voice profile: high ({}) stopped mid-sentence ({error})",
+                    high.engine()
+                ));
                 Err(())
             }
             Err(error @ HighError::Broken(_)) => {
+                log(&format!(
+                    "voice profile: high ({}) broke mid-answer ({error}); the low engine speaks the rest",
+                    high.engine()
+                ));
                 self.profiles.failed(id, error.to_string());
                 voices.high = None;
                 if streamed { Err(()) } else { Ok(None) }
@@ -795,10 +835,8 @@ impl Control {
                 .as_ref()
                 .map_or_else(|| "low".to_owned(), |(id, _)| format!("high-{id}"))
         };
-        diagnostic(
-            "speech_profile",
-            json!({"profile":if voices.high.is_some(){"high"}else{"low"}}),
-        );
+        let mut reported: Option<(&str, String)> = None;
+        let mut index = 0;
         while let Some(part) = self.next_part(job) {
             for text in policy::chunks(&part) {
                 while waiting.load(Ordering::Acquire) > 0 {
@@ -821,22 +859,31 @@ impl Control {
                 diagnostic("synthesis_start", json!({"generation":job.generation}));
                 let key = profile_key(&voices);
                 let mut streamed = false;
-                let (clip, profile) = if let Some(clip) = self.cached(&key, &text) {
-                    (clip, if voices.high.is_some() { "high" } else { "low" })
+                index += 1;
+                let (clip, profile, engine) = if let Some(clip) = self.cached(&key, &text) {
+                    match &voices.high {
+                        Some((_, high)) => (clip, "high", high.engine().to_owned()),
+                        None => (clip, "low", voices.low.name().to_owned()),
+                    }
                 } else {
                     waiting.fetch_add(1, Ordering::AcqRel);
                     let high = self.high_clip(job, &mut voices, &text, streams().then_some(sender));
-                    if !matches!(high, Ok(Some((_, true)))) {
+                    if !matches!(high, Ok(Some((_, true, _)))) {
                         waiting.fetch_sub(1, Ordering::AcqRel);
                     }
-                    let (mut clip, profile) = match high {
-                        Ok(Some((clip, sent))) => {
+                    let (mut clip, profile, engine) = match high {
+                        Ok(Some((clip, sent, engine))) => {
                             streamed = sent;
-                            (clip, "high")
+                            (clip, "high", engine)
                         }
-                        Ok(None) => (voices.low.synthesize(&text, settings, &options)?, "low"),
+                        Ok(None) => (
+                            voices.low.synthesize(&text, settings, &options)?,
+                            "low",
+                            voices.low.name().to_owned(),
+                        ),
                         Err(()) => return Ok(()),
                     };
+                    record_clip(&clip, job, index, profile, &engine);
                     clip.trim();
                     let kept = if profile == "high" {
                         key.clone()
@@ -844,15 +891,25 @@ impl Control {
                         "low".to_owned()
                     };
                     self.keep(&kept, &text, &clip);
-                    (clip, profile)
+                    (clip, profile, engine)
                 };
                 lock(&self.state.0).infer = None;
                 if self.stale(job.id) {
                     return Ok(());
                 }
+                if reported
+                    .as_ref()
+                    .is_none_or(|(p, e)| *p != profile || *e != engine)
+                {
+                    diagnostic(
+                        "speech_profile",
+                        json!({"generation":job.generation,"profile":profile,"engine":engine}),
+                    );
+                    reported = Some((profile, engine.clone()));
+                }
                 diagnostic(
                     "synthesis_ready",
-                    json!({"generation":job.generation,"samples":clip.samples.len(),"rate":clip.rate}),
+                    json!({"generation":job.generation,"samples":clip.samples.len(),"rate":clip.rate,"profile":profile,"engine":engine}),
                 );
                 if streamed {
                     continue;
@@ -1165,6 +1222,10 @@ mod tests {
             false
         }
 
+        fn engine(&self) -> &str {
+            "qwen3-tts voice-tomoko (kuroki_tomoko)"
+        }
+
         fn speak(
             &self,
             _: &str,
@@ -1198,13 +1259,14 @@ mod tests {
             low: &mut low,
             high: speaker.profiles.high(),
         };
-        let (clip, streamed) = speaker
+        let (clip, streamed, engine) = speaker
             .high_clip(&job, &mut voices, "Hi.", None)
             .unwrap()
             .unwrap();
         assert_eq!((clip.rate, clip.samples.len(), streamed), (24000, 2400, false));
+        assert_eq!(engine, "qwen3-tts voice-tomoko (kuroki_tomoko)");
         let (sender, receiver) = std::sync::mpsc::sync_channel(8);
-        let (_, streamed) = speaker
+        let (_, streamed, _) = speaker
             .high_clip(&job, &mut voices, "Hi.", Some(&sender))
             .unwrap()
             .unwrap();
@@ -1248,6 +1310,24 @@ mod tests {
         assert!(
             speaker.high_clip(&job, &mut voices, "Hush.", None).is_err(),
             "a hushed answer stops instead of falling back"
+        );
+    }
+
+    #[test]
+    fn kept_clips_name_the_answer_and_the_engine_that_spoke() {
+        assert_eq!(
+            clip_name(
+                &json!(46),
+                9,
+                3,
+                "high",
+                "qwen3-tts voice-tomoko (kuroki_tomoko)"
+            ),
+            "g46-03-high-qwen3-tts-voice-tomoko-kuroki-tomoko.wav"
+        );
+        assert_eq!(
+            clip_name(&Value::Null, 9, 1, "low", "kokoro"),
+            "job9-01-low-kokoro.wav"
         );
     }
 }

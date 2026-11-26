@@ -617,6 +617,29 @@ return function(assistant, puppet, flight, service_executable)
         show_dragon(false)
         if spoken then assistant.show(spoken) end
     end)
+    -- Right-clicking her ends the summon the way the conversation ending does, but at once:
+    -- the service stops hearing and speaking, and she leaves without lingering.
+    on("assistant_dismiss", function()
+        if not fact.ai_dragon_open then return end
+        notice_reply = nil
+        hearing = false
+        greeting_serial = greeting_serial + 1
+        turn_generation = turn_generation + 1
+        streaming_speech, streamed_text = false, false
+        queued, interrupted_spoken, barged = nil, nil, false
+        task_speech.interrupt()
+        voice_return.interrupt()
+        if assistant.discard_draft then assistant.discard_draft() end
+        send({cmd = "hush"})
+        send({cmd = "end"})
+        transcript_serial = transcript_serial + 1
+        text.ai_transcript = ""
+        fact.ai_speaking, fact.ai_mouth = false, 0
+        fact.ai_voice_conversation = false
+        puppet.speaking(false, "interrupted")
+        puppet.calm()
+        show_dragon(false)
+    end)
 
     local function configure(settings)
         local function value(key, default)

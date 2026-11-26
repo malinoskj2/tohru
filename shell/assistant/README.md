@@ -12,7 +12,7 @@ The AI assistant described in [docs/ai-assistant.md](../../docs/ai-assistant.md)
 | `controller.luau` | Runs `tohru-assistant` for providers, chats and history, streams the answer, and keeps the bar's streaming and ready state. Takes `{provider, choose}` for the `assistant.provider` setting and returns `{open, close, toggle, new_chat, show_history, choose, signin, settle, ask, stop, streaming, on_answer, show, status}` |
 | `voice.luau` | Runs `tohru-voice` while `assistant.voice` is on and kills it when off; sends voice turns to the controller and its answers back to be spoken; drives the mic dot, mouth level and overlay. Restarts a crashed service after 2, 4, … s, up to five times, and never after exit 3 (missing models or tools) |
 | `needs-you.luau` | The Needs-you watcher: in Orca mode, runs `tohru-assistant needs-you poll` every `assistant.orca_needs_you_minutes` and `needs-you wake` for new items once no voice turn, speech or streaming answer is under way and neither DND nor the lock is on; backs off quietly while Orca is unreachable |
-| `dragon.plm` | The speaking dragon overlay at the bottom right, drawn from the sheets in `dragon/`; a click opens the conversation |
+| `dragon.plm` | The speaking dragon overlay at the bottom right, drawn from the sheets in `dragon/`; a click opens the conversation, a right-click dismisses her |
 | `puppet.luau` | The dragon's animator: idle, listening, thinking and talking poses, transitions, blinks, flourishes, viseme mouths and hearts, at 24 fps while she is shown |
 | `dragon/` | Her sheets, eye and mouth patches, heart and glass shader; layout and provenance in its README |
 | `persona.md` | Tohru's persona, sent with every chat unless `assistant.persona` is off |
@@ -55,6 +55,7 @@ The bar process owns the one answer in flight, so its state survives closing the
 | `assistant_send`, `assistant_stop` | Send the field (or stop the answer streaming here); stop the answer in flight |
 | `assistant_copy`, `assistant_retry` | Copy the last answer; send the last question again |
 | `assistant_pick <row>`, `assistant_move <delta>`, `assistant_activate`, `assistant_search` | Open a history row; move in history or the picker; open the selected row; search again |
+| `assistant_dragon`, `assistant_dismiss` | Click and right-click on the summoned dragon: open her conversation, or end the conversation and hide her at once |
 | `assistant_menu`, `assistant_menu_close`, `assistant_show_history` | Toggle or close the mark's menu; open the popup on history |
 | `assistant_alert <0\|1>` | Surface a proactive alert (`tohru assistant alert`): reload the matching open chat or light up `ai_ready`, and notify `voice.luau` to speak when `1` and neither locked nor in DND |
 

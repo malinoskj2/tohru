@@ -13,6 +13,20 @@ journalctl --user -u tohru-bar.service --since '10 minutes ago' -o cat | rg 'toh
 TOHRU_VOICE_LOG=off tohru-voice ...  # disable metadata diagnostics
 ```
 
+Each spoken sentence's `synthesis_ready` names the `profile` (`high` or `low`) and
+the `engine` that actually made it, such as `qwen3-tts voice-tomoko (kuroki_tomoko)`
+or `kokoro`. `speech_profile` is logged when an answer's first clip is ready and
+again whenever a later sentence comes from a different engine, so a sentence the
+high worker could not speak shows up as a switch to `low`, next to a
+`voice profile:` line giving the reason.
+
+To keep the audio itself while investigating how a voice sounds, set
+`TOHRU_VOICE_CLIP_DIR` to an existing directory in the service environment. Each
+synthesized sentence is then written there, untrimmed, as a 32-bit float WAV at
+the engine's own rate, named for its answer, its place in that answer and its
+profile and engine, for example `g46-03-high-qwen3-tts-voice-tomoko-kuroki-tomoko.wav`.
+Nothing is kept when the variable is unset.
+
 The default metadata volume is per utterance, sentence and lifecycle transition,
 not per audio frame or provider token. Errors carry stage and exception class;
 the detailed human error goes through the private UI protocol. A `session` ID

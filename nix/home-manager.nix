@@ -352,7 +352,7 @@ in {
         voiceChat = lib.mkOption {
           type = lib.types.nullOr (lib.types.enum [ "home" "new" "foreground" "quick" ]);
           default = null;
-          description = "Where voice turns land in Orca bot mode: `home` (default) shares Home Chat, `new` starts a fresh conversation, `foreground` retains the experimental separate chat, and opt-in `quick` answers alongside busy Home through a tool-free local responder with exchanges recorded in Home (requires the matching Orca integration patch and Claude CLI). Written to `assistant.orca_voice_chat`.";
+          description = "Where voice turns land in Orca bot mode: `home` (default) shares Home Chat, `new` starts a fresh conversation, `foreground` retains the experimental separate chat, and opt-in `quick` answers every spoken turn first through a fast tool-free local responder that hands work to Home with exchanges recorded in Home (requires the matching Orca integration patch and Claude CLI). Written to `assistant.orca_voice_chat`.";
         };
         offline = lib.mkOption {
           type = lib.types.nullOr (lib.types.enum [ "error" "local" ]);

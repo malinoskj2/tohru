@@ -637,6 +637,42 @@ assert(#spawned == before_profiles + 2 and presences[#presences] == true)
 fact.ai_open = false
 print("Voice profile settings and presence passed")
 
+-- Right-clicking her while summoned ends the conversation at once: the service is told to hush and end,
+-- she leaves without lingering, and nothing opens. Right-clicking when she is not shown does nothing.
+local dismiss_service = spawned[#spawned]
+dismiss_service.line({event = "conversation", on = true})
+dismiss_service.line({event = "transcript", text = "Tohru, what's the weather"})
+dismiss_service.line({event = "turn", text = "what's the weather"})
+local dismiss_turn = asked[#asked][3].voice_generation
+dismiss_service.line({event = "speaking", on = true, conversation = "d1"})
+dismiss_service.line({event = "mouth", level = 0.7, viseme = 2})
+assert(fact.ai_dragon_open and fact.ai_speaking and fact.ai_voice_conversation)
+shown = nil
+timers = {}
+local before_dismiss, discarded_before = #written, discarded
+events.assistant_dismiss()
+assert(#written == before_dismiss + 2)
+assert(written[before_dismiss + 1].message.cmd == "hush" and written[before_dismiss + 2].message.cmd == "end")
+assert(not fact.ai_dragon_open and not fact.ai_speaking and fact.ai_mouth == 0 and not fact.ai_voice_conversation)
+assert(text.ai_transcript == "" and shown == nil and #timers == 0 and discarded == discarded_before + 1)
+local _, dismissed_target = puppet.pose()
+assert(dismissed_target ~= "explain")
+-- The answer still in flight for the dismissed turn is no longer spoken.
+local after_dismiss = #written
+speech_listener("delta", "d1", "It's sunny.", true, dismiss_turn)
+speech_listener("done", "d1", "It's sunny.", true, dismiss_turn)
+assert(#written == after_dismiss, "a dismissed turn's answer is not spoken")
+-- The service then reports the conversation over; she stays hidden.
+dismiss_service.line({event = "conversation", on = false})
+dismiss_service.line({event = "speaking", on = false, interrupted = true, conversation = "d1"})
+assert(not fact.ai_dragon_open)
+for _, timer in ipairs(timers) do timer() end
+assert(not fact.ai_dragon_open)
+local idle_written = #written
+events.assistant_dismiss()
+assert(#written == idle_written, "a right-click with her hidden sends nothing")
+print("Right-click dismiss passed")
+
 -- Acknowledgements: a request for work is acknowledged at once; any other turn only when no
 -- answer has started by the deadline. The answer streams in behind the acknowledgement.
 do

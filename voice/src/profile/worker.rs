@@ -46,6 +46,9 @@ pub enum HighError {
 pub trait HighVoice: Send + Sync {
     fn transcribes(&self) -> bool;
 
+    /// The model and speaker that synthesize its speech, for reporting who spoke each clip.
+    fn engine(&self) -> &str;
+
     /// The whole clip at its rate, or `None` once `stale` asked for cancellation.
     fn speak(
         &self,
@@ -88,17 +91,19 @@ fn readable(stream: &UnixStream, timeout: Duration) -> Result<bool, HighError> {
 pub(super) struct Client {
     stream: Mutex<UnixStream>,
     asr: bool,
+    engine: String,
     broken: AtomicBool,
     next: AtomicU64,
 }
 
 impl Client {
-    fn new(stream: UnixStream, asr: bool) -> std::io::Result<Self> {
+    fn new(stream: UnixStream, asr: bool, engine: String) -> std::io::Result<Self> {
         stream.set_read_timeout(Some(FRAME_TIMEOUT))?;
         stream.set_write_timeout(Some(FRAME_TIMEOUT))?;
         Ok(Self {
             stream: Mutex::new(stream),
             asr,
+            engine,
             broken: AtomicBool::new(false),
             next: AtomicU64::new(1),
         })
@@ -138,6 +143,10 @@ impl Client {
 impl HighVoice for Client {
     fn transcribes(&self) -> bool {
         self.asr
+    }
+
+    fn engine(&self) -> &str {
+        &self.engine
     }
 
     fn speak(
@@ -326,6 +335,7 @@ pub(super) struct Pending {
     dir: SocketDir,
     budget_mib: u64,
     queue_timeout: Duration,
+    engine: String,
 }
 
 /// A worker that reported ready; dropping it closes the connection and releases the reservation.
@@ -425,6 +435,11 @@ pub(super) fn start(plan: &Plan<'_>) -> std::io::Result<Pending> {
         dir,
         budget_mib: plan.budget_mib,
         queue_timeout: plan.config.queue_timeout,
+        engine: format!(
+            "qwen3-tts {} ({})",
+            plan.high.tts_model.as_str(),
+            plan.high.tts_speaker
+        ),
     })
 }
 
@@ -476,7 +491,7 @@ impl Pending {
         match hello["type"].as_str() {
             Some("ready") if hello["protocol"] == wire::PROTOCOL => {
                 let asr = hello["asr"] == true;
-                let client = Client::new(stream, asr).map_err(|e| e.to_string())?;
+                let client = Client::new(stream, asr, self.engine).map_err(|e| e.to_string())?;
                 Ok(Running {
                     client: Arc::new(client),
                     _reservation: self.reservation,

@@ -1064,6 +1064,10 @@ impl crate::profile::HighVoice for Listening {
         self.transcribes
     }
 
+    fn engine(&self) -> &str {
+        "listening"
+    }
+
     fn speak(&self, _: &str, _: &dyn Fn() -> bool) -> Result<Option<(Vec<f32>, u32)>, HighError> {
         Ok(None)
     }

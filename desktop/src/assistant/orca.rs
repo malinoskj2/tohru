@@ -892,15 +892,18 @@ pub fn orca_side_record(
         &path,
         "--json",
     ];
-    if answered {
-        return orca_call(&argv, ORCA_DEFAULT_TIMEOUT);
-    }
-    let mut unanswered = argv.to_vec();
-    unanswered.push("--unanswered");
-    let result = orca_call(&unanswered, ORCA_DEFAULT_TIMEOUT);
+    let flag = match phase {
+        "begin" => "--always",
+        _ if !answered => "--unanswered",
+        _ => return orca_call(&argv, ORCA_DEFAULT_TIMEOUT),
+    };
+    let mut flagged = argv.to_vec();
+    flagged.push(flag);
+    let result = orca_call(&flagged, ORCA_DEFAULT_TIMEOUT);
     // A CLI from before the flag refuses it before reaching Orca, so the retry records once.
+    // Without --always an idle Home answers itself, as it did before.
     match result {
-        Err(error) if error.contains("--unanswered") => orca_call(&argv, ORCA_DEFAULT_TIMEOUT),
+        Err(error) if error.contains(flag) => orca_call(&argv, ORCA_DEFAULT_TIMEOUT),
         other => other,
     }
 }

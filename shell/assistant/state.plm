@@ -97,6 +97,7 @@ part AssistantState {
     event assistant_memory_clear ->
     event assistant_hush ->
     event assistant_dragon ->
+    event assistant_dismiss ->
     event assistant_show_request ->
     event assistant_alert ->
     event assistant_voice_result ->
