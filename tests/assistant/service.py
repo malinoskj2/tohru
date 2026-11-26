@@ -755,21 +755,25 @@ if args[:2] == ["bot", "voice-ready"]:
     sys.exit(0)
 
 if args[:2] == ["bot", "voice-side"]:
-    if "--unanswered" in args and os.environ.get("FAKE_SIDE_OLD_CLI") == "1":
-        print(json.dumps({"ok": False, "error": {"code": "invalid_argument", "message": "Unknown flag --unanswered for command: bot voice-side"}}))
-        sys.exit(1)
+    for flag in ("--unanswered", "--always"):
+        if flag in args and os.environ.get("FAKE_SIDE_OLD_CLI") == "1":
+            print(json.dumps({"ok": False, "error": {"code": "invalid_argument", "message": f"Unknown flag {flag} for command: bot voice-side"}}))
+            sys.exit(1)
     phase = args[args.index("--phase") + 1]
     request = args[args.index("--request") + 1]
     text = Path(args[args.index("--text-file") + 1]).read_text()
     home = next(c["id"] for c in state["chats"] if c.get("home"))
     if phase == "begin":
-        if home not in state.get("pending", {}):
+        busy = home in state.get("pending", {})
+        if not busy and "--always" not in args:
             result = {"route": "home"}
         else:
             history = list(state["entries"][home])
             state["entries"][home].append({"kind":"message", "role":"user", "text":text, "interaction":{"kind":"internal"}})
             result = {"route":"side", "chat":home, "request":request, "history":history,
                       "approvals":[{"title":"Approve deploy", "state":"pending"}]}
+            if os.environ.get("FAKE_SIDE_NO_BUSY") != "1":
+                result["busy"] = busy
     else:
         result = {"recorded": os.environ.get("FAKE_SIDE_REJECT") != "1"}
         if result["recorded"]:
@@ -884,8 +888,51 @@ class OrcaBotBackend(unittest.TestCase):
         state["entries"][self.HOME_UUID].append({"kind":"message", "role":"assistant", "text":"FULL HOME CONTEXT " + "detail " * 1000})
         self.orca_state.write_text(json.dumps(state))
 
-    def test_quick_idle_uses_home_and_does_not_run_a_side_model(self):
-        result = self.quick("Hello")
+    def test_quick_idle_answers_fast_in_the_first_person_without_waking_home(self):
+        answer = "I'm here. Nothing is running right now."
+        result = self.quick("Are you busy?", FAKE_ANSWER=json.dumps({"route": "answer", "text": answer}))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([event["text"] for event in events if event["event"] == "delta"], [answer])
+        # Home is idle, so there is no "I'm in the middle of something" notice.
+        self.assertEqual([event for event in events if event["event"] == "voice_notice"], [])
+        self.assertFalse(any(call["argv"][:2] == ["bot", "send"] for call in self.orca_calls()))
+        begins = [call["argv"] for call in self.orca_calls()
+                  if call["argv"][:2] == ["bot", "voice-side"] and "begin" in call["argv"]]
+        self.assertEqual(len(begins), 1)
+        self.assertIn("--always", begins[0])
+        state = json.loads(self.orca_state.read_text())
+        self.assertEqual(len(state["chats"]), 1)
+        self.assertEqual([entry.get("text") for entry in state["entries"][self.HOME_UUID]][-2:], ["Are you busy?", answer])
+        model = json.loads(self.fake_claude_log.read_text().splitlines()[-1])
+        self.assertEqual(model["argv"][model["argv"].index("--model") + 1], "claude-sonnet-5-5")
+        system = model["argv"][model["argv"].index("--system-prompt") + 1]
+        self.assertIn("Speak only in the first person", system)
+        self.assertNotIn("while you are busy", system)
+        metrics = [json.loads(line)["event"] for line in (self.scratch / "home-metrics.jsonl").read_text().splitlines()]
+        self.assertEqual(metrics, ["side_ack", "side_response"])
+
+    def test_quick_idle_work_request_hands_the_owner_turn_to_home_once(self):
+        result = self.quick("Build the feature", FAKE_ANSWER='{"route":"home","text":"I\'ll get on that."}')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([event["text"] for event in events if event["event"] == "voice_notice"], ["I'll get on that."])
+        sent = [call for call in self.orca_calls() if call["argv"][:2] == ["bot", "send"]]
+        self.assertEqual(len(sent), 1)
+        self.assertIn("--unanswered", self.side_finishes()[0])
+        entries = json.loads(self.orca_state.read_text())["entries"][self.HOME_UUID]
+        self.assertEqual(entries[-2]["text"], "[tohru-desktop:voice]\nBuild the feature")
+
+    def test_quick_side_admission_without_a_busy_field_keeps_the_busy_notice(self):
+        self.busy_home()
+        result = self.quick("How is it going?", FAKE_ANSWER='{"route":"answer","text":"Still going."}', FAKE_SIDE_NO_BUSY="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([event["text"] for event in events if event["event"] == "voice_notice"],
+                         ["One moment, I'm in the middle of something."])
+
+    def test_quick_idle_through_an_older_orca_cli_uses_home_and_does_not_run_a_side_model(self):
+        result = self.quick("Hello", FAKE_SIDE_OLD_CLI="1")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Eight fluid ounces from Orca.", result.stdout)
         self.assertFalse(self.fake_claude_log.read_text())

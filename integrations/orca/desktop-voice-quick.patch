@@ -1,5 +1,5 @@
 diff --git a/src/cli/bots/bot-handler-groups.ts b/src/cli/bots/bot-handler-groups.ts
-index 34df3c1..f74bcc2 100644
+index 34df3c16f..f74bcc273 100644
 --- a/src/cli/bots/bot-handler-groups.ts
 +++ b/src/cli/bots/bot-handler-groups.ts
 @@ -8,6 +8,7 @@ export const BOT_HANDLER_GROUPS: HandlerGroup[] = [
@@ -11,10 +11,10 @@ index 34df3c1..f74bcc2 100644
        'bot new-chat',
        'bot memory forget'
 diff --git a/src/cli/bots/bot.ts b/src/cli/bots/bot.ts
-index 96acc7f..dd45a55 100644
+index 96acc7ff2..f73916c08 100644
 --- a/src/cli/bots/bot.ts
 +++ b/src/cli/bots/bot.ts
-@@ -75,6 +75,18 @@ export async function findBot(
+@@ -75,6 +75,19 @@ export async function findBot(
  }
  
  export const BOT_HANDLERS: Record<string, CommandHandler> = {
@@ -26,6 +26,7 @@ index 96acc7f..dd45a55 100644
 +      botId: bot.id, phase: getOptionalStringFlag(flags, 'phase'),
 +      request: getOptionalStringFlag(flags, 'request'),
 +      text: await readMessageText(flags, cwd, true),
++      ...(flags.has('always') ? { always: true } : {}),
 +      ...(flags.has('unanswered') ? { answered: false } : {})
 +    })
 +    printResult(result, json, () => 'Side voice operation recorded in Home.')
@@ -34,7 +35,7 @@ index 96acc7f..dd45a55 100644
      const result = await callBots(client, 'bots.voice.ready', {
        chat: getOptionalStringFlag(flags, 'chat'),
 diff --git a/src/cli/specs/bot.ts b/src/cli/specs/bot.ts
-index fad6cbf..c144079 100644
+index fad6cbffa..3fe03f68b 100644
 --- a/src/cli/specs/bot.ts
 +++ b/src/cli/specs/bot.ts
 @@ -6,6 +6,10 @@ import { SLACK_MARKDOWN, SLACK_MENTION, TEXT_FILE } from './slack'
@@ -43,13 +44,13 @@ index fad6cbf..c144079 100644
  export const BOT_COMMAND_SPECS: CommandSpec[] = [
 +  { path: ['bot', 'voice-side'], hidden: true,
 +    summary: 'Record an owner-side quick voice exchange in Home without creating a chat',
-+    usage: 'orca bot voice-side --bot <name> --phase begin|finish --request <UUID> --text-file <file> [--unanswered] --json',
-+    allowedFlags: [...GLOBAL_FLAGS, 'bot', 'phase', 'request', 'text', 'text-file', 'unanswered'] },
++    usage: 'orca bot voice-side --bot <name> --phase begin|finish --request <UUID> --text-file <file> [--always] [--unanswered] --json',
++    allowedFlags: [...GLOBAL_FLAGS, 'bot', 'phase', 'request', 'text', 'text-file', 'always', 'unanswered'] },
    {
      path: ['bot', 'voice-ready'],
      hidden: true,
 diff --git a/src/main/bots/desktop-voice-continuations.ts b/src/main/bots/desktop-voice-continuations.ts
-index c6fa481..6d6088c 100644
+index c6fa481d0..6d6088c15 100644
 --- a/src/main/bots/desktop-voice-continuations.ts
 +++ b/src/main/bots/desktop-voice-continuations.ts
 @@ -20,7 +20,7 @@ import type { JournalSqlReads } from '../native-chat/agent-session-journal/journ
@@ -93,10 +94,10 @@ index c6fa481..6d6088c 100644
    const origin = await currentDesktopOwnerOrigin(reads, chat)
 diff --git a/src/main/bots/desktop-voice-side.test.ts b/src/main/bots/desktop-voice-side.test.ts
 new file mode 100644
-index 0000000..2631384
+index 000000000..dbc6d0edf
 --- /dev/null
 +++ b/src/main/bots/desktop-voice-side.test.ts
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,200 @@
 +import { afterEach, expect, it } from 'vitest'
 +import { DesktopVoiceSide } from './desktop-voice-side'
 +import { desktopVoiceOwnerTurn } from './desktop-voice-continuations'
@@ -129,6 +130,47 @@ index 0000000..2631384
 +  expect(await side.begin(rig.host, SESSION, REQUEST, 'Hello')).toEqual({ route: 'home' })
 +  expect(rig.host.loadedSessionIds()).toEqual(ids)
 +  expect(rig.dispatch).not.toHaveBeenCalled()
++})
++
++it('admits idle Home on request without starting its provider and records the exchange', async () => {
++  rig = await createQueuedMessageTestRig()
++  const side = new DesktopVoiceSide()
++  const ids = rig.host.loadedSessionIds()
++  expect(await side.begin(rig.host, SESSION, REQUEST, 'What time is it?', true)).toMatchObject({
++    route: 'side',
++    chat: SESSION,
++    request: REQUEST,
++    busy: false
++  })
++  expect(rig.host.loadedSessionIds()).toEqual(ids)
++  expect(rig.dispatch).not.toHaveBeenCalled()
++  const notes: string[] = []
++  expect(
++    await side.finish(rig.host, SESSION, REQUEST, "It's half past three.", async (note) => {
++      notes.push(note)
++    })
++  ).toEqual({ recorded: true })
++  expect(notes).toHaveLength(1)
++  const { journal } = await rig.host.conversation(SESSION)
++  const page = await readAgentJournalPage(
++    journal,
++    { sessionId: SESSION, limit: 100, includeIds: true },
++    () => false
++  )
++  expect(page.entries.slice(-2)).toMatchObject([
++    { role: 'user', text: 'What time is it?', interaction: { kind: 'internal' } },
++    { role: 'assistant', text: "It's half past three.", interaction: { kind: 'internal' } }
++  ])
++  expect(rig.dispatch).not.toHaveBeenCalled()
++})
++
++it('reports busy Home to an always admission', async () => {
++  const current = await busy()
++  const side = new DesktopVoiceSide()
++  expect(await side.begin(current.host, SESSION, REQUEST, 'How is it going?', true)).toMatchObject({
++    route: 'side',
++    busy: true
++  })
 +})
 +
 +it('records a whole side exchange in the existing journal without changing the running turn', async () => {
@@ -258,10 +300,10 @@ index 0000000..2631384
 +})
 diff --git a/src/main/bots/desktop-voice-side.ts b/src/main/bots/desktop-voice-side.ts
 new file mode 100644
-index 0000000..ad1d48e
+index 000000000..438838fdf
 --- /dev/null
 +++ b/src/main/bots/desktop-voice-side.ts
-@@ -0,0 +1,167 @@
+@@ -0,0 +1,175 @@
 +import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/host/structured-agent-session-host'
 +import { desktopVoiceOwnerTurn, silenceDesktopOwnerForSide } from './desktop-voice-continuations'
 +import { desktopVoiceTasks } from './desktop-voice-task-delivery'
@@ -321,7 +363,13 @@ index 0000000..ad1d48e
 +    })
 +  }
 +
-+  async begin(host: StructuredAgentSessionHost, chat: string, request: string, question: string) {
++  async begin(
++    host: StructuredAgentSessionHost,
++    chat: string,
++    request: string,
++    question: string,
++    always = false
++  ) {
 +    await host.conversation(chat)
 +    return host.serialize(chat, async () => {
 +      const { journal } = await host.conversation(chat)
@@ -333,7 +381,8 @@ index 0000000..ad1d48e
 +        () => false
 +      )
 +      const work = await host.currentWorkAtRest(chat)
-+      if (!work?.working() && !work?.hasActionablePrompt()) return { route: 'home' as const }
++      const busy = Boolean(work?.working() || work?.hasActionablePrompt())
++      if (!busy && !always) return { route: 'home' as const }
 +      const existing = await journal.reads.itemDetail(
 +        agentJournalItemKey(this.identity(request, 'user'))
 +      )
@@ -368,6 +417,7 @@ index 0000000..ad1d48e
 +        route: 'side' as const,
 +        chat,
 +        request,
++        busy,
 +        history,
 +        approvals: context.items.filter(
 +          (item) =>
@@ -431,7 +481,7 @@ index 0000000..ad1d48e
 +export const desktopVoiceSide = new DesktopVoiceSide()
 diff --git a/src/main/claude/claude-thin-home-options.test.ts b/src/main/claude/claude-thin-home-options.test.ts
 new file mode 100644
-index 0000000..c23bf6f
+index 000000000..c23bf6f1e
 --- /dev/null
 +++ b/src/main/claude/claude-thin-home-options.test.ts
 @@ -0,0 +1,95 @@
@@ -532,7 +582,7 @@ index 0000000..c23bf6f
 +})
 diff --git a/src/main/claude/claude-thin-home-options.ts b/src/main/claude/claude-thin-home-options.ts
 new file mode 100644
-index 0000000..db58a3c
+index 000000000..db58a3c9e
 --- /dev/null
 +++ b/src/main/claude/claude-thin-home-options.ts
 @@ -0,0 +1,115 @@
@@ -652,7 +702,7 @@ index 0000000..db58a3c
 +  }
 +}
 diff --git a/src/main/claude/structured/launch/claude-bot-session-options.ts b/src/main/claude/structured/launch/claude-bot-session-options.ts
-index 1d6194b..ea8e824 100644
+index 1d6194b0b..ea8e824d0 100644
 --- a/src/main/claude/structured/launch/claude-bot-session-options.ts
 +++ b/src/main/claude/structured/launch/claude-bot-session-options.ts
 @@ -1,3 +1,4 @@
@@ -682,7 +732,7 @@ index 1d6194b..ea8e824 100644
    }
  }
 diff --git a/src/main/codex/structured/launch/codex-structured-launch-resolution.ts b/src/main/codex/structured/launch/codex-structured-launch-resolution.ts
-index 530a1b5..be52de9 100644
+index 530a1b556..be52de93b 100644
 --- a/src/main/codex/structured/launch/codex-structured-launch-resolution.ts
 +++ b/src/main/codex/structured/launch/codex-structured-launch-resolution.ts
 @@ -175,6 +175,15 @@ export function codexStructuredLaunchPart(
@@ -702,7 +752,7 @@ index 530a1b5..be52de9 100644
      const threadConfig = basis.readOnly
        ? codexReadOnlyThreadConfig(basis.readOnly)
 diff --git a/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.test.ts b/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.test.ts
-index c5164b2..8fdeea1 100644
+index c5164b2e4..8fdeea171 100644
 --- a/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.test.ts
 +++ b/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.test.ts
 @@ -371,6 +371,35 @@ function reply(sequence: number, text: string): AgentJournalRenderItem {
@@ -742,7 +792,7 @@ index c5164b2..8fdeea1 100644
    const f = fixture()
    f.seedItem({
 diff --git a/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.ts b/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.ts
-index 493d528..a6d872a 100644
+index 493d52816..a6d872a48 100644
 --- a/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.ts
 +++ b/src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.ts
 @@ -51,7 +51,9 @@ export async function readAgentJournalPage(
@@ -758,10 +808,10 @@ index 493d528..a6d872a 100644
            : { kind: 'internal' }
 diff --git a/src/main/runtime/rpc/methods/bots-voice-side.test.ts b/src/main/runtime/rpc/methods/bots-voice-side.test.ts
 new file mode 100644
-index 0000000..7e564e0
+index 000000000..d9963425e
 --- /dev/null
 +++ b/src/main/runtime/rpc/methods/bots-voice-side.test.ts
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,46 @@
 +import '../dispatch/testing/unused-default-rpc-methods.test-fixture'
 +import { expect, it } from 'vitest'
 +import { RpcDispatcher } from '../dispatcher'
@@ -797,7 +847,8 @@ index 0000000..7e564e0
 +    { ...params, request: 'invented' },
 +    { ...params, text: '' },
 +    { ...params, text: 'a'.repeat(16001) },
-+    { ...params, phase: 'finish', answered: 'no' }
++    { ...params, phase: 'finish', answered: 'no' },
++    { ...params, always: 'yes' }
 +  ]) {
 +    expect(
 +      await dispatcher.dispatch(
@@ -809,7 +860,7 @@ index 0000000..7e564e0
 +})
 diff --git a/src/main/runtime/rpc/methods/bots-voice-side.ts b/src/main/runtime/rpc/methods/bots-voice-side.ts
 new file mode 100644
-index 0000000..8b464f6
+index 000000000..47ce583cf
 --- /dev/null
 +++ b/src/main/runtime/rpc/methods/bots-voice-side.ts
 @@ -0,0 +1,55 @@
@@ -845,7 +896,7 @@ index 0000000..8b464f6
 +    const chat = target.sessionId
 +    const host = await requireStructuredHost(runtime)
 +    if (params.phase === 'begin')
-+      return desktopVoiceSide.begin(host, bot.chatSessionId, params.request, params.text)
++      return desktopVoiceSide.begin(host, bot.chatSessionId, params.request, params.text, params.always)
 +    return desktopVoiceSide.finish(
 +      host,
 +      chat,
@@ -869,7 +920,7 @@ index 0000000..8b464f6
 +  }
 +})
 diff --git a/src/main/runtime/rpc/methods/bots.ts b/src/main/runtime/rpc/methods/bots.ts
-index 115e396..f742d48 100644
+index 115e3965c..f742d4864 100644
 --- a/src/main/runtime/rpc/methods/bots.ts
 +++ b/src/main/runtime/rpc/methods/bots.ts
 @@ -1,3 +1,4 @@
@@ -886,7 +937,7 @@ index 115e396..f742d48 100644
      name: 'bots.list',
      permission: 'workspace',
 diff --git a/src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts b/src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts
-index 3eca2dd..a96b499 100644
+index 3eca2ddc3..a96b49934 100644
 --- a/src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts
 +++ b/src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts
 @@ -1,7 +1,7 @@
@@ -899,7 +950,7 @@ index 3eca2dd..a96b499 100644
    (method) => {
      const request = {
 diff --git a/src/shared/agent-session/view/structured-agent-session-queued-cards.test.ts b/src/shared/agent-session/view/structured-agent-session-queued-cards.test.ts
-index 0eb63d3..8d48efa 100644
+index 0eb63d31d..8d48efa5a 100644
 --- a/src/shared/agent-session/view/structured-agent-session-queued-cards.test.ts
 +++ b/src/shared/agent-session/view/structured-agent-session-queued-cards.test.ts
 @@ -124,6 +124,28 @@ describe('queued message cards', () => {
@@ -932,7 +983,7 @@ index 0eb63d3..8d48efa 100644
      const answer = (overrides: Partial<AgentSessionQueuedMessage> = {}) =>
        draft('answer', 1, {
 diff --git a/src/shared/agent-session/view/structured-agent-session-queued-cards.ts b/src/shared/agent-session/view/structured-agent-session-queued-cards.ts
-index a4a9779..02d8ce8 100644
+index a4a9779d4..02d8ce8a3 100644
 --- a/src/shared/agent-session/view/structured-agent-session-queued-cards.ts
 +++ b/src/shared/agent-session/view/structured-agent-session-queued-cards.ts
 @@ -35,6 +35,7 @@ import {
@@ -958,7 +1009,7 @@ index a4a9779..02d8ce8 100644
  }
  
 diff --git a/src/shared/bots/bot-voice-methods.ts b/src/shared/bots/bot-voice-methods.ts
-index 1d8b591..6c74d73 100644
+index 1d8b59128..6c74d7304 100644
 --- a/src/shared/bots/bot-voice-methods.ts
 +++ b/src/shared/bots/bot-voice-methods.ts
 @@ -1,2 +1,5 @@
@@ -970,10 +1021,10 @@ index 1d8b591..6c74d73 100644
 +export const SIDE_VOICE_SOURCE = 'Tohru quick voice'
 diff --git a/src/shared/rpc-contract/bot-voice-side-params.ts b/src/shared/rpc-contract/bot-voice-side-params.ts
 new file mode 100644
-index 0000000..d7511dd
+index 000000000..399513106
 --- /dev/null
 +++ b/src/shared/rpc-contract/bot-voice-side-params.ts
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,20 @@
 +import * as z from 'zod'
 +
 +export const BotVoiceSide = z.discriminatedUnion('phase', [
@@ -981,7 +1032,9 @@ index 0000000..d7511dd
 +    phase: z.literal('begin'),
 +    botId: z.string().min(1),
 +    request: z.uuid(),
-+    text: z.string().trim().min(1).max(16000)
++    text: z.string().trim().min(1).max(16000),
++    /** Admit the side responder while Home is idle too, instead of routing to Home. */
++    always: z.boolean().default(false)
 +  }),
 +  z.object({
 +    phase: z.literal('finish'),
@@ -993,7 +1046,7 @@ index 0000000..d7511dd
 +  })
 +])
 diff --git a/src/shared/rpc-contract/rpc-params-catalog.generated.ts b/src/shared/rpc-contract/rpc-params-catalog.generated.ts
-index 24bce80..6dab341 100644
+index 24bce8096..6dab3416a 100644
 --- a/src/shared/rpc-contract/rpc-params-catalog.generated.ts
 +++ b/src/shared/rpc-contract/rpc-params-catalog.generated.ts
 @@ -125,6 +125,7 @@ import {
