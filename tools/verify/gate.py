@@ -52,7 +52,7 @@ LIMITS = {
     "scale-pulse": 0.10,     # head scale from flow, integrated, beyond both end views
     "color-drift": 7.0,      # CIELAB distance of the subject's colour from the path between end views
     "color-flicker": 3.0,    # one-frame CIELAB jump against the neighbouring steps
-    "part-scale": 0.30,      # crest or eye mask area beyond both end views, for 3+ frames
+    "part-scale": 0.20,      # crest or eye mask height beyond both end views, for 3+ frames
     "part-snap": 0.35,       # 1 - IoU of a part with its previous mask, beyond 3x its usual change
     "part-drop": 0.55,       # an eye's mask loses this share for 1-3 frames and comes back
     "identity": 0.06,        # similarity to the model sheet below both end views, for 2+ frames
@@ -286,19 +286,35 @@ class Gate:
         session = proc.init_video_session(video=[Image.fromarray(r) for r in rgb], inference_device=device, dtype=torch.bfloat16)
         names = {}
 
-        def prompt(name, points):
-            oid = len(names) + 1
-            names[oid] = name
-            proc.add_inputs_to_inference_session(session, frame_idx=0, obj_ids=oid, input_points=[[[list(map(float, p)) for p in points]]],
+        def prompt(name, points, frame=0, oid=None):
+            if oid is None:
+                oid = len(names) + 1
+                names[oid] = name
+            proc.add_inputs_to_inference_session(session, frame_idx=frame, obj_ids=oid, input_points=[[[list(map(float, p)) for p in points]]],
                                                  input_labels=[[[1] * len(points)]])
             with torch.inference_mode():
-                model(inference_session=session, frame_idx=0)
+                model(inference_session=session, frame_idx=frame)
+            return oid
 
-        x_lo = int(max(0, ex - rmax))
-        ys, xs = np.nonzero(f0.mask[:, x_lo:int(ex + rmax)])
-        top_y = ys.min()
-        top_x = xs[ys == top_y].mean() + x_lo
-        prompt("crest", [(top_x, top_y + 0.12 * (ey - top_y))])
+        def crest_points(fr, ex, ey):
+            """A point just inside every horn or crest tip on the head's top edge."""
+            from scipy.signal import find_peaks
+            x_lo, x_hi = int(max(0, ex - rmax)), int(min(fr.mask.shape[1], ex + rmax))
+            cols = fr.mask[:int(ey), x_lo:x_hi]
+            top = np.array([np.argmax(c) if c.any() else int(ey) for c in cols.T], float)
+            height = ndimage.gaussian_filter1d(ey - top, 1.5)
+            peaks, _ = find_peaks(height, prominence=max(6, 0.04 * rmax), distance=max(4, int(0.08 * rmax)))
+            if not len(peaks):
+                peaks = [int(np.argmax(height))]
+            return [(x_lo + i, top[i] + 0.12 * (ey - top[i])) for i in peaks]
+
+        # The crest is prompted on every tip at both end views, so a correct turn keeps every horn in the
+        # track; a horn redrawn, doubled or swollen in between still breaks it.
+        crest = prompt("crest", crest_points(f0, ex, ey))
+        fl = self.F[self.last]
+        el = fl.eyes()[:1]
+        if el:
+            prompt("crest", crest_points(fl, el[0]["x"], el[0]["y"]), frame=len(seq) - 1, oid=crest)
         for i, e in enumerate(eyes):
             prompt(f"eye-{i + 1}", [(e["x"], e["y"])])
         masks = {}
@@ -312,12 +328,15 @@ class Gate:
         series = {}
         for k, name in enumerate(order):
             area = np.full(self.n, np.nan)
+            height = np.full(self.n, np.nan)
             snap = np.zeros(self.n)
             comps = np.zeros(self.n, int)
             prev = None
             for i, t in enumerate(seq):
                 m = masks[i][k]
                 area[t] = m.sum()
+                rows = np.nonzero(m.any(axis=1))[0]
+                height[t] = rows[-1] - rows[0] + 1 if len(rows) else 0
                 lab, c = ndimage.label(m)
                 if c:
                     sizes = ndimage.sum(m, lab, range(1, c + 1))
@@ -329,16 +348,22 @@ class Gate:
                     moved = ndimage.shift(prev.astype(np.float32), (cy1 - cy0, cx1 - cx0), order=0) > 0.5
                     snap[t] = 1 - (moved & m).sum() / max(1, (moved | m).sum())
                 prev = m
-            series[name] = {"area": area.tolist(), "snap": snap.tolist(), "components": comps.tolist()}
+            series[name] = {"area": area.tolist(), "height": height.tolist(), "snap": snap.tolist(), "components": comps.tolist()}
             disp = math.sqrt(np.nanmedian(area)) * self.scale
             if disp < 1.5:
                 continue
-            over, rel, pk = beyond_ends(area, self.first, self.last, LIMITS["part-scale"])
+            # Height, not area: turning about the vertical axis narrows a horn or eye but keeps its height,
+            # so a part taller or shorter than both end views has really swollen or shrunk. Ends come from
+            # inside the window, since frames outside it were not tracked.
+            over, rel, pk = beyond_ends(height[self.first:self.last + 1], 0, self.last - self.first, LIMITS["part-scale"])
+            over, pk = [t + self.first for t in over], pk + self.first
             if over:
-                self.add("parts", "part-scale", over, rel, f"the {name} mask is {rel*100:+.0f}% beyond both end views' area at frame {pk}")
+                self.add("parts", "part-scale", over, rel, f"the {name} is {rel*100:+.0f}% beyond both end views' height at frame {pk}")
             snaps = []
             for t in seq[1:]:
-                around = [snap[j] for j in range(max(self.first + 1, t - 4), min(self.last + 1, t + 5)) if j != t]
+                # Held drawings (on twos or threes) do not change, so the usual change is measured between
+                # distinct drawings only.
+                around = [snap[j] for j in range(max(self.first + 1, t - 6), min(self.last + 1, t + 7)) if j != t and snap[j] > 0.02]
                 usual = max(float(np.median(around)) if around else 0, 0.05)
                 if snap[t] > LIMITS["part-snap"] and snap[t] > 3 * usual:
                     split = comps[t] != comps[t - 1]
@@ -354,8 +379,8 @@ class Gate:
                     for span in (1, 2, 3):
                         if t + span > self.last:
                             break
-                        ref = 0.5 * (area[t - 1] + area[t + span])
-                        inner = area[t:t + span]
+                        ref = 0.5 * (height[t - 1] + height[t + span])
+                        inner = height[t:t + span]
                         if ref > 0 and np.all(inner < (1 - LIMITS["part-drop"]) * ref):
                             drops.append((t, 1 - inner.min() / ref))
                             break
@@ -424,6 +449,9 @@ def review_package(out, frames, first, last, display_size, fps, head):
     a slowed head close-up and time slices. No metrics, no label, no flags."""
     rev = out / "review"
     rev.mkdir(exist_ok=True)
+    sx, sy, rmax = head
+    sx, sy = sx[first:last + 1], sy[first:last + 1]
+    frames = frames[first:last + 1]
     tmp = rev / "frames"
     tmp.mkdir(exist_ok=True)
     size = display_size // 2 * 2
@@ -447,9 +475,8 @@ def review_package(out, frames, first, last, display_size, fps, head):
         d.text((x + 2, y), str(i), fill=(90, 90, 90))
     sheet.save(rev / "every-frame-real-size.png")
     # Head close-up at quarter speed.
-    sx, sy, rmax = head
     half = int(1.15 * rmax)
-    cx, cy = int(np.median(sx[first:last + 1])), int(np.median(sy[first:last + 1]))
+    cx, cy = int(np.median(sx)), int(np.median(sy))
     pad = 2 * half
     crop = (f"pad=iw+{2 * pad}:ih+{2 * pad}:{pad}:{pad}:color=0xECE9F0,crop={2 * half}:{2 * half}:{cx - half + pad}:{cy - half + pad},"
             "scale=480:480:flags=lanczos")
