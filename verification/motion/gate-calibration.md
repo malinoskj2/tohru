@@ -38,5 +38,8 @@ Calibration notes: part sizes are compared by height, which a turn about the ver
 the crest is prompted on every tip at both end views so a correct two-horn turn keeps both horns in the track; held drawings are
 excluded from the usual step so art on twos and threes is not flagged. motion.py's size-trend and outline-pulse flags are
 advisory: uncalibrated they score an accepted flight (3.1) above a rejected turn (2.8). DINOv2 is unresolved in the model store,
-so identity uses OpenCLIP only; it did not fire on any clip against Cell 165 and becomes meaningful against the locked 5-view sheet.
+so identity uses OpenCLIP only. Its mid-turn dip below the end views does not separate this corpus (rejected 0.031-0.056, an accepted
+flight 0.035), because every drawn clip shares one base drawing; its absolute similarity to Cell 165 does separate off-model art
+(the rendered 3D control scores 0.62 against 0.91 for the drawn clips). It is reported, and becomes a stronger check against the locked
+5-view sheet's nearest view.
 The approved desktop landings are captures without alpha, so only motion.py covers them.
