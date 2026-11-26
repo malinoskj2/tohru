@@ -172,13 +172,16 @@ class Run:
         display = self.wait(lambda: next((p for p in (self.scratch / "run").glob("wayland-*") if p.is_socket()), None), "Wayland")
         self.env.update(WAYLAND_DISPLAY=display.name, SWAYSOCK=str(socket))
         self.app = self.start([ROOT / "bin/tohru-run"], "bar")
-        def ready():
-            result = self.cli("status", "--json", check=False)
-            try:
-                return result.returncode == 0 and isinstance(json.loads(result.stdout), dict)
-            except json.JSONDecodeError:
-                return False
-        self.wait(ready, "usable JSON bar status (acceptance alone is insufficient)")
+        self.wait(self.status, "usable JSON bar status (acceptance alone is insufficient)")
+
+    def status(self):
+        """The bar's settings status, or None while the render is busy or settings are not loaded."""
+        result = self.cli("status", "--json", check=False)
+        try:
+            status = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return None
+        return status if result.returncode == 0 and isinstance(status, dict) and "settings" in status else None
 
     def doctor(self):
         self.phase("doctor")
@@ -189,8 +192,7 @@ class Run:
         for key in ("XDG_RUNTIME_DIR", "PLEAMAR_SOCKETS"):
             if not Path(self.env[key]).resolve().is_relative_to(expected):
                 raise RuntimeError(f"Transport escaped: {key}")
-        status = self.cli("status", "--json")
-        json.loads(status.stdout)
+        status = self.wait(self.status, "usable JSON bar status")
         outputs = json.loads(self.command(["swaymsg", "-t", "get_outputs", "-r"]).stdout)
         if not any(row["name"] == "HEADLESS-1" and row["active"] for row in outputs):
             raise RuntimeError("Owned display has no active HEADLESS-1")
@@ -198,7 +200,7 @@ class Run:
         (self.evidence / "doctor.json").write_text(json.dumps({
             "result": "passed", "runtime": str(self.runtime), "runtime_sha256": digest(self.runtime),
             "owners": {name: process.pid for name, process in self.owners},
-            "outputs": outputs, "status": json.loads(status.stdout),
+            "outputs": outputs, "status": status,
             "environment": self.env}, indent=2) + "\n")
 
     def capture(self, name):
@@ -232,10 +234,13 @@ class Run:
             return config.exists() and tomllib.loads(config.read_text()).get("appearance", {}).get("corner_size") == 29
         self.wait(persisted, "persisted corner_size 29")
         self.cli("config", "reload")
-        self.wait(lambda: json.loads(self.cli("status", "--json").stdout)["settings"]
-                  ["appearance.corner_size"]["value"] == 29 and self.get("settings_error") == "", "observed settings")
+        def observed():
+            status = self.status()
+            return status if status and status["settings"]["appearance.corner_size"]["value"] == 29 \
+                and self.get("settings_error") == "" else None
+        status = self.wait(observed, "observed settings")
         (self.evidence / "config.toml").write_bytes(config.read_bytes())
-        (self.evidence / "settings-status.json").write_text(self.cli("status", "--json").stdout)
+        (self.evidence / "settings-status.json").write_text(json.dumps(status))
         self.capture("settings")
 
     def cleanup(self):
