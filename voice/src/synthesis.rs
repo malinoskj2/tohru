@@ -38,7 +38,7 @@ impl Default for Settings {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Clip {
     pub samples: Vec<f32>,
     pub rate: u32,

@@ -19,6 +19,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import random
 import re
 import shutil
 import statistics
@@ -194,6 +195,96 @@ def normalize(text):
     return " ".join(re.sub(r"[^a-z0-9' ]", " ", text.lower()).split())
 
 
+ACKS = ["Mm, let me look.", "One moment.", "Let me check.", "On it.", "Give me a second.", "Let me see.",
+        "Right, one moment.", "Okay, let me look into that."]
+ACK_AFTER = 1.5
+
+
+class Outbox:
+    """One reply as the Luau controller sends it: an optional acknowledgement first, with the
+    answer held until the acknowledgement finishes and then streamed."""
+
+    def __init__(self, harness, turn):
+        self.h, self.turn = harness, turn
+        self.lock = threading.Lock()
+        self.label = None
+        self.acked = False
+        self.ack_ended = threading.Event()
+        self.started = False
+        self.held = ""
+        self.closed = False
+        self.generation = harness.generation
+
+    def send_start(self, **extra):
+        self.h.send(cmd="speech_start", generation=self.generation, conversation="bench",
+                    turn_id=self.turn["turn_id"], path=self.label, **extra)
+        self.started = True
+
+    def acknowledge(self, text=None, path="ack"):
+        with self.lock:
+            if self.closed or self.started or self.acked:
+                return
+            self.acked = True
+            self.h.acks[self.generation] = self
+            self.h.send(cmd="speech_start", generation=self.generation, conversation="bench",
+                        turn_id=self.turn["turn_id"], path=path)
+            self.h.send(cmd="speech_end", generation=self.generation, text=text or self.h.pick_ack())
+
+    def ended(self):
+        with self.lock:
+            self.h.answer_after = time.monotonic_ns()
+            self.ack_ended.set()
+            if self.held and not self.started:
+                self.h.generation += 1
+                self.generation = self.h.generation
+                self.send_start(background=True)
+                self.h.send(cmd="speech_delta", generation=self.generation, text=self.held)
+                self.held = ""
+
+    def start(self, label):
+        self.label = label
+
+    def pending(self):
+        return not self.started and not self.held
+
+    def delta(self, text):
+        with self.lock:
+            if self.acked and not self.ack_ended.is_set():
+                self.held += text
+                return
+            if not self.started:
+                if self.acked:
+                    self.h.generation += 1
+                    self.generation = self.h.generation
+                self.send_start(**({"background": True} if self.acked else {}))
+            self.h.send(cmd="speech_delta", generation=self.generation, text=self.held + text)
+            self.held = ""
+
+    def end(self, text=None):
+        if self.acked:
+            self.ack_ended.wait(60)
+        with self.lock:
+            self.closed = True
+            if not self.started:
+                if self.acked:
+                    self.h.generation += 1
+                    self.generation = self.h.generation
+                self.send_start(**({"background": True} if self.acked else {}))
+            self.h.send(cmd="speech_end", generation=self.generation, text=(self.held + (text or "")) or None)
+            self.held = ""
+            return self.generation
+
+    def say(self, text, label):
+        self.label = label
+        if self.acked:
+            return self.end(text)
+        with self.lock:
+            self.closed = True
+            self.h.send(cmd="say", text=text, conversation="bench", generation=self.generation,
+                        turn_id=self.turn["turn_id"], path=label)
+            return self.generation
+
+
 class Harness:
     def __init__(self, args, out):
         self.args, self.out = args, out
@@ -235,6 +326,9 @@ class Harness:
         self.helper = None
         self.draft = None
         self.lock = threading.Lock()
+        self.acks = {}
+        self.acked = []
+        self.answer_after = None
 
     def start_voice(self):
         native = Path(self.args.native).resolve()
@@ -270,9 +364,13 @@ class Harness:
         self.wait(lambda e: e.get("event") == "ready", 120)
         self.wait(lambda e: e.get("event") == "listening" and e.get("on"), 60)
         self.send(cmd="presence", visible=True)
+        if self.args.ack:
+            self.send(cmd="prepare", texts=ACKS)
         if self.args.profile == "tomoko":
             self.wait(lambda e: e.get("event") == "profile" and e.get("profile") == "high"
                       and e.get("state") in ("ready", "loaded", "active"), self.args.load_timeout)
+            if self.args.ack:
+                self.send(cmd="prepare", texts=ACKS)
 
     def read_voice(self):
         for line in self.voice.stdout:
@@ -283,6 +381,10 @@ class Harness:
             if event.get("event") not in ("mouth",):
                 self.log.write(json.dumps({"t": time.monotonic_ns(), **event}) + "\n")
             self.events.put(event)
+            if event.get("event") == "speaking" and not event.get("on"):
+                ack = self.acks.pop(event.get("generation"), None)
+                if ack:
+                    ack.ended()
             if event.get("event") == "draft":
                 self.on_draft(event)
             elif event.get("event") == "draft_cancel":
@@ -307,6 +409,11 @@ class Harness:
             if predicate(event):
                 return event
         raise TimeoutError("voice event deadline")
+
+    def pick_ack(self):
+        line = random.choice([a for a in ACKS if a not in self.acked])
+        self.acked = [line, *self.acked][:3]
+        return line
 
     def send(self, **message):
         self.voice.stdin.write(json.dumps(message) + "\n")
@@ -377,16 +484,28 @@ class Harness:
             draft["process"].send_signal(2)
 
     def reply(self, turn):
+        self.answer_after = None
         self.generation += 1
-        generation = self.generation
+        out = Outbox(self, turn)
+        if self.args.ack:
+            if turn.get("slow"):
+                out.acknowledge()
+            else:
+                timer = threading.Timer(ACK_AFTER, out.acknowledge)
+                timer.daemon = True
+                timer.start()
+        try:
+            return self.answer(turn, out)
+        finally:
+            out.closed = True
+
+    def answer(self, turn, out):
         prompt = turn["text"]
         if self.args.path == "stub":
             time.sleep(self.args.stub_ms / 1000)
-            self.send(cmd="speech_start", generation=generation, conversation="bench", turn_id=turn["turn_id"],
-                      path="stub")
-            self.send(cmd="speech_delta", generation=generation, text="Sure, here is a short answer. ")
-            self.send(cmd="speech_end", generation=generation, text="It has two sentences.")
-            return generation
+            out.start("stub")
+            out.delta("Sure, here is a short answer. ")
+            return out.end("It has two sentences.")
         if self.args.path == "draft":
             with self.lock:
                 draft, self.draft = self.draft, None
@@ -407,9 +526,7 @@ class Harness:
                             self.conversation = json.loads(result.stdout).get("conversation") or cid
                         except ValueError:
                             pass
-                        self.send(cmd="say", text=text, conversation="bench", generation=generation,
-                                  turn_id=turn["turn_id"], path="draft")
-                        return generation
+                        return out.say(text, "draft")
             elif draft:
                 draft["process"].send_signal(2)
         if self.args.path == "quick":
@@ -421,47 +538,32 @@ class Harness:
             settle = False
         process = self.spawn_helper(argv, prompt, settle)
         self.helper = {"process": process, "settle": settle}
-        notice, held, streaming = False, "", False
         label = "normal" if self.args.path in ("normal", "draft") else self.args.path
-        for line in process.stdout:
-            try:
-                item = json.loads(line)
-            except ValueError:
-                continue
-            kind = item.get("event")
-            if kind == "start":
-                label = item.get("path") or label
-                if self.args.path != "quick":
-                    self.conversation = item.get("conversation") or self.conversation
-                if not notice:
-                    self.send(cmd="speech_start", generation=generation, conversation="bench",
-                              turn_id=turn["turn_id"], path=label)
-                    streaming = True
-            elif kind == "voice_notice" and not notice:
-                notice = True
-                self.send(cmd="speech_start", generation=generation, conversation="bench", turn_id=turn["turn_id"],
-                          path="notice")
-                self.send(cmd="speech_end", generation=generation, text=item.get("text", ""))
-            elif kind == "delta":
-                if notice:
-                    held += item.get("text", "")
-                elif streaming:
-                    self.send(cmd="speech_delta", generation=generation, text=item.get("text", ""))
-            elif kind in ("done", "error", "stopped"):
-                if kind == "error":
-                    self.log.write(json.dumps({"helper_error": item.get("message", "")[:300]}) + "\n")
-                if notice:
-                    self.wait(lambda e: e.get("event") == "speaking" and not e.get("on"), 60)
-                    self.generation += 1
-                    generation = self.generation
-                    self.send(cmd="speech_start", generation=generation, conversation="bench", background=True,
-                              turn_id=turn["turn_id"], path=label)
-                    self.send(cmd="speech_end", generation=generation, text=held or item.get("spoken", ""))
-                elif streaming:
-                    self.send(cmd="speech_end", generation=generation, text=item.get("spoken") if kind == "error" else None)
-                break
-        process.wait()
-        self.helper = None
+        generation = self.generation
+        try:
+            for line in process.stdout:
+                try:
+                    item = json.loads(line)
+                except ValueError:
+                    continue
+                kind = item.get("event")
+                if kind == "start":
+                    label = item.get("path") or label
+                    if self.args.path != "quick":
+                        self.conversation = item.get("conversation") or self.conversation
+                    out.start(label)
+                elif kind == "voice_notice":
+                    out.acknowledge(item.get("text", ""), "notice")
+                elif kind == "delta":
+                    out.delta(item.get("text", ""))
+                elif kind in ("done", "error", "stopped"):
+                    if kind == "error":
+                        self.log.write(json.dumps({"helper_error": item.get("message", "")[:300]}) + "\n")
+                    generation = out.end(item.get("spoken") if kind == "error" or out.pending() else None)
+                    break
+        finally:
+            process.wait()
+            self.helper = None
         return generation
 
     def run(self, wavs, wake_wav):
@@ -495,9 +597,12 @@ class Harness:
                 onsets = [json.loads(l)["onset_ns"] for l in (self.audio / "pcm.jsonl").read_text().splitlines()] \
                     if (self.audio / "pcm.jsonl").exists() else []
                 after = sorted(o for o in onsets if eou and o > eou)
+                answer = [o for o in after if self.answer_after is None or o > self.answer_after]
                 results.append({"turn": n, "utterance": name, "text": turn["text"], "eou_ns": eou,
                                 "turn_ms": (turn_at - eou) / 1e6 if eou else None,
-                                "first_audio_ms": (after[0] - eou) / 1e6 if after else None})
+                                "first_audio_ms": (after[0] - eou) / 1e6 if after else None,
+                                "answer_audio_ms": (answer[0] - eou) / 1e6 if answer else None,
+                                "load": os.getloadavg()[0]})
                 print(json.dumps(results[-1]), flush=True)
                 awake_until = time.monotonic() + 45
                 time.sleep(self.args.gap)
@@ -537,6 +642,7 @@ def main():
     parser.add_argument("--draft-model", default="claude-sonnet-5-5")
     parser.add_argument("--draft-effort", default="low")
     parser.add_argument("--config", help="config.toml for the isolated helper")
+    parser.add_argument("--ack", action="store_true", help="Acknowledge slow turns as the controller does")
     parser.add_argument("--load-timeout", type=float, default=600)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
@@ -550,19 +656,22 @@ def main():
     results = Harness(args, out).run(wavs, wake)
     measured = [r["first_audio_ms"] for r in results if r["first_audio_ms"] is not None]
     turns = [r["turn_ms"] for r in results if r["turn_ms"] is not None]
+    answers = [r["answer_audio_ms"] for r in results if r["answer_audio_ms"] is not None]
     report = subprocess.run([str(Path(args.native).resolve()), "--first-audio-report"],
                             stdin=(out / "voice-stderr.log").open(), capture_output=True, text=True)
     try:
         internal = json.loads(report.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
         internal = {"error": report.stderr[-500:]}
-    summary = {"path": args.path, "profile": args.profile, "turns": len(results), "silent": len(results) - len(measured),
+    summary = {"path": args.path, "ack": args.ack, "profile": args.profile, "turns": len(results), "silent": len(results) - len(measured),
                "first_audio_ms": {"p50": percentile(measured, 50), "p95": percentile(measured, 95),
                                   "mean": statistics.fmean(measured) if measured else None},
+               "answer_audio_ms": {"p50": percentile(answers, 50), "p95": percentile(answers, 95)},
                "eou_to_turn_ms": {"p50": percentile(turns, 50), "p95": percentile(turns, 95)},
+               "load": statistics.fmean(r["load"] for r in results) if results else None,
                "service_report": internal, "results": results}
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    print(json.dumps({k: summary[k] for k in ("path", "profile", "turns", "silent", "first_audio_ms", "eou_to_turn_ms")}))
+    print(json.dumps({k: summary[k] for k in ("path", "ack", "profile", "turns", "silent", "first_audio_ms", "answer_audio_ms", "eou_to_turn_ms", "load")}))
 
 
 if __name__ == "__main__":

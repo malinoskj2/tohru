@@ -433,7 +433,9 @@ impl Voice {
             emit(
                 json!({"event":"transcript","text":request.chars().take(240).collect::<String>(),"final":true}),
             );
-            emit(json!({"event":"turn","text":request,"turn_id":self.turn_id}));
+            emit(
+                json!({"event":"turn","text":request,"turn_id":self.turn_id,"slow":policy::slow_request(&request)}),
+            );
         } else if !draft.is_empty() {
             emit(json!({"event":"draft_cancel"}));
         }

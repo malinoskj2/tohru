@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use ort::session::RunOptions;
 use serde_json::{Value, json};
 use std::{
+    collections::{HashMap, VecDeque},
     io::Write,
     path::PathBuf,
     process::{ChildStdin, Command, Stdio},
@@ -46,7 +47,12 @@ struct State {
     unload: bool,
     preload: bool,
     warning: String,
+    cacheable: Vec<String>,
+    clips: HashMap<(String, String), Clip>,
+    warm: VecDeque<String>,
 }
+
+const CACHEABLE: usize = 32;
 
 #[derive(Clone)]
 pub struct Control {
@@ -85,6 +91,8 @@ pub trait Speech {
     fn configure(&self, settings: Settings);
     fn unload(&self);
     fn preload(&self);
+    /// Lines worth keeping synthesized, such as acknowledgements: they play without inference.
+    fn prepare(&self, _texts: Vec<String>) {}
 }
 
 impl Speech for Control {
@@ -135,6 +143,10 @@ impl Speech for Control {
     fn preload(&self) {
         Control::preload(self);
     }
+
+    fn prepare(&self, texts: Vec<String>) {
+        Control::prepare(self, texts);
+    }
 }
 
 impl Control {
@@ -157,6 +169,90 @@ impl Control {
         let worker = control.clone();
         let handle = thread::spawn(move || worker.run(assets));
         (control, handle)
+    }
+
+    pub fn prepare(&self, texts: Vec<String>) {
+        let texts: Vec<String> = texts
+            .into_iter()
+            .map(|t| t.trim().to_owned())
+            .filter(|t| !t.is_empty() && t.len() <= 200)
+            .take(CACHEABLE)
+            .collect();
+        let mut state = lock(&self.state.0);
+        if state.cacheable != texts {
+            state.clips.clear();
+            state.cacheable.clone_from(&texts);
+        }
+        state.warm = texts.into();
+        self.state.1.notify_all();
+    }
+
+    fn cached(&self, profile: &str, text: &str) -> Option<Clip> {
+        lock(&self.state.0)
+            .clips
+            .get(&(profile.to_owned(), text.trim().to_owned()))
+            .cloned()
+    }
+
+    fn keep(&self, profile: &str, text: &str, clip: &Clip) {
+        let mut state = lock(&self.state.0);
+        if state.cacheable.iter().any(|t| t == text.trim()) {
+            state
+                .clips
+                .insert((profile.to_owned(), text.trim().to_owned()), clip.clone());
+        }
+    }
+
+    /// Synthesizes one prepared line while nothing else waits; true when it did work.
+    fn warm_one(&self, engine: &mut Engine, settings: &Settings) -> bool {
+        let text = {
+            let mut state = lock(&self.state.0);
+            if state.pending.is_some() || state.active.is_some() {
+                return false;
+            }
+            let Some(text) = state.warm.pop_front() else {
+                return false;
+            };
+            text
+        };
+        let high = self.profiles.high();
+        let profile = high
+            .as_ref()
+            .map_or_else(|| "low".to_owned(), |(id, _)| format!("high-{id}"));
+        if self.cached(&profile, &text).is_some() {
+            return true;
+        }
+        let interrupted = || lock(&self.state.0).pending.is_some();
+        let clip = match &high {
+            Some((_, voice)) => match voice.speak(&text, &interrupted) {
+                Ok(Some((samples, rate))) => {
+                    let phonemes = synthesis::espeak_phonemes(&text, "en-us+f3", 175, 50);
+                    let timeline = synthesis::timeline(&samples, rate, &phonemes);
+                    Some(Clip {
+                        samples,
+                        rate,
+                        phonemes,
+                        timeline,
+                    })
+                }
+                _ => None,
+            },
+            None => RunOptions::new()
+                .ok()
+                .and_then(|options| engine.synthesize(&text, settings, &options).ok()),
+        };
+        match clip {
+            Some(mut clip) => {
+                clip.trim();
+                self.keep(&profile, &text, &clip);
+                diagnostic(
+                    "clip_prepared",
+                    json!({"profile":if high.is_some(){"high"}else{"low"}}),
+                );
+            }
+            None => lock(&self.state.0).warm.push_front(text),
+        }
+        true
     }
 
     pub fn start(&self, conversation: Value, generation: Value) -> u64 {
@@ -330,6 +426,9 @@ impl Control {
                     if let Some(next) = state.settings.take() {
                         settings = next;
                         engine = None;
+                        state.clips.clear();
+                        let lines = state.cacheable.clone();
+                        state.warm = lines.into();
                     }
                     if state.unload {
                         engine = None;
@@ -346,6 +445,17 @@ impl Control {
                     }
                     if let Some(job) = state.pending.take() {
                         break job;
+                    }
+                    if !state.warm.is_empty()
+                        && state.active.is_none()
+                        && let Some(engine) = &mut engine
+                    {
+                        drop(state);
+                        let worked = self.warm_one(engine, &settings);
+                        state = lock(&self.state.0);
+                        if worked {
+                            continue;
+                        }
                     }
                     if engine.is_none() && !settings.load_on_conversation {
                         drop(state);
@@ -546,6 +656,12 @@ impl Control {
             low: engine,
             high: self.profiles.high(),
         };
+        let profile_key = |voices: &Voices<'_>| {
+            voices
+                .high
+                .as_ref()
+                .map_or_else(|| "low".to_owned(), |(id, _)| format!("high-{id}"))
+        };
         diagnostic(
             "speech_profile",
             json!({"profile":if voices.high.is_some(){"high"}else{"low"}}),
@@ -564,16 +680,28 @@ impl Control {
                     state.infer = Some(options.clone());
                 }
                 diagnostic("synthesis_start", json!({"generation":job.generation}));
-                let (mut clip, profile) = match self.high_clip(job, &mut voices, &text) {
-                    Ok(Some(clip)) => (clip, "high"),
-                    Ok(None) => (voices.low.synthesize(&text, settings, &options)?, "low"),
-                    Err(()) => return Ok(()),
+                let key = profile_key(&voices);
+                let (clip, profile) = if let Some(clip) = self.cached(&key, &text) {
+                    (clip, if voices.high.is_some() { "high" } else { "low" })
+                } else {
+                    let (mut clip, profile) = match self.high_clip(job, &mut voices, &text) {
+                        Ok(Some(clip)) => (clip, "high"),
+                        Ok(None) => (voices.low.synthesize(&text, settings, &options)?, "low"),
+                        Err(()) => return Ok(()),
+                    };
+                    clip.trim();
+                    let kept = if profile == "high" {
+                        key.clone()
+                    } else {
+                        "low".to_owned()
+                    };
+                    self.keep(&kept, &text, &clip);
+                    (clip, profile)
                 };
                 lock(&self.state.0).infer = None;
                 if self.stale(job.id) {
                     return Ok(());
                 }
-                clip.trim();
                 diagnostic(
                     "synthesis_ready",
                     json!({"generation":job.generation,"samples":clip.samples.len(),"rate":clip.rate}),

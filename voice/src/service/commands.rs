@@ -133,6 +133,19 @@ impl Voice {
                 }
             }
             "presence" => self.profiles.presence(message["visible"] == true),
+            "prepare" => {
+                let texts = message["texts"]
+                    .as_array()
+                    .map(|texts| {
+                        texts
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(policy::speakable)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                self.speaker.prepare(texts);
+            }
             "tts" => {
                 let settings: Settings = serde_json::from_value(message)?;
                 self.load_on_conversation = settings.load_on_conversation;
