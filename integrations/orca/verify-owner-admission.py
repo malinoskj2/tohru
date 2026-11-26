@@ -17,7 +17,6 @@ TESTS = [
     'src/cli/orchestration/agent-view.test.ts',
     'src/main/bots/desktop-voice-side.test.ts',
     'src/main/runtime/rpc/methods/bots-voice-side.test.ts',
-    'src/main/claude/claude-thin-home-options.test.ts',
     'src/main/bots/desktop-bot-auto-steer.test.ts',
     'src/main/runtime/rpc/orchestration/callers/orchestration-session-voice-caller.test.ts',
     'src/shared/agent-session/view/structured-agent-session-queued-cards.test.ts',

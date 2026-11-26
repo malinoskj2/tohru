@@ -9,17 +9,17 @@ Run its boundary tests with `cargo test --manifest-path desktop/Cargo.toml voice
 The responsive Home stack adds `desktop-voice-quick.patch` after
 `desktop-voice-completion-observability.patch`, then the Nix package's
 `desktop-bot-auto-steer.patch`. The quick patch adds the local owner-only
-`bot voice-side` recording protocol and Claude's foreground tool guard.
+`bot voice-side` recording protocol.
 Its base hashes and patch digest are in `quick-voice-provenance.json`.
 Apply it to a private source tree with
 `python3 integrations/orca/apply-owner-admission.py --stage quick --source .tmp/current-orca-source`.
 Apply the automatic steering patch from the matching Nix package afterward.
 The shared verify runner and `verify-owner-admission.py` require both patches
-and run fifteen test files plus the node and CLI typechecks.
+and run fourteen test files plus the node and CLI typechecks.
 The native fixtures cover the journal, caller gates, owner request correlation,
-automatic steering and tool budget; they do not prove live Home or audible playback.
-See [quick voice and thin Home](../../docs/configuration.md#quick-voice-and-thin-home)
-for activation, charter refresh, metrics and the Claude requirement.
+and automatic steering; they do not prove live Home or audible playback.
+See [quick voice](../../docs/configuration.md#quick-voice)
+for activation, metrics and the Claude requirement.
 
 This artifact adds the explicit producer and desktop registration handshake to Orca 1.4.268. It depends on the existing desktop routing patch identified in `provenance.json`. It does not install Orca or change a running service.
 

@@ -29,7 +29,7 @@ are documented in [Desktop idle dragon scenes](assistant-afk.md).
 | `assistant.provider` | string | `""` | The CLI answers go to: `claude`, `codex`, `gemini`, `agy` or `opencode`. Empty, or one that is missing or signed out, means the first installed one that is signed in. The popup's provider menu sets it |
 | `assistant.backend` | string | `"local"` | Which backend runs chats: `local` (default, local CLIs + SQLite, zero Orca dependency) or opt-in `orca` (routes desktop popup and voice through an Orca bot). See [assistant-bot-abilities.md](assistant-bot-abilities.md) |
 | `assistant.orca_bot` | string, 1 to 64 of `A-Z a-z 0-9 _ . -` and space | `"Tohru"` | The Orca bot name used when `assistant.backend = "orca"` |
-| `assistant.orca_voice_chat` | string | `"home"` | Home shares the public GUI, desktop text and voice history. Opt-in `quick` answers spoken turns first with a fast responder and hands work to Home, without creating another chat. `foreground` retains the earlier separate-chat route; `new` starts a fresh session. See [quick voice](#quick-voice-and-thin-home). |
+| `assistant.orca_voice_chat` | string | `"home"` | Home shares the public GUI, desktop text and voice history. Opt-in `quick` answers spoken turns first with a fast responder and hands work to Home, without creating another chat. `foreground` retains the earlier separate-chat route; `new` starts a fresh session. See [quick voice](#quick-voice). |
 | `assistant.orca_offline` | string | `"error"` | What happens when `assistant.backend = "orca"` and Orca isn't running: `error` (shows an offline note so state never splits) or `local` (falls back to local CLIs) |
 | `assistant.orca_needs_you_minutes` | integer, 0 to 1440 | `5` | How often, in minutes, the bar asks Orca which of the bot's items are in Needs you when `assistant.backend = "orca"`; `0` turns the watcher off. Each item that newly needs you wakes the bot once in its Home Chat to say what it is and what it asks, on the desktop and aloud (see [ai-assistant.md](ai-assistant.md)) |
 | `assistant.quick_voice_model` | string, `claude-` then up to 121 of `A-Z a-z 0-9 . _ : / @ # + -` | `"claude-sonnet-5-5"` | The Claude model the `quick` voice responder answers with. It is separate from `assistant.models.claude.model`, which Home and local chats keep using. An invalid value falls back to the default |
@@ -106,7 +106,7 @@ programs.tohru.lock.style = "horizon-meniscus";   # the same as settings.lock.st
 programs.tohru.notifications.position = "bottom-right";   # the same as settings.notifications.position
 ```
 
-## Quick voice and thin Home
+## Quick voice
 
 `assistant.orca_voice_chat = "quick"` keeps one public Home conversation. Whether Home is idle or busy, an ephemeral Claude CLI process answers each spoken turn first: small talk and status questions get a direct answer without tools, and requests for work go on to Home. It creates no Orca session and keeps no separate provider conversation. With an Orca whose quick-voice patch predates `--always`, an idle Home answers voice itself, as before.
 
@@ -118,13 +118,11 @@ This mode requires the matching Orca quick-voice integration patch, the automati
 
 The default remains `home`. After the matching builds are installed, select `quick` with `tohru config set assistant.orca_voice_chat quick`, or set `programs.tohru.assistant.orcaBot.voiceChat = "quick"` in Home Manager. An older Orca rejects the new protocol instead of creating a fallback chat.
 
-The updated `tohru assistant orca init --bot Tohru` charter includes `[tohru-thin-home:5000]`. Existing Home charters are preserved; refresh one with `tohru assistant orca init --bot Tohru --force-soul --no-migrate`, which saves the previous charter as `SOUL.md.bak`, or merge the new budget instruction into your customized charter. Select Claude for Home before adding the marker. With the matching native integration, that marker enables a five-second foreground tool budget for Claude bot-folder sessions. Known foreground builds, tests, downloads, and worker waits are refused before execution. Other foreground shell commands receive a process-group deadline and up to one second for cleanup. Long work uses `worker-start --background` or Bash `run_in_background=true`. Read, Glob, Grep and ToolSearch run as quick foreground tools within the same budget. Internal subagents are refused. Owner questions and reply generation have no work deadline. Codex refuses this charter until an equivalent native guard is available.
-
 With the Orca backend, a spoken turn reaches Home or the quick responder only after it settles: the voice service sends `settled` once you have not carried on within 352 ms of quiet after the turn. New speech holds it until its words decide, for at most 2.5 seconds. Carrying on cancels the fragment before anything is admitted, and the joined sentence goes as one turn. The helper reads Orca meanwhile, so a final turn waits only for what is left of the window; `settle_wait` in the metrics below records that wait. A pause longer than the window still sends the first part as its own turn, as before.
 
 Desktop text and voice sent to Home select automatic native steering. Provider readiness and pending approvals retain Orca's existing gates. Internal context notes wait for idle and never count as fresh owner authority. They stay out of the visible queue while they wait, so they offer no **Steer**; one Orca holds after a failed send shows there for Send or Delete. No manual **Steer** click is required when the provider can accept the message.
 
-Desktop diagnostics are in `home-metrics.jsonl` under the assistant scratch directory. `owner_wait` measures submission to observation of native owner admission. `side_ack` and `side_response` measure response preparation, not audible playback. The native application log emits `[tohru-home]` events for total Home turn duration, foreground tool time, and blocked tools. Metrics omit message and command contents. No live latency measurements are implied by installing the instrumentation.
+Desktop diagnostics are in `home-metrics.jsonl` under the assistant scratch directory. `owner_wait` measures submission to observation of native owner admission. `side_ack` and `side_response` measure response preparation, not audible playback. Metrics omit message and command contents. No live latency measurements are implied by installing the instrumentation.
 
 ## Voice models
 

@@ -1,4 +1,4 @@
-{ lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage, bash
+{ lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage
 , fontconfig, wayland, jq, socat, ffmpeg-headless, findutils, gnugrep, curl, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3, dbus
 , libnotify, util-linux, systemd, procps, coreutils, wayland-utils, swayidle, mpvpaper, wl-clipboard, xdg-terminal-exec
   # Without the voice service nothing for speech is installed; the setting then has nothing to start.
@@ -61,14 +61,6 @@ in stdenvNoCC.mkDerivation {
   src = source;
   nativeBuildInputs = [ makeWrapper ];
   dontBuild = true;
-  doInstallCheck = true;
-  nativeInstallCheckInputs = [ jq ];
-  # The Home hook wraps a foreground command in the installed guard, which must then run it.
-  installCheckPhase = ''
-    plan=$(echo '{"tool":"Bash","input":{"command":"printf guarded"}}' | $out/bin/tohru-home-guard plan --remaining-ms 5000)
-    [[ $(jq -r .decision <<<"$plan") == wrap ]]
-    [[ $(bash -c "$(jq -r .input.command <<<"$plan")" 2>/dev/null) == guarded ]]
-  '';
   installPhase = ''
     runHook preInstall
     mkdir -p $out/bin $out/share/tohru
@@ -81,7 +73,6 @@ in stdenvNoCC.mkDerivation {
     cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-session-run \
       bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev $out/bin/
     wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar --prefix PATH : "$out/bin:${lib.makeBinPath [ fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}"
-    wrapProgram $out/bin/tohru-home-guard --prefix PATH : ${lib.makeBinPath [ bash ]}
     wrapProgram $out/bin/tohru-assistant --prefix PATH : ${lib.makeBinPath [ libnotify ]}
     wrapProgram $out/bin/tohru-run \
       --prefix PATH : "$out/bin:${lib.makeBinPath [ fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \

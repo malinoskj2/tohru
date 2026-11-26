@@ -1,13 +1,11 @@
 {
   "orcaVersion": "1.4.268",
-  "patchSha256": "2fe33f25e27b01a4e6822e5a5d1d2816f718fe0f2cea36b7a76fbf7c17e2df87",
+  "patchSha256": "2430440a3e52893bfb2071663910e07e3be8b4d9db1c551c8cbd6f534f2a2bee",
   "baseFiles": {
     "src/cli/bots/bot-handler-groups.ts": "f4135283f83680c4133a12438a4e54f14630770731d2c1487189d0001c91be21",
     "src/cli/bots/bot.ts": "7e9821d5015c964e0801ae696510f0364aaaab1a703f14caf9d2a4de9e913453",
     "src/cli/specs/bot.ts": "c5c6b83f7b8d5d1b916f3e1f6a9c02b8d31f1512ae8a5a722b577c41466eb75b",
     "src/main/bots/desktop-voice-continuations.ts": "cc1dcca657958761c10a0bfed52c183b355d47ce1495c9e07c62e91eab1f24c6",
-    "src/main/claude/structured/launch/claude-bot-session-options.ts": "d1f986a17d033debbe55bab5a2297b66e96c97b01361099da4ba620d03b9bcb0",
-    "src/main/codex/structured/launch/codex-structured-launch-resolution.ts": "6db4ba80fbad7f57d06cd3453c56f79eb7460c539c075851b47902a297add47d",
     "src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.test.ts": "f1131850958c218bacff63a2e020db745f9c471284010ccd81d25dd1da0ef3b9",
     "src/main/native-chat/agent-session-wire/publication/history/agent-read-journal-page.ts": "7c8c5a663adc9bf37ea17822f23676cb3ab409c52db844431a9f60b1cf7cc631",
     "src/main/runtime/rpc/methods/bots.ts": "0090fd5056d8dd9cfb5d40891e35d1a1c3753d33c6b621525dc52b83c8e885cd",
