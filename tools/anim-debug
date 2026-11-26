@@ -24,6 +24,9 @@ sheet() {
 [[ $# == 1 ]] || usage
 case $1 in
     list) echo sheet-b-turn ;;
-    sheet-b-turn) exec "$pleamar" --say tohru "text ai_turn_request $(sheet turn-sheet-b.webp)" 'emit assistant_dragon_turn' ;;
+    sheet-b-turn)
+        path=$(sheet turn-sheet-b.webp) || exit 1
+        exec "$pleamar" --say tohru "text ai_turn_request $path" 'emit assistant_dragon_turn'
+        ;;
     *) usage ;;
 esac

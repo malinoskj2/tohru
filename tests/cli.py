@@ -27,6 +27,21 @@ class Cli(unittest.TestCase):
     def invoke(self, *args, **env):
         return subprocess.run([str(ROOT / "bin/tohru"), *args], env={**self.env, **env}, text=True, capture_output=True)
 
+    def test_anim_debug_sends_the_sheet_and_refuses_a_missing_one(self):
+        shell = self.path / "shell"
+        sheet = shell / "assistant/dragon/turn-sheet-b.webp"
+        sheet.parent.mkdir(parents=True)
+        sheet.write_bytes(b"")
+        run = lambda: subprocess.run([str(ROOT / "tools/anim-debug"), "sheet-b-turn"], env={**self.env, "TOHRU_SHELL_DIR": str(shell)}, text=True, capture_output=True)
+        result = run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), ["--say", "tohru", f"text ai_turn_request {sheet}", "emit assistant_dragon_turn"])
+        sheet.unlink()
+        result = run()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("cannot find", result.stderr)
+
     def test_palette_route_is_closed_before_ipc(self):
         modes=['mocha','macchiato','rose_pine','nord','gruvbox','tokyo_night','dracula','everforest']
         for index,mode in enumerate(modes):
