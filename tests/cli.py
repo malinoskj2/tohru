@@ -363,7 +363,8 @@ class Cli(unittest.TestCase):
         for key, val in (("assistant.backend", "orca"), ("assistant.orca_bot", "Tohru"),
                          ("assistant.orca_voice_chat", "home"), ("assistant.orca_offline", "error"),
                          ("assistant.orca_needs_you_minutes", "5"), ("assistant.quick_voice_model", "claude-sonnet-5-5"),
-                         ("assistant.quick_voice_effort", "low"), ("assistant.quick_voice_cache", "false")):
+                         ("assistant.quick_voice_effort", "low"), ("assistant.quick_voice_cache", "false"),
+                         ("assistant.quick_voice_transport", "cli"), ("assistant.anthropic_key_file", "/run/key")):
             res = self.invoke("config", "set", key, val)
             self.assertEqual(res.returncode, 0, res.stderr)
             self.assertEqual(json.loads(res.stdout)[2:4], [f"text setting_key {key}", f"text setting_value {val}"])
