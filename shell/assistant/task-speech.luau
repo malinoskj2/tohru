@@ -2,6 +2,7 @@
 -- Clock and speech effects are injected so scheduling has no wall-clock or model dependency.
 return function(clock, speak, hush)
     local chat, request, epoch = nil, nil, 0
+    local yielded = false
     local tasks, count, queue, active = {}, 0, {}, nil
     local enabled, seed, last_topic, chatter_count = false, 1, nil, 0
     local next_chatter, last_speech = 0, -60000
@@ -87,6 +88,7 @@ return function(clock, speak, hush)
     return {
         begin = function(cid, rid)
             interrupt()
+            yielded = false
             chat, request = cid, rid
             next_chatter, chatter_count = clock() + 45000 + random(30001), 0
         end,
@@ -123,6 +125,7 @@ return function(clock, speak, hush)
             -- The owner has the floor: track the task so later updates still
             -- speak, but never play this one afterwards.
             if muted then return false, "hearing" end
+            if yielded and event.kind == "ack" then return false, "yielded" end
             if task.last_text == event.text then return true end
             task.last_text = event.text
             enqueue({task = event.task, kind = event.kind, priority = rank, text = event.text})
@@ -137,6 +140,12 @@ return function(clock, speak, hush)
         -- hush unbinds them through interrupt().
         silence = function()
             if active then hush(); active = nil end
+        end,
+        -- A newer owner turn that Home may not see: the task keeps its binding, so its
+        -- progress and result still speak, but a late acknowledgement no longer does.
+        yield = function()
+            yielded = true
+            clear()
         end,
         tick = tick,
     }

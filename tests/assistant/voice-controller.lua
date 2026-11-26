@@ -577,11 +577,35 @@ assert(written[#written].message.cmd == "hush", "a progress muted during capture
 task_update("progress", 3, "The background worker is ready.", "blip-request")
 assert(diagnostics[#diagnostics].stage == "task_update", diagnostics[#diagnostics].reason)
 assert(written[#written].message.cmd == "speech_end" and written[#written].message.text == "The background worker is ready.")
-current_service.line({event="turn", text="A committed owner turn"})
+-- A spoken turn may be a quick exchange Home never sees: the running task keeps its
+-- completion, and only Home's next owner turn retires it.
+current_service.line({event="turn", text="How is it going?"})
 local after_committed = #written
-task_update("done", 4, "Superseded completion", "blip-request")
+task_update("done", 4, "It finished while we talked.", "blip-request")
+assert(diagnostics[#diagnostics].stage == "task_update", diagnostics[#diagnostics].reason)
+assert(written[#written].message.cmd == "speech_end" and written[#written].message.text == "It finished while we talked.")
+speech_listener("origin", "task-chat", "orca:next-canonical", true, nil, "next-owner-request")
+after_committed = #written
+task_update("done", 5, "Superseded completion", "blip-request")
 assert(#written == after_committed and diagnostics[#diagnostics].reason == "origin_mismatch")
 print("Task updates: a capture blip keeps the origin; the next ack and progress speak")
+
+-- Home's reply to a followed turn waits for the floor, then speaks once.
+speech_listener("origin", "task-chat", "orca:follow-canonical", true, nil, "follow-request")
+fact.ai_dragon_open, fact.ai_speaking = true, true
+local before_follow, timers_before = #written, #timers
+speech_listener("follow_result", "task-chat", "The build passed.", true, nil, "follow-request", nil, "follow:follow-request")
+assert(#written == before_follow and #timers == timers_before + 1, "a followed reply never talks over speech")
+fact.ai_speaking = false
+timers[#timers]()
+assert(written[#written].message.cmd == "speech_end" and written[#written].message.text == "The build passed.")
+assert(diagnostics[#diagnostics].stage == "follow_speech")
+before_follow = #written
+speech_listener("follow_result", "task-chat", "The build passed.", true, nil, "follow-request", nil, "follow:follow-request")
+assert(#written == before_follow and diagnostics[#diagnostics].reason == "duplicate")
+speech_listener("follow_result", "task-chat", "Stale reply.", true, nil, "older-request", nil, "follow:older-request")
+assert(#written == before_follow and diagnostics[#diagnostics].reason == "origin_mismatch")
+print("Followed Home replies: held behind speech, spoken once, stale origins dropped")
 print("Task updates: prompt acknowledgement, microphone open, progress, completion priority, replay, follow-up input and hide passed")
 
 -- Switching backends invalidates old audio and never reuses a local conversation ID.

@@ -429,6 +429,7 @@ the user must select assistant.backend = local. No local broker is forwarded her
     let _signals =
         super::stream::on_signals(Arc::new(move |_| flag.store(true, Ordering::SeqCst)))?;
     let voice = args.voice;
+    let follow = voice && !args.quick_handoff_notice.is_empty();
     let mut owner_admitted = |request: &str, canonical: &str| {
         let duration = i64::try_from(submitted.elapsed().as_millis()).unwrap_or(i64::MAX);
         home_metric(
@@ -445,6 +446,11 @@ the user must select assistant.backend = local. No local broker is forwarded her
             emit(
                 json!({"event": "voice_origin", "request": request, "canonical_request": canonical}),
             );
+        }
+        // Once Home owns the question, the voice is free for the next turn; Home's reply still
+        // arrives on this stream and is spoken once as a follow-up.
+        if follow {
+            emit(json!({"event": "follow", "conversation": chat_id, "request": request}));
         }
     };
     let message_id = text(receipt.get("promptItemId"));

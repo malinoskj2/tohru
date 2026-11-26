@@ -19,6 +19,8 @@ return function(assistant, puppet, flight, service_executable)
     local loaded = false
     local hearing = false
     local barged, cancelling, queued, interrupted_spoken = false, false, nil, nil
+    local follow_pending, release_follow = nil, nil
+    local FOLLOW_TRIES = 240
     local present = false
     local profiles_signature = nil
     local GREETINGS = {"Yes?", "I'm here.", "Mm? What is it?", "You called?", "Here I am. What do you need?", "Hello again."}
@@ -150,7 +152,7 @@ return function(assistant, puppet, flight, service_executable)
     end
 
     local function quiet()
-        notice_reply = nil
+        notice_reply, follow_pending = nil, nil
         hearing = false
         task_speech.interrupt()
         voice_return.interrupt()
@@ -168,9 +170,9 @@ return function(assistant, puppet, flight, service_executable)
         show_dragon(false)
     end
 
+    -- A spoken turn quiets Home's task speech; only Home's own next owner turn rebinds it.
     local function ask_turn(prompt, opts)
-        task_speech.interrupt()
-        voice_return.interrupt()
+        task_speech.yield()
         turn_generation = turn_generation + 1
         streaming_speech = false
         barged = false
@@ -305,7 +307,7 @@ return function(assistant, puppet, flight, service_executable)
             end
             greet()
         elseif event == "turn" then
-            task_speech.interrupt()
+            task_speech.yield()
             greeting_serial = greeting_serial + 1
             puppet.thinking()
             local opts = interrupted_spoken and {interrupted = interrupted_spoken} or {}
@@ -341,7 +343,6 @@ return function(assistant, puppet, flight, service_executable)
         elseif event == "barge" then
             notice_reply = nil
             task_speech.silence()
-            voice_return.interrupt()
             turn_generation = turn_generation + 1
             streaming_speech = false
             send({cmd = "hush"})
@@ -399,8 +400,13 @@ return function(assistant, puppet, flight, service_executable)
         if id and (fact.ai_dragon_open == true or fact.ai_open == true) then presence(true) end
     end
 
-    local function answer_event(kind, conv, answer, voice, turn, request, path)
+    local function answer_event(kind, conv, answer, voice, turn, request, path, completion)
         if not id then return end
+        if kind == "follow_result" then
+            follow_pending = {chat = conv, request = request, completion = completion, text = answer or "", tries = 0}
+            release_follow()
+            return
+        end
         if not voice then
             if kind == "start" then notice_reply = nil end
             if kind == "start" then task_speech.interrupt() end
@@ -426,8 +432,10 @@ return function(assistant, puppet, flight, service_executable)
             if assistant.voice_ready and request and request ~= "" then assistant.voice_ready(conv, request) end
             return
         elseif kind == "start" then
-            voice_return.begin(conv, request)
-            task_speech.begin(conv, request)
+            if request and request ~= "" then
+                voice_return.begin(conv, request)
+                task_speech.begin(conv, request)
+            end
             if notice_reply and notice_reply.generation == turn_generation then
                 notice_reply.path = notice_reply.path or path
             else
@@ -549,6 +557,31 @@ return function(assistant, puppet, flight, service_executable)
         end)
     end
 
+    -- Home's answer to a followed turn waits for the floor, then speaks once if its turn is still current.
+    release_follow = function()
+        local item = follow_pending
+        if not item or not id then return end
+        local status = assistant.status and assistant.status() or {}
+        local visible = (fact.ai_dragon_open or status.open) and (not status.open or status.conversation == item.chat)
+        local busy = fact.ai_voice_paused or fact.notices_dnd or fact.ai_speaking or hearing
+            or (assistant.streaming and assistant.streaming())
+        if busy and item.tries < FOLLOW_TRIES then
+            item.tries = item.tries + 1
+            after(500, function() if follow_pending == item then release_follow() end end)
+            return
+        end
+        follow_pending = nil
+        local allowed, reason = voice_return.take(item.chat, item.request, item.completion, visible == true, busy)
+        send({cmd = "diagnostic", stage = allowed and "follow_speech" or "follow_dropped",
+            request = item.request, completion = item.completion, visible = visible == true, reason = reason})
+        if not allowed then return end
+        task_speech.interrupt()
+        turn_generation = turn_generation + 1
+        streaming_speech, streamed_text = false, false
+        send({cmd = "speech_start", generation = turn_generation, conversation = item.chat})
+        send({cmd = "speech_end", generation = turn_generation, text = item.text})
+    end
+
     on("assistant_voice_result", function()
         local status = assistant.status and assistant.status() or {}
         local visible = (fact.ai_dragon_open or status.open) and (not status.open or status.conversation == text.ai_voice_result_chat)
@@ -608,7 +641,8 @@ return function(assistant, puppet, flight, service_executable)
             voice_return.interrupt()
             streaming_speech, streamed_text = false, false
         end
-        task_speech.tick(true, hearing or (fact.ai_speaking and event.kind ~= "done" and event.kind ~= "failed"))
+        task_speech.tick(true, hearing or (assistant.streaming and assistant.streaming())
+            or (fact.ai_speaking and event.kind ~= "done" and event.kind ~= "failed"))
     end)
     on("assistant_hush", function() task_speech.interrupt(); voice_return.interrupt(); turn_generation = turn_generation + 1; send({cmd = "hush"}) end)
     on("assistant_dragon", function()

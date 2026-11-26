@@ -507,6 +507,44 @@ task_poller.exit(nil, 0)
 assert(assistant.streaming())
 spawned[#spawned].line({event="done", conversation=uuid})
 
+-- A voice turn handed to Home frees the floor once Home admits it; Home's reply comes back once.
+local follows = {}
+assistant.on_speech(function(kind, conv, text, voice, generation, request, path, completion)
+    if kind == "follow_result" then follows[#follows + 1] = {conv, text, request, completion} end
+end)
+local answers_before = #answers
+assert(assistant.ask("Run the long build", uuid, {voice_generation=20}))
+local handed = spawned[#spawned]
+handed.line({event="start", conversation=uuid, voice_request="", path="quick"})
+handed.line({event="voice_origin", request="build-request", canonical_request="orca:build"})
+handed.line({event="follow", conversation=uuid, request="build-request"})
+assert(not assistant.streaming(), "a followed Home turn no longer holds the voice")
+assert(#answers == answers_before + 1 and answers[#answers][1] == "done" and answers[#answers][3] == "")
+assert(assistant.ask("What's the weather like?", uuid, {voice_generation=21}))
+local quick = spawned[#spawned]
+handed.line({event="delta", text="The build "})
+handed.line({event="delta", text="passed."})
+assert(#follows == 0)
+handed.line({event="done", conversation=uuid})
+assert(#follows == 1 and follows[1][2] == "The build passed." and follows[1][3] == "build-request"
+    and follows[1][4] == "follow:build-request")
+handed.line({event="done", conversation=uuid})
+assert(#follows == 1, "a followed reply is offered once")
+assert(assistant.streaming(), "the follower never ends the newer turn")
+quick.line({event="done", conversation=uuid})
+-- A task acknowledgement takes over a follower's result.
+assert(assistant.ask("Start a worker", uuid, {voice_generation=22}))
+local worker_turn, worker_id = spawned[#spawned], #spawned
+worker_turn.line({event="start", conversation=uuid, voice_request=""})
+worker_turn.line({event="voice_origin", request="worker-request", canonical_request="orca:worker"})
+worker_turn.line({event="follow", conversation=uuid})
+local kills = #killed
+assert(not assistant.detach_voice("worker-request"), "a follower holds no floor to release")
+assert(#killed == kills + 1 and killed[#killed][1] == worker_id)
+worker_turn.line({event="delta", text="ignored"})
+worker_turn.line({event="done", conversation=uuid})
+assert(#follows == 1)
+
 -- A new Home Chat closes the old one: voice and the popup follow whichever Home is current.
 local new_home = "9a3c2f10-7b4e-4c1d-8e2f-5a6b7c8d9e0f"
 local function sends_conversation(spawn_args)

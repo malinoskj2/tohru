@@ -50,7 +50,7 @@ index fad6cbff..3fe03f68 100644
      path: ['bot', 'voice-ready'],
      hidden: true,
 diff --git a/src/main/bots/desktop-voice-continuations.ts b/src/main/bots/desktop-voice-continuations.ts
-index c6fa481d..6d6088c1 100644
+index c6fa481d..822e34b2 100644
 --- a/src/main/bots/desktop-voice-continuations.ts
 +++ b/src/main/bots/desktop-voice-continuations.ts
 @@ -20,7 +20,7 @@ import type { JournalSqlReads } from '../native-chat/agent-session-journal/journ
@@ -62,45 +62,16 @@ index c6fa481d..6d6088c1 100644
    console.info('[desktop-voice]', JSON.stringify({ stage, wall_ms: Date.now(), ...fields }))
  }
  
-@@ -135,8 +135,20 @@ export class DesktopVoiceContinuations {
- // A restart deliberately drops speech eligibility; the durable result remains in Orca.
- const continuations = new DesktopVoiceContinuations()
- 
-+const sideSilenced = new Set<string>()
-+export function silenceDesktopOwnerForSide(chat: string): void {
-+  sideSilenced.add(chat)
-+  if (sideSilenced.size > 512) {
-+    const oldest = sideSilenced.values().next().value
-+    if (oldest !== undefined) sideSilenced.delete(oldest)
-+  }
-+}
-+
- export function desktopVoiceOwnerMessage(chat: string, message: AgentJournalMessageItem): void {
--  if (!message.from && !message.origin && !message.memorySource) desktopVoiceOwnerTurn(chat)
-+  if (!message.from && !message.origin && !message.memorySource) {
-+    sideSilenced.delete(chat)
-+    desktopVoiceOwnerTurn(chat)
-+  }
- }
- 
- export function desktopVoiceOwnerTurn(chat: string): void {
-@@ -148,6 +160,7 @@ export async function desktopVoiceOrigin(
-   runtime: OrcaRuntimeService,
-   chat: string
- ): Promise<Origin | null> {
-+  if (sideSilenced.has(chat)) return null
-   const unchanged = desktopVoiceTasks.capture(chat)
-   const reads = await (await requireStructuredHost(runtime)).journalReads(chat)
-   const origin = await currentDesktopOwnerOrigin(reads, chat)
 diff --git a/src/main/bots/desktop-voice-side.test.ts b/src/main/bots/desktop-voice-side.test.ts
 new file mode 100644
-index 00000000..dbc6d0ed
+index 00000000..b94fbbbc
 --- /dev/null
 +++ b/src/main/bots/desktop-voice-side.test.ts
-@@ -0,0 +1,200 @@
+@@ -0,0 +1,208 @@
 +import { afterEach, expect, it } from 'vitest'
 +import { DesktopVoiceSide } from './desktop-voice-side'
 +import { desktopVoiceOwnerTurn } from './desktop-voice-continuations'
++import { desktopVoiceTasks } from './desktop-voice-task-delivery'
 +import {
 +  createQueuedMessageTestRig,
 +  type QueuedMessageTestRig
@@ -229,6 +200,13 @@ index 00000000..dbc6d0ed
 +  expect(remembered).toBe(false)
 +})
 +
++it("keeps the speech of Home's running work through a quick exchange", async () => {
++  const current = await busy()
++  const unchanged = desktopVoiceTasks.capture(SESSION)
++  await new DesktopVoiceSide().begin(current.host, SESSION, REQUEST, 'How is it going?')
++  expect(unchanged()).toBe(true)
++})
++
 +it('actual owner handover retires a pending side answer', async () => {
 +  const current = await busy()
 +  const side = new DesktopVoiceSide()
@@ -300,12 +278,11 @@ index 00000000..dbc6d0ed
 +})
 diff --git a/src/main/bots/desktop-voice-side.ts b/src/main/bots/desktop-voice-side.ts
 new file mode 100644
-index 00000000..438838fd
+index 00000000..4d06c7cd
 --- /dev/null
 +++ b/src/main/bots/desktop-voice-side.ts
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,172 @@
 +import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/host/structured-agent-session-host'
-+import { desktopVoiceOwnerTurn, silenceDesktopOwnerForSide } from './desktop-voice-continuations'
 +import { desktopVoiceTasks } from './desktop-voice-task-delivery'
 +import { agentJournalItemKey } from '../../shared/agent-session/journal/agent-session-journal-item-key'
 +import { AGENT_JOURNAL_THREAD_SCOPE } from '../../shared/agent-session/journal/agent-session-journal-types'
@@ -406,12 +383,10 @@ index 00000000..438838fd
 +        at: Date.now()
 +      }
 +      await this.append(journal, request, 'user', question, record.lease.runtimeFence)
-+      // A real owner voice input retires previous task audio even though it never starts Home work.
-+      desktopVoiceOwnerTurn(chat)
++      // A quick exchange starts no Home work, so Home's running task keeps its speech.
 +      lease.current = desktopVoiceTasks.capture(chat)
 +      this.leases.set(request, lease)
 +      this.chats.add(chat)
-+      silenceDesktopOwnerForSide(chat)
 +      const context = await journal.reads.continuationContext()
 +      return {
 +        route: 'side' as const,

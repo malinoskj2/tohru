@@ -23,6 +23,8 @@ if args[:2] == ["auth", "status"]:
 session = args[args.index("--resume") + 1] if "--resume" in args else args[args.index("--session-id") + 1] if "--session-id" in args else "ephemeral"
 print(json.dumps({"type": "system", "subtype": "init", "session_id": session}), flush=True)
 words = os.environ.get("FAKE_ANSWER", "Eight fluid ounces.").split(" ")
+if "--allowedTools" in args and "FAKE_LOOKUP" in os.environ:
+    words = os.environ["FAKE_LOOKUP"].split(" ")
 for i, w in enumerate(words):
     text = w if i == 0 else " " + w
     print(json.dumps({"type": "stream_event", "session_id": session, "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": text}}}), flush=True)
@@ -922,6 +924,55 @@ class OrcaBotBackend(unittest.TestCase):
         self.assertIn("--unanswered", self.side_finishes()[0])
         entries = json.loads(self.orca_state.read_text())["entries"][self.HOME_UUID]
         self.assertEqual(entries[-2]["text"], "[tohru-desktop:voice]\nBuild the feature")
+
+    def test_quick_handoff_frees_the_voice_once_home_admits_it_and_follows_its_reply(self):
+        result = self.quick("Run the long build", FAKE_ANSWER='{"route":"home","text":"I\'ll run it."}',
+                            FAKE_ORCA_REPLY="The build passed.")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = [json.loads(line) for line in result.stdout.splitlines()]
+        kinds = [event["event"] for event in events]
+        origin = kinds.index("voice_origin")
+        self.assertEqual(kinds[origin + 1], "follow")
+        self.assertEqual(events[origin + 1]["request"], events[origin]["request"])
+        self.assertNotIn("delta", kinds[:origin + 1])
+        self.assertEqual("".join(event["text"] for event in events if event["event"] == "delta"), "The build passed.")
+        self.assertEqual(kinds[-1], "done")
+
+    def test_quick_lookup_speaks_its_line_then_the_answer_and_records_both(self):
+        self.busy_home()
+        result = self.quick("What's the weather in Boston?",
+                            FAKE_ANSWER='{"route":"lookup","text":"Let me check.","query":"Boston weather now"}',
+                            FAKE_LOOKUP="It's sunny and twelve degrees in Boston.")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([event["text"] for event in events if event["event"] == "voice_notice"],
+                         ["One moment, I'm in the middle of something.", "Let me check."])
+        self.assertEqual([event["text"] for event in events if event["event"] == "delta"],
+                         ["It's sunny and twelve degrees in Boston."])
+        self.assertFalse(any(call["argv"][:2] == ["bot", "send"] for call in self.orca_calls()))
+        self.assertNotIn("--unanswered", self.side_finishes()[0])
+        calls = [json.loads(line) for line in self.fake_claude_log.read_text().splitlines()]
+        lookup = calls[-1]["argv"]
+        self.assertEqual(lookup[lookup.index("--tools") + 1], "WebSearch,WebFetch")
+        self.assertEqual(lookup[lookup.index("--allowedTools") + 1], "WebSearch,WebFetch")
+        self.assertNotIn("--permission-mode", lookup)
+        self.assertEqual(json.loads(calls[-1]["stdin"])["query"], "Boston weather now")
+        entries = json.loads(self.orca_state.read_text())["entries"][self.HOME_UUID]
+        self.assertEqual(entries[-1]["text"], "Let me check. It's sunny and twelve degrees in Boston.")
+
+    def test_quick_responder_sees_the_current_turn_steps_without_their_input(self):
+        self.busy_home()
+        state = json.loads(self.orca_state.read_text())
+        state["entries"][self.HOME_UUID] += [
+            {"kind":"message", "role":"user", "text":"Run the build", "interaction":{"kind":"owner", "requestId":"r"}},
+            {"kind":"tool", "name":"Bash", "state":"running", "input":"cargo build --secret-flag"}]
+        self.orca_state.write_text(json.dumps(state))
+        result = self.quick("How's it going?", FAKE_ANSWER='{"route":"answer","text":"I\'m still building."}')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        model = json.loads(self.fake_claude_log.read_text().splitlines()[-1])
+        history = json.loads(model["stdin"])["history"]["entries"]
+        self.assertEqual(history[-1], {"role":"tool", "name":"Bash", "state":"running"})
+        self.assertNotIn("secret-flag", model["stdin"])
 
     def test_quick_side_admission_without_a_busy_field_keeps_the_busy_notice(self):
         self.busy_home()

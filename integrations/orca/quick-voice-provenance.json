@@ -1,6 +1,6 @@
 {
   "orcaVersion": "1.4.268",
-  "patchSha256": "2430440a3e52893bfb2071663910e07e3be8b4d9db1c551c8cbd6f534f2a2bee",
+  "patchSha256": "e0d4665232c59ba62bfbbcfefff52996f0193ed9adcf84bb5e37b88d96486311",
   "baseFiles": {
     "src/cli/bots/bot-handler-groups.ts": "f4135283f83680c4133a12438a4e54f14630770731d2c1487189d0001c91be21",
     "src/cli/bots/bot.ts": "7e9821d5015c964e0801ae696510f0364aaaab1a703f14caf9d2a4de9e913453",

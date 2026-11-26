@@ -120,7 +120,7 @@ pub struct ChatArgs {
     pub effort: String,
     #[arg(long, value_enum, default_value_t = Switch::On)]
     pub memory: Switch,
-    /// Set by quick voice when it hands a question to Home.
+    /// Set by quick voice when it hands a question to Home, whose reply it then follows.
     #[arg(skip)]
     pub quick_handoff_notice: String,
     /// The pending settle signal of an `--await-settle` turn.

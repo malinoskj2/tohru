@@ -6,8 +6,10 @@ return function(settings)
     local conversation, shown_turns = nil, {}
     -- The one answer in flight: its process, conversation, provider and text so far.
     local live = nil
+    -- Voice turns handed to Home: they wait for Home's reply without holding the floor.
+    local followers = {}
     local desktop_pending = nil
-    local send
+    local send, follow_event
     local draft = nil
     local pending_commit = nil
     local settled_turn = nil
@@ -426,6 +428,32 @@ return function(settings)
         end
     end
 
+    -- Home's reply to a followed turn is shown when it lands and offered to the voice once.
+    follow_event = function(mine, event)
+        if followers[mine.id] ~= mine then return end
+        if event.event == "delta" then
+            mine.text = mine.text .. (event.text or "")
+            return
+        end
+        if event.event ~= "done" and event.event ~= "stopped" and event.event ~= "error" then return end
+        followers[mine.id] = nil
+        if event.event ~= "done" then return end
+        if mine.conversation then
+            seen_chats[mine.conversation] = math.floor(os.time())
+            unremembered[mine.conversation] = clock
+        end
+        if conversation == mine.conversation and not live then load(mine.conversation) end
+        if not fact.ai_open or conversation ~= mine.conversation or fact.ai_view ~= 0 then
+            fact.ai_ready = true
+            fact.ai_ready_slot = mine.slot
+            ready_for = mine.conversation
+        end
+        if mine.text == "" then return end
+        for _, listener in ipairs(speech_listeners) do
+            listener("follow_result", mine.conversation, mine.text, true, nil, mine.voice_request, nil, "follow:" .. mine.voice_request)
+        end
+    end
+
     local function chat_args(provider_id, cid, voice, opts)
         local args = {"chat", "--provider", provider_id}
         local is_draft = opts and opts.draft == true
@@ -488,7 +516,12 @@ return function(settings)
         local mine = live
         mine.id = spawn(helper, args, function(line)
             local event = decode(line)
-            if not event or live ~= mine then return end
+            if not event then return end
+            if mine.following then
+                follow_event(mine, event)
+                return
+            end
+            if live ~= mine then return end
             if event.event == "start" then
                 mine.conversation = event.conversation
                 mine.voice_request = event.voice_request
@@ -514,6 +547,15 @@ return function(settings)
                 for _, listener in ipairs(speech_listeners) do
                     listener("notice", mine.conversation, event.text or "", mine.voice, mine.voice_generation)
                 end
+            elseif event.event == "follow" then
+                if not mine.voice or mine.discard or not mine.voice_request or mine.voice_request == "" then return end
+                mine.following = true
+                followers[mine.id] = mine
+                live = nil
+                refresh_live()
+                for _, listener in ipairs(answer_listeners) do
+                    listener("done", mine.conversation, "", true, mine.voice_generation, nil, mine.path)
+                end
             elseif event.event == "delta" then
                 mine.text = mine.text .. (event.text or "")
                 if incoming then return end
@@ -526,6 +568,7 @@ return function(settings)
                 finish(event)
             end
         end, function(_, code)
+            if mine.id then followers[mine.id] = nil end
             if live == mine then finish({event = "error", message = "tohru-assistant exited with " .. tostring(code)}) end
         end, settle_turn and {input = json.encode(prompt) .. "\n", stdin = "open"} or {input = prompt})
         if settle_turn and settle_turn == settled_turn then
@@ -1132,6 +1175,12 @@ return function(settings)
             run(helper, {"voice-ready", "--conversation", chat, "--request", request})
         end,
         detach_voice = function(request)
+            for pid, follower in pairs(followers) do
+                if follower.voice_request == request then
+                    followers[pid] = nil
+                    kill(pid, "int")
+                end
+            end
             if not is_orca() or not live or not live.voice or live.discard or live.voice_request ~= request then return false end
             local poller = live
             live = nil
