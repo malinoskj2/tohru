@@ -47,6 +47,17 @@ pub struct Clip {
 }
 
 impl Clip {
+    /// Milliseconds from the clip's first sample to its first one above -40 dBFS.
+    #[must_use]
+    pub fn onset_ms(&self) -> f64 {
+        let first = self
+            .samples
+            .iter()
+            .position(|s| s.abs() >= 0.01)
+            .unwrap_or(0);
+        (first as f64 * 1000. / f64::from(self.rate.max(1))).round()
+    }
+
     pub fn trim(&mut self) {
         let first = self.samples.iter().position(|s| s.abs() >= 0.0001);
         let last = self.samples.iter().rposition(|s| s.abs() >= 0.0001);

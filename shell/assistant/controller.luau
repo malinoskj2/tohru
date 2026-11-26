@@ -422,7 +422,7 @@ return function(settings)
         end
         local said = event.event == "error" and (event.spoken or "") or finished.text
         for _, listener in ipairs(answer_listeners) do
-            listener(event.event, finished.conversation, said, finished.voice, finished.voice_generation)
+            listener(event.event, finished.conversation, said, finished.voice, finished.voice_generation, nil, finished.path)
         end
     end
 
@@ -492,10 +492,11 @@ return function(settings)
             if event.event == "start" then
                 mine.conversation = event.conversation
                 mine.voice_request = event.voice_request
+                mine.path = event.path
                 if incoming then refresh_live(); return end
                 want_new_chat = false
                 for _, listener in ipairs(speech_listeners) do
-                    listener("start", mine.conversation, "", mine.voice, mine.voice_generation, event.voice_request)
+                    listener("start", mine.conversation, "", mine.voice, mine.voice_generation, event.voice_request, mine.path)
                 end
                 if event.home and is_orca() and event.conversation then
                     homes[event.conversation] = true
@@ -1066,7 +1067,7 @@ return function(settings)
                             ready_for = saved
                         end
                         for _, listener in ipairs(answer_listeners) do
-                            listener("done", saved, taken.text, true, opts and opts.voice_generation)
+                            listener("done", saved, taken.text, true, opts and opts.voice_generation, nil, "draft")
                         end
                     end)
                     return true
@@ -1076,7 +1077,7 @@ return function(settings)
                     id = taken.id, draft = taken, prompt = prompt, opts = opts, voice_generation = opts and opts.voice_generation,
                     base_conversation = voice_conversation,
                     conversation = taken.target_conversation or voice_conversation,
-                    slot = taken.slot, text = taken.text, voice = true, provider = taken.provider,
+                    slot = taken.slot, text = taken.text, voice = true, provider = taken.provider, path = "draft",
                 }
                 local turns = {}
                 for _, turn in ipairs(shown_turns) do turns[#turns + 1] = turn end

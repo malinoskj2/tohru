@@ -21,6 +21,12 @@ pub struct Args {
         help = "Run a 16 kHz mono WAV through the actual wake/turn state machine without a microphone"
     )]
     pub replay: Option<PathBuf>,
+    #[arg(
+        long,
+        conflicts_with_all = ["evaluate", "replay", "devices"],
+        help = "Read voice diagnostics (e.g. journalctl -o cat) on stdin and print first-audio p50/p95 per path"
+    )]
+    pub first_audio_report: bool,
     #[arg(long, default_value = "")]
     pub source: String,
     #[arg(long, default_value = "")]

@@ -12,6 +12,7 @@ return function(assistant, puppet, flight, service_executable)
     local backend_signature = nil
     local transcript_serial = 0
     local turn_generation, streaming_speech, streamed_text = 0, false, false
+    local reply_path = nil
     -- The overlay stays a moment after she stops talking, and a click opens what she said.
     local DRAGON_LINGER = 5000
     local spoken, hide_serial = nil, 0
@@ -107,7 +108,8 @@ return function(assistant, puppet, flight, service_executable)
         if not task_visible(reply.chat) then notice_reply = nil; return end
         notice_reply = nil
         streaming_speech, streamed_text = false, false
-        send({cmd = "speech_start", generation = turn_generation, conversation = reply.chat, background = true})
+        send({cmd = "speech_start", generation = turn_generation, conversation = reply.chat, background = true,
+            turn_id = reply.turn_id, path = reply.path})
         send({cmd = "speech_end", generation = turn_generation, text = reply.text})
     end
 
@@ -138,6 +140,7 @@ return function(assistant, puppet, flight, service_executable)
         barged = false
         opts = opts or {}
         opts.voice_generation = turn_generation
+        reply_path = nil
         capture_id = opts.capture_id
         send({cmd = "diagnostic", stage = "assistant_request", turn_id = capture_id, generation = turn_generation})
         puppet.thinking()
@@ -351,7 +354,7 @@ return function(assistant, puppet, flight, service_executable)
         if id and (fact.ai_dragon_open == true or fact.ai_open == true) then presence(true) end
     end
 
-    local function answer_event(kind, conv, answer, voice, turn, request)
+    local function answer_event(kind, conv, answer, voice, turn, request, path)
         if not id then return end
         if not voice then
             if kind == "start" then notice_reply = nil end
@@ -384,7 +387,8 @@ return function(assistant, puppet, flight, service_executable)
                 notice_reply = nil
                 streaming_speech = true
                 streamed_text = false
-                send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id, request = request})
+                reply_path = path
+                send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id, request = request, path = path})
             end
             if assistant.voice_ready and request and request ~= "" then assistant.voice_ready(conv, request) end
             return
@@ -392,7 +396,9 @@ return function(assistant, puppet, flight, service_executable)
             -- Acknowledge now and hold the substantive answer until the owner
             -- and the acknowledgement have both finished speaking.
             if answer and answer ~= "" and not notice_reply then
-                notice_reply = {generation = turn_generation, chat = conversation, text = "", done = false, ack_ended = false}
+                notice_reply = {generation = turn_generation, chat = conversation, text = "", done = false, ack_ended = false,
+                    turn_id = capture_id, path = reply_path}
+                send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id, path = "notice"})
                 send({cmd = "speech_end", generation = turn_generation, text = answer})
                 streaming_speech, streamed_text = false, false
             end
@@ -404,7 +410,7 @@ return function(assistant, puppet, flight, service_executable)
                 return
             end
             if not streaming_speech then
-                send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id})
+                send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id, path = path or reply_path})
                 streaming_speech, streamed_text = true, false
             end
             if streaming_speech and answer and answer ~= "" then
@@ -424,7 +430,7 @@ return function(assistant, puppet, flight, service_executable)
             if streaming_speech then
                 send({cmd = "speech_end", generation = turn_generation, text = not streamed_text and (answer or "") or nil})
             else
-                send({cmd = "say", text = answer or "", conversation = conversation, generation = turn_generation, turn_id = capture_id})
+                send({cmd = "say", text = answer or "", conversation = conversation, generation = turn_generation, turn_id = capture_id, path = path or reply_path})
             end
         elseif kind == "error" then
             notice_reply = nil

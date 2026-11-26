@@ -419,7 +419,7 @@ the user must select assistant.backend = local. No local broker is forwarded her
         .is_some_and(|home| text(home.get("id")) == chat_id);
     emit(
         json!({"event": "start", "conversation": chat_id, "provider": format!("orca:{actual_bot}"), "slot": 0,
-                "title": subject, "voice_request": "", "home": at_home}),
+                "title": subject, "voice_request": "", "home": at_home, "path": "home"}),
     );
     if !args.quick_handoff_notice.is_empty() {
         emit(json!({"event": "voice_notice", "text": args.quick_handoff_notice}));

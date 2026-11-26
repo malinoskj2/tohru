@@ -9,6 +9,12 @@ fn run() -> Result<()> {
         emit(tohru_voice_native::service::device_report(&args)?);
         return Ok(());
     }
+    if args.first_audio_report {
+        let input = std::io::read_to_string(std::io::stdin())?;
+        let samples = tohru_voice_native::latency::samples(input.lines());
+        emit(tohru_voice_native::latency::report(&samples));
+        return Ok(());
+    }
     if args.evaluate {
         return tohru_voice_native::evaluate::run(&args);
     }

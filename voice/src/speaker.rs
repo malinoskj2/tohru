@@ -540,7 +540,7 @@ impl Control {
         job: &Job,
         engine: &mut Engine,
         settings: &Settings,
-        sender: &std::sync::mpsc::SyncSender<Result<(String, Clip)>>,
+        sender: &std::sync::mpsc::SyncSender<Result<(String, Clip, &'static str)>>,
     ) -> Result<()> {
         let mut voices = Voices {
             low: engine,
@@ -564,9 +564,9 @@ impl Control {
                     state.infer = Some(options.clone());
                 }
                 diagnostic("synthesis_start", json!({"generation":job.generation}));
-                let mut clip = match self.high_clip(job, &mut voices, &text) {
-                    Ok(Some(clip)) => clip,
-                    Ok(None) => voices.low.synthesize(&text, settings, &options)?,
+                let (mut clip, profile) = match self.high_clip(job, &mut voices, &text) {
+                    Ok(Some(clip)) => (clip, "high"),
+                    Ok(None) => (voices.low.synthesize(&text, settings, &options)?, "low"),
                     Err(()) => return Ok(()),
                 };
                 lock(&self.state.0).infer = None;
@@ -578,7 +578,7 @@ impl Control {
                     "synthesis_ready",
                     json!({"generation":job.generation,"samples":clip.samples.len(),"rate":clip.rate}),
                 );
-                if sender.send(Ok((text, clip))).is_err() {
+                if sender.send(Ok((text, clip, profile))).is_err() {
                     return Ok(());
                 }
             }
@@ -589,15 +589,16 @@ impl Control {
     fn play_clips(
         &self,
         job: &Job,
-        receiver: std::sync::mpsc::Receiver<Result<(String, Clip)>>,
+        receiver: std::sync::mpsc::Receiver<Result<(String, Clip, &'static str)>>,
     ) -> Result<()> {
         let mut player = None;
         let mut rate = 0;
+        let mut first_audio = true;
         loop {
             if self.stale(job.id) {
                 return Ok(());
             }
-            let (text, clip) = match receiver.recv_timeout(Duration::from_millis(20)) {
+            let (text, clip, profile) = match receiver.recv_timeout(Duration::from_millis(20)) {
                 Ok(clip) => clip?,
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
@@ -710,6 +711,13 @@ impl Control {
                 );
                 if index == 0 {
                     diagnostic("sentence_first_write", json!({"generation":job.generation}));
+                    if first_audio {
+                        first_audio = false;
+                        diagnostic(
+                            "first_audio",
+                            json!({"generation":job.generation,"profile":profile,"onset_ms":clip.onset_ms()}),
+                        );
+                    }
                 }
                 index = end;
                 next += Duration::from_secs_f64(chunk.len() as f64 / rate as f64);

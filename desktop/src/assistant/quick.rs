@@ -793,7 +793,7 @@ pub fn orca_quick_voice(
     };
     emit(
         json!({"event": "start", "conversation": chat_id, "provider": format!("orca:{bot_name}"), "slot": 0,
-                "title": title_of(prompt), "voice_request": "", "home": true}),
+                "title": title_of(prompt), "voice_request": "", "home": true, "path": "quick"}),
     );
     emit(json!({"event": "voice_notice", "text": "One moment, I'm in the middle of something."}));
     home_metric(
