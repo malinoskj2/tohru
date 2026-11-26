@@ -119,6 +119,8 @@ pub enum Key {
     AssistantQuickVoiceModel,
     AssistantQuickVoiceEffort,
     AssistantQuickVoiceCache,
+    AssistantQuickVoiceTransport,
+    AssistantAnthropicKeyFile,
     AssistantModel(Cli),
     AssistantEffort(Cli),
     AssistantVoiceModel(Cli),
@@ -193,9 +195,10 @@ pub const ORCA_VOICE_CHATS: [&str; 4] = ["home", "new", "foreground", "quick"];
 
 /// What happens when `assistant.backend = "orca"` and Orca is unreachable.
 pub const ORCA_OFFLINE_MODES: [&str; 2] = ["error", "local"];
+pub const QUICK_VOICE_TRANSPORTS: [&str; 2] = ["api", "cli"];
 
 impl Key {
-    pub const ALL: [Self; 124] = [
+    pub const ALL: [Self; 126] = [
         Self::ShortcutsMode,
         Self::ShortcutLauncher,
         Self::ShortcutSession,
@@ -290,6 +293,8 @@ impl Key {
         Self::AssistantQuickVoiceModel,
         Self::AssistantQuickVoiceEffort,
         Self::AssistantQuickVoiceCache,
+        Self::AssistantQuickVoiceTransport,
+        Self::AssistantAnthropicKeyFile,
         Self::AssistantModel(Cli::Claude),
         Self::AssistantEffort(Cli::Claude),
         Self::AssistantModel(Cli::Codex),
@@ -427,6 +432,8 @@ impl Key {
             Self::AssistantQuickVoiceModel => "assistant.quick_voice_model",
             Self::AssistantQuickVoiceEffort => "assistant.quick_voice_effort",
             Self::AssistantQuickVoiceCache => "assistant.quick_voice_cache",
+            Self::AssistantQuickVoiceTransport => "assistant.quick_voice_transport",
+            Self::AssistantAnthropicKeyFile => "assistant.anthropic_key_file",
             Self::AssistantModel(Cli::Claude) => "assistant.models.claude.model",
             Self::AssistantEffort(Cli::Claude) => "assistant.models.claude.effort",
             Self::AssistantModel(Cli::Codex) => "assistant.models.codex.model",
@@ -621,6 +628,8 @@ impl Key {
             Self::AssistantQuickVoiceModel => (&["assistant"], "quick_voice_model"),
             Self::AssistantQuickVoiceEffort => (&["assistant"], "quick_voice_effort"),
             Self::AssistantQuickVoiceCache => (&["assistant"], "quick_voice_cache"),
+            Self::AssistantQuickVoiceTransport => (&["assistant"], "quick_voice_transport"),
+            Self::AssistantAnthropicKeyFile => (&["assistant"], "anthropic_key_file"),
             Self::AssistantModel(cli) => (cli.tables(), "model"),
             Self::AssistantEffort(cli) => (cli.tables(), "effort"),
             Self::AssistantVoiceModel(Cli::Claude) => {
@@ -755,6 +764,7 @@ impl Key {
             | Self::AssistantMemory => Value::Bool(true),
             Self::AssistantVoiceSource
             | Self::AssistantDiscordTokenFile
+            | Self::AssistantAnthropicKeyFile
             | Self::AssistantDiscordGuildId
             | Self::AssistantDiscordAllowedUserId
             | Self::AssistantDiscordChannels
@@ -784,6 +794,7 @@ impl Key {
             Self::AssistantOrcaBot => Value::Text("Tohru".to_owned()),
             Self::AssistantOrcaVoiceChat => Value::Text(ORCA_VOICE_CHATS[0].to_owned()),
             Self::AssistantOrcaOffline => Value::Text(ORCA_OFFLINE_MODES[0].to_owned()),
+            Self::AssistantQuickVoiceTransport => Value::Text(QUICK_VOICE_TRANSPORTS[0].to_owned()),
             Self::AssistantOrcaNeedsYouMinutes => Value::Integer(5),
             Self::AssistantQuickVoiceModel => Value::Text(QUICK_VOICE_MODEL.to_owned()),
             Self::AssistantQuickVoiceEffort => Value::Text(QUICK_VOICE_EFFORT.to_owned()),
@@ -945,6 +956,7 @@ impl Key {
             }
             Self::AssistantOrcaVoiceChat if ORCA_VOICE_CHATS.contains(&text) => true,
             Self::AssistantOrcaOffline if ORCA_OFFLINE_MODES.contains(&text) => true,
+            Self::AssistantQuickVoiceTransport if QUICK_VOICE_TRANSPORTS.contains(&text) => true,
             Self::AssistantTtsVoicepack
                 if (1..=64).contains(&text.len())
                     && text
@@ -964,6 +976,7 @@ impl Key {
             | Self::AssistantTtsModel
             | Self::AssistantKwsModel
             | Self::AssistantDiscordTokenFile
+            | Self::AssistantAnthropicKeyFile
                 if text.len() <= 4096
                     && !text.chars().any(char::is_control)
                     && (text.is_empty() || text.starts_with('/')) =>
