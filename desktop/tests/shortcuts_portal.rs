@@ -120,8 +120,10 @@ fn answer(
 
 /// Answers `GlobalShortcuts` calls on a private bus the way xdg-desktop-portal does.
 fn fake_portal(server: Connection, script: Arc<Mutex<Script>>) {
+    // Subscribed before returning: zbus only queues calls for streams that already exist.
+    let messages = MessageIterator::from(&server);
     std::thread::spawn(move || {
-        for message in MessageIterator::from(&server) {
+        for message in messages {
             let Ok(message) = message else { break };
             if message.message_type() != MessageType::MethodCall {
                 continue;
