@@ -1,0 +1,25 @@
+{
+ "root": ".tmp/turn-pipeline/corpus",
+ "origin": "Copied from rive-dragon-puppet-astra .tmp/turn-verify/badset.tsv, .tmp/turn-proc (3d, candidate, vol-*, toon) at 11fd392c",
+ "clips": [
+  {"label": "b5545db", "dir": "b5545db", "range": "44-82", "expect": "fail", "why": "owner-rejected: head bulges on the left as she turns (B4), wink (F1)"},
+  {"label": "v17", "dir": "v17", "range": "44-82", "expect": "fail", "why": "owner-rejected H3 trial: bobblehead swell, cheek bulge"},
+  {"label": "onepiece", "dir": "onepiece", "range": "44-82", "expect": "fail", "why": "owner-rejected item 17 repair: paint seam on the left temple (B5)"},
+  {"label": "outline-final", "dir": "outline-final", "range": "44-82", "expect": "fail", "why": "owner-rejected item 17 repair: skull bulge remains (B4)"},
+  {"label": "outline-crossing", "dir": "outline-crossing", "range": "44-82", "expect": "fail", "why": "owner-rejected item 17 repair: notched horn base"},
+  {"label": "paws-a2f76c0", "dir": "paws-a2f76c0", "range": "44-82", "expect": "fail", "why": "owner-rejected: forepaw ghost, head redraw pop"},
+  {"label": "cadence", "dir": "cadence", "range": "44-82", "expect": "fail", "why": "owner-rejected: forepaws shrink and regrow, head pop"},
+  {"label": "frill-v2", "dir": "frill-v2", "range": "44-82", "expect": "fail", "why": "owner-rejected: frill and horn redraws, eye change"},
+  {"label": "directed", "dir": "directed", "range": "44-82", "expect": "fail", "why": "owner-rejected: horn and frill redraws, eye shrink"},
+  {"label": "eyefix-v4", "dir": "eyefix-v4", "range": "44-82", "expect": "fail", "why": "owner-rejected: transplanted eye, cheek bulge, hold-then-jump"},
+  {"label": "drawn", "dir": "drawn", "range": "44-82", "expect": "fail", "why": "blind-rejected (blind-review clip C): single crest becomes two horns in one frame, different creature"},
+  {"label": "vol-drawn", "dir": "vol-drawn", "range": "44-82", "expect": "fail", "why": "blind-rejected (blind2 clip C): doubled horns from the drawn keys"},
+  {"label": "gmfss", "dir": "gmfss", "range": "44-82", "expect": "fail", "why": "blind-rejected (blind2 clip D): VFI morph between keys"},
+  {"label": "flight-6-40", "dir": "b5545db", "range": "6-40", "expect": "pass", "why": "owner-accepted flight stretch before the turn"},
+  {"label": "flight-84-120", "dir": "b5545db", "range": "84-120", "expect": "pass", "why": "owner-accepted flight stretch after the turn"},
+  {"label": "3d-ones", "dir": "3d-ones", "range": "2-33", "expect": "pass", "why": "rendered 3D head turn on ones: rigid geometry, best motion of the blind set"},
+  {"label": "3d-on2", "dir": "3d-on2", "range": "2-33", "expect": "pass", "why": "same 3D turn held on twos"},
+  {"label": "3d-on3", "dir": "3d-on3", "range": "2-33", "expect": "pass", "why": "same 3D turn held on threes"},
+  {"label": "vol-b55", "dir": "vol-b55", "range": "44-82", "expect": "info", "why": "blind2 clip B, acceptable with minor faults; owner verdict unknown (tweened turns 'still look off')"}
+ ]
+}
