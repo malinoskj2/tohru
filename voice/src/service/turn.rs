@@ -92,7 +92,7 @@ impl Voice {
             {
                 self.spotted();
             }
-        } else if speech || self.quiet_ms <= 160 {
+        } else if speech || self.quiet_ms <= ASR_TAIL_MS {
             self.asr.feed(frame);
         }
         let partial = if self.spotting {
@@ -453,3 +453,7 @@ impl Voice {
         }
     }
 }
+
+/// Quiet fed to the streaming recogniser after speech, so its partial reaches the last word
+/// before the endpoint reads it; at 160 ms a finished sentence still ended on "of" or "to".
+const ASR_TAIL_MS: u32 = 480;

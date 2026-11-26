@@ -42,6 +42,20 @@ UTTERANCES = [
     "What colour is the sky at sunset?",
     "Give me a word that rhymes with orange.",
 ]
+WORK_UTTERANCES = [
+    "Check the build for me.",
+    "Fix the calendar rail.",
+    "Can you look at the failing test?",
+    "Merge the voice branch.",
+    "Find the slow query in the logs.",
+    "Update the docs for the new setting.",
+]
+TRAILING_UTTERANCES = [
+    "I was thinking about dinner and",
+    "Can you put the meeting on the",
+    "My plan for tomorrow is to",
+    "I want to check the build but",
+]
 WAKE = "Tohru, are you there?"
 
 FAKE_PAREC = r'''#!/usr/bin/env python3
@@ -642,6 +656,7 @@ def main():
     parser.add_argument("--draft-model", default="claude-sonnet-5-5")
     parser.add_argument("--draft-effort", default="low")
     parser.add_argument("--config", help="config.toml for the isolated helper")
+    parser.add_argument("--corpus", choices=("chat", "work", "trailing"), default="chat")
     parser.add_argument("--ack", action="store_true", help="Acknowledge slow turns as the controller does")
     parser.add_argument("--load-timeout", type=float, default=600)
     parser.add_argument("--output", required=True)
@@ -650,9 +665,10 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     corpus = out / "corpus"
     corpus.mkdir(exist_ok=True)
-    wavs = [(f"u{n}", corpus / f"u{n}.wav") for n in range(len(UTTERANCES))]
+    texts = {"work": WORK_UTTERANCES, "trailing": TRAILING_UTTERANCES}.get(args.corpus, UTTERANCES)
+    wavs = [(f"u{n}", corpus / f"u{n}.wav") for n in range(len(texts))]
     wake = corpus / "wake.wav"
-    speak([*zip(UTTERANCES, (p for _, p in wavs)), (WAKE, wake)], str(Path(args.native).resolve()))
+    speak([*zip(texts, (p for _, p in wavs)), (WAKE, wake)], str(Path(args.native).resolve()))
     results = Harness(args, out).run(wavs, wake)
     measured = [r["first_audio_ms"] for r in results if r["first_audio_ms"] is not None]
     turns = [r["turn_ms"] for r in results if r["turn_ms"] is not None]
