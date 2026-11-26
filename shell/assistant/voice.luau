@@ -403,6 +403,12 @@ return function(assistant, puppet, flight, service_executable)
     local function answer_event(kind, conv, answer, voice, turn, request, path, completion)
         if not id then return end
         if kind == "follow_result" then
+            -- A stale origin never evicts the current reply that waits for the floor.
+            if not voice_return.current(conv, request) then
+                send({cmd = "diagnostic", stage = "follow_dropped", request = request, completion = completion,
+                    reason = "origin_mismatch"})
+                return
+            end
             follow_pending = {chat = conv, request = request, completion = completion, text = answer or "", tries = 0}
             release_follow()
             return

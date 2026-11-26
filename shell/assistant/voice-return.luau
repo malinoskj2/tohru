@@ -6,6 +6,9 @@ return function()
             origin = request and request ~= "" and {chat = chat, request = request} or nil
         end,
         interrupt = function() origin = nil end,
+        current = function(chat, request)
+            return origin ~= nil and origin.chat == chat and origin.request == request
+        end,
         take = function(chat, request, completion, visible, busy)
             if not completion or completion == "" or consumed[completion] then return false, "duplicate" end
             consumed[completion] = true

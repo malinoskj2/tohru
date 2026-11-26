@@ -596,6 +596,8 @@ fact.ai_dragon_open, fact.ai_speaking = true, true
 local before_follow, timers_before = #written, #timers
 speech_listener("follow_result", "task-chat", "The build passed.", true, nil, "follow-request", nil, "follow:follow-request")
 assert(#written == before_follow and #timers == timers_before + 1, "a followed reply never talks over speech")
+speech_listener("follow_result", "task-chat", "An older reply.", true, nil, "older-request", nil, "follow:older-request")
+assert(#written == before_follow and diagnostics[#diagnostics].reason == "origin_mismatch")
 fact.ai_speaking = false
 timers[#timers]()
 assert(written[#written].message.cmd == "speech_end" and written[#written].message.text == "The build passed.")
