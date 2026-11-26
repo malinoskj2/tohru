@@ -148,7 +148,7 @@ The spotter is about five times cheaper but fails the bar for the default (recal
 
 - As built: `shell/assistant/dragon.plm` is a 210×230 overlay layer (`tohru-dragon`) at the bottom right.
   - She shows once a voice conversation opens, stays while it lasts, and goes five seconds after her last word once it has ended.
-  - Clicking her opens the popup on that conversation.
+  - Clicking her opens the popup on that conversation. Right-clicking her dismisses her: the conversation ends at once, she stops listening and speaking, and she leaves without lingering.
 - **Sheets:** pre-rendered 2D, in `shell/assistant/dragon/`; their layout and provenance are in its README.
   - `body.webp` retains the legacy breath, flutter and expressive moves, and adds 20 redrawn airborne body poses with registered 17-frame transitions. Their feet, pelvis, tail, wings and facing change together.
   - Each new resting view has its own eyes and mouth patches in `faces.webp`; `travel.webp` keeps lip sync registered through the new body turns. No front-facing eye patch is forced onto a turned face.
