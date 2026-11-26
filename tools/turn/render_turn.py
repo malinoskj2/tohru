@@ -1,6 +1,6 @@
 """Blender: one head/body turn of the dragon mesh, rendered as B1 toon frames or B2 guide passes.
 
-blender -b -P render_turn.py -- MESH.glb OUT MODE [--yaw0 90 --yaw1 0 --hold 6 --turn 14 --size 480 --at YAW]
+blender -b -P render_turn.py -- MESH.glb OUT MODE [--yaw0 90 --yaw1 0 --hold 4 --turn 24 --hold-end 8 --size 480 --at YAW]
 MODE: toon, position (object-space coordinates), normal (camera-space normals), onormal (object-space normals), alpha.
 --at renders one still at a fixed yaw instead of the animation (for key registration).
 """
@@ -19,9 +19,13 @@ ap.add_argument("out")
 ap.add_argument("mode")
 ap.add_argument("--yaw0", type=float, default=90)
 ap.add_argument("--yaw1", type=float, default=0)
-ap.add_argument("--hold", type=int, default=6)
-ap.add_argument("--turn", type=int, default=14)
-ap.add_argument("--dip", type=float, default=5)
+ap.add_argument("--hold", type=int, default=3)
+ap.add_argument("--hold-end", type=int, default=5)
+ap.add_argument("--turn", type=int, default=20)
+ap.add_argument("--ease-blend", type=float, default=0.55, help="0=linear, 1=cubic smoothstep; 0.55 eases in/out without stalling")
+ap.add_argument("--dip", type=float, default=4)
+ap.add_argument("--outline", type=float, default=0.0055, help="inverted-hull outline thickness (0 disables)")
+ap.add_argument("--sheen", type=float, default=0.22, help="glossy upper-left highlight intensity")
 ap.add_argument("--size", type=int, default=480)
 ap.add_argument("--at", type=float, default=None)
 ap.add_argument("--keep-origin", action="store_true", help="the mesh is already in render units around its axis")
@@ -186,21 +190,32 @@ elif args.mode == "toon":
         else:
             rgb = nt.nodes.new("ShaderNodeRGB"); rgb.outputs[0].default_value = (0.8, 0.75, 0.9, 1); base = rgb.outputs[0]
         shade = m("ADD", m("MULTIPLY", facing, 0.12), 0.9)
+        # Keep dark eye/mouth marks rich and high-contrast (do not wash them out with rim/sheen/over-brightening)
+        bw = nt.nodes.new("ShaderNodeRGBToBW")
+        nt.links.new(base, bw.inputs["Color"])
+        eye_mask = nt.nodes.new("ShaderNodeMapRange")
+        eye_mask.inputs["From Min"].default_value = 0.25
+        eye_mask.inputs["From Max"].default_value = 0.52
+        nt.links.new(bw.outputs["Val"], eye_mask.inputs["Value"])
+        bright_w = eye_mask.outputs["Result"]
+
+        # Blend shade toward 0.85 on dark eye pixels so eyes match Sheet B's deep maroon contrast
+        shade_eff = m("ADD", m("MULTIPLY", shade, bright_w), m("MULTIPLY", 0.82, m("SUBTRACT", 1.0, bright_w)))
         sc = nt.nodes.new("ShaderNodeVectorMath"); sc.operation = "SCALE"
-        nt.links.new(base, sc.inputs[0]); nt.links.new(shade, sc.inputs[3])
+        nt.links.new(base, sc.inputs[0]); nt.links.new(shade_eff, sc.inputs[3])
         col = sc.outputs[0]
-        # Screen in a pearl rim: col + (1 - col) * rim.
-        rim = m("MULTIPLY", m("POWER", m("SUBTRACT", 1.0, facing), 3.0), 0.40)
+        # Screen in a pearl rim: col + (1 - col) * rim (suppressed on dark eyes).
+        rim = m("MULTIPLY", m("MULTIPLY", m("POWER", m("SUBTRACT", 1.0, facing), 3.0), 0.40), bright_w)
         inv = vm("SUBTRACT", (1.0, 1.0, 1.0), col)
         rs = nt.nodes.new("ShaderNodeVectorMath"); rs.operation = "SCALE"
         nt.links.new(inv, rs.inputs[0]); nt.links.new(rim, rs.inputs[3])
         col = vm("ADD", col, rs.outputs[0])
-        # Glossy sheen toward an upper-left key light.
+        # Glossy sheen toward an upper-left key light (suppressed on dark eyes).
         dot = nt.nodes.new("ShaderNodeVectorMath"); dot.operation = "DOT_PRODUCT"
         nt.links.new(vt.outputs[0], dot.inputs[0]); dot.inputs[1].default_value = (-0.45, 0.6, 0.66)
-        mr = nt.nodes.new("ShaderNodeMapRange"); mr.inputs["From Min"].default_value = 0.88; mr.inputs["From Max"].default_value = 0.98
+        mr = nt.nodes.new("ShaderNodeMapRange"); mr.inputs["From Min"].default_value = 0.84; mr.inputs["From Max"].default_value = 0.97
         nt.links.new(dot.outputs["Value"], mr.inputs["Value"])
-        sheen = m("MULTIPLY", mr.outputs["Result"], 0.0)
+        sheen = m("MULTIPLY", m("MULTIPLY", mr.outputs["Result"], args.sheen), bright_w)
         inv2 = vm("SUBTRACT", (1.0, 1.0, 1.0), col)
         ss = nt.nodes.new("ShaderNodeVectorMath"); ss.operation = "SCALE"
         nt.links.new(inv2, ss.inputs[0]); nt.links.new(sheen, ss.inputs[3])
@@ -210,14 +225,15 @@ elif args.mode == "toon":
             nt.links.new(base, em.inputs[0])
     set_material(emission_material("toon", build))
     # Inverted-hull outline in soft lilac.
-    ink = emission_material("ink", lambda nt, em: setattr(em.inputs[0], "default_value", (0.55, 0.45, 0.68, 1)))
-    ink.use_backface_culling = True
-    obj.data.materials.append(ink)
-    sol = obj.modifiers.new("outline", "SOLIDIFY")
-    sol.thickness = -0.006
-    sol.use_flip_normals = True
-    sol.material_offset = 1
-    sol.use_rim = False
+    if args.outline > 0:
+        ink = emission_material("ink", lambda nt, em: setattr(em.inputs[0], "default_value", (0.55, 0.45, 0.68, 1)))
+        ink.use_backface_culling = True
+        obj.data.materials.append(ink)
+        sol = obj.modifiers.new("outline", "SOLIDIFY")
+        sol.thickness = -args.outline
+        sol.use_flip_normals = True
+        sol.material_offset = 1
+        sol.use_rim = False
 else:
     raise SystemExit(f"unknown mode {args.mode}")
 
@@ -226,7 +242,8 @@ scene.world.color = (0, 0, 0)
 
 
 def ease(u):
-    return u * u * (3 - 2 * u)
+    b = args.ease_blend
+    return (1.0 - b) * u + b * (u * u * (3 - 2 * u))
 
 
 def pose(yaw, dip):
@@ -238,13 +255,16 @@ if args.at is not None:
     scene.render.filepath = args.out
     bpy.ops.render.render(write_still=True)
 else:
-    total = args.hold * 2 + args.turn
+    total = args.hold + args.turn + args.hold_end
     import json
     os.makedirs(args.out, exist_ok=True)
     yaws = [args.yaw0 + (args.yaw1 - args.yaw0) * ease(min(1.0, max(0.0, (f - args.hold) / max(1, args.turn - 1))))
             for f in range(total)]
+    dips = [args.dip * math.sin(math.pi * min(1.0, max(0.0, (f - args.hold) / max(1, args.turn - 1)))) for f in range(total)]
     with open(f"{args.out}/../yaws.json", "w") as fh:
         json.dump(yaws, fh)
+    with open(f"{args.out}/../poses.json", "w") as fh:
+        json.dump({"yaw": yaws, "dip": dips, "ortho": cam_data.ortho_scale, "size": args.size}, fh)
     for f in range(total):
         u = min(1.0, max(0.0, (f - args.hold) / max(1, args.turn - 1)))
         e = ease(u)
