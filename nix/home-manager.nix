@@ -391,7 +391,7 @@ in {
             type = lib.types.nullOr lib.types.str;
             default = null;
             example = "/run/secrets/anthropic-api-key";
-            description = "Absolute path of a file holding the Anthropic API key (bare, or a dotenv `ANTHROPIC_API_KEY=` line), written to `assistant.anthropic_key_file`. Keep the key itself out of the Nix store.";
+            description = "Absolute path of a file holding the Anthropic API key (bare, or a dotenv `ANTHROPIC_API_KEY=` line), written to `assistant.anthropic_key_file`. Optional: `null` leaves Tohru reading `$XDG_CONFIG_HOME/tohru/anthropic-key` (mode `600`) when `ANTHROPIC_API_KEY` is unset. Keep the key itself out of the Nix store.";
           };
         };
       };

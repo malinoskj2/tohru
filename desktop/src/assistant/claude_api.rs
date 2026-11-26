@@ -1,5 +1,5 @@
 use std::io::{BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -8,8 +8,9 @@ const API: &str = "https://api.anthropic.com";
 const VERSION: &str = "2023-06-01";
 const KEY_LIMIT: u64 = 64 * 1024;
 
-/// The API key from `ANTHROPIC_API_KEY`, else from `key_file`: the bare key on one line, or a
-/// dotenv-style file with an `ANTHROPIC_API_KEY=` line. Never logged.
+/// The API key from `ANTHROPIC_API_KEY`, else from `key_file`, else from
+/// `$XDG_CONFIG_HOME/tohru/anthropic-key`: the bare key on one line, or a dotenv-style file
+/// with an `ANTHROPIC_API_KEY=` line. Never logged.
 #[must_use]
 pub fn api_key(key_file: &str) -> Option<String> {
     if let Ok(key) = std::env::var("ANTHROPIC_API_KEY")
@@ -17,10 +18,38 @@ pub fn api_key(key_file: &str) -> Option<String> {
     {
         return Some(key.trim().to_owned());
     }
-    if key_file.is_empty() {
-        return None;
+    if !key_file.is_empty() {
+        return key_from_file(Path::new(key_file));
     }
-    key_from_file(Path::new(key_file))
+    let path = default_key_file();
+    let (key, warning) = fallback_key(&path);
+    if let Some(warning) = warning {
+        eprintln!("tohru-assistant: {warning}");
+    }
+    key
+}
+
+#[must_use]
+pub fn default_key_file() -> PathBuf {
+    crate::paths::xdg(crate::paths::Xdg::Config).join("tohru/anthropic-key")
+}
+
+/// The key in the default file, quietly absent when the file is, with a warning naming the
+/// path and mode when others can read it.
+fn fallback_key(path: &Path) -> (Option<String>, Option<String>) {
+    use std::os::unix::fs::PermissionsExt;
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return (None, None);
+    };
+    let mode = metadata.permissions().mode() & 0o777;
+    let key = key_from_file(path);
+    let warning = (key.is_some() && mode & 0o077 != 0).then(|| {
+        format!(
+            "{} is readable by group or others (mode {mode:03o}); chmod 600 it",
+            path.display()
+        )
+    });
+    (key, warning)
 }
 
 fn key_from_file(path: &Path) -> Option<String> {
@@ -297,6 +326,27 @@ mod tests {
         );
         assert_eq!(parse_key("OTHER=1\nMORE=2\n"), None);
         assert_eq!(parse_key("ANTHROPIC_API_KEY=\n"), None);
+    }
+
+    #[test]
+    fn the_default_key_file_is_optional_and_warns_when_others_can_read_it() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("anthropic-key");
+        assert_eq!(fallback_key(&path), (None, None));
+
+        std::fs::write(&path, "sk-fallback-1\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(fallback_key(&path), (Some("sk-fallback-1".into()), None));
+
+        std::fs::write(&path, "ANTHROPIC_API_KEY=sk-fallback-2\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let (key, warning) = fallback_key(&path);
+        assert_eq!(key, Some("sk-fallback-2".into()));
+        let warning = warning.unwrap();
+        assert!(warning.contains(&path.display().to_string()));
+        assert!(warning.contains("644"));
+        assert!(!warning.contains("sk-fallback"));
     }
 
     #[test]
