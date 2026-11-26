@@ -21,3 +21,13 @@ sheet views disagree with each other and with the hull in depth, so features dra
 view owns. B2 looks like the sheet frame by frame, but each frame is synthesised independently and the hand-off between
 keys reads as a cross-fade. The outline pop and tail-hole blink are in both, so they come from the hull. Both reviewers
 also called the timing stalled then rushed (six-frame hold, then the turn over about six frames of the ease).
+
+## Round 2 (locked Sheet B, eased timing, real texture/rig + temporally-guided B2)
+
+- **B1 (`sculpt_v14`, `tools/turn/build_dragon.py` + `tools/turn/contour.py`)**: sculpted Sheet-B-proportioned glossy pearlescent 3D rig (big head on squat pear body, swept S-wave flame crest, 3 axolotl cheek frills, scalloped bat wings visible from profile, 100% rigid 3D curled spiral tail, larger plum eyes + curved smile, crisp plum-lavender inner ink contour), hold 4 + eased turn 36 (`--ease-blend 0.60`) + hold 10 frames at 24 fps.
+- **B2 (`b2_v5`, `tools/turn/b2_stylize.py`)**: EbSynth with exact 3D-advected temporal coherence guidance from the previous synthesized output frame (`--temporal-weight 14.0`, `--direction backward`, 4 aligned keys + appearance guide on `mv4_flrb` proxy, hold 4 + eased turn 28 + hold 7 frames at 24 fps). Eliminates all cross-fade ghosting, drawing swaps, feature slide, color drift and eye winks; remaining faults come from the underlying Hunyuan3D-2mv proxy silhouette. (A follow-up `b2_v6` run directly on the rigid `sculpt_v14` proxy matched Sheet B's front/3-4 look closely on frames 24–49, but lost the profile eye on frames 0–17 due to profile-key eye offset, failing CPU gate at score 82.43.)
+
+| | Gate (`gate.py`) | Identity to sheet | Blind reviewer |
+|---|---|---|---|
+| B1 (`sculpt_v14`) | CPU (`turn`/`motion`/`flow`): **PASS, score 0.00** (0 findings). `--deep` (SAM 2.1 + OpenCLIP) pending GPU release (preceding `sculpt_v11`: `parts=0`, `identity=0`, 0.821–0.886) | 0.821–0.886 (`sculpt_v11`; `sculpt_v14` pending `--deep`) | Pending on `sculpt_v14` (`sculpt_v12` was rejected 1/1 for snowman neck, soft clay look, cat-ear profile crest, flat wings, vanishing tail — all addressed in `sculpt_v14`) |
+| B2 (`b2_v5`) | `--deep`: **FAIL, score 6.86** (`motion=0`, `flow=0`, `identity=0`, `ghost=0`, `swap=0`, `feature-slide=0`, `wink=0`; only `outline-pop` 3.8 px f17–21, `horn-count` f7–12, `part-snap` f36 from `mv4_flrb` proxy) | 0.744–0.951 | Pending on `b2_v5` |
