@@ -29,7 +29,7 @@ Usage: tohru panel toggle|open sound|calendar|network|media|bluetooth|wallpaper|
        tohru config set lock.style STYLE   (still-glass, ribbon-key, flooded-monolith, drifting-frost-veil, unfolding-glass-capsule, edge-glass-drawer, horizon-meniscus, refractive-typographic-lens, corner-anchor, bar-drop-curtain)
        tohru config set notifications.position top-right|bottom-right
        tohru config set assistant.KEY VALUE   (voice, voice_source, reduced_motion, provider, backend, orca, orca_bot, orca_voice_chat, orca_offline, orca_needs_you_minutes,
-                                               quick_voice_model, quick_voice_effort, quick_voice_cache,
+                                               quick_voice_model, quick_voice_effort, quick_voice_cache, quick_voice_transport, anthropic_key_file,
                                                models.PROVIDER.model, models.PROVIDER.effort, persona, persona_file,
                                                voice_models.PROVIDER.model|effort, semantic_models.PROVIDER.model|effort,
                                                memory, discord.enabled, discord.read, discord.post,

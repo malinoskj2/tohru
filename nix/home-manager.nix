@@ -60,6 +60,8 @@ let
     // lib.optionalAttrs (assistant.orcaBot.quickVoice.model != null) { quick_voice_model = assistant.orcaBot.quickVoice.model; }
     // lib.optionalAttrs (assistant.orcaBot.quickVoice.effort != null) { quick_voice_effort = assistant.orcaBot.quickVoice.effort; }
     // lib.optionalAttrs (assistant.orcaBot.quickVoice.cache != null) { quick_voice_cache = assistant.orcaBot.quickVoice.cache; }
+    // lib.optionalAttrs (assistant.orcaBot.quickVoice.transport != null) { quick_voice_transport = assistant.orcaBot.quickVoice.transport; }
+    // lib.optionalAttrs (assistant.orcaBot.quickVoice.keyFile != null) { anthropic_key_file = assistant.orcaBot.quickVoice.keyFile; }
     // lib.optionalAttrs (assistant.persona.file != null) { persona_file = "${assistant.persona.file}"; }
     // lib.optionalAttrs (assistant.models != { }) {
       models = modelSettings assistant.models;
@@ -379,6 +381,17 @@ in {
             type = lib.types.nullOr lib.types.bool;
             default = null;
             description = "Whether the quick voice responder caches its rarely changing records for five minutes, written to `assistant.quick_voice_cache`. It pays off only for questions in quick succession; `null` leaves it to the user's config (off).";
+          };
+          transport = lib.mkOption {
+            type = lib.types.nullOr (lib.types.enum [ "api" "cli" ]);
+            default = null;
+            description = "How the quick voice responder reaches Claude, written to `assistant.quick_voice_transport`: `api` streams from the Messages API with an Anthropic API key, falling back to the Claude CLI without one, and `cli` always uses the CLI; `null` leaves it to the user's config (`api`).";
+          };
+          keyFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "/run/secrets/anthropic-api-key";
+            description = "Absolute path of a file holding the Anthropic API key (bare, or a dotenv `ANTHROPIC_API_KEY=` line), written to `assistant.anthropic_key_file`. Optional: `null` leaves Tohru reading `$XDG_CONFIG_HOME/tohru/anthropic-key` (mode `600`) when `ANTHROPIC_API_KEY` is unset. Keep the key itself out of the Nix store.";
           };
         };
       };

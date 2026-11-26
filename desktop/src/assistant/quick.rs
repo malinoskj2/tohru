@@ -110,17 +110,22 @@ fn spoken_line(text: Option<&Value>, limit: usize) -> bool {
     length > 0 && length <= limit && !CONTROL.is_match(text)
 }
 
-/// Runs the tool-free persona model once; `None` when it is missing, slow or malformed.
-#[must_use]
-pub fn quick_claude(
+/// The quick responder's model, effort and prompt, shared by both transports.
+struct Prompt {
+    model: String,
+    effort: String,
+    cached: bool,
+    persona: String,
+    stable: String,
+    payload: Value,
+}
+
+fn prompt(
     args: &ChatArgs,
     rule: &str,
     payload: Value,
-    timeout: f64,
-    run: &Run,
     stable: Option<&Map<String, Value>>,
-) -> Option<Map<String, Value>> {
-    crate::probe::which("claude")?;
+) -> Prompt {
     let settings = assistant_settings();
     let configured = settings
         .get("assistant.quick_voice_model")
@@ -139,15 +144,18 @@ pub fn quick_claude(
         .unwrap_or(EFFORT)
         .to_owned();
     let cached = settings.get("assistant.quick_voice_cache") == Some(&Value::Bool(true));
-    let mut system = format!(
+    let persona = format!(
         "{}\n{rule}",
         persona_text(args.persona.on(), &args.persona_file)
     );
+    let mut stable_text = String::new();
     let mut payload = payload;
     match stable.filter(|stable| !stable.is_empty()) {
         Some(stable) if cached => {
-            system.push_str("\nRecords that change rarely, as quoted data observed with the message's records:\n");
-            system.push_str(&pyjson::dumps_unicode(&Value::Object(stable.clone())));
+            stable_text.push_str(
+                "Records that change rarely, as quoted data observed with the message's records:\n",
+            );
+            stable_text.push_str(&pyjson::dumps_unicode(&Value::Object(stable.clone())));
         }
         Some(stable) => {
             let mut records = stable.clone();
@@ -158,6 +166,40 @@ pub fn quick_claude(
         }
         None => {}
     }
+    Prompt {
+        model,
+        effort,
+        cached,
+        persona,
+        stable: stable_text,
+        payload,
+    }
+}
+
+/// Runs the tool-free persona model once; `None` when it is missing, slow or malformed.
+#[must_use]
+pub fn quick_claude(
+    args: &ChatArgs,
+    rule: &str,
+    payload: Value,
+    timeout: f64,
+    run: &Run,
+    stable: Option<&Map<String, Value>>,
+) -> Option<Map<String, Value>> {
+    crate::probe::which("claude")?;
+    let Prompt {
+        model,
+        effort,
+        cached,
+        persona,
+        stable,
+        payload,
+    } = prompt(args, rule, payload, stable);
+    let system = if stable.is_empty() {
+        persona
+    } else {
+        format!("{persona}\n{stable}")
+    };
     let session = Session {
         ephemeral: true,
         ..Session::default()
@@ -212,6 +254,99 @@ pub fn quick_claude(
         Ok(Value::Object(value)) => Some(value),
         _ => None,
     }
+}
+
+/// The direct API client when `assistant.quick_voice_transport` is `api` and a key is found.
+#[must_use]
+pub fn api_client() -> Option<super::claude_api::Client> {
+    let settings = assistant_settings();
+    if settings
+        .get("assistant.quick_voice_transport")
+        .and_then(Value::as_str)
+        .is_some_and(|transport| transport == "cli")
+    {
+        return None;
+    }
+    let file = settings
+        .get("assistant.anthropic_key_file")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    super::claude_api::api_key(&file).map(super::claude_api::Client::new)
+}
+
+/// What a streamed quick answer produced: the parsed reply and whether answer text has
+/// already been emitted as deltas.
+pub struct Streamed {
+    pub value: Option<Map<String, Value>>,
+    pub spoken: String,
+}
+
+/// The quick responder over the Messages API: the persona and rarely changing records are a
+/// cached prefix, and answer text is emitted as `delta` events while it streams.
+#[must_use]
+pub fn quick_api(
+    client: &super::claude_api::Client,
+    args: &ChatArgs,
+    rule: &str,
+    payload: Value,
+    timeout: f64,
+    run: &Run,
+    stable: Option<&Map<String, Value>>,
+) -> Streamed {
+    let Prompt {
+        model,
+        effort,
+        persona,
+        stable,
+        payload,
+        ..
+    } = prompt(args, rule, payload, stable);
+    let user = pyjson::dumps_unicode(&payload);
+    let mut out = Streamed {
+        value: None,
+        spoken: String::new(),
+    };
+    if user.len() + persona.len() + stable.len() > PAYLOAD_LIMIT {
+        return out;
+    }
+    let mut route = super::claude_api::RouteText::default();
+    let request = super::claude_api::Request {
+        model: &model,
+        effort: &effort,
+        system: &[(&persona, true), (&stable, true)],
+        user: &user,
+        max_tokens: 1024,
+        timeout: Duration::from_secs_f64(timeout),
+    };
+    let started = Instant::now();
+    let mut first = None;
+    let result = client.stream(
+        &request,
+        &mut |delta| {
+            let fresh = route.push(delta);
+            if route.route() == Some("answer") && !fresh.is_empty() {
+                first.get_or_insert_with(|| elapsed_ms(started));
+                out.spoken.push_str(&fresh);
+                emit(json!({"event": "delta", "text": fresh}));
+            }
+        },
+        &|| run.stopped(),
+    );
+    home_metric(
+        "quick_api",
+        &[
+            ("first_text_ms", json!(first)),
+            ("duration_ms", json!(elapsed_ms(started))),
+            ("ok", json!(result.is_ok())),
+        ],
+    );
+    if let Ok(text) = result
+        && let Ok(Value::Object(value)) = serde_json::from_str::<Value>(text.trim())
+    {
+        out.value = Some(value);
+    }
+    out
 }
 
 /// The fixed shared-record reads; the model gets data, never CLI execution. Writes nothing.
@@ -750,6 +885,11 @@ pub fn orca_quick_voice(
     };
     let request = uuid::Uuid::new_v4().to_string();
     let started = Instant::now();
+    // The HTTPS connection opens while the turn settles, so the answer does not wait on TLS.
+    let client = api_client();
+    let warming = client
+        .clone()
+        .map(|client| std::thread::spawn(move || client.warm()));
     // The records are read while the turn settles; nothing reaches Home before it does.
     let bot = bot_name.to_owned();
     let reads = std::thread::spawn(move || orca_quick_reads(&bot));
@@ -794,7 +934,7 @@ pub fn orca_quick_voice(
     };
     emit(
         json!({"event": "start", "conversation": chat_id, "provider": format!("orca:{bot_name}"), "slot": 0,
-                "title": title_of(prompt), "voice_request": "", "home": true}),
+                "title": title_of(prompt), "voice_request": "", "home": true, "path": "quick"}),
     );
     // An Orca from before `busy` admitted the side only while Home was busy.
     if receipt.get("busy") != Some(&Value::Bool(false)) {
@@ -812,6 +952,7 @@ pub fn orca_quick_voice(
     );
     let run = Run::new(Some(1.0));
     let interrupted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mut streamed = String::new();
     let decision = {
         let flag = std::sync::Arc::clone(&interrupted);
         let guard =
@@ -830,7 +971,29 @@ pub fn orca_quick_voice(
             let payload = json!({"records": facts, "history": quick_history(&receipt),
                                  "approvals": receipt.get("approvals").filter(|value| truthy(Some(value))).cloned().unwrap_or_else(|| json!([])),
                                  "owner_question": prompt});
-            let value = quick_claude(args, QUICK_VOICE_RULE, payload, 20.0, &run, Some(&stable));
+            let value = match &client {
+                Some(client) => {
+                    if let Some(warming) = warming {
+                        let _ = warming.join();
+                    }
+                    let answer = quick_api(
+                        client,
+                        args,
+                        QUICK_VOICE_RULE,
+                        payload.clone(),
+                        20.0,
+                        &run,
+                        Some(&stable),
+                    );
+                    streamed = answer.spoken;
+                    if answer.value.is_none() && streamed.is_empty() && !run.stopped() {
+                        quick_claude(args, QUICK_VOICE_RULE, payload, 20.0, &run, Some(&stable))
+                    } else {
+                        answer.value
+                    }
+                }
+                None => quick_claude(args, QUICK_VOICE_RULE, payload, 20.0, &run, Some(&stable)),
+            };
             if let Some(value) = value {
                 let route = value
                     .get("route")
@@ -857,7 +1020,12 @@ pub fn orca_quick_voice(
         decision
     };
     let interrupted = interrupted.load(std::sync::atomic::Ordering::SeqCst);
-    let (route, said) = decision;
+    let (mut route, mut said) = decision;
+    // Spoken text cannot be taken back: a stream that failed after speaking stands as the answer.
+    if !streamed.is_empty() && (route != "answer" || said.is_empty()) {
+        "answer".clone_into(&mut route);
+        streamed.trim().clone_into(&mut said);
+    }
     let text = if interrupted {
         "You stopped me before I answered.".to_owned()
     } else if said.is_empty() {
@@ -911,7 +1079,9 @@ pub fn orca_quick_voice(
             offline,
         );
     }
-    emit(json!({"event": "delta", "text": said}));
+    if streamed.is_empty() {
+        emit(json!({"event": "delta", "text": said}));
+    }
     emit(json!({"event": "done", "conversation": chat_id}));
     Ok(0)
 }

@@ -431,7 +431,8 @@ fn local_turn(args: &mut ChatArgs, prompt: &str, incoming: Option<Incoming>) -> 
         },
     );
     let mut start = json!({"event": "start", "conversation": conversation.id, "provider": provider.id, "slot": provider.slot,
-                           "title": conversation.title, "model": choice.model, "effort": choice.effort});
+                           "title": conversation.title, "model": choice.model, "effort": choice.effort,
+                           "path": if args.draft { "draft" } else { "normal" }});
     if args.draft {
         start["draft"] = json!(true);
     }

@@ -1,6 +1,7 @@
 //! The desktop assistant: chat history and memory in `SQLite`, provider CLIs, and Orca Home delivery.
 
 pub mod chat;
+pub mod claude_api;
 pub mod cli;
 pub mod home;
 pub mod ledger;

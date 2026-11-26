@@ -92,7 +92,7 @@ impl Voice {
             {
                 self.spotted();
             }
-        } else if speech || self.quiet_ms <= 160 {
+        } else if speech || self.quiet_ms <= ASR_TAIL_MS {
             self.asr.feed(frame);
         }
         let partial = if self.spotting {
@@ -143,7 +143,13 @@ impl Voice {
             self.turn_checked = true;
             if let Some(turn) = &mut self.turn {
                 match turn.probability(&self.audio) {
-                    Ok(p) => self.turn_complete = Some(p > 0.5),
+                    Ok(p) => {
+                        diagnostic(
+                            "smart_turn",
+                            json!({"probability":(f64::from(p) * 1000.).round() / 1000.}),
+                        );
+                        self.turn_complete = Some(p > 0.5);
+                    }
                     Err(error) => {
                         emit(json!({"event":"error","message":format!("turn: {error:#}")}));
                         self.turn = None;
@@ -165,6 +171,12 @@ impl Voice {
         if self.quiet_ms >= hold || self.speech_ms >= 30000 {
             if self.spotting && !self.spot_end() {
                 return Ok(());
+            }
+            if !self.spotting {
+                diagnostic(
+                    "endpoint",
+                    json!({"hold_ms":hold,"unfinished":unfinished,"turn_complete":self.turn_complete,"draft":!self.draft.is_empty()}),
+                );
             }
             if self.semantic
                 && !self.spotting
@@ -433,9 +445,15 @@ impl Voice {
             emit(
                 json!({"event":"transcript","text":request.chars().take(240).collect::<String>(),"final":true}),
             );
-            emit(json!({"event":"turn","text":request,"turn_id":self.turn_id}));
+            emit(
+                json!({"event":"turn","text":request,"turn_id":self.turn_id,"slow":policy::slow_request(&request)}),
+            );
         } else if !draft.is_empty() {
             emit(json!({"event":"draft_cancel"}));
         }
     }
 }
+
+/// Quiet fed to the streaming recogniser after speech, so its partial reaches the last word
+/// before the endpoint reads it; at 160 ms a finished sentence still ended on "of" or "to".
+const ASR_TAIL_MS: u32 = 480;

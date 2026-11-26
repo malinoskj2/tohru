@@ -38,7 +38,7 @@ impl Default for Settings {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Clip {
     pub samples: Vec<f32>,
     pub rate: u32,
@@ -47,6 +47,39 @@ pub struct Clip {
 }
 
 impl Clip {
+    /// Milliseconds from the clip's first sample to its first one above -40 dBFS.
+    #[must_use]
+    pub fn onset_ms(&self) -> f64 {
+        let first = self
+            .samples
+            .iter()
+            .position(|s| s.abs() >= 0.01)
+            .unwrap_or(0);
+        (first as f64 * 1000. / f64::from(self.rate.max(1))).round()
+    }
+
+    pub fn trim_start(&mut self) {
+        if let Some(first) = self.samples.iter().position(|s| s.abs() >= 0.0001) {
+            let start = first.saturating_sub((self.rate as f64 * 0.08).round() as usize);
+            let offset = start as f64 / self.rate as f64;
+            self.timeline = self
+                .timeline
+                .iter()
+                .filter(|(_, b, _)| *b > offset)
+                .map(|(a, b, m)| ((a - offset).max(0.), b - offset, *m))
+                .collect();
+            self.samples.drain(..start);
+        }
+    }
+
+    pub fn trim_end(&mut self) {
+        let last = self.samples.iter().rposition(|s| s.abs() >= 0.0001);
+        let end = last.map_or(0, |last| {
+            (last + (self.rate as f64 * 0.08).round() as usize + 1).min(self.samples.len())
+        });
+        self.samples.truncate(end);
+    }
+
     pub fn trim(&mut self) {
         let first = self.samples.iter().position(|s| s.abs() >= 0.0001);
         let last = self.samples.iter().rposition(|s| s.abs() >= 0.0001);
@@ -209,6 +242,13 @@ pub enum Engine {
 }
 
 impl Engine {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Kokoro(_) => "kokoro",
+            Self::Espeak => "espeak-ng",
+        }
+    }
+
     pub fn load(settings: &Settings, assets: &Path) -> Result<Self> {
         match settings.engine.as_str() {
             "kokoro" => Ok(Self::Kokoro(Box::new(Kokoro::new(settings, assets)?))),

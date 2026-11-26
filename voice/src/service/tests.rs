@@ -345,7 +345,7 @@ fn background_synthesis_releases_foreground_capture_before_audio_is_ready() {
     let all = events(&captured());
     assert_eq!(
         all.last().unwrap(),
-        &json!({"event":"turn","text":"Are you still there"})
+        &json!({"event":"turn","text":"Are you still there","slow":false})
     );
     assert!(!all.iter().any(|e| e["continuation"] == true));
     rig.voice
@@ -381,7 +381,7 @@ fn hidden_task_admission_releases_thinking_without_resetting_active_capture() {
     }
     assert_eq!(
         events(&captured()).last().unwrap(),
-        &json!({"event":"turn","text":"Are you still there"})
+        &json!({"event":"turn","text":"Are you still there","slow":false})
     );
 }
 
@@ -424,7 +424,7 @@ fn the_name_wakes_after_hey_mid_sentence_but_a_common_word_form_does_not() {
     middle.speak(20, 40);
     assert_eq!(
         events(&captured()).last().unwrap(),
-        &json!({"event":"turn","text":"So can you check the build"})
+        &json!({"event":"turn","text":"So can you check the build","slow":true})
     );
 
     let mut lunch = rig(&["I HAD"], "I HAD TARO FOR LUNCH");
@@ -444,7 +444,7 @@ fn the_spotter_hears_a_late_name_and_replays_the_whole_utterance() {
     assert_eq!(rig.spotter.as_ref().unwrap().0.borrow().flushed, 0);
     assert_eq!(
         events(&captured()).last().unwrap(),
-        &json!({"event":"turn","text":"Can you check this"})
+        &json!({"event":"turn","text":"Can you check this","slow":true})
     );
 }
 
@@ -462,7 +462,7 @@ fn the_spotter_keeps_listening_through_a_short_pause() {
     rig.speak_more(10, 40);
     assert_eq!(
         events(&captured()).last().unwrap(),
-        &json!({"event":"turn","text":"Check this"})
+        &json!({"event":"turn","text":"Check this","slow":true})
     );
 }
 
@@ -506,7 +506,7 @@ fn the_wake_word_opens_a_conversation_and_follow_ups_need_none() {
         [
             json!({"event":"hearing","on":true}),
             json!({"event":"hearing","on":false}),
-            json!({"event":"turn","text":"And tomorrow"})
+            json!({"event":"turn","text":"And tomorrow","slow":false})
         ]
     );
 }
@@ -786,7 +786,7 @@ fn a_continuation_merges_fragments_into_one_turn() {
     rig.speak(10, 25);
     assert_eq!(
         events(&captured()).last().unwrap(),
-        &json!({"event":"turn","text":"Tell me about the history"})
+        &json!({"event":"turn","text":"Tell me about the history","slow":false})
     );
     assert!(rig.voice.thinking);
     rig.swap(&["OF THE ROMAN EMPIRE"], "OF THE ROMAN EMPIRE");
@@ -798,7 +798,7 @@ fn a_continuation_merges_fragments_into_one_turn() {
     );
     assert_eq!(
         all.last().unwrap(),
-        &json!({"event":"turn","text":"Tell me about the history of the roman empire"})
+        &json!({"event":"turn","text":"Tell me about the history of the roman empire","slow":false})
     );
 }
 
@@ -845,7 +845,7 @@ fn a_turn_settles_after_quiet_but_a_continued_fragment_never_does() {
     assert!(all.iter().any(|e| e["continuation"] == true));
     assert_eq!(
         all.last().unwrap(),
-        &json!({"event":"turn","text":"Tell me about the history of the roman empire"})
+        &json!({"event":"turn","text":"Tell me about the history of the roman empire","slow":false})
     );
     for _ in 0..windows {
         rig.voice.settle_window();
@@ -1062,6 +1062,10 @@ struct Listening {
 impl crate::profile::HighVoice for Listening {
     fn transcribes(&self) -> bool {
         self.transcribes
+    }
+
+    fn engine(&self) -> &str {
+        "listening"
     }
 
     fn speak(&self, _: &str, _: &dyn Fn() -> bool) -> Result<Option<(Vec<f32>, u32)>, HighError> {

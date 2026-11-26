@@ -6,17 +6,21 @@ local events, spawned, killed, written, timers = {}, {}, {}, {}, {}
 _G.fact = {}
 _G.text = {}
 _G.on = function(name, handler) events[name] = handler end
+local ack_timers = {}
 _G.after = function(seconds, f)
-    if seconds == 16 then f() else timers[#timers + 1] = f end
+    if seconds == 16 then f()
+    elseif seconds == 1500 then ack_timers[#ack_timers + 1] = f
+    else timers[#timers + 1] = f end
 end
 local ticking = {}
 _G.every = function(ms, f) ticking[#ticking + 1] = f; return #ticking end
 _G.cancel = function(t) ticking[t] = nil end
 _G.kill = function(id, how) killed[#killed + 1] = {id, how} end
-local diagnostics, presences = {}, {}
+local diagnostics, presences, prepared = {}, {}, {}
 _G.write = function(id, line)
     if line.value.cmd == "diagnostic" then diagnostics[#diagnostics + 1] = line.value
     elseif line.value.cmd == "presence" then presences[#presences + 1] = line.value.visible
+    elseif line.value.cmd == "prepare" then prepared[#prepared + 1] = line.value.texts
     else written[#written + 1] = {id = id, message = line.value} end
 end
 _G.spawn = function(command, args, line, exit, how)
@@ -668,3 +672,75 @@ local idle_written = #written
 events.assistant_dismiss()
 assert(#written == idle_written, "a right-click with her hidden sends nothing")
 print("Right-click dismiss passed")
+
+-- Acknowledgements: a request for work is acknowledged at once; any other turn only when no
+-- answer has started by the deadline. The answer streams in behind the acknowledgement.
+do
+    local busy, asks = false, {}
+    local speech
+    local stub = {
+        listening = function() end, discard_draft = function() end, remember = function() end, stop = function() end,
+        ask = function(prompt, conversation, opts) asks[#asks + 1] = opts; busy = true; return true end,
+        streaming = function() return busy end,
+        on_answer = function() end,
+    }
+    stub.on_speech = function(listener) speech = listener end
+    fact.ai_dragon_open, fact.ai_voice_paused, fact.notices_dnd, fact.ai_speaking = true, false, false, false
+    local acking = assert(loadfile("shell/assistant/voice.luau"))()(stub, puppet)
+    acking.configure(settings({["assistant.voice"] = true}))
+    local me = #spawned
+    local proc = spawned[me]
+    proc.line({event = "ready"})
+    local function mine()
+        local out = {}
+        for _, w in ipairs(written) do if w.id == me then out[#out + 1] = w.message end end
+        return out
+    end
+    assert(#prepared > 0 and #prepared[#prepared] >= 6, "the service is asked to keep the acknowledgements ready")
+    local lines = {}
+    for _, line in ipairs(prepared[#prepared]) do lines[line] = true end
+    proc.line({event = "conversation", on = true})
+
+    proc.line({event = "turn", text = "Fix the calendar rail", turn_id = "t1", slow = true})
+    local out = mine()
+    local generation = asks[#asks].voice_generation
+    assert(out[#out - 1].cmd == "speech_start" and out[#out - 1].path == "ack" and out[#out - 1].turn_id == "t1")
+    assert(out[#out].cmd == "speech_end" and lines[out[#out].text], "a slow request is acknowledged at once")
+    local first_ack = out[#out].text
+    local count = #out
+    speech("start", "home-chat", "", true, generation, "", "home")
+    speech("delta", "home-chat", "I'm on", true, generation)
+    assert(#mine() == count, "the answer waits behind the acknowledgement")
+    proc.line({event = "speaking", on = true, generation = generation})
+    proc.line({event = "speaking", on = false, generation = generation})
+    out = mine()
+    assert(out[count + 1].cmd == "speech_start" and out[count + 1].path == "home" and out[count + 1].turn_id == "t1")
+    assert(out[count + 2].cmd == "speech_delta" and out[count + 2].text == "I'm on")
+    speech("delta", "home-chat", " it now.", true, generation)
+    assert(mine()[count + 3].cmd == "speech_delta" and mine()[count + 3].text == " it now.", "later text streams straight through")
+    busy = false
+    speech("done", "home-chat", "I'm on it now.", true, generation)
+    assert(mine()[count + 4].cmd == "speech_end" and mine()[count + 4].text == nil)
+
+    -- A quick turn whose answer has started speaking gets no acknowledgement.
+    local timers_before = #ack_timers
+    proc.line({event = "turn", text = "What's the time", turn_id = "t2", slow = false})
+    generation = asks[#asks].voice_generation
+    assert(#ack_timers == timers_before + 1)
+    speech("start", "home-chat", "", true, generation, "", "quick")
+    speech("delta", "home-chat", "Half past two.", true, generation)
+    count = #mine()
+    ack_timers[#ack_timers]()
+    assert(#mine() == count, "an answer already under way is not acknowledged")
+    busy = false
+    speech("done", "home-chat", "Half past two.", true, generation)
+
+    -- A quick-looking turn still waiting at the deadline is acknowledged, with a fresh line.
+    proc.line({event = "turn", text = "How's the build", turn_id = "t3", slow = false})
+    generation = asks[#asks].voice_generation
+    speech("start", "home-chat", "", true, generation, "", "quick")
+    ack_timers[#ack_timers]()
+    out = mine()
+    assert(out[#out - 1].path == "ack" and lines[out[#out].text] and out[#out].text ~= first_ack)
+    print("Acknowledgements: immediate for work, deadline for the rest, varied, answer streams behind passed")
+end

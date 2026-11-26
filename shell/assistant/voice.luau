@@ -12,6 +12,7 @@ return function(assistant, puppet, flight, service_executable)
     local backend_signature = nil
     local transcript_serial = 0
     local turn_generation, streaming_speech, streamed_text = 0, false, false
+    local reply_path = nil
     -- The overlay stays a moment after she stops talking, and a click opens what she said.
     local DRAGON_LINGER = 5000
     local spoken, hide_serial = nil, 0
@@ -21,6 +22,12 @@ return function(assistant, puppet, flight, service_executable)
     local present = false
     local profiles_signature = nil
     local GREETINGS = {"Yes?", "I'm here.", "Mm? What is it?", "You called?", "Here I am. What do you need?", "Hello again."}
+    -- Said at once for a request for work, or when no answer has started speaking by ACK_AFTER.
+    -- The service keeps them synthesized in the current voice, so they play without inference.
+    local ACKS = {"Mm, let me look.", "One moment.", "Let me check.", "On it.", "Give me a second.",
+        "Let me see.", "Right, one moment.", "Okay, let me look into that."}
+    local ACK_AFTER = 1500
+    local acked = {}
     local greeted = 0
     local greeting_serial = 0
     local send
@@ -100,16 +107,46 @@ return function(assistant, puppet, flight, service_executable)
         if id then write(id, json.encode(message) .. "\n") end
     end
 
+    -- After the acknowledgement, the answer streams as it arrives rather than waiting for its end.
     flush_notice_reply = function()
         local reply = notice_reply
-        if not reply then return end
+        if not reply or reply.streaming then return end
         if reply.generation ~= turn_generation then notice_reply = nil; return end
-        if not reply.done or not reply.ack_ended or hearing or fact.ai_speaking then return end
+        if not reply.ack_ended or hearing or fact.ai_speaking then return end
+        if not reply.done and reply.text == "" then return end
         if not task_visible(reply.chat) then notice_reply = nil; return end
-        notice_reply = nil
         streaming_speech, streamed_text = false, false
-        send({cmd = "speech_start", generation = turn_generation, conversation = reply.chat, background = true})
-        send({cmd = "speech_end", generation = turn_generation, text = reply.text})
+        send({cmd = "speech_start", generation = turn_generation, conversation = reply.chat, background = true,
+            turn_id = reply.turn_id, path = reply.path})
+        if reply.done then
+            notice_reply = nil
+            send({cmd = "speech_end", generation = turn_generation, text = reply.text})
+        else
+            reply.streaming = true
+            send({cmd = "speech_delta", generation = turn_generation, text = reply.text})
+        end
+    end
+
+    local function pick_ack()
+        local choices = {}
+        for _, line in ipairs(ACKS) do
+            local recent = false
+            for _, said in ipairs(acked) do if said == line then recent = true end end
+            if not recent then choices[#choices + 1] = line end
+        end
+        local line = choices[math.random(#choices)]
+        table.insert(acked, 1, line)
+        while #acked > 3 do table.remove(acked) end
+        return line
+    end
+
+    local function acknowledge(mine)
+        if mine ~= turn_generation or notice_reply or streamed_text or hearing or fact.ai_speaking then return end
+        if not (assistant.streaming and assistant.streaming()) then return end
+        notice_reply = {generation = turn_generation, chat = conversation, text = "", done = false, ack_ended = false,
+            turn_id = capture_id, path = reply_path}
+        send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id, path = "ack"})
+        send({cmd = "speech_end", generation = turn_generation, text = pick_ack()})
     end
 
     local function quiet()
@@ -139,10 +176,16 @@ return function(assistant, puppet, flight, service_executable)
         barged = false
         opts = opts or {}
         opts.voice_generation = turn_generation
+        reply_path = nil
         capture_id = opts.capture_id
         send({cmd = "diagnostic", stage = "assistant_request", turn_id = capture_id, generation = turn_generation})
         puppet.thinking()
-        if not assistant.ask(prompt, conversation, opts) then
+        local asked = assistant.ask(prompt, conversation, opts)
+        if asked then
+            local mine = turn_generation
+            if opts.slow then acknowledge(mine) else after(ACK_AFTER, function() acknowledge(mine) end) end
+        end
+        if not asked then
             if assistant.streaming and assistant.streaming() then
                 queued = {text = prompt, opts = opts}
             else
@@ -185,6 +228,7 @@ return function(assistant, puppet, flight, service_executable)
                 puppet.load(art)
             end
             voice_error(tostring(message.warning or ""))
+            send({cmd = "prepare", texts = ACKS})
         elseif event == "transcript" then
             transcript_serial = transcript_serial + 1
             local mine = transcript_serial
@@ -266,6 +310,7 @@ return function(assistant, puppet, flight, service_executable)
             puppet.thinking()
             local opts = interrupted_spoken and {interrupted = interrupted_spoken} or {}
             opts.capture_id = message.turn_id
+            opts.slow = message.slow == true
             interrupted_spoken = nil
             if cancelling or (assistant.streaming and assistant.streaming()) then
                 queued = {text = message.text, opts = opts}
@@ -329,6 +374,8 @@ return function(assistant, puppet, flight, service_executable)
                 if assistant.streaming and assistant.streaming() then barged = true end
                 assistant.stop()
             end
+        elseif event == "profile" then
+            send({cmd = "prepare", texts = ACKS})
         elseif event == "paused" then
             fact.ai_voice_paused = (message.reason or "") ~= ""
         elseif event == "error" then
@@ -352,7 +399,7 @@ return function(assistant, puppet, flight, service_executable)
         if id and (fact.ai_dragon_open == true or fact.ai_open == true) then presence(true) end
     end
 
-    local function answer_event(kind, conv, answer, voice, turn, request)
+    local function answer_event(kind, conv, answer, voice, turn, request, path)
         if not id then return end
         if not voice then
             if kind == "start" then notice_reply = nil end
@@ -381,11 +428,14 @@ return function(assistant, puppet, flight, service_executable)
         elseif kind == "start" then
             voice_return.begin(conv, request)
             task_speech.begin(conv, request)
-            if not notice_reply or notice_reply.generation ~= turn_generation then
+            if notice_reply and notice_reply.generation == turn_generation then
+                notice_reply.path = notice_reply.path or path
+            else
                 notice_reply = nil
                 streaming_speech = true
                 streamed_text = false
-                send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id, request = request})
+                reply_path = path
+                send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id, request = request, path = path})
             end
             if assistant.voice_ready and request and request ~= "" then assistant.voice_ready(conv, request) end
             return
@@ -393,7 +443,9 @@ return function(assistant, puppet, flight, service_executable)
             -- Acknowledge now and hold the substantive answer until the owner
             -- and the acknowledgement have both finished speaking.
             if answer and answer ~= "" and not notice_reply then
-                notice_reply = {generation = turn_generation, chat = conversation, text = "", done = false, ack_ended = false}
+                notice_reply = {generation = turn_generation, chat = conversation, text = "", done = false, ack_ended = false,
+                    turn_id = capture_id, path = reply_path}
+                send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id, path = "notice"})
                 send({cmd = "speech_end", generation = turn_generation, text = answer})
                 streaming_speech, streamed_text = false, false
             end
@@ -401,11 +453,16 @@ return function(assistant, puppet, flight, service_executable)
         elseif kind == "delta" then
             task_speech.silence()
             if notice_reply and notice_reply.generation == turn_generation then
-                notice_reply.text = notice_reply.text .. (answer or "")
+                if notice_reply.streaming then
+                    if answer and answer ~= "" then send({cmd = "speech_delta", generation = turn_generation, text = answer}) end
+                else
+                    notice_reply.text = notice_reply.text .. (answer or "")
+                    flush_notice_reply()
+                end
                 return
             end
             if not streaming_speech then
-                send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id})
+                send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id, path = path or reply_path})
                 streaming_speech, streamed_text = true, false
             end
             if streaming_speech and answer and answer ~= "" then
@@ -416,6 +473,12 @@ return function(assistant, puppet, flight, service_executable)
         elseif kind == "done" then
             task_speech.silence()
             if notice_reply and notice_reply.generation == turn_generation then
+                if notice_reply.streaming then
+                    notice_reply = nil
+                    send({cmd = "speech_end", generation = turn_generation})
+                    flush_queued()
+                    return
+                end
                 notice_reply.text = answer or notice_reply.text
                 notice_reply.done = true
                 flush_notice_reply()
@@ -425,7 +488,7 @@ return function(assistant, puppet, flight, service_executable)
             if streaming_speech then
                 send({cmd = "speech_end", generation = turn_generation, text = not streamed_text and (answer or "") or nil})
             else
-                send({cmd = "say", text = answer or "", conversation = conversation, generation = turn_generation, turn_id = capture_id})
+                send({cmd = "say", text = answer or "", conversation = conversation, generation = turn_generation, turn_id = capture_id, path = path or reply_path})
             end
         elseif kind == "error" then
             notice_reply = nil

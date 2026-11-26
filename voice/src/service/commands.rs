@@ -30,7 +30,7 @@ impl Voice {
                 self.first_text = true;
                 diagnostic(
                     "speech_stream_start",
-                    json!({"generation":self.generation,"turn_id":message["turn_id"],"background":background,"request":message["request"].as_str().unwrap_or("").chars().take(512).collect::<String>()}),
+                    json!({"generation":self.generation,"turn_id":message["turn_id"],"background":background,"path":crate::latency::path(&message),"request":message["request"].as_str().unwrap_or("").chars().take(512).collect::<String>()}),
                 );
             }
             "speech_delta" | "speech_end" => {
@@ -61,7 +61,7 @@ impl Voice {
                 self.generation = message["generation"].clone();
                 diagnostic(
                     "committed_answer_ready",
-                    json!({"generation":self.generation,"turn_id":message["turn_id"]}),
+                    json!({"generation":self.generation,"turn_id":message["turn_id"],"path":crate::latency::path(&message)}),
                 );
                 let text = if text.chars().count() <= policy::SPOKEN_CHARS {
                     policy::speakable(text)
@@ -133,6 +133,19 @@ impl Voice {
                 }
             }
             "presence" => self.profiles.presence(message["visible"] == true),
+            "prepare" => {
+                let texts = message["texts"]
+                    .as_array()
+                    .map(|texts| {
+                        texts
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(policy::speakable)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                self.speaker.prepare(texts);
+            }
             "tts" => {
                 let settings: Settings = serde_json::from_value(message)?;
                 self.load_on_conversation = settings.load_on_conversation;

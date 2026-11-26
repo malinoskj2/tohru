@@ -3,6 +3,7 @@ pub mod acoustic;
 mod config;
 pub mod evaluate;
 pub mod frontend;
+pub mod latency;
 pub mod policy;
 pub mod process;
 pub mod profile;
