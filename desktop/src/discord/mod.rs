@@ -161,6 +161,11 @@ pub enum Loader {
         overrides: Values,
     },
     Invalid,
+    /// An incoming DM turn: any change from the settings it was claimed under cancels it.
+    Guarded {
+        inner: Box<Loader>,
+        expected: Values,
+    },
     #[cfg(test)]
     Shared(std::sync::Arc<std::sync::Mutex<Values>>),
 }
@@ -209,6 +214,15 @@ impl Loader {
                     ));
                 }
                 current.extend(overrides.clone());
+                Ok(current)
+            }
+            Self::Guarded { inner, expected } => {
+                let current = inner.load()?;
+                if current != *expected {
+                    return Err(DiscordError::new(
+                        "Discord reception configuration changed; request cancelled.",
+                    ));
+                }
                 Ok(current)
             }
             #[cfg(test)]

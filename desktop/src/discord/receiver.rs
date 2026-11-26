@@ -97,6 +97,12 @@ impl Receiver {
     }
 
     /// Keeps multi-output shells from running two incoming turns concurrently.
+    /// The client, for the turn that answers a claimed request.
+    #[must_use]
+    pub fn into_client(self) -> Client {
+        self.client
+    }
+
     pub fn turn(&self) -> Result<TurnGuard, DiscordError> {
         let file = self.open_lock("receiver-turn.lock")?;
         match rustix::fs::flock(&file, FlockOperation::NonBlockingLockExclusive) {
@@ -296,7 +302,7 @@ impl Receiver {
                         "Discord incoming channel changed; pending request retained.",
                     ));
                 }
-                state.remove("pending");
+                state.shift_remove("pending");
                 state.insert(
                     "last_status".to_owned(),
                     json!({"id": ident, "status": "deleted"}),
@@ -322,7 +328,7 @@ impl Receiver {
         {
             return Err(changed());
         }
-        state.remove("pending");
+        state.shift_remove("pending");
         if fresh["content"]
             .as_str()
             .is_none_or(|content| content.trim().is_empty())

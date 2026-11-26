@@ -245,6 +245,20 @@ impl Client {
         self.loader.load()
     }
 
+    /// Cancels the turn once its settings differ from `expected`.
+    pub fn guard(&mut self, expected: Values) {
+        let inner = std::mem::replace(&mut self.loader, Loader::Invalid);
+        self.loader = Loader::Guarded {
+            inner: Box::new(inner),
+            expected,
+        };
+    }
+
+    /// Checks that a DM read is still allowed under exactly `expected`.
+    pub fn verify_dm_read(&self, expected: &Values) -> Result<(), DiscordError> {
+        self.verify(expected, Operation::Read, "dm").map(|_| ())
+    }
+
     pub(crate) fn state(&self) -> &Path {
         &self.state
     }

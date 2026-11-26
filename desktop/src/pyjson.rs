@@ -75,6 +75,58 @@ fn write_value(out: &mut String, value: &Value, style: Style) {
     }
 }
 
+/// `json.dumps(value, indent=2, ensure_ascii=not unicode)`.
+#[must_use]
+pub fn indented(value: &Value, ascii: bool) -> String {
+    let mut out = String::new();
+    write_indented(&mut out, value, ascii, 0);
+    out
+}
+
+fn newline(out: &mut String, depth: usize) {
+    out.push('\n');
+    out.push_str(&"  ".repeat(depth));
+}
+
+fn write_indented(out: &mut String, value: &Value, ascii: bool, depth: usize) {
+    match value {
+        Value::Array(items) if !items.is_empty() => {
+            out.push('[');
+            for (index, element) in items.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                newline(out, depth + 1);
+                write_indented(out, element, ascii, depth + 1);
+            }
+            newline(out, depth);
+            out.push(']');
+        }
+        Value::Object(map) if !map.is_empty() => {
+            out.push('{');
+            for (index, (key, element)) in map.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                newline(out, depth + 1);
+                write_string(out, key, ascii);
+                out.push_str(": ");
+                write_indented(out, element, ascii, depth + 1);
+            }
+            newline(out, depth);
+            out.push('}');
+        }
+        other => write_value(
+            out,
+            other,
+            Style {
+                ascii,
+                ..Style::default()
+            },
+        ),
+    }
+}
+
 fn python_number(number: &serde_json::Number) -> String {
     if number.is_f64() {
         let float = number.as_f64().unwrap_or_default();

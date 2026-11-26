@@ -213,6 +213,12 @@ impl Broker {
         self.server.is_some()
     }
 
+    /// A handle that cancels the in-flight request from another thread.
+    #[must_use]
+    pub fn cancel_handle(&self) -> Cancel {
+        self.cancel.clone()
+    }
+
     /// Cancels the in-flight request, if any.
     pub fn cancel(&self) {
         self.cancel.set();

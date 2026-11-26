@@ -60,7 +60,7 @@ The bar process owns the one answer in flight, so its state survives closing the
 
 ## The service: `bin/tohru-assistant`
 
-A Python helper (standard library only) that the bar runs with `sys.spawn`. Each command prints JSON on stdout. `tohru assistant memory|export|import …` runs it too.
+A native helper (`desktop/src/assistant`) that the bar runs with `sys.spawn`. Each command prints JSON on stdout. `tohru assistant memory|export|import …` runs it too.
 
 | Command | Output |
 |---|---|
@@ -94,7 +94,10 @@ Rust ([`voice/`](../../voice)), installed as `tohru-voice`, with sherpa-onnx and
 ## Tests
 
 ```sh
+cargo build --release --manifest-path desktop/Cargo.toml
+cargo test --manifest-path desktop/Cargo.toml
 python3 tests/assistant/service.py
+python3 tests/assistant/discord.py
 cargo test --manifest-path voice/Cargo.toml
 lua5.4 tests/assistant/controller.lua
 lua5.4 tests/assistant/voice-controller.lua
@@ -102,7 +105,7 @@ lua5.4 tests/assistant/needs-you.lua
 lua5.4 tests/assistant/puppet.lua
 ```
 
-`service.py` drives the helper against fake `claude`, `codex`, `agy`, `gemini` and `opencode` scripts: discovery, probes that would prompt, streaming, session resume, provider hand-over, Stop, history search, conversation IDs that try to leave the folder, models and rejected models, the persona per CLI, Orca CLI detection/caching/env isolation/prompt injection per CLI (including never resolving bare `orca`, Orca not running, and `--orca false`), memory extraction (malformed JSON rejected, the 600-token budget, nothing spawned with memory off), forgetting, migrations, and an export/import round trip. `cargo test` in `voice/` covers wake gating with and without the keyword spotter, follow-ups, spoken text shaping, the Kokoro load policy, sink/source selection, AEC flat barge threshold, adaptive echo coupling, pause-then-resume/barge, cancel-while-thinking the echo guard and the high-VRAM profile selector and worker socket.
+`service.py` drives the native helper through `bin/tohru-assistant` against fake `claude`, `codex`, `agy`, `gemini` and `opencode` scripts: discovery, probes that would prompt, streaming, session resume, provider hand-over, Stop, history search, conversation IDs that try to leave the folder, models and rejected models, the persona per CLI, Orca CLI detection/caching/env isolation/prompt injection per CLI (including never resolving bare `orca`, Orca not running, and `--orca false`), memory extraction (malformed JSON rejected, the 600-token budget, nothing spawned with memory off), forgetting, migrations, and an export/import round trip. `cargo test` in `voice/` covers wake gating with and without the keyword spotter, follow-ups, spoken text shaping, the Kokoro load policy, sink/source selection, AEC flat barge threshold, adaptive echo coupling, pause-then-resume/barge, cancel-while-thinking the echo guard and the high-VRAM profile selector and worker socket.
 
 `controller.lua` drives `controller.luau` with stand-ins for `run`, `spawn` and `kill`: provider choice, models, streaming, Stop, the ready mark, sign-in, history rows, a voice turn, the memory hand-off and the Memory view. `voice-controller.lua` drives `voice.luau`: gating, turns, the spoken greeting for the wake word alone, spoken refusals, spoken answers, paused/interrupted speaking, barge-in and cancel-while-thinking, the overlay, loading the sheets, settings and restarts. `puppet.lua` drives `puppet.luau`: poses, routes through the drawn moves, squash swaps, dips, visemes, paused/interrupted speech and hearts. The voice crate also checks the phoneme-to-mouth mapping and timelines.
 

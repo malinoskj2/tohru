@@ -87,7 +87,7 @@ tohru-launcher-run &
 tohru-notifications-run &   # only if no other notification daemon runs
 ```
 
-It needs Python 3.11+, Bash, systemd/logind, coreutils and util-linux, plus glibc 2.35 or newer (Ubuntu 22.04, Debian 12 or later), libxkbcommon, linux-pam, libwayland-client, libwayland-egl, libEGL, a Vulkan loader and driver, and `setsid` and `sh` on `PATH`. The Hyprland plugin is not included.
+It needs Bash, systemd/logind, coreutils and util-linux, plus glibc 2.35 or newer (Ubuntu 22.04, Debian 12 or later), libxkbcommon, linux-pam, libwayland-client, libwayland-egl, libEGL, a Vulkan loader and driver, and `setsid` and `sh` on `PATH`. The Hyprland plugin is not included.
 
 ### Without Nix, from source
 

@@ -14,7 +14,7 @@ Build:
 Run:
 
 - Linux with systemd/logind and a Wayland compositor with layer-shell (including Settings). Hyprland IPC and standard-protocol capabilities are described in [standalone.md](standalone.md).
-- Bash, Python 3.11+, coreutils and util-linux. Run `tohru doctor` for feature-specific dependencies.
+- Bash, coreutils and util-linux. Run `tohru doctor` for feature-specific dependencies.
 - A Vulkan loader and libglvnd. Development used an NVIDIA GPU; other GPUs are untested.
 - `setsid` (util-linux) and `sh` on `PATH`: Pleamar launches applications through `setsid -f sh -c`.
 - For the popups to show anything: PulseAudio or PipeWire's PulseAudio server, NetworkManager, and BlueZ.
@@ -141,4 +141,4 @@ Then load `$HOME/.local/lib/libtohru-hyprland.so` from your Hyprland configurati
 
 ## Discord bot support
 
-Optional [Discord read/post support](discord.md) uses the native `tohru-discord` command and, for the assistant's per-turn broker, Python 3.11+ (including its standard-library SSL module and system CA certificates). Keep `bin/tohru-discord` and `bin/tohru_discord.py` beside `bin/tohru-assistant`; releases and the Nix package include them. Configure it in Tohru's normal TOML settings; no external service or additional Python package is needed.
+Optional [Discord read/post support](discord.md) is built into the native `tohru-assistant` and `tohru-discord` commands, which verify TLS against the bundled Mozilla root certificates. Keep `bin/tohru-discord` beside `bin/tohru-assistant`; releases and the Nix package include both. Configure it in Tohru's normal TOML settings; no external service or additional package is needed.

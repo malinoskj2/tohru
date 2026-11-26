@@ -2,17 +2,13 @@
 """Drive bin/tohru-assistant against fake provider CLIs; nothing reaches a real provider."""
 import json
 import os
-import runpy
-import sys
 import sqlite3
 from pathlib import Path
 import signal
 import subprocess
 import tempfile
 import time
-import threading
 import unittest
-from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 HELPER = ROOT / "bin/tohru-assistant"
@@ -1034,7 +1030,7 @@ class OrcaBotBackend(unittest.TestCase):
 
     def test_quick_interruption_records_the_question_without_speaking_or_queuing_it(self):
         self.busy_home()
-        process = subprocess.Popen([sys.executable, str(HELPER), "chat", "--backend", "orca", "--orca-bot", "Tohru",
+        process = subprocess.Popen([str(HELPER), "chat", "--backend", "orca", "--orca-bot", "Tohru",
                                     "--provider", "orca:Tohru", "--orca-voice-chat", "quick", "--voice"],
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                    env={**os.environ, **self.env, "FAKE_ANSWER":json.dumps({"route":"answer", "text":"a " * 100}), "FAKE_DELAY":"0.1"})
@@ -1059,7 +1055,7 @@ class OrcaBotBackend(unittest.TestCase):
         process.stderr.close()
 
     def gated(self, *extra, **env):
-        process = subprocess.Popen([sys.executable, str(HELPER), "chat", "--backend", "orca", "--orca-bot", "Tohru",
+        process = subprocess.Popen([str(HELPER), "chat", "--backend", "orca", "--orca-bot", "Tohru",
                                     "--provider", "orca:Tohru", "--voice", "--await-settle", *extra],
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                    env={**os.environ, **self.env, **env})
@@ -1128,25 +1124,6 @@ class OrcaBotBackend(unittest.TestCase):
         process.stdout.close()
         process.stderr.close()
 
-    def test_queued_request_uses_native_alias_and_internal_mail_does_not_take_owner_authority(self):
-        with patch.object(sys, "path", [str(ROOT / "bin"), *sys.path]):
-            service = runpy.run_path(str(HELPER), run_name="tohru_test")
-        wait = service["orca_wait_for_reply"]
-        owner = {"role": "user", "id": "orca:1133797", "request_id": "orca:0887907",
-                 "input_kind": "owner", "text": "Are you there"}
-        mail = {"role": "user", "id": "mail", "input_kind": "internal", "text": "unrelated status"}
-        answer = {"role": "assistant", "input_kind": "answer", "request_id": "orca:0887907", "completion_id": "answer-final", "text": "Yes, I am here."}
-        internal_answer = {"role": "assistant", "input_kind": "internal", "text": "PRIVATE CONTROL RESPONSE"}
-        pages = [([], "working", ""), ([owner, mail], "working", ""),
-                 ([owner, mail, answer, internal_answer], "working", "")]
-        origins, spoken = [], []
-        with patch.dict(wait.__globals__, orca_read_messages=lambda *_a, **_k: pages.pop(0)), patch("time.sleep"):
-            result = wait("chat", 0, "Are you there", spoken.append, message_id="orca:0887907",
-                          on_origin=lambda stable, canonical: origins.append((stable, canonical)))
-        self.assertEqual(result, ("Yes, I am here.", False, ""))
-        self.assertEqual(origins, [("orca:0887907", "orca:1133797")])
-        self.assertEqual(spoken, ["Yes, I am here."])
-
     def test_foreground_reuses_its_actor_while_home_has_unfinished_work(self):
         state = json.loads(self.orca_state.read_text())
         state["pending"][self.HOME_UUID] = {"polls": 1000, "reply": "Home long tool finished."}
@@ -1213,25 +1190,6 @@ class OrcaBotBackend(unittest.TestCase):
         retired = self.invoke(*args, stdin="Hello again")
         self.assertNotEqual(retired.returncode, 0)
         self.assertEqual(sum(c["argv"][:2] == ["bot", "send"] for c in self.orca_calls()), sends)
-
-    def test_replayed_commentary_and_full_history_window_emit_only_completed_final(self):
-        with patch.object(sys, "path", [str(ROOT / "bin"), *sys.path]):
-            service = runpy.run_path(str(HELPER), run_name="tohru_test")
-        wait = service["orca_wait_for_reply"]
-        prompt = {"role": "user", "text": "same prompt", "id": "our-turn"}
-        commentary = {"role": "assistant", "text": "I will check that."}
-        final = {"role": "assistant", "text": "The answer is eight."}
-        # The bounded page remains the same length as before sending; repeated
-        # commentary and an unknown state must never become speech.
-        page = [prompt, commentary, commentary]
-        replies = [(page, "working", ""), (page, "", ""),
-                   ([prompt, commentary, final], "working", ""),
-                   ([prompt, commentary, final], "done", "")]
-        spoken = []
-        with patch.dict(wait.__globals__, orca_read_messages=lambda *_a, **_k: replies.pop(0)), patch("time.sleep"):
-            answer, stopped, error = wait("chat", 3, "same prompt", spoken.append, message_id="our-turn")
-        self.assertEqual((answer, stopped, error), ("The answer is eight.", False, ""))
-        self.assertEqual(spoken, ["The answer is eight."])
 
     HOME_UUID = "4f71ebb6-db33-43e9-af8f-e5bc79a11077"
 

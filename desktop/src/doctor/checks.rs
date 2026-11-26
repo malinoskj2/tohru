@@ -11,7 +11,7 @@ use crate::paths::{self, Xdg};
 use crate::probe::ProbeFailure;
 use crate::pyvalue::{self, py_str};
 
-const TOOLS: [(&str, &str); 27] = [
+const TOOLS: [(&str, &str); 26] = [
     ("bash", "required shell"),
     ("sh", "application launch shell"),
     ("readlink", "required coreutils"),
@@ -19,7 +19,6 @@ const TOOLS: [(&str, &str); 27] = [
     ("sha256sum", "required coreutils"),
     ("cut", "required coreutils"),
     ("rm", "required coreutils"),
-    ("python3", "required (Python 3.11+)"),
     ("setsid", "required util-linux"),
     ("flock", "required util-linux"),
     ("systemctl", "required systemd"),

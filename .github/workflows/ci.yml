@@ -82,7 +82,6 @@ jobs:
           tests/assistant/service.py
           tests/assistant/afk-art.py
           tests/assistant/discord.py
-          tests/assistant/discord-dm.py
           tests/cli.py
           tests/dev.py
           tests/isolation.py

@@ -113,6 +113,7 @@ python3 tools/voice-text-model-benchmark.py --extra > .tmp/voice-model-extra.log
 python3 tools/voice-text-model-benchmark.py --confirm > .tmp/voice-model-confirm.log
 # Six semantic samples; model is explicit and does not depend on changing defaults:
 python3 tools/voice-semantic-sample.py --provider codex --model gpt-6-luna > .tmp/luna-semantic.log
+cargo test --manifest-path desktop/Cargo.toml assistant
 python3 tests/assistant/service.py
 lua tests/assistant/controller.lua
 ```

@@ -1,4 +1,5 @@
 pub mod afk;
+pub mod assistant;
 pub mod config;
 pub mod discord;
 pub mod doctor;

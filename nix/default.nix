@@ -60,7 +60,6 @@ in stdenvNoCC.mkDerivation {
   version = "0.1.0";
   src = source;
   nativeBuildInputs = [ makeWrapper ];
-  buildInputs = [ python3 ];
   dontBuild = true;
   doInstallCheck = true;
   nativeInstallCheckInputs = [ jq ];
@@ -77,42 +76,41 @@ in stdenvNoCC.mkDerivation {
     cp -r shell $out/share/tohru/
     cp -r share/tohru/. $out/share/tohru/
     cp -r docs $out/share/tohru/
-    cp bin/tohru_*.py bin/tohru-wallpaper-media $out/bin/
+    cp bin/tohru-wallpaper-media $out/bin/
     cp LICENSE $out/share/tohru/LICENSE
     cp bin/tohru bin/tohru-run bin/tohru-settings-run bin/tohru-session-run \
-      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev bin/tohru-assistant $out/bin/
-    wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}"
-    install -m644 bin/tohru_status_ledger.py $out/bin/
+      bin/tohru-launcher-run bin/tohru-notifications-run bin/tohru-lock bin/tohru-greeter bin/tohru-media-art bin/tohru-polkit-run bin/tohru-dev $out/bin/
+    wrapProgram $out/bin/tohru --set TOHRU_RUNTIME ${runtime}/bin/pleamar --prefix PATH : "$out/bin:${lib.makeBinPath [ fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}"
     wrapProgram $out/bin/tohru-home-guard --prefix PATH : ${lib.makeBinPath [ bash ]}
     wrapProgram $out/bin/tohru-assistant --prefix PATH : ${lib.makeBinPath [ libnotify ]}
     wrapProgram $out/bin/tohru-run \
-      --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
+      --prefix PATH : "$out/bin:${lib.makeBinPath [ fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_SCENE $out/share/tohru/shell/bar.plm
     wrapProgram $out/bin/tohru-settings-run \
-      --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
+      --prefix PATH : "$out/bin:${lib.makeBinPath [ fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_SETTINGS_SCENE $out/share/tohru/shell/settings/settings.plm
     wrapProgram $out/bin/tohru-session-run \
-      --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
+      --prefix PATH : "$out/bin:${lib.makeBinPath [ fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_SESSION_SCENE $out/share/tohru/shell/session/menu.plm
     wrapProgram $out/bin/tohru-launcher-run \
-      --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
+      --prefix PATH : "$out/bin:${lib.makeBinPath [ fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_LAUNCHER_SCENE $out/share/tohru/shell/launcher/entry.plm
     wrapProgram $out/bin/tohru-notifications-run \
-      --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
+      --prefix PATH : "$out/bin:${lib.makeBinPath [ fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_NOTIFICATIONS_SCENE $out/share/tohru/shell/notifications/notifications.plm
     wrapProgram $out/bin/tohru-lock \
-      --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
+      --prefix PATH : "$out/bin:${lib.makeBinPath [ fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_LOCK_SCENE $out/share/tohru/shell/lock/lock.plm \
       --set TOHRU_LOCK_PLAIN_SCENE $out/share/tohru/shell/lock/plain.plm \
       --prefix PATH : ${lib.makeBinPath [ util-linux systemd procps coreutils ]}
     wrapProgram $out/bin/tohru-greeter \
-      --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
+      --prefix PATH : "$out/bin:${lib.makeBinPath [ fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_GREETER_SCENE $out/share/tohru/shell/greeter/greeter.plm \
       --set TOHRU_GREETER_PLAIN_SCENE $out/share/tohru/shell/greeter/plain.plm \
@@ -128,7 +126,7 @@ in stdenvNoCC.mkDerivation {
         --add-flags "--dragon-art $out/share/tohru/shell/assistant/dragon"
     ''}
     wrapProgram $out/bin/tohru-polkit-run \
-      --prefix PATH : "$out/bin:${lib.makeBinPath [ python3 fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
+      --prefix PATH : "$out/bin:${lib.makeBinPath [ fontconfig util-linux systemd coreutils procps wayland-utils swayidle mpvpaper wl-clipboard xdg-terminal-exec ]}" \
       --set TOHRU_RUNTIME ${runtime}/bin/pleamar \
       --set TOHRU_POLKIT_SCENE $out/share/tohru/shell/polkit/polkit.plm
     for program in tohru-idle tohru-session-action tohru-afk-idle; do

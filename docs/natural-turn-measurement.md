@@ -40,6 +40,7 @@ python3 tools/voice-history-replay.py --module .tmp/baseline-voice
 python3 tools/voice-history-replay.py
 python3 tests/assistant/natural-turns.py
 python3 tests/assistant/voice.py
+cargo test --manifest-path desktop/Cargo.toml assistant
 python3 tests/assistant/service.py
 lua tests/assistant/controller.lua
 lua tests/assistant/voice-controller.lua

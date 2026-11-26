@@ -138,6 +138,7 @@ python3 tools/voice-semantic-sample.py --provider codex > .tmp/cloud.log
 TOHRU_VOICE_SEMANTIC=on python3 tools/voice-sample-replay.py PATH_TO_RESULTS_JSON
 python3 tests/assistant/voice.py
 python3 tests/assistant/natural-turns.py
+cargo test --manifest-path desktop/Cargo.toml assistant
 python3 tests/assistant/service.py
 lua tests/assistant/controller.lua
 lua tests/assistant/voice-controller.lua

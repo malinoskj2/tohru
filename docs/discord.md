@@ -280,20 +280,19 @@ API error bodies and fetched message contents are not logged. HTTP 401 means che
 
 ## Local verification
 
-From a checkout, with Python 3.11+ and Rust installed, after `cargo build --release --manifest-path desktop/Cargo.toml`:
+From a checkout with Rust and Python 3.11+ installed:
 
 ```sh
+cargo build --release --locked --manifest-path desktop/Cargo.toml
+cargo test --locked --manifest-path desktop/Cargo.toml
 python3 -B tests/assistant/discord.py
-python3 -B tests/assistant/discord-dm.py
-python3 -B tests/assistant/service.py
-cargo test --locked --manifest-path desktop/Cargo.toml discord
 cargo test --locked --manifest-path runtime/Cargo.toml
 bin/tohru-discord status
 ```
 
-The Discord suite uses a local fake HTTP server and fake provider CLIs. It covers missing/blank/invalid required author setup, exact author filtering and spoofed/missing authors, mixed/all-discarded pages, bounded cursors/results in both directions, live configuration changes, posting gates, scoped guild/channel access, credentials/redaction, malformed responses, permissions/auth errors, rate limits, broker shutdown/cancellation and provider shell routing without discarded content. Native settings and controller fixtures cover validation, persistence, effective settings propagation and cancellation on author-ID changes. It sends no live Discord traffic. `status` is a safe local smoke check; a real read requires an enabled integration, a configured user ID and a normal assistant turn. Posting requires a separate explicit user request.
+The Discord suites use an in-process fake transport and fake provider CLIs. It covers missing/blank/invalid required author setup, exact author filtering and spoofed/missing authors, mixed/all-discarded pages, bounded cursors/results in both directions, live configuration changes, posting gates, scoped guild/channel access, credentials/redaction, malformed responses, permissions/auth errors, rate limits, broker shutdown/cancellation and provider shell routing without discarded content. Native settings and controller fixtures cover validation, persistence, effective settings propagation and cancellation on author-ID changes. It sends no live Discord traffic. `status` is a safe local smoke check; a real read requires an enabled integration, a configured user ID and a normal assistant turn. Posting requires a separate explicit user request.
 
-CI's Python CPU verification step runs both `discord.py` and `discord-dm.py`, and the desktop crate's tests cover the native command, receiver and REST client.
+The desktop crate's tests cover the native command, broker, receiver, REST client and a received DM answered through a fake provider; `discord.py` drives the built assistant through every provider CLI's shell tool and the Orca boundary. CI runs both.
 The DM regression suite includes fresh edit/deletion progress, transient failure
 retention, bounded cancellation of an interrupt-ignoring fake provider, and
 isolated temporary XDG/SQLite roots; controller fixtures cover desktop draft and

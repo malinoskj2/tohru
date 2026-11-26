@@ -129,7 +129,6 @@ pub fn required_checks(values: &Values) -> BTreeSet<String> {
     let base = executables(&[
         "bash",
         "sh",
-        "python3",
         "readlink",
         "dirname",
         "sha256sum",
