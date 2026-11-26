@@ -14,6 +14,7 @@ The illustrated voice dragon now has **20 new full-body airborne keys**, each wi
 | `eyes.webp` | 4 × 1, 400 × 52 | 4,876 | 0.020 / 0.079 MiB |
 | `mouths.webp` | 8 × 1, 352 × 40 | 3,700 | 0.013 / 0.054 MiB |
 | `heart.png` | 48 × 48 | 2,221 | 0.002 / 0.009 MiB |
+| `turn-sheet-b.webp` | 12 × 10 cells, 2880 × 2400 | 859,710 | 12.61 / 50.45 MiB, only while bound (`../sheet-turn.luau`) |
 
 Total runtime art: **9,468,909 bytes (9.03 MiB)**, up from 3.56 MiB. Direct decoding of the source files to RGBA8 requires 157.09 MiB, up from 71.55 MiB. Budgets computed from the scene's declared image sizes are **57.07 MiB at 1×** and **228.28 MiB at 2×**, versus 17.89 / 71.55 MiB previously. These pixel budgets exclude decoder temporaries, mipmaps, fonts, driver allocations and voice models; they are not measured VRAM deltas. `tools/dragon/art/packing.json` records the exact dimensions and costs. The square atlas fits a 16384 px texture through 4× scale.
 

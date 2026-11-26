@@ -168,8 +168,8 @@ class DragonArt(unittest.TestCase):
             self.assertLessEqual(max(body.size),16384)
             def rgba(path):
                 with Image.open(path) as image:return image.width*image.height*4
-            # AFK art binds only while an idle scene plays and is released after it.
-            resident=sum(rgba(path) for path in [*pack.OUT.glob('*.webp'),pack.OUT/'heart.png'] if not path.name.startswith('afk'))
+            # AFK art binds only while an idle scene plays, and the Sheet-B turn only while assistant.sheet_b_turn or `tohru dragon turn` needs it.
+            resident=sum(rgba(path) for path in [*pack.OUT.glob('*.webp'),pack.OUT/'heart.png'] if not path.name.startswith(('afk','turn-sheet')))
             self.assertLess(resident,170*1024*1024)
             scenes=[{'afk.webp'},{'afk-closeup-motion.webp'},{'afk-closeup-motion.webp','afk-bust-motion.webp'}]
             self.assertLess(max(sum(rgba(pack.OUT/name) for name in scene) for scene in scenes),200*1024*1024)

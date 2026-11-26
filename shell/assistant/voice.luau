@@ -64,6 +64,7 @@ return function(assistant, puppet, flight, service_executable)
     end
 
     local function show_dragon(on)
+        if puppet.turn then puppet.turn.cancel() end
         if not on then notice_reply = nil end
         if not on then task_speech.interrupt() end
         hide_serial = hide_serial + 1
@@ -557,7 +558,7 @@ return function(assistant, puppet, flight, service_executable)
     -- Right-clicking her ends the summon the way the conversation ending does, but at once:
     -- the service stops hearing and speaking, and she leaves without lingering.
     on("assistant_dismiss", function()
-        if not fact.ai_dragon_open then return end
+        if not fact.ai_dragon_open or (puppet.turn and puppet.turn.playing()) then return end
         notice_reply = nil
         hearing = false
         greeting_serial = greeting_serial + 1
@@ -575,7 +576,8 @@ return function(assistant, puppet, flight, service_executable)
         fact.ai_voice_conversation = false
         puppet.speaking(false, "interrupted")
         puppet.calm()
-        show_dragon(false)
+        -- With assistant.sheet_b_turn she turns back to profile right before leaving.
+        if not (puppet.turn and puppet.turn.out(function() show_dragon(false) end)) then show_dragon(false) end
     end)
 
     local function configure(settings)
@@ -585,6 +587,7 @@ return function(assistant, puppet, flight, service_executable)
             return row.value
         end
         puppet.reduced(value("assistant.reduced_motion", false) == true)
+        if puppet.turn then puppet.turn.configure(value("assistant.sheet_b_turn", false) == true) end
         local chatter = value("assistant.waiting_chatter", false) == true
         if chatter ~= waiting_chatter then send({cmd = "diagnostic", stage = "waiting_config", enabled = chatter}) end
         waiting_chatter = chatter

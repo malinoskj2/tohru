@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pack the verified B1 dragon head-turn sequences (90->0 and 0->90) into a production 240x240 RGBA WebP sheet.
 
-Writes staged production art under tools/turn/art/ without activating it in shell/assistant/.
+Writes the sheet to shell/assistant/dragon/ and its manifest to tools/turn/art/.
 """
 import argparse
 import hashlib
@@ -33,7 +33,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--fwd", type=Path, required=True, help="90->0 (profile-right to front) RGBA frame directory")
     ap.add_argument("--rev", type=Path, required=True, help="0->90 (front to profile-right) RGBA frame directory")
-    ap.add_argument("--out-dir", type=Path, default=ROOT / "tools/turn/art")
+    ap.add_argument("--out-dir", type=Path, default=ROOT / "shell/assistant/dragon")
+    ap.add_argument("--manifest-dir", type=Path, default=ROOT / "tools/turn/art")
     ap.add_argument("--name", default="turn-sheet-b")
     ap.add_argument("--quality", type=int, default=90)
     args = ap.parse_args()
@@ -53,7 +54,7 @@ def main():
 
     manifest = {
         "name": args.name,
-        "activated": False,
+        "activated": True,
         "sheet": str(sheet_path.relative_to(ROOT)),
         "sheet_sha256": sha256(sheet_path),
         "bytes": sheet_path.stat().st_size,
@@ -76,7 +77,8 @@ def main():
             "tools/turn/contour.py": sha256(ROOT / "tools/turn/contour.py"),
         },
     }
-    meta_path = args.out_dir / f"{args.name}.json"
+    args.manifest_dir.mkdir(parents=True, exist_ok=True)
+    meta_path = args.manifest_dir / f"{args.name}.json"
     meta_path.write_text(json.dumps(manifest, indent=2) + "\n")
     print(json.dumps(manifest, indent=2))
 

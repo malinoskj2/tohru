@@ -1,5 +1,5 @@
 -- The voice dragon's animator. It plays the sheets in dragon/ at 24 frames a second, and only while she is on screen.
-return function(full_body, landing_frames)
+return function(full_body, landing_frames, turn)
     local TICK = 42
     -- Compact silhouettes need more room to match the original neutral.
     local POSE_SCALE = {
@@ -124,7 +124,7 @@ return function(full_body, landing_frames)
     local load_generation = 0
     local reduced, mode = false, "neutral"
     local posture_age, posture_after = 0, 240
-    local flight_row, held_pose, entrance, touchdown
+    local flight_row, held_pose, entrance, touchdown, sheet_entrance
     local PIXEL_SCALE = 150 / 240
     local LANDING = {ponder_hover=489, attentive_hover=507, neutral=0}
     local voice_art, leased_art, current_art = "", "", ""
@@ -418,6 +418,7 @@ return function(full_body, landing_frames)
         local dir = voice_art ~= "" and voice_art or leased_art
         if current_art == dir then return end
         current_art = dir
+        if turn then turn.art(dir) end
         load_generation = load_generation + 1
         local generation = load_generation
         if (dir or "") == "" then
@@ -460,6 +461,7 @@ return function(full_body, landing_frames)
     end
 
     return {
+        turn = turn,
         load = function(dir)
             voice_art = dir or ""
             sync_art()
@@ -488,7 +490,12 @@ return function(full_body, landing_frames)
             -- turn-in strip and must not suppress the next appearance's flight.
             if LANDING[target] == nil then target = "neutral" end
             entrance = landing_frames[pose]
+            -- assistant.sheet_b_turn replaces the right glide's turn-in with the Sheet-B turn.
+            sheet_entrance = pose == "right_glide" and turn ~= nil and turn.ready()
             return true
+        end,
+        landing_seconds = function()
+            return sheet_entrance and (turn.FRONT + 1) * TICK / 1000 or nil
         end,
         land = function(t)
             local strip = entrance and entrance[target]
@@ -502,6 +509,12 @@ return function(full_body, landing_frames)
                 pose, plan, step, flourish, phase = target, {}, nil, nil, 0
                 set("ai_landing_target", LANDING[target])
                 rest()
+            end
+            if sheet_entrance then
+                set("ai_flight_art", false)
+                set("ai_landing_art", false)
+                if t < 1 then turn.frame(math.floor(turn.FRONT * t + 0.5)) else turn.hide() end
+                return true
             end
             local index = math.floor((#strip - 1) * t + 0.5)
             local rect = strip[index + 1]
@@ -519,7 +532,8 @@ return function(full_body, landing_frames)
         end,
         end_entrance = function()
             if not entrance then return end
-            entrance, touchdown, flight_row = nil, nil, nil
+            if sheet_entrance then turn.hide() end
+            entrance, touchdown, flight_row, sheet_entrance = nil, nil, nil, false
             pose, plan, step, flourish, phase = target, {}, nil, nil, 0
             posture_age, hold = 0, 0
             set("ai_flight_art", false)

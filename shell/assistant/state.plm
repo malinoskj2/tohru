@@ -50,7 +50,7 @@ part AssistantState {
     prop ai_glow = 0 ~400ms
     follow ai_glow = if(ai_streaming and not ai_open, 1, 0)
     prop ai_dragon_k = 0 ~spring(170, 20)
-    follow ai_dragon_k = if(ai_dragon_open or ai_actor_open, 1, 0)
+    follow ai_dragon_k = if(ai_dragon_open or ai_actor_open or ai_turn_shown, 1, 0)
     prop ai_mouth_s = 0 ~70ms
     follow ai_mouth_s = ai_mouth
     // The conversation shown is the one streaming.
@@ -98,6 +98,7 @@ part AssistantState {
     event assistant_hush ->
     event assistant_dragon ->
     event assistant_dismiss ->
+    event assistant_dragon_turn ->
     event assistant_show_request ->
     event assistant_alert ->
     event assistant_voice_result ->

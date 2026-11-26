@@ -825,6 +825,18 @@ fn waiting_chatter_defaults_off_and_seed_is_bounded() {
 }
 
 #[test]
+fn sheet_b_turn_defaults_off_and_takes_only_a_boolean() {
+    let files = Fixture::new();
+    fs::write(files.managed(), "").unwrap();
+    let key = Key::parse("assistant.sheet_b_turn").unwrap();
+    let mut owner = files.owner();
+    assert_eq!(owner.get(key).value, Value::Bool(false));
+    assert!(owner.set(key, Value::Text("true".into())).is_err());
+    owner.set(key, Value::Bool(true)).unwrap();
+    assert_eq!(files.owner().get(key).value, Value::Bool(true));
+}
+
+#[test]
 fn managed_dragon_motion_override_survives_reload_without_writing_user_config() {
     let files = Fixture::new();
     fs::write(files.managed(), "[assistant]\nreduced_motion = true\n").unwrap();
@@ -1020,6 +1032,7 @@ fn integrated_assistant_keys_remain_distinct_and_enumerated() {
         Key::AssistantContextualEntrances,
         Key::AssistantEntranceSeed,
         Key::AssistantEntranceVariant,
+        Key::AssistantSheetBTurn,
         Key::AssistantBackend,
         Key::AssistantOrcaBot,
         Key::AssistantOrcaVoiceChat,

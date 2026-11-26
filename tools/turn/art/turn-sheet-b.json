@@ -1,7 +1,7 @@
 {
   "name": "turn-sheet-b",
-  "activated": false,
-  "sheet": "tools/turn/art/turn-sheet-b.webp",
+  "activated": true,
+  "sheet": "shell/assistant/dragon/turn-sheet-b.webp",
   "sheet_sha256": "76480a1889607d7d52c6bf4a34cda893090bfad003c9ef25950bdc966a29b827",
   "bytes": 859710,
   "width": 2880,

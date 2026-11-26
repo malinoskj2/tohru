@@ -67,6 +67,7 @@ pub enum Key {
     AssistantEntranceSeed,
     AssistantEntranceVariant,
     AssistantWaitingChatter,
+    AssistantSheetBTurn,
     AssistantWaitingSeed,
     AssistantVoiceSource,
     AssistantProvider,
@@ -195,7 +196,7 @@ pub const ORCA_VOICE_CHATS: [&str; 4] = ["home", "new", "foreground", "quick"];
 pub const ORCA_OFFLINE_MODES: [&str; 2] = ["error", "local"];
 
 impl Key {
-    pub const ALL: [Self; 124] = [
+    pub const ALL: [Self; 125] = [
         Self::ShortcutsMode,
         Self::ShortcutLauncher,
         Self::ShortcutSession,
@@ -238,6 +239,7 @@ impl Key {
         Self::AssistantEntranceSeed,
         Self::AssistantEntranceVariant,
         Self::AssistantWaitingChatter,
+        Self::AssistantSheetBTurn,
         Self::AssistantWaitingSeed,
         Self::AssistantVoiceSource,
         Self::AssistantProvider,
@@ -367,6 +369,7 @@ impl Key {
             Self::AssistantEntranceSeed => "assistant.entrance_seed",
             Self::AssistantEntranceVariant => "assistant.entrance_variant",
             Self::AssistantWaitingChatter => "assistant.waiting_chatter",
+            Self::AssistantSheetBTurn => "assistant.sheet_b_turn",
             Self::AssistantWaitingSeed => "assistant.waiting_seed",
             Self::AssistantVoiceSource => "assistant.voice_source",
             Self::AssistantProvider => "assistant.provider",
@@ -545,6 +548,7 @@ impl Key {
             Self::AssistantEntranceSeed => (&["assistant"], "entrance_seed"),
             Self::AssistantEntranceVariant => (&["assistant"], "entrance_variant"),
             Self::AssistantWaitingChatter => (&["assistant"], "waiting_chatter"),
+            Self::AssistantSheetBTurn => (&["assistant"], "sheet_b_turn"),
             Self::AssistantWaitingSeed => (&["assistant"], "waiting_seed"),
             Self::AssistantVoiceSource => (&["assistant"], "voice_source"),
             Self::AssistantProvider => (&["assistant"], "provider"),
@@ -743,6 +747,7 @@ impl Key {
             | Self::PolkitAgent
             | Self::AssistantTtsLoadOnConversation
             | Self::AssistantWaitingChatter
+            | Self::AssistantSheetBTurn
             | Self::AssistantVoiceHighEnabled
             | Self::AssistantQuickVoiceCache
             | Self::AssistantReducedMotion
@@ -1005,6 +1010,7 @@ impl Key {
                 | Self::AssistantVoice
                 | Self::AssistantContextualEntrances
                 | Self::AssistantWaitingChatter
+                | Self::AssistantSheetBTurn
                 | Self::AssistantReducedMotion
                 | Self::AssistantAfkEnabled
                 | Self::AssistantAfkQuietRest

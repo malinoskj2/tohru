@@ -5,7 +5,7 @@ return function(paths, puppet, make_actor)
     local width, height = 0, 0
     local serial, event, last, next_at = 0, 0, nil, 0
     local timer, process, plan, interruption, pending
-    local started, sceneKey, waiting, release_at, cycles
+    local started, sceneKey, waiting, release_at, cycles, landing_time
     local PREPARE, LANDING = 0.20, 0.76
     local hearing, fullscreen = false, false
     local outputs, focused, selected = {}, "", ""
@@ -98,7 +98,7 @@ return function(paths, puppet, make_actor)
         local p = paths.sample(plan, travel)
         -- The pose and first wing frame are published at the start position
         -- before translation. End on the same registered key for landing.
-        local landing = math.min(1, math.max(0, (travel - release_at) / LANDING))
+        local landing = math.min(1, math.max(0, (travel - release_at) / landing_time))
         if travel < release_at then
             puppet.wingbeat(cycles * travel / release_at)
         elseif not puppet.land(landing) then
@@ -146,6 +146,7 @@ return function(paths, puppet, make_actor)
             reset()
             return
         end
+        landing_time = puppet.landing_seconds and puppet.landing_seconds() or LANDING
         text.ai_flight_trace = json.encode({
             event = event + 1,
             seed = seed,

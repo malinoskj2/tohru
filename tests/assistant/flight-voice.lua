@@ -93,7 +93,7 @@ local assistant = {
         opened = id
     end,
 }
-local puppet = dofile("shell/assistant/puppet.luau")(dofile("shell/assistant/full-body.luau"), dofile("shell/assistant/landing-frames.luau"))
+local puppet = dofile("shell/assistant/puppet.luau")(dofile("shell/assistant/full-body.luau"), dofile("shell/assistant/landing-frames.luau"), dofile("shell/assistant/sheet-turn.luau")())
 local flight = dofile("shell/assistant/flight.luau")(
     dofile("shell/assistant/flight-path.luau"),
     puppet,
@@ -279,6 +279,53 @@ for _, kind in ipairs({ "rise", "right", "sweep", "wrap" }) do
     assert(fact.ai_dg_frame == 489 and puppet.pose()=="ponder_hover")
     handlers.assistant_dragon()
 end
+-- assistant.sheet_b_turn: the right glide lands through the Sheet-B turn, and a dismiss turns her back out.
+assert((text.ai_turn_src or "") == "")
+settings["assistant.sheet_b_turn"] = { value = true }
+settings["assistant.entrance_variant"].value = "sweep"
+advance(31000)
+voice.configure(settings)
+assert(text.ai_turn_src == "/fixture/turn-sheet-b.webp" and fact.ai_turn_bound)
+wake("sweep")
+local turn_frames, last_turn = 0, -1
+for _ = 1, 600 do
+    advance(16)
+    if not fact.ai_flying then break end
+    if fact.ai_turn_art then
+        assert(not fact.ai_flight_art and not fact.ai_landing_art)
+        assert(fact.ai_turn_frame >= last_turn and fact.ai_turn_frame <= 59)
+        if fact.ai_turn_frame ~= last_turn then turn_frames = turn_frames + 1 end
+        last_turn = fact.ai_turn_frame
+    end
+end
+assert(turn_frames >= 55 and last_turn >= 58, "Sheet-B turn-in skipped drawings")
+assert(not fact.ai_flying and not fact.ai_turn_art and fact.ai_dg_frame == 489 and fact.ai_dragon_open)
+handlers.assistant_dismiss()
+assert(fact.ai_turn_art and fact.ai_turn_frame == 60 and fact.ai_dragon_open)
+advance(42 * 30)
+handlers.assistant_dismiss()
+assert(fact.ai_turn_art and fact.ai_turn_frame == 90 and fact.ai_dragon_open)
+advance(42 * 31)
+assert(not fact.ai_turn_art and fact.ai_turn_frame == 119 and not fact.ai_dragon_open)
+settings["assistant.sheet_b_turn"].value = false
+settings["assistant.entrance_variant"].value = "wrap"
+voice.configure(settings)
+assert(text.ai_turn_src == "" and not fact.ai_turn_bound)
+-- `tohru dragon turn`: the whole turn and back on its own, then the sheet is released.
+text.ai_turn_request = "/share/turn-sheet-b.webp"
+handlers.assistant_dragon_turn()
+assert(fact.ai_turn_open and fact.ai_turn_warm and not fact.ai_turn_shown and fact.ai_turn_art and text.ai_turn_src == "/share/turn-sheet-b.webp")
+handlers.assistant_dragon_turn()
+advance(800)
+assert(fact.ai_turn_shown and not fact.ai_turn_warm and fact.ai_turn_art and fact.ai_turn_frame == 0)
+advance(500 + 42 * 60)
+assert(fact.ai_turn_open and fact.ai_turn_frame == 60)
+advance(42 * 60)
+assert(fact.ai_turn_open and fact.ai_turn_frame == 119)
+advance(400)
+assert(not fact.ai_turn_open and not fact.ai_turn_shown and fact.ai_turn_art)
+advance(600)
+assert(not fact.ai_turn_art and text.ai_turn_src == "")
 -- A new user utterance while the feet and wings are settling owns the puppet.
 advance(31000)
 wake("wrap")
