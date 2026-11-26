@@ -43,3 +43,28 @@ flight 0.035), because every drawn clip shares one base drawing; its absolute si
 (the rendered 3D control scores 0.62 against 0.91 for the drawn clips). It is reported, and becomes a stronger check against the locked
 5-view sheet's nearest view.
 The approved desktop landings are captures without alpha, so only motion.py covers them.
+
+## Blind reviewer
+
+`tools/verify/blind.py` shuffles the gate's `review/` packages into unlabelled clips and has a fresh headless Claude (Opus,
+read-only tools) judge them against `rejections.md`, a one-line brief per clip and the approved art. Two independent runs
+(seeds 21 and 22) over eight packages:
+
+| Clip | Expected | Run 21 | Run 22 | Faults it named |
+|---|---|---|---|---|
+| b5545db | fail | reject | reject | head swells about 1.9x in the front view (B4); horn vanishes or ghosts |
+| cadence | fail | reject | reject | eyes shrink to dots (F1); crest cross-fade ghost; horn vanishes in two frames |
+| drawn | fail | reject | reject | crest splits into two horns (B2); drawing swaps; head swells |
+| eyefix-v4 | fail | reject | reject | profile snaps to front in one frame (T1); eyes shrink and one vanishes (F1) |
+| 3d-ones (timing control) | pass | no-faults | no-faults | |
+| vol-b55 (no owner verdict) | info | needs-owner | reject | horn shrinks and vanishes within two frames |
+| flight-6-40 | pass | reject | reject | pop at the loop wrap (34 to 0); one wing drop |
+| flight-84-120 | pass | reject | reject | wings barely flap; hitch at the loop wrap |
+
+It rejects every owner-rejected clip in both runs, naming the owner's own faults, and passes the motion control. It rejects the
+two accepted flight excerpts: their wrap is where the calibration excerpt was cut from the longer clip, not a loop seam the owner
+saw, and a small flap is a taste call outside the checklist. So its rejections need the gate's numbers beside them, and an
+excerpt should be given whole loops or a brief saying it does not loop. Earlier runs shared one `/tmp` scratch folder, so frames
+left by one run read as extra frames of the next and produced invented snaps; each run now gets its own folder. Single runs
+also vary (cadence was needs-owner in one contaminated run), so the reviewer runs at least twice and the stricter verdict
+stands.
