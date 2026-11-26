@@ -6,7 +6,7 @@ return function()
     local NAME = "turn-sheet-b.webp"
     local enabled, art = false, ""
     local timer, finished = nil, nil
-    local standalone = 0
+    local standalone, waits = 0, {}
 
     local function show(frame)
         fact.ai_turn_frame = frame
@@ -28,10 +28,32 @@ return function()
         fact.ai_turn_bound = path ~= ""
     end
 
+    -- Losing the setting or the art finishes a pending turn-out at once, so a dismissal still hides her.
     local function refresh()
         if fact.ai_turn_open then return end
-        if not (enabled and art ~= "") then halt() end
+        local done
+        if not (enabled and art ~= "") then done = halt() end
         bind(enabled and art or "")
+        if done then done() end
+    end
+
+    local function wait(ms, mine, fn)
+        local id
+        id = after(ms, function()
+            waits[id] = nil
+            if mine == standalone then fn() end
+        end)
+        waits[id] = true
+    end
+
+    local function stop_standalone()
+        if not (fact.ai_turn_open or next(waits)) then return end
+        standalone = standalone + 1
+        for id in pairs(waits) do cancel(id) end
+        waits = {}
+        fact.ai_turn_open, fact.ai_turn_shown, fact.ai_turn_warm = false, false, false
+        fact.ai_turn_art = false
+        refresh()
     end
 
     local function play(first, last, done)
@@ -60,19 +82,16 @@ return function()
         bind(path)
         show(0)
         fact.ai_turn_open, fact.ai_turn_warm = true, true
-        after(DECODE, function()
-            if mine ~= standalone then return end
+        wait(DECODE, mine, function()
             fact.ai_turn_shown, fact.ai_turn_warm = true, false
         end)
-        after(DECODE + 500, function()
-            if mine ~= standalone then return end
+        wait(DECODE + 500, mine, function()
             play(0, LAST, function()
                 show(LAST)
-                after(400, function()
-                    if mine ~= standalone then return end
+                wait(400, mine, function()
                     fact.ai_turn_open, fact.ai_turn_shown = false, false
-                    after(600, function()
-                        if mine ~= standalone or fact.ai_turn_open then return end
+                    wait(600, mine, function()
+                        if fact.ai_turn_open then return end
                         fact.ai_turn_art = false
                         refresh()
                     end)
@@ -101,6 +120,10 @@ return function()
         play(FRONT + 1, LAST, done)
         return true
     end
-    function M.cancel() halt() end
+    -- A voice appearance supersedes any turn: a pending turn-out's completion is dropped, not run.
+    function M.cancel()
+        halt()
+        stop_standalone()
+    end
     return M
 end

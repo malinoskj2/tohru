@@ -307,9 +307,32 @@ handlers.assistant_dismiss()
 assert(fact.ai_turn_art and fact.ai_turn_frame == 90 and fact.ai_dragon_open)
 advance(42 * 31)
 assert(not fact.ai_turn_art and fact.ai_turn_frame == 119 and not fact.ai_dragon_open)
+local function land_sheet()
+    advance(31000)
+    wake("sweep")
+    for _ = 1, 600 do
+        advance(16)
+        if not fact.ai_flying then break end
+    end
+    assert(not fact.ai_flying and fact.ai_dragon_open)
+end
+-- A voice appearance during the turn-out supersedes it without hiding her.
+land_sheet()
+handlers.assistant_dismiss()
+advance(200)
+assert(fact.ai_turn_art and fact.ai_dragon_open)
+deliver("conversation", { on = true })
+assert(not fact.ai_turn_art and fact.ai_dragon_open)
+advance(10000)
+assert(not fact.ai_turn_art and fact.ai_dragon_open)
+-- Turning the setting off mid turn-out still completes the dismissal at once.
+handlers.assistant_dismiss()
+advance(200)
+assert(fact.ai_turn_art and fact.ai_dragon_open)
 settings["assistant.sheet_b_turn"].value = false
 settings["assistant.entrance_variant"].value = "wrap"
 voice.configure(settings)
+assert(not fact.ai_dragon_open and not fact.ai_turn_art)
 assert(text.ai_turn_src == "" and not fact.ai_turn_bound)
 -- `tohru dragon turn`: the whole turn and back on its own, then the sheet is released.
 text.ai_turn_request = "/share/turn-sheet-b.webp"
@@ -326,6 +349,24 @@ advance(400)
 assert(not fact.ai_turn_open and not fact.ai_turn_shown and fact.ai_turn_art)
 advance(600)
 assert(not fact.ai_turn_art and text.ai_turn_src == "")
+-- A voice appearance cancels a standalone turn and every step it had scheduled.
+handlers.assistant_dragon_turn()
+advance(1400)
+assert(puppet.turn.playing())
+puppet.turn.cancel()
+assert(not fact.ai_turn_open and not fact.ai_turn_shown and not fact.ai_turn_warm and not fact.ai_turn_art)
+assert(text.ai_turn_src == "" and not fact.ai_turn_bound)
+advance(10000)
+assert(not fact.ai_turn_open and not fact.ai_turn_art and not puppet.turn.playing())
+handlers.assistant_dragon_turn()
+advance(100)
+puppet.turn.cancel()
+advance(1400)
+assert(not puppet.turn.playing() and not fact.ai_turn_art and not fact.ai_turn_open)
+handlers.assistant_dragon_turn()
+assert(fact.ai_turn_open, "a cancelled standalone turn blocked the next one")
+advance(800 + 500 + 42 * 120 + 1000)
+assert(not fact.ai_turn_open and not fact.ai_turn_art and text.ai_turn_src == "")
 -- A new user utterance while the feet and wings are settling owns the puppet.
 advance(31000)
 wake("wrap")
