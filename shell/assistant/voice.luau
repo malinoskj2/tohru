@@ -27,8 +27,9 @@ return function(assistant, puppet, flight, service_executable)
     -- A small model writes the acknowledgement for each request while the owner is still
     -- talking: "now" lines play as the turn starts, "late" ones only if no answer has started
     -- by ACK_AFTER. The service synthesizes a drafted line ahead, so it plays without inference.
-    local ACK_AFTER = 1500
-    local ack_jobs = {}
+    -- A line not spoken by ACK_EXPIRY has missed its use and is dropped.
+    local ACK_AFTER, ACK_EXPIRY = 1500, 2500
+    local ack_jobs, claimed_ack = {}, nil
     local persona = {"--persona", "on", "--persona-file", ""}
     local greeted = 0
     local greeting_serial = 0
@@ -136,6 +137,7 @@ return function(assistant, puppet, flight, service_executable)
         local args = {"ack"}
         for _, arg in ipairs(persona) do args[#args + 1] = arg end
         job.id = spawn("tohru-assistant", args, function(raw)
+            if job.retired then return end
             local ok, event = pcall(json.decode, raw)
             if not ok or type(event) ~= "table" or event.event ~= "ack" then return end
             job.when = event.when == "now" and "now" or (event.when == "late" and "late" or "none")
@@ -144,6 +146,8 @@ return function(assistant, puppet, flight, service_executable)
             if job.ready then job.ready() end
         end, function()
             job.id = nil
+            if claimed_ack == job then claimed_ack = nil end
+            if job.retired then return end
             if not job.when then
                 job.when = "none"
                 if job.ready then job.ready() end
@@ -152,20 +156,39 @@ return function(assistant, puppet, flight, service_executable)
         return job
     end
 
+    local function retire(job)
+        if not job then return end
+        job.retired = true
+        if job.id then kill(job.id, "int") end
+    end
+
     local function drop_ack(token)
         local job = ack_jobs[token]
         ack_jobs[token] = nil
-        if job and job.id then kill(job.id, "int") end
+        retire(job)
     end
 
-    -- The turn takes its drafted line, or drafts one now; every other draft is obsolete.
+    local function retire_acks()
+        for token in pairs(ack_jobs) do drop_ack(token) end
+        retire(claimed_ack)
+        claimed_ack = nil
+    end
+
+    -- The turn takes its drafted line, or drafts one now; every other draft, and the previous
+    -- turn's line, is obsolete. The claimed helper stays owned until it exits or is retired.
     local function claim_ack(token, words)
         local job = token and ack_jobs[token]
         if job then ack_jobs[token] = nil end
         for other in pairs(ack_jobs) do drop_ack(other) end
-        if job then job.speculative = true; return job end
-        job = draft_ack("turn", words)
-        if job then ack_jobs.turn = nil end
+        retire(claimed_ack)
+        claimed_ack = nil
+        if job then
+            job.speculative = true
+        else
+            job = draft_ack("turn", words)
+            if job then ack_jobs.turn = nil end
+        end
+        if job and job.id then claimed_ack = job end
         return job
     end
 
@@ -179,23 +202,38 @@ return function(assistant, puppet, flight, service_executable)
     end
 
     local function schedule_ack(job, mine)
-        if not job then return end
-        local late = false
+        if not job or job.retired then return end
+        local late, expired = false, false
+        local turn_id = capture_id
         local function decide()
-            if mine ~= turn_generation or not job.when then return end
-            if job.when == "now" or (job.when == "late" and late) then acknowledge(mine, job.text) end
+            if expired or job.retired or mine ~= turn_generation or not job.when then return end
+            if job.when == "now" or (job.when == "late" and late) then
+                expired = true
+                acknowledge(mine, job.text)
+            end
+        end
+        local function report(when)
+            send({cmd = "diagnostic", stage = "ack_decision", turn_id = turn_id, generation = mine,
+                when = when, speculative = job.speculative == true})
         end
         job.ready = function()
-            send({cmd = "diagnostic", stage = "ack_decision", turn_id = capture_id, generation = mine,
-                when = job.when, speculative = job.speculative == true})
+            if job.retired then return end
+            report(job.when)
             decide()
         end
         if job.when then job.ready() end
         after(ACK_AFTER, function() late = true; decide() end)
+        after(ACK_EXPIRY, function()
+            if expired or job.retired then return end
+            expired = true
+            if not job.when then report("expired") end
+            retire(job)
+            if claimed_ack == job then claimed_ack = nil end
+        end)
     end
 
     local function quiet()
-        for token in pairs(ack_jobs) do drop_ack(token) end
+        retire_acks()
         notice_reply, follow_pending = nil, nil
         hearing = false
         task_speech.interrupt()
@@ -289,6 +327,7 @@ return function(assistant, puppet, flight, service_executable)
                 show_dragon(true)
             else
                 if assistant.discard_draft then assistant.discard_draft() end
+                retire_acks()
                 task_speech.interrupt()
                 interrupted_spoken = nil
                 if conversation then assistant.remember(conversation) end
@@ -385,6 +424,7 @@ return function(assistant, puppet, flight, service_executable)
             fact.ai_mouth = tonumber(message.level) or 0
             puppet.mouth(fact.ai_mouth, tonumber(message.viseme))
         elseif event == "barge" then
+            retire_acks()
             notice_reply = nil
             task_speech.silence()
             turn_generation = turn_generation + 1
@@ -704,6 +744,7 @@ return function(assistant, puppet, flight, service_executable)
     -- the service stops hearing and speaking, and she leaves without lingering.
     on("assistant_dismiss", function()
         if not fact.ai_dragon_open or (puppet.turn and puppet.turn.playing()) then return end
+        retire_acks()
         notice_reply = nil
         hearing = false
         greeting_serial = greeting_serial + 1
@@ -745,6 +786,7 @@ return function(assistant, puppet, flight, service_executable)
             tostring(value("assistant.orca_voice_chat", "foreground")), tostring(value("assistant.orca_offline", "error")),
         }, "|")
         if backend_signature and backend_signature ~= backend then
+            retire_acks()
             task_speech.interrupt()
             turn_generation = turn_generation + 1
             streaming_speech, streamed_text = false, false

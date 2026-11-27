@@ -6,16 +6,21 @@ local events, spawned, killed, written, timers = {}, {}, {}, {}, {}
 _G.fact = {}
 _G.text = {}
 _G.on = function(name, handler) events[name] = handler end
-local ack_timers = {}
+local ack_timers, expiry_timers = {}, {}
 _G.after = function(seconds, f)
     if seconds == 16 then f()
     elseif seconds == 1500 then ack_timers[#ack_timers + 1] = f
+    elseif seconds == 2500 then expiry_timers[#expiry_timers + 1] = f
     else timers[#timers + 1] = f end
 end
 local ticking = {}
 _G.every = function(ms, f) ticking[#ticking + 1] = f; return #ticking end
 _G.cancel = function(t) ticking[t] = nil end
-_G.kill = function(id, how) killed[#killed + 1] = {id, how} end
+local helper_killed = {}
+_G.kill = function(id, how)
+    if type(id) == "string" and id:match("^helper%-") then helper_killed[#helper_killed + 1] = {id, how}
+    else killed[#killed + 1] = {id, how} end
+end
 local diagnostics, presences, prepared = {}, {}, {}
 _G.write = function(id, line)
     if line.value.cmd == "diagnostic" then diagnostics[#diagnostics + 1] = line.value
@@ -743,9 +748,9 @@ do
     proc.line({event = "ack_draft", text = "Fix the calendar", token = "a0"})
     local stale = ack_helper()
     assert(stale.how.input.value.text == "Fix the calendar")
-    local kills = #killed
+    local kills = #helper_killed
     proc.line({event = "ack_cancel", token = "a0"})
-    assert(#killed == kills + 1 and killed[#killed][1] == "helper-" .. #helpers and killed[#killed][2] == "int")
+    assert(#helper_killed == kills + 1 and helper_killed[#helper_killed][1] == "helper-" .. #helpers and helper_killed[#helper_killed][2] == "int")
 
     proc.line({event = "ack_draft", text = "Fix the calendar rail", token = "a1"})
     local drafted_ack = ack_helper()
@@ -810,5 +815,49 @@ do
     slow.line({event = "ack", when = "late", text = "Hmm, where to begin."})
     out = mine()
     assert(out[#out - 1].path == "ack" and out[#out].text == "Hmm, where to begin.", "a late line that arrives after the deadline still covers the wait")
-    print("Acknowledgements: model-written, drafted ahead, now/late/none, answer streams behind passed")
+    busy = false
+    speech("done", "home-chat", "Rome began as a village.", true, asks[#asks].voice_generation)
+
+    -- A line that misses its window is dropped and its helper stopped.
+    proc.line({event = "turn", text = "Check the build", turn_id = "t5"})
+    local tardy = ack_helper()
+    local tardy_id = "helper-" .. #helpers
+    speech("start", "home-chat", "", true, asks[#asks].voice_generation, "", "home")
+    kills = #helper_killed
+    expiry_timers[#expiry_timers]()
+    assert(#helper_killed == kills + 1 and helper_killed[#helper_killed][1] == tardy_id, "an expired line's helper is stopped")
+    assert(decision().when == "expired")
+    count = #mine()
+    tardy.line({event = "ack", when = "now", text = "I'll check the build."})
+    ack_timers[#ack_timers]()
+    assert(#mine() == count, "an expired line is never spoken")
+    busy = false
+    speech("done", "home-chat", "The build passed.", true, asks[#asks].voice_generation)
+
+    -- A claimed helper still running is stopped by a barge, the next turn, and voice turning off;
+    -- its late result reports nothing.
+    proc.line({event = "turn", text = "Merge the branch", turn_id = "t6"})
+    local claimed_id = "helper-" .. #helpers
+    local claimed = ack_helper()
+    kills = #helper_killed
+    proc.line({event = "barge", continuation = false})
+    assert(#helper_killed == kills + 1 and helper_killed[#helper_killed][1] == claimed_id, "a barge stops the claimed helper")
+    local reports = #diagnostics
+    claimed.line({event = "ack", when = "now", text = "Merging it now."})
+    assert(#diagnostics == reports, "a retired helper's result is ignored")
+    busy = false
+
+    proc.line({event = "turn", text = "Open the settings", turn_id = "t7"})
+    claimed_id = "helper-" .. #helpers
+    kills = #helper_killed
+    proc.line({event = "turn", text = "Open the launcher", turn_id = "t8"})
+    assert(helper_killed[kills + 1][1] == claimed_id, "the next turn stops the previous turn's helper")
+    claimed_id = "helper-" .. #helpers
+    kills = #helper_killed
+    acking.configure(settings({["assistant.voice"] = false}))
+    local stopped_claimed = false
+    for i = kills + 1, #helper_killed do if helper_killed[i][1] == claimed_id then stopped_claimed = true end end
+    assert(stopped_claimed, "turning voice off stops the claimed helper")
+    busy = false
+    print("Acknowledgements: model-written, drafted ahead, now/late/none, expiry, retirement, answer streams behind passed")
 end

@@ -16,7 +16,7 @@ To investigate a missed wake, follow `utterance_start`, `wake_decision`, `asr_fi
 
 ## First audio
 
-`first_audio` marks the first write of each reply's audio, with the voice profile and `onset_ms`, the offset of its first audible sample. `speech_stream_start` and `committed_answer_ready` name the reply's path: `draft`, `normal`, `quick`, `home`, `ack` (an acknowledgement), `notice`, `greeting`, `task`, `alert` or `result`. `ack_decision` records the acknowledgement model's `when` (`now`, `late` or `none`) for each turn, and whether it was drafted while the owner was talking (`speculative`). `smart_turn` records the end-of-turn model's score and `endpoint` the hold that ended the turn. `speech_yield` records how long speech ran on to reach a gap between words after the owner interrupted it, and `high_stream_gap` any late chunk while the high voice streams.
+`first_audio` marks the first write of each reply's audio, with the voice profile and `onset_ms`, the offset of its first audible sample. `speech_stream_start` and `committed_answer_ready` name the reply's path: `draft`, `normal`, `quick`, `home`, `ack` (an acknowledgement), `notice`, `greeting`, `task`, `alert` or `result`. `ack_decision` records the acknowledgement model's `when` (`now`, `late`, `none`, or `expired` when no decision came within 2.5 s) for each turn, and whether it was drafted while the owner was talking (`speculative`). `smart_turn` records the end-of-turn model's score and `endpoint` the hold that ended the turn. `speech_yield` records how long speech ran on to reach a gap between words after the owner interrupted it, and `high_stream_gap` any late chunk while the high voice streams.
 
 Summarize end of speech to first audible sound per path and profile, at p50 and p95:
 
@@ -49,7 +49,7 @@ Model-written acknowledgements against the fixed lines they replaced, Kokoro, ei
 | Other turn, 4 s reply | 2326 / 2346, 8 of 8 | 4823 / 5022, 4 of 8 |
 | Quick answer (Sonnet through the CLI) | 2335 / 2375, 8 of 8 | 3327 / 10702, 4 of 8 |
 
-Through the CLI the line is ready 1.8 to 3.0 s after end of speech, later than the turn starts (about 580 ms), so a work turn's first sound waits for it. The other turns acknowledged were "late" lines; the rest were judged to need none and wait silently for the answer. Over the Messages API the call is expected to finish before the turn starts, but that path was not measured.
+Through the CLI the line is ready 1.8 to 3.0 s after end of speech, later than the turn starts (about 580 ms), so a work turn's first sound waits for it. The other turns acknowledged were "late" lines; the rest were judged to need none and wait silently for the answer. Over the Messages API the call is expected to finish before the turn starts, but that path was not measured. These runs predate the 2.5 s expiry, which now drops lines that arrive later than that after the turn.
 
 ## Analyzed background results
 
