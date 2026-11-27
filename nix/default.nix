@@ -1,6 +1,6 @@
 { lib, stdenvNoCC, rustPlatform, fetchurl, pkg-config, makeWrapper, callPackage
 , fontconfig, wayland, jq, socat, ffmpeg-headless, findutils, gnugrep, curl, libxkbcommon, linux-pam, libffi, vulkan-loader, libglvnd, python3, dbus
-, libnotify, util-linux, systemd, procps, coreutils, wayland-utils, swayidle, mpvpaper, wl-clipboard, xdg-terminal-exec
+, libnotify, grim, util-linux, systemd, procps, coreutils, wayland-utils, swayidle, mpvpaper, wl-clipboard, xdg-terminal-exec
   # Without the voice service nothing for speech is installed; the setting then has nothing to start.
 , withVoice ? true }:
 let
@@ -111,6 +111,7 @@ in stdenvNoCC.mkDerivation {
       --prefix PATH : ${lib.makeBinPath [ wayland-utils mpvpaper jq socat ffmpeg-headless util-linux coreutils findutils gnugrep ]}
     wrapProgram $out/bin/tohru-media-art \
       --prefix PATH : ${lib.makeBinPath [ curl coreutils ]}
+    wrapProgram $out/bin/tohru-screens --prefix PATH : ${lib.makeBinPath [ grim wayland-utils systemd ]}
     wrapProgram $out/bin/tohru-shortcuts --prefix PATH : "$out/bin:${lib.makeBinPath [ systemd coreutils ]}"
     ${lib.optionalString withVoice ''
       makeWrapper ${nativeVoice}/bin/tohru-voice-native $out/bin/tohru-voice \

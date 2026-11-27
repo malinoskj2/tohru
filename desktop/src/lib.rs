@@ -10,6 +10,7 @@ pub mod paths;
 pub mod probe;
 pub mod pyjson;
 pub mod pyvalue;
+pub mod screens;
 pub mod session_action;
 pub mod shell;
 pub mod shortcuts;

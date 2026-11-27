@@ -65,7 +65,8 @@ def private_env(scratch, runtime=None):
     # Start from an allowlist: inherited runtime/scene/bus/audio/activation selectors
     # must never turn an isolated run into a request to the live session.
     env = {key: os.environ[key] for key in
-           ("PATH", "LD_LIBRARY_PATH", "FONTCONFIG_FILE", "FONTCONFIG_PATH", "LANG", "LC_ALL")
+           ("PATH", "LD_LIBRARY_PATH", "FONTCONFIG_FILE", "FONTCONFIG_PATH", "LANG", "LC_ALL",
+            "CARGO_TARGET_DIR", "TOHRU_DESKTOP_TARGET")
            if key in os.environ}
     env.update(HOME=str(scratch / "home"), XDG_RUNTIME_DIR=str(scratch / "run"),
                PLEAMAR_SOCKETS=str(scratch / "run/ipc"),
@@ -243,6 +244,71 @@ class Run:
         (self.evidence / "settings-status.json").write_text(json.dumps(status))
         self.capture("settings")
 
+    def screens(self):
+        self.phase("drive", feature="screens")
+        folder = self.scratch / "run/tohru-screens"
+
+        def frames():
+            return sorted(p.name for p in folder.glob("*/[0-9]*.jpg")) if folder.is_dir() else []
+
+        def captured():
+            latest = folder / "HEADLESS-1/latest.jpg"
+            return frames() if latest.is_file() and (folder / "index.json").is_file() else None
+
+        def empty():
+            return not folder.exists() or not any(folder.iterdir())
+
+        def runners():
+            found = self.command(["pgrep", "-f", "tohru-screens run"], check=False).stdout.split()
+            return [int(pid) for pid in found]
+
+        def listing(name):
+            rows = [{"path": str(p.relative_to(folder)), "mode": oct(p.lstat().st_mode & 0o777),
+                     "link": os.readlink(p) if p.is_symlink() else None}
+                    for p in sorted(folder.rglob("*"))] if folder.is_dir() else []
+            (self.evidence / f"{name}.json").write_text(json.dumps(rows, indent=2) + "\n")
+            return rows
+
+        self.cli("assistant", "close")
+        self.wait(lambda: self.get("ai_open") == "false", "closed popup")
+        self.wait(empty, "no captures while hidden")
+        self.cli("assistant", "open")
+        self.wait(lambda: self.get("ai_open") == "true", "open popup")
+        self.wait(captured, "immediate capture on appear")
+        first = frames()
+        self.wait(lambda: len(frames()) > len(first) and frames(), "interval capture")
+        rows = listing("screens-open")
+        if (folder.stat().st_mode & 0o777) != 0o700 or any(
+                r["mode"] not in ("0o600", "0o700") for r in rows if not r["link"]):
+            raise RuntimeError("Capture permissions are not private")
+        self.cli("assistant", "close")
+        self.wait(empty, "captures deleted on hide")
+        listing("screens-closed")
+
+        self.cli("assistant", "open")
+        self.wait(captured, "capture after reopen")
+        stale = runners()
+        if len(stale) != 1:
+            raise RuntimeError(f"Expected one runner, found {stale}")
+        os.kill(stale[0], signal.SIGKILL)
+        self.wait(lambda: (runners() and runners() != stale and captured()) or None, "runner restarted after crash")
+        if any(name in frames() for name in first):
+            raise RuntimeError("Crash leftovers survived the restart")
+        self.cli("assistant", "close")
+        self.wait(empty, "captures deleted after recovery")
+
+        self.cli("assistant", "open")
+        self.wait(captured, "capture before bar exit")
+        self.app.kill()
+        self.app.wait(timeout=10)
+        deadline = time.monotonic() + 10
+        while not empty() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        listing("screens-after-bar-exit")
+        if not empty():
+            raise RuntimeError("Captures survived the bar's exit")
+        self.owners = [(name, p) for name, p in self.owners if p is not self.app]
+
     def cleanup(self):
         self.phase("cleanup")
         failures = []
@@ -307,7 +373,7 @@ def main():
     signal.signal(signal.SIGTERM, interrupted)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("operation", choices=("doctor", "run"))
-    parser.add_argument("--feature", choices=("calendar", "settings"), default="calendar")
+    parser.add_argument("--feature", choices=("calendar", "settings", "screens"), default="calendar")
     parser.add_argument("--runtime", type=lambda p: Path(p).resolve())
     args = parser.parse_args()
     if args.operation == "doctor":

@@ -368,6 +368,10 @@ fn actual_root_composition_closes_opposite_panels_without_emit_loopback() {
             include_str!("../../shell/assistant/puppet.luau"),
         ),
         (
+            "assistant/screens",
+            include_str!("../../shell/assistant/screens.luau"),
+        ),
+        (
             "assistant/task-speech",
             include_str!("../../shell/assistant/task-speech.luau"),
         ),

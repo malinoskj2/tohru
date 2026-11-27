@@ -122,6 +122,7 @@ assistant = require("assistant/controller")({
 assistant.configure_discord()
 voice = require("assistant/voice")(assistant, puppet, flight)
 voice.configure(tohru_settings.snapshot())
+require("assistant/screens")()
 needs_you = require("assistant/needs-you")(function(key) local entry = tohru_settings.snapshot()[key]; return entry and entry.value end, assistant.streaming)
 on("setting_assistant", function()
     local key, raw = text.setting_key or "", text.setting_value or ""

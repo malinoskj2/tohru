@@ -15,6 +15,7 @@ The AI assistant described in [docs/ai-assistant.md](../../docs/ai-assistant.md)
 | `dragon.plm` | The speaking dragon overlay at the bottom right, drawn from the sheets in `dragon/`; a click opens the conversation, a right-click dismisses her |
 | `puppet.luau` | The dragon's animator: idle, listening, thinking and talking poses, transitions, blinks, flourishes, viseme mouths and hearts, at 24 fps while she is shown |
 | `dragon/` | Her sheets, eye and mouth patches, heart and glass shader; layout and provenance in its README |
+| `screens.luau` | Runs `tohru-screens run` while she is on screen (`ai_dragon_open` or `ai_open`) and stops it when she goes; clears leftovers when the bar starts. Restarts a dead runner after 2, 4, … 64 s |
 | `persona.md` | Tohru's persona, sent with every chat unless `assistant.persona` is off |
 | `voice/` | `tohru-tide.bin`, Tohru's Kokoro voicepack (provenance in its README), and `wake-keywords.txt` for the keyword spotter |
 | `*.svg` | Lucide icons (ISC; see `LICENSE.LUCIDE`) |
@@ -104,11 +105,29 @@ lua5.4 tests/assistant/controller.lua
 lua5.4 tests/assistant/voice-controller.lua
 lua5.4 tests/assistant/needs-you.lua
 lua5.4 tests/assistant/puppet.lua
+lua5.4 tests/assistant/screens.lua
 ```
 
 `service.py` drives the native helper through `bin/tohru-assistant` against fake `claude`, `codex`, `agy`, `gemini` and `opencode` scripts: discovery, probes that would prompt, streaming, session resume, provider hand-over, Stop, history search, conversation IDs that try to leave the folder, models and rejected models, the persona per CLI, Orca CLI detection/caching/env isolation/prompt injection per CLI (including never resolving bare `orca`, Orca not running, and `--orca false`), memory extraction (malformed JSON rejected, the 600-token budget, nothing spawned with memory off), forgetting, migrations, and an export/import round trip. `cargo test` in `voice/` covers wake gating with and without the keyword spotter, follow-ups, spoken text shaping, the Kokoro load policy, sink/source selection, AEC flat barge threshold, adaptive echo coupling, pause-then-resume/barge, cancel-while-thinking the echo guard and the high-VRAM profile selector and worker socket.
 
 `controller.lua` drives `controller.luau` with stand-ins for `run`, `spawn` and `kill`: provider choice, models, streaming, Stop, the ready mark, sign-in, history rows, a voice turn, the memory hand-off and the Memory view. `voice-controller.lua` drives `voice.luau`: gating, turns, the spoken greeting for the wake word alone, spoken refusals, spoken answers, paused/interrupted speaking, barge-in and cancel-while-thinking, the overlay, loading the sheets, settings and restarts. `puppet.lua` drives `puppet.luau`: poses, routes through the drawn moves, squash swaps, dips, visemes, paused/interrupted speech and hearts. The voice crate also checks the phoneme-to-mouth mapping and timelines.
+
+## Screen captures: `tohru-screens`
+
+While she is on screen, the summoned dragon or the chat popup, the bar runs `tohru-screens run` ([`desktop/src/screens.rs`](../../desktop/src/screens.rs)). It captures every monitor with `grim -o NAME -t jpeg -q 85` at once and then every 3 s, into `$XDG_RUNTIME_DIR/tohru-screens/` (tmpfs; folders 0700, files 0600):
+
+| Path | Contents |
+|---|---|
+| `<output>/latest.jpg` | Symbolic link to that monitor's newest frame |
+| `<output>/<ms>-<serial>.jpg` | The last 10 frames of that monitor, older ones deleted |
+| `all/` | Used instead when `wayland-info` names no output: one combined image |
+| `index.json` | `monitors`: each `output`, `latest`, `captured_ms` and `frames` |
+
+Outputs are read with `wayland-info` at the start, every 20 captures and after a failed capture; an unplugged monitor's folder is deleted. Nothing is captured while the session is locked or inactive (Tohru's lock cycle endpoint, or logind's `LockedHint`/`Active` when `XDG_SESSION_ID` is set), and every capture is deleted when the lock is seen. Nothing is uploaded, sent or logged.
+
+Every capture is deleted when she goes (SIGTERM), when the bar closes its stdin or exits, and by a reaper process outside the runner's process group when the runner is killed outright. `tohru-screens clear` at bar start and every new runner remove what a lost reaper left. One runner owns the folder through `tohru-screens.lock` beside it; a new one stops the old one first. The folder itself stays, so it can be bind-mounted.
+
+`tohru-assistant chat` adds a `[Screen captures: …]` note with each monitor's `latest.jpg` and age to the system prompt, and Orca turns carry the same note, so a question about the screen reads these instead of a new screenshot; `persona.md` and the Orca soul addendum fall back to `grim` when there are none. An Orca bot on another machine or in a sandbox cannot read the host's runtime directory and takes its own screenshot.
 
 ## Streaming voice diagnostics
 

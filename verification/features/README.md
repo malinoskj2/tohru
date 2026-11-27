@@ -14,6 +14,7 @@ and audio are scripted. It does not prove live Home, desktop UX or hearing.
 | [Home conversation](home-conversation.md) | Desktop voice, typed popup, Orca GUI continuation | Unverified live journey |
 | [Background work](background-work.md) | Native background admission, Home status, completion, visibility | Native fixture supported; actual Home unverified |
 | [Capture and playback](voice-capture-playback.md) | Python/Rust replay, capture, player, retirement | Existing drivers; unified model/host journey unverified |
+| [Screen captures](screens.md) | Chat popup open/close, runner crash, bar exit | Desktop driver `--feature screens`; summoned dragon and lock unverified |
 | [Panels and calendar](panels.md) | Calendar CLI, clock click, popups, sound side effects | Calendar CLI open/toggle/close supported by the desktop driver |
 | [Settings](settings.md) | `tohru config`, Settings window, managed overlays | CLI edit, TOML persistence and reload supported by the desktop driver |
 | [Launcher](launcher.md) | Launcher window and search | Existing native harness; not driven here |
@@ -24,7 +25,7 @@ and audio are scripted. It does not prove live Home, desktop UX or hearing.
 
 ## Desktop driver
 
-`tools/verify/desktop.py run --feature calendar|settings --runtime PLEAMAR` owns
+`tools/verify/desktop.py run --feature calendar|settings|screens --runtime PLEAMAR` owns
 launch, instance doctor, drive, capture and cleanup in one foreground process.
 Run it inside `gpu-run --vram 4GiB` (or directly when `GPU_LEASE_ID` is set); it
 refuses to drive without a lease. Pass the patched Pleamar 0.7.27 executable

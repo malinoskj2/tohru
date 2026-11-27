@@ -342,7 +342,14 @@ pub fn orca_chat_turn(
     } else {
         DESKTOP_TAG
     };
-    let note = interrupted_note(&args.interrupted);
+    let note = [
+        interrupted_note(&args.interrupted),
+        crate::screens::prompt_note(),
+    ]
+    .into_iter()
+    .filter(|part| !part.is_empty())
+    .collect::<Vec<_>>()
+    .join("\n\n");
     let mut body = if note.is_empty() {
         format!("{tag}\n{prompt}")
     } else {

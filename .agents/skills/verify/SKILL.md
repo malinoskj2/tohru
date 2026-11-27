@@ -18,7 +18,7 @@ Run from the checkout under test. Pick the smallest journey that covers the chan
 | Change touches | Journey | Needs |
 | --- | --- | --- |
 | CLI, session integration, anything | `python3 tools/verify/verify.py run session-units --target sandbox` | Python 3.11+, bash |
-| Bar scenes, panels, settings | `tools/verify/desktop.py run --feature calendar` or `--feature settings` | Patched Pleamar runtime, sway, grim, dbus-daemon, GPU lease |
+| Bar scenes, panels, settings, screen captures | `tools/verify/desktop.py run --feature calendar`, `--feature settings` or `--feature screens` | Patched Pleamar runtime, sway, grim, dbus-daemon, GPU lease |
 | Orca integration, voice admission | `python3 tools/verify/verify.py run native-authority --target sandbox --orca-source .tmp/native/source` | Prepared Orca source ([background work](../../../verification/features/background-work.md)) |
 
 ## Launch
