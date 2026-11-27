@@ -134,3 +134,22 @@ fn replayed_commentary_and_a_full_history_window_emit_only_the_completed_final()
     assert_eq!(polled.waited.error, "");
     assert_eq!(polled.spoken, ["The answer is eight."]);
 }
+
+#[test]
+fn screen_captures_are_standing_knowledge_not_a_per_turn_note() {
+    let soul = super::home::build_orca_soul("Tohru", "");
+    for phrase in [
+        "$XDG_RUNTIME_DIR/tohru-screens/",
+        "`index.json`",
+        "only while you are on screen",
+        "only when the owner's screen is relevant",
+        "Never upload, send or copy the captures anywhere.",
+    ] {
+        assert!(soul.contains(phrase), "{phrase}");
+    }
+    assert!(!soul.contains("[Screen captures"));
+    assert!(
+        super::quick::QUICK_VOICE_RULE
+            .contains("any question about what is on the owner's screen goes home")
+    );
+}

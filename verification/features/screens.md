@@ -13,8 +13,9 @@ instead of taking a new screenshot. They must exist only while she is shown.
   earlier frames; a killed bar leaves an empty folder.
 - `lock`: nothing is captured while the session is locked, and the lock deletes
   what was there.
-- `agent`: `tohru-assistant chat` and Orca turns carry a `[Screen captures: …]`
-  note naming each monitor's `latest.jpg`.
+- `agent`: `persona.md` and the Orca soul addendum describe the folder as
+  standing knowledge; no turn carries a per-message note, and the quick voice
+  responder routes screen questions to Home.
 
 ## How to get to it (user POV)
 
@@ -44,6 +45,8 @@ filed under `HEADLESS-1` rather than `all`.
   disk, with fake
   `grim`/`wayland-info`.
   `lua5.4 tests/assistant/screens.lua` covers the bar's start/stop and back-off.
+- **Standing note.** `cargo test --manifest-path desktop/Cargo.toml --lib screen_captures_are_standing`
+  checks the generated Orca soul and the quick voice rule.
 
 ## Unverified
 
@@ -53,3 +56,6 @@ filed under `HEADLESS-1` rather than `all`.
   only by the fake gate in the lifecycle tests.
 - Whether a provider actually reads the captures is not checked, nor Tohru's
   bot sandbox reading them through the `~/nix` read-only mount.
+- The live bot's `SOUL.md` is the owner's; `tohru assistant orca init` writes the
+  addendum only into a missing or addendum-less soul, so the note reaches an
+  existing bot only when it is added by hand.

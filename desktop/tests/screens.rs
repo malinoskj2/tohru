@@ -171,8 +171,6 @@ fn captures_every_monitor_into_a_bounded_ring_with_latest_links() {
     assert_eq!(monitors.len(), 2);
     assert_eq!(monitors[0]["output"], "DP-1");
     assert_eq!(monitors[0]["frames"].as_array().unwrap().len(), 3);
-    let note = screens::note_for(&dir, monitors[0]["captured_ms"].as_u64().unwrap() + 4000);
-    assert!(note.contains("DP-1/latest.jpg (4 s old)"), "{note}");
 }
 
 #[test]

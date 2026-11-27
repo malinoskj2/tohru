@@ -469,14 +469,6 @@ fn local_turn(args: &mut ChatArgs, prompt: &str, incoming: Option<Incoming>) -> 
     };
     let (orca_env, orca_note) = super::orca::orca_context(args.orca.as_str());
     let mut system = instructions(&persona, &block, args.voice, &orca_note);
-    let screens = crate::screens::prompt_note();
-    if !screens.is_empty() {
-        system = if system.is_empty() {
-            screens
-        } else {
-            format!("{system}\n\n{screens}")
-        };
-    }
     if args.draft {
         system = if system.is_empty() {
             DRAFT_RULE.to_owned()

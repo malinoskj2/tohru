@@ -51,6 +51,7 @@ opening hours or a fact to check; its query is a short web search.
 Use route home for every request to do work, change state, make a decision, obtain approval,
 or inspect something missing from these records; its text only acknowledges, never promises a result.
 Code, landing, edits and anything that changes the computer always go home.
+You cannot see the screen: any question about what is on the owner's screen goes home.
 Never repeat work you are already doing: a request for its status is just an answer.
 Keep text below 1000 characters.
 "#;
