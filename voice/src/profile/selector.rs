@@ -118,6 +118,8 @@ impl Backend for Machine {
 
 pub(super) enum Event {
     Presence(bool),
+    /// A voice turn began; the controller is about to show her.
+    Wake,
     Ready(u64, Box<dyn Loaded>),
     Failed(Option<u64>, String),
     Shutdown,
@@ -206,6 +208,7 @@ impl<B: Backend> Core<B> {
     pub(super) fn handle(&mut self, event: Event) -> bool {
         match event {
             Event::Presence(visible) => self.presence(visible),
+            Event::Wake => self.wake(),
             Event::Ready(id, loaded) => {
                 if self.current() != Some(id) {
                     return true;
@@ -261,6 +264,18 @@ impl<B: Backend> Core<B> {
         if self.config.unload_after.is_zero() {
             self.unload("Tohru is hidden");
         } else {
+            self.unload_at = Some(Instant::now() + self.config.unload_after);
+        }
+    }
+
+    /// Loads ahead of the show that follows a wake, and still releases it after the grace if
+    /// that show never comes.
+    fn wake(&mut self) {
+        if self.current().is_some() {
+            return;
+        }
+        self.consider();
+        if !self.visible && self.current().is_some() {
             self.unload_at = Some(Instant::now() + self.config.unload_after);
         }
     }
@@ -693,6 +708,23 @@ mod tests {
             2,
             "the next appearance checks VRAM and loads again"
         );
+    }
+
+    #[test]
+    fn a_wake_while_hidden_loads_at_once_and_the_show_keeps_it() {
+        let mut harness = Harness::new(30, json!({}), |_| {});
+        harness.core.handle(Event::Wake);
+        assert_eq!(harness.launched(), vec![7168]);
+        assert!(
+            harness.core.unload_at().is_some(),
+            "a wake that is never shown still releases"
+        );
+        harness.core.handle(Event::Presence(true));
+        assert!(harness.core.unload_at().is_none());
+        harness.settle();
+        harness.core.handle(Event::Wake);
+        assert_eq!(harness.launched().len(), 1, "a loaded profile is kept");
+        assert_eq!(harness.active(), Active::High);
     }
 
     #[test]

@@ -163,6 +163,8 @@ pub struct Voice {
     generation: Value,
     speech_job: Option<u64>,
     first_text: bool,
+    /// Her name was heard in this utterance and the high profile was asked to load.
+    named: bool,
     paused: bool,
     load_on_conversation: bool,
     was_playing: bool,
@@ -229,6 +231,7 @@ impl Voice {
             generation: Value::Null,
             speech_job: None,
             first_text: false,
+            named: false,
             paused: false,
             load_on_conversation,
             was_playing: false,
@@ -247,6 +250,9 @@ impl Voice {
 
     fn conversation(&self, on: bool) {
         emit(json!({"event":"conversation","on":on,"turn_id":self.turn_id}));
+        if on {
+            self.profiles.wake();
+        }
         if !on && self.load_on_conversation {
             self.speaker.unload();
         } else if on && self.load_on_conversation {
@@ -264,6 +270,7 @@ impl Voice {
         self.quiet_ms = 0;
         self.speech_ms = 0;
         self.audio.clear();
+        self.named = false;
         self.turn_checked = false;
         self.turn_complete = None;
         self.barge_ms = 0;
@@ -404,6 +411,7 @@ impl Voice {
         self.in_speech = true;
         self.quiet_ms = 0;
         self.speech_ms = 0;
+        self.named = false;
         self.turn_checked = false;
         self.turn_complete = None;
         self.audio = self.preroll.iter().flatten().copied().collect();

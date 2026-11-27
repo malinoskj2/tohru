@@ -100,6 +100,11 @@ impl Voice {
         } else {
             self.asr.partial()
         };
+        // Loading takes seconds; starting at her name lets the request and the reply cover it.
+        if !self.named && policy::wake_split(&partial).is_some() {
+            self.named = true;
+            self.profiles.wake();
+        }
         // VAD onset alone is not the owner taking the floor: a blip that never
         // yields words must not silence speech. Barge-in waits for the same
         // non-backchannel words before it confirms, so the speaker's own pause
@@ -269,6 +274,10 @@ impl Voice {
 
     fn spotted(&mut self) {
         self.spotting = false;
+        if !self.named {
+            self.named = true;
+            self.profiles.wake();
+        }
         if let Some(spotter) = &mut self.spotter {
             spotter.clear();
         }

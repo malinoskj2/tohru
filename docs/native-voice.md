@@ -53,9 +53,9 @@ Tohru is on screen and GPU memory use is under `vram_threshold_percent`:
   big-endian header length, a JSON header and an optional body of float32
   samples. Speech streams in chunks and can be cancelled between chunks.
 - After Tohru hides, the worker unloads after `hidden_unload_seconds` (5 by
-  default), which releases the reservation. Showing her again, or a voice turn
-  that shows her, loads it again; an answer that starts within 3 s of the reload
-  waits for it, so it still speaks in the high voice.
+  default), which releases the reservation. Showing her, or hearing her name in
+  a partial transcript, loads it again. An answer that begins while a reload is
+  under way holds its first words for up to 3 s for it, then speaks with low.
 
 A sentence the worker cannot speak falls back to the low profile. If the worker
 breaks, every answer returns to the low profile and the selector tries again

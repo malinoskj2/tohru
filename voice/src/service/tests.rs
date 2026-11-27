@@ -554,6 +554,35 @@ fn the_keyword_spotter_gates_the_recogniser_and_the_transcript_confirms_it() {
 }
 
 #[test]
+fn her_name_in_a_partial_starts_the_high_profile_loading_before_the_turn_ends() {
+    let mut named = rig(&["", "TOHRU WHAT", "TOHRU WHAT TIME"], "WHAT TIME IS IT");
+    let (profiles, watch) = Profiles::watched();
+    named.voice.profiles = profiles;
+    named.speak(12, 40);
+    assert_eq!(
+        watch.wakes(),
+        1,
+        "once per utterance, though the final lost her name"
+    );
+
+    let mut other = rig(&["WHAT", "WHAT TIME"], "WHAT TIME IS IT");
+    let (profiles, watch) = Profiles::watched();
+    other.voice.profiles = profiles;
+    other.speak(12, 40);
+    assert_eq!(watch.wakes(), 0);
+
+    let mut summoned = rig(&["TOHRU"], "TOHRU");
+    let (profiles, watch) = Profiles::watched();
+    summoned.voice.profiles = profiles;
+    summoned.speak(12, 40);
+    assert_eq!(
+        watch.wakes(),
+        2,
+        "the partial, then the conversation it opens"
+    );
+}
+
+#[test]
 fn the_name_alone_waits_and_summons_her_again_in_a_conversation() {
     let mut alone = rig(&["TOHRU"], "TOHRU");
     alone.speak(12, 40);

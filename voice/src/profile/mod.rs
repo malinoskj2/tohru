@@ -21,9 +21,10 @@ use std::{
 };
 pub use worker::{HighError, HighVoice};
 
-/// How long after a reload starts an answer waits for it rather than speaking with low. The
-/// warm worker loads in about a second, so a show or wake turn keeps the high voice.
+/// How long an answer holds its first words for a reload in progress before speaking with low.
 const RELOAD_WAIT: Duration = Duration::from_secs(3);
+/// A reload older than this is stuck in the scheduler's queue, not loading, so nothing waits.
+const RELOAD_FRESH: Duration = Duration::from_secs(20);
 
 /// The handle the voice service and speaker share; cheap to clone.
 #[derive(Clone, Default)]
@@ -109,6 +110,11 @@ impl Profiles {
         self.send(Event::Presence(visible));
     }
 
+    /// Starts loading as a voice turn begins, ahead of the show it causes.
+    pub fn wake(&self) {
+        self.send(Event::Wake);
+    }
+
     /// The loaded high profile and its identity, for reporting its failure.
     pub fn high(&self) -> Option<(u64, Arc<dyn HighVoice>)> {
         self.published
@@ -117,8 +123,9 @@ impl Profiles {
             .clone()
     }
 
-    /// As `high`, but first waits out a reload requested under `RELOAD_WAIT` ago, until `stale`.
+    /// As `high`, but first waits up to `RELOAD_WAIT` for a fresh reload, until `stale`.
     pub fn high_soon(&self, stale: &dyn Fn() -> bool) -> Option<(u64, Arc<dyn HighVoice>)> {
+        let deadline = std::time::Instant::now() + RELOAD_WAIT;
         loop {
             if let Some(high) = self.high() {
                 return Some(high);
@@ -127,7 +134,10 @@ impl Profiles {
                 .loading
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if stale() || since.is_none_or(|at| at.elapsed() >= RELOAD_WAIT) {
+            if stale()
+                || std::time::Instant::now() >= deadline
+                || since.is_none_or(|at| at.elapsed() >= RELOAD_FRESH)
+            {
                 return None;
             }
             std::thread::sleep(Duration::from_millis(10));
@@ -159,6 +169,17 @@ impl Profiles {
         }
     }
 
+    /// Profiles whose requests are counted instead of handled.
+    #[cfg(test)]
+    pub fn watched() -> (Self, Watch) {
+        let (sender, events) = mpsc::channel();
+        let profiles = Self {
+            events: Some(sender),
+            ..Self::default()
+        };
+        (profiles, Watch(events))
+    }
+
     /// A reload that the selector publishes `after` from now.
     #[cfg(test)]
     pub fn reloading(voice: Arc<dyn HighVoice>, after: Duration) -> Self {
@@ -171,6 +192,19 @@ impl Profiles {
             *loading.lock().unwrap() = None;
         });
         profiles
+    }
+}
+
+#[cfg(test)]
+pub struct Watch(mpsc::Receiver<Event>);
+
+#[cfg(test)]
+impl Watch {
+    pub fn wakes(&self) -> usize {
+        self.0
+            .try_iter()
+            .filter(|event| matches!(event, Event::Wake))
+            .count()
     }
 }
 
@@ -219,11 +253,20 @@ mod tests {
         );
         assert!(started.elapsed() < Duration::from_millis(100));
 
-        *profiles.loading.lock().unwrap() = Instant::now().checked_sub(RELOAD_WAIT);
+        *profiles.loading.lock().unwrap() = Instant::now().checked_sub(RELOAD_FRESH);
         assert!(
             profiles.high_soon(&|| false).is_none(),
-            "a load still queued past the wait answers with low"
+            "a load still queued long after it began answers with low"
         );
         assert!(started.elapsed() < Duration::from_millis(100));
+
+        let started = Instant::now();
+        *profiles.loading.lock().unwrap() = Instant::now().checked_sub(Duration::from_secs(10));
+        assert!(profiles.high_soon(&|| false).is_none());
+        let waited = started.elapsed();
+        assert!(
+            (RELOAD_WAIT..RELOAD_WAIT + Duration::from_secs(1)).contains(&waited),
+            "a reload begun at her name is waited on from the answer, {waited:?}"
+        );
     }
 }
