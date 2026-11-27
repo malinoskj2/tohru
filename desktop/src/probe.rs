@@ -25,6 +25,8 @@ pub enum ProbeFailure {
     Denied,
     #[error("invalid response")]
     Invalid,
+    #[error("cancelled")]
+    Cancelled,
 }
 
 impl ProbeFailure {
@@ -80,27 +82,60 @@ pub fn probe<S: AsRef<OsStr>>(
 }
 
 pub fn probe_command(command: &mut Command, timeout: Duration) -> Result<String, ProbeFailure> {
+    cancellable(command, timeout, PROBE_LIMIT, &|| false)
+        .map(|data| String::from_utf8_lossy(&data).into_owned())
+}
+
+/// Runs `command` like [`probe_command`], up to `limit` bytes of stdout, and also gives up
+/// within a few milliseconds of `cancelled` becoming true.
+///
+/// The command is put in its own process group. On any failure the whole group is killed, so
+/// a descendant still holding stdout neither keeps the call waiting nor outlives it.
+pub fn cancellable(
+    command: &mut Command,
+    timeout: Duration,
+    limit: usize,
+    cancelled: &dyn Fn() -> bool,
+) -> Result<Vec<u8>, ProbeFailure> {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .process_group(0);
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) if error.kind() == ErrorKind::NotFound => return Err(ProbeFailure::Missing),
         Err(_) => return Err(ProbeFailure::Denied),
     };
-    let result = collect(&mut child, Instant::now() + timeout);
+    let result = collect(&mut child, Instant::now() + timeout, limit, cancelled);
     if result.is_err() {
         kill_group(&mut child);
     }
     result
 }
 
-fn collect(child: &mut Child, deadline: Instant) -> Result<String, ProbeFailure> {
+const CANCEL_POLL: Duration = Duration::from_millis(10);
+
+fn collect(
+    child: &mut Child,
+    deadline: Instant,
+    limit: usize,
+    cancelled: &dyn Fn() -> bool,
+) -> Result<Vec<u8>, ProbeFailure> {
     let Some(mut stdout) = child.stdout.take() else {
         return Err(ProbeFailure::Denied);
     };
     let mut data = Vec::new();
     let mut chunk = vec![0_u8; 65536];
     loop {
-        if !wait_readable(&stdout, deadline) {
+        if cancelled() {
+            return Err(ProbeFailure::Cancelled);
+        }
+        if Instant::now() >= deadline {
             return Err(ProbeFailure::Timeout);
+        }
+        if !wait_readable(&stdout, deadline.min(Instant::now() + CANCEL_POLL)) {
+            continue;
         }
         let count = match stdout.read(&mut chunk) {
             Ok(count) => count,
@@ -111,13 +146,13 @@ fn collect(child: &mut Child, deadline: Instant) -> Result<String, ProbeFailure>
             break;
         }
         data.extend_from_slice(&chunk[..count]);
-        if data.len() > PROBE_LIMIT {
+        if data.len() > limit {
             return Err(ProbeFailure::Oversized);
         }
     }
-    let status = wait_until(child, deadline)?;
+    let status = wait_until(child, deadline, cancelled)?;
     if status.success() {
-        Ok(String::from_utf8_lossy(&data).into_owned())
+        Ok(data)
     } else {
         Err(ProbeFailure::Unavailable)
     }
@@ -126,8 +161,12 @@ fn collect(child: &mut Child, deadline: Instant) -> Result<String, ProbeFailure>
 fn wait_until(
     child: &mut Child,
     deadline: Instant,
+    cancelled: &dyn Fn() -> bool,
 ) -> Result<std::process::ExitStatus, ProbeFailure> {
     loop {
+        if cancelled() {
+            return Err(ProbeFailure::Cancelled);
+        }
         match child.try_wait() {
             Ok(Some(status)) => return Ok(status),
             Ok(None) => {}

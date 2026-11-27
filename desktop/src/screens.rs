@@ -17,6 +17,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rustix::fs::{FlockOperation, Mode, flock};
 use rustix::process::{Pid, Signal};
+
+use crate::probe::{self, ProbeFailure};
 use serde_json::{Value, json};
 
 pub const DIRECTORY: &str = "tohru-screens";
@@ -24,7 +26,6 @@ pub const INDEX: &str = "index.json";
 pub const LATEST: &str = "latest.jpg";
 pub const COMBINED: &str = "all";
 const CHILD_LIMIT: Duration = Duration::from_secs(5);
-const PROBE_LIMIT: usize = 256 * 1024;
 const LOCK_POLL: Duration = Duration::from_millis(250);
 const OUTPUT_REFRESH_TICKS: u32 = 20;
 
@@ -229,12 +230,15 @@ pub struct Grim {
 
 impl Capture for Grim {
     fn outputs(&mut self, cancelled: &dyn Fn() -> bool) -> Option<Vec<String>> {
-        let mut command = Command::new("wayland-info");
-        command.stdout(Stdio::piped());
-        let report = match finish(command, PROBE_LIMIT, cancelled) {
-            Finished::Done(Some(report)) => report,
-            Finished::Done(None) => Vec::new(),
-            Finished::Cancelled => return None,
+        let report = match probe::cancellable(
+            &mut Command::new("wayland-info"),
+            CHILD_LIMIT,
+            probe::PROBE_LIMIT,
+            cancelled,
+        ) {
+            Ok(report) => report,
+            Err(ProbeFailure::Cancelled) => return None,
+            Err(_) => Vec::new(),
         };
         Some(
             crate::wayland::parse_outputs(&String::from_utf8_lossy(&report))
@@ -250,51 +254,9 @@ impl Capture for Grim {
         if let Some(output) = output {
             command.args(["-o", output]);
         }
-        command.arg(path).stdout(Stdio::null());
-        matches!(finish(command, 0, cancelled), Finished::Done(Some(_)))
+        command.arg(path);
+        probe::cancellable(&mut command, CHILD_LIMIT, 0, cancelled).is_ok()
     }
-}
-
-enum Finished {
-    /// Its stdout when it succeeded in time, `None` when it failed, timed out or overflowed.
-    Done(Option<Vec<u8>>),
-    Cancelled,
-}
-
-/// Runs `command` for up to `CHILD_LIMIT`, killing it the moment `cancelled` is true.
-fn finish(mut command: Command, limit: usize, cancelled: &dyn Fn() -> bool) -> Finished {
-    let Ok(mut child) = command.stdin(Stdio::null()).stderr(Stdio::null()).spawn() else {
-        return Finished::Done(None);
-    };
-    let reader = child.stdout.take().map(|stdout| {
-        std::thread::spawn(move || {
-            let mut out = Vec::new();
-            let taken = std::io::Read::read_to_end(
-                &mut std::io::Read::take(stdout, u64::try_from(limit).unwrap_or(0) + 1),
-                &mut out,
-            );
-            (taken.is_ok() && out.len() <= limit).then_some(out)
-        })
-    });
-    let deadline = Instant::now() + CHILD_LIMIT;
-    let status = loop {
-        if cancelled() {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Finished::Cancelled;
-        }
-        match child.try_wait() {
-            Ok(Some(status)) => break Some(status),
-            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                break None;
-            }
-        }
-    };
-    let out = reader.map_or(Some(Vec::new()), |r| r.join().ok().flatten());
-    Finished::Done(status.filter(std::process::ExitStatus::success).and(out))
 }
 
 /// logind's view of this session, and Tohru's own lock cycle.

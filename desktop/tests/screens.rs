@@ -575,3 +575,58 @@ fn sigterm_during_a_stalled_wayland_info_exits_at_once() {
     );
     assert!(entries(&bin.dir()).is_empty());
 }
+
+fn run_with_wayland_info(bin: &Bin, body: &str) -> (Child, PathBuf) {
+    let started = bin.root.path().join("asked");
+    common::script(
+        &bin.fakes,
+        "wayland-info",
+        &format!("touch {}\n{body}", started.display()),
+    );
+    let child = bin
+        .command(&["run", "--interval-ms", "500"])
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
+    common::wait_for(|| started.exists().then_some(()));
+    (child, started)
+}
+
+fn term_quickly(child: &mut Child) {
+    std::thread::sleep(Duration::from_millis(200));
+    let pid = rustix::process::Pid::from_raw(child.id().cast_signed()).unwrap();
+    let asked = Instant::now();
+    rustix::process::kill_process(pid, rustix::process::Signal::TERM).unwrap();
+    assert!(exited(child).success());
+    assert!(
+        asked.elapsed() < Duration::from_millis(600),
+        "{:?}",
+        asked.elapsed()
+    );
+}
+
+#[test]
+fn sigterm_while_a_descendant_holds_discovery_stdout_exits_at_once() {
+    let bin = Bin::new();
+    let (mut child, _) = run_with_wayland_info(&bin, "sleep 30 &\nexit 0\n");
+    term_quickly(&mut child);
+    assert!(entries(&bin.dir()).is_empty());
+}
+
+#[test]
+fn discovery_times_out_with_a_descendant_holding_stdout_and_falls_back() {
+    let bin = Bin::new();
+    let (mut child, _) = run_with_wayland_info(&bin, "sleep 30 &\nexit 0\n");
+    let dir = bin.dir();
+    let deadline = Instant::now() + Duration::from_secs(8);
+    while !dir.join("all").join(LATEST).exists() {
+        assert!(
+            Instant::now() < deadline,
+            "no capture after the discovery deadline"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    drop(child.stdin.take());
+    assert!(exited(&mut child).success());
+    assert!(entries(&dir).is_empty());
+}

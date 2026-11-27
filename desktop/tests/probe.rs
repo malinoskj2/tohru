@@ -2,7 +2,10 @@ mod common;
 
 use std::time::{Duration, Instant};
 
-use tohru_desktop::probe::{ProbeFailure, probe};
+use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use tohru_desktop::probe::{ProbeFailure, cancellable, probe};
 
 #[test]
 fn probes_bound_time_output_and_report_missing_programs() {
@@ -44,4 +47,23 @@ fn a_probe_that_leaves_a_descendant_holding_stdout_still_times_out() {
     );
     assert_eq!(result, Err(ProbeFailure::Timeout));
     assert!(started.elapsed() < Duration::from_secs(2));
+}
+
+#[test]
+fn a_cancelled_probe_returns_at_once_even_while_a_descendant_holds_stdout() {
+    let mut command = Command::new(common::bash());
+    command.args(["-c", "sleep 30 & exit 0"]);
+    let cancel = AtomicBool::new(false);
+    let started = Instant::now();
+    let result = std::thread::scope(|scope| {
+        scope.spawn(|| {
+            std::thread::sleep(Duration::from_millis(100));
+            cancel.store(true, Ordering::SeqCst);
+        });
+        cancellable(&mut command, Duration::from_secs(10), 1024, &|| {
+            cancel.load(Ordering::SeqCst)
+        })
+    });
+    assert_eq!(result, Err(ProbeFailure::Cancelled));
+    assert!(started.elapsed() < Duration::from_millis(500));
 }
