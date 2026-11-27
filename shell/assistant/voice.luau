@@ -24,12 +24,12 @@ return function(assistant, puppet, flight, service_executable)
     local present = false
     local profiles_signature = nil
     local GREETINGS = {"Yes?", "I'm here.", "Mm? What is it?", "You called?", "Here I am. What do you need?", "Hello again."}
-    -- Said at once for a request for work, or when no answer has started speaking by ACK_AFTER.
-    -- The service keeps them synthesized in the current voice, so they play without inference.
-    local ACKS = {"Mm, let me look.", "One moment.", "Let me check.", "On it.", "Give me a second.",
-        "Let me see.", "Right, one moment.", "Okay, let me look into that."}
+    -- A small model writes the acknowledgement for each request while the owner is still
+    -- talking: "now" lines play as the turn starts, "late" ones only if no answer has started
+    -- by ACK_AFTER. The service synthesizes a drafted line ahead, so it plays without inference.
     local ACK_AFTER = 1500
-    local acked = {}
+    local ack_jobs = {}
+    local persona = {"--persona", "on", "--persona-file", ""}
     local greeted = 0
     local greeting_serial = 0
     local send
@@ -129,29 +129,73 @@ return function(assistant, puppet, flight, service_executable)
         end
     end
 
-    local function pick_ack()
-        local choices = {}
-        for _, line in ipairs(ACKS) do
-            local recent = false
-            for _, said in ipairs(acked) do if said == line then recent = true end end
-            if not recent then choices[#choices + 1] = line end
-        end
-        local line = choices[math.random(#choices)]
-        table.insert(acked, 1, line)
-        while #acked > 3 do table.remove(acked) end
-        return line
+    local function draft_ack(token, words)
+        if not id or ack_jobs[token] then return end
+        local job = {token = token}
+        ack_jobs[token] = job
+        local args = {"ack"}
+        for _, arg in ipairs(persona) do args[#args + 1] = arg end
+        job.id = spawn("tohru-assistant", args, function(raw)
+            local ok, event = pcall(json.decode, raw)
+            if not ok or type(event) ~= "table" or event.event ~= "ack" then return end
+            job.when = event.when == "now" and "now" or (event.when == "late" and "late" or "none")
+            job.text = tostring(event.text or "")
+            if job.when ~= "none" and job.text ~= "" and ack_jobs[token] == job then send({cmd = "prepare", texts = {job.text}}) end
+            if job.ready then job.ready() end
+        end, function()
+            job.id = nil
+            if not job.when then
+                job.when = "none"
+                if job.ready then job.ready() end
+            end
+        end, {input = json.encode({text = words})})
+        return job
     end
 
-    local function acknowledge(mine)
+    local function drop_ack(token)
+        local job = ack_jobs[token]
+        ack_jobs[token] = nil
+        if job and job.id then kill(job.id, "int") end
+    end
+
+    -- The turn takes its drafted line, or drafts one now; every other draft is obsolete.
+    local function claim_ack(token, words)
+        local job = token and ack_jobs[token]
+        if job then ack_jobs[token] = nil end
+        for other in pairs(ack_jobs) do drop_ack(other) end
+        if job then job.speculative = true; return job end
+        job = draft_ack("turn", words)
+        if job then ack_jobs.turn = nil end
+        return job
+    end
+
+    local function acknowledge(mine, line)
         if mine ~= turn_generation or notice_reply or streamed_text or hearing or fact.ai_speaking then return end
         if not (assistant.streaming and assistant.streaming()) then return end
         notice_reply = {generation = turn_generation, chat = conversation, text = "", done = false, ack_ended = false,
             turn_id = capture_id, path = reply_path}
         send({cmd = "speech_start", generation = turn_generation, conversation = conversation, turn_id = capture_id, path = "ack"})
-        send({cmd = "speech_end", generation = turn_generation, text = pick_ack()})
+        send({cmd = "speech_end", generation = turn_generation, text = line})
+    end
+
+    local function schedule_ack(job, mine)
+        if not job then return end
+        local late = false
+        local function decide()
+            if mine ~= turn_generation or not job.when then return end
+            if job.when == "now" or (job.when == "late" and late) then acknowledge(mine, job.text) end
+        end
+        job.ready = function()
+            send({cmd = "diagnostic", stage = "ack_decision", turn_id = capture_id, generation = mine,
+                when = job.when, speculative = job.speculative == true})
+            decide()
+        end
+        if job.when then job.ready() end
+        after(ACK_AFTER, function() late = true; decide() end)
     end
 
     local function quiet()
+        for token in pairs(ack_jobs) do drop_ack(token) end
         notice_reply, follow_pending = nil, nil
         hearing = false
         task_speech.interrupt()
@@ -183,10 +227,7 @@ return function(assistant, puppet, flight, service_executable)
         send({cmd = "diagnostic", stage = "assistant_request", turn_id = capture_id, generation = turn_generation})
         puppet.thinking()
         local asked = assistant.ask(prompt, conversation, opts)
-        if asked then
-            local mine = turn_generation
-            if opts.slow then acknowledge(mine) else after(ACK_AFTER, function() acknowledge(mine) end) end
-        end
+        if asked then schedule_ack(opts.ack, turn_generation) end
         if not asked then
             if assistant.streaming and assistant.streaming() then
                 queued = {text = prompt, opts = opts}
@@ -230,7 +271,6 @@ return function(assistant, puppet, flight, service_executable)
                 puppet.load(art)
             end
             voice_error(tostring(message.warning or ""))
-            send({cmd = "prepare", texts = ACKS})
         elseif event == "transcript" then
             transcript_serial = transcript_serial + 1
             local mine = transcript_serial
@@ -288,6 +328,10 @@ return function(assistant, puppet, flight, service_executable)
             end
         elseif event == "settled" then
             if assistant.settled then assistant.settled(message.turn_id) end
+        elseif event == "ack_draft" then
+            draft_ack(tostring(message.token or ""), tostring(message.text or ""))
+        elseif event == "ack_cancel" then
+            drop_ack(tostring(message.token or ""))
         elseif event == "draft_cancel" then
             if assistant.discard_draft then assistant.discard_draft() end
         elseif event == "wake" then
@@ -312,7 +356,7 @@ return function(assistant, puppet, flight, service_executable)
             puppet.thinking()
             local opts = interrupted_spoken and {interrupted = interrupted_spoken} or {}
             opts.capture_id = message.turn_id
-            opts.slow = message.slow == true
+            opts.ack = claim_ack(message.ack, message.text)
             interrupted_spoken = nil
             if cancelling or (assistant.streaming and assistant.streaming()) then
                 queued = {text = message.text, opts = opts}
@@ -375,8 +419,6 @@ return function(assistant, puppet, flight, service_executable)
                 if assistant.streaming and assistant.streaming() then barged = true end
                 assistant.stop()
             end
-        elseif event == "profile" then
-            send({cmd = "prepare", texts = ACKS})
         elseif event == "paused" then
             fact.ai_voice_paused = (message.reason or "") ~= ""
         elseif event == "error" then
@@ -690,6 +732,8 @@ return function(assistant, puppet, flight, service_executable)
             return row.value
         end
         puppet.reduced(value("assistant.reduced_motion", false) == true)
+        persona = {"--persona", value("assistant.persona", true) == true and "on" or "off",
+            "--persona-file", tostring(value("assistant.persona_file", ""))}
         if puppet.turn then puppet.turn.configure(value("assistant.sheet_b_turn", false) == true) end
         local chatter = value("assistant.waiting_chatter", false) == true
         if chatter ~= waiting_chatter then send({cmd = "diagnostic", stage = "waiting_config", enabled = chatter}) end

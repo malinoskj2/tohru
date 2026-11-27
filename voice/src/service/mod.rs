@@ -33,6 +33,18 @@ const SETTLE_MS: u32 = 352;
 const SETTLE_CAP_MS: u32 = 2496;
 const HIGH_ASR_TIMEOUT: Duration = Duration::from_secs(3);
 
+// The acknowledgement drafted for a partial request; the bar keeps its line ready.
+struct AckDraft {
+    text: String,
+    token: String,
+}
+
+impl AckDraft {
+    fn cancel(self) {
+        emit(json!({"event":"ack_cancel","token":self.token}));
+    }
+}
+
 struct Settling {
     turn_id: String,
     quiet_ms: u32,
@@ -133,6 +145,9 @@ pub struct Voice {
     turn_complete: Option<bool>,
     draft: String,
     draft_count: u32,
+    ack: Option<AckDraft>,
+    ack_count: u32,
+    delivering_ack: Option<AckDraft>,
     semantic: bool,
     semantic_decision: Option<String>,
     semantic_text: String,
@@ -196,6 +211,9 @@ impl Voice {
             turn_complete: None,
             draft: String::new(),
             draft_count: 0,
+            ack: None,
+            ack_count: 0,
+            delivering_ack: None,
             semantic: std::env::var("TOHRU_VOICE_SEMANTIC").as_deref() == Ok("on"),
             semantic_decision: None,
             semantic_text: String::new(),
@@ -253,6 +271,10 @@ impl Voice {
         self.barge_decide_ms = 0;
         self.draft.clear();
         self.draft_count = 0;
+        if let Some(ack) = self.ack.take() {
+            ack.cancel();
+        }
+        self.ack_count = 0;
         self.preroll.clear();
         self.spotting = false;
         self.asr.clear();
@@ -321,6 +343,49 @@ impl Voice {
         let token = crate::protocol::elapsed_ns().to_string();
         self.semantic_token = Some(token.clone());
         emit(json!({"event":"draft","text":request,"semantic":self.semantic,"token":token}));
+    }
+
+    /// Asks for an acknowledgement of the request so far once the owner pauses, so the line is
+    /// ready when the endpoint fires; a changed partial cancels it.
+    fn maybe_ack(&mut self, partial: &str) {
+        if self.spotting || self.barge_pending || self.thinking || self.ack.is_some() {
+            return;
+        }
+        if self.ack_count >= 2 || self.turn_complete == Some(false) {
+            return;
+        }
+        let request = self.candidate(partial);
+        if request.is_empty() || policy::unfinished(&request) || policy::backchannel(&request) {
+            return;
+        }
+        let text = policy::normalize(&request);
+        if text.split_whitespace().count() < 2 {
+            return;
+        }
+        self.ack_count += 1;
+        let token = crate::protocol::elapsed_ns().to_string();
+        emit(json!({"event":"ack_draft","text":request,"token":token}));
+        self.ack = Some(AckDraft { text, token });
+    }
+
+    fn drop_stale_ack(&mut self, partial: &str) {
+        let request = policy::normalize(&self.candidate(partial));
+        if self.ack.as_ref().is_some_and(|ack| ack.text != request)
+            && let Some(ack) = self.ack.take()
+        {
+            ack.cancel();
+        }
+    }
+
+    /// The drafted acknowledgement's token when it was drafted for exactly this request.
+    fn claim_ack(&mut self, request: &str) -> Option<String> {
+        let ack = self.delivering_ack.take()?;
+        if ack.text == policy::normalize(request) {
+            Some(ack.token)
+        } else {
+            ack.cancel();
+            None
+        }
     }
 
     fn remember_frame(&mut self, frame: &[f32], limit: usize) {

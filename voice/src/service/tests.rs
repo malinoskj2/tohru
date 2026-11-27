@@ -254,10 +254,17 @@ impl Rig {
 /// Emitted events without transcripts, diagnostics or capture identifiers.
 fn events(all: &[Value]) -> Vec<Value> {
     all.iter()
-        .filter(|e| e.get("stage").is_none() && e["event"] != "transcript")
+        .filter(|e| {
+            e.get("stage").is_none()
+                && !["transcript", "ack_draft", "ack_cancel"]
+                    .contains(&e["event"].as_str().unwrap_or(""))
+        })
         .map(|e| {
             let mut e = e.clone();
-            e.as_object_mut().map(|o| o.remove("turn_id"));
+            e.as_object_mut().map(|o| {
+                o.remove("turn_id");
+                o.remove("ack")
+            });
             e
         })
         .collect()
@@ -345,7 +352,7 @@ fn background_synthesis_releases_foreground_capture_before_audio_is_ready() {
     let all = events(&captured());
     assert_eq!(
         all.last().unwrap(),
-        &json!({"event":"turn","text":"Are you still there","slow":false})
+        &json!({"event":"turn","text":"Are you still there"})
     );
     assert!(!all.iter().any(|e| e["continuation"] == true));
     rig.voice
@@ -381,7 +388,7 @@ fn hidden_task_admission_releases_thinking_without_resetting_active_capture() {
     }
     assert_eq!(
         events(&captured()).last().unwrap(),
-        &json!({"event":"turn","text":"Are you still there","slow":false})
+        &json!({"event":"turn","text":"Are you still there"})
     );
 }
 
@@ -424,7 +431,7 @@ fn the_name_wakes_after_hey_mid_sentence_but_a_common_word_form_does_not() {
     middle.speak(20, 40);
     assert_eq!(
         events(&captured()).last().unwrap(),
-        &json!({"event":"turn","text":"So can you check the build","slow":true})
+        &json!({"event":"turn","text":"So can you check the build"})
     );
 
     let mut lunch = rig(&["I HAD"], "I HAD TARO FOR LUNCH");
@@ -444,7 +451,7 @@ fn the_spotter_hears_a_late_name_and_replays_the_whole_utterance() {
     assert_eq!(rig.spotter.as_ref().unwrap().0.borrow().flushed, 0);
     assert_eq!(
         events(&captured()).last().unwrap(),
-        &json!({"event":"turn","text":"Can you check this","slow":true})
+        &json!({"event":"turn","text":"Can you check this"})
     );
 }
 
@@ -462,7 +469,7 @@ fn the_spotter_keeps_listening_through_a_short_pause() {
     rig.speak_more(10, 40);
     assert_eq!(
         events(&captured()).last().unwrap(),
-        &json!({"event":"turn","text":"Check this","slow":true})
+        &json!({"event":"turn","text":"Check this"})
     );
 }
 
@@ -506,7 +513,7 @@ fn the_wake_word_opens_a_conversation_and_follow_ups_need_none() {
         [
             json!({"event":"hearing","on":true}),
             json!({"event":"hearing","on":false}),
-            json!({"event":"turn","text":"And tomorrow","slow":false})
+            json!({"event":"turn","text":"And tomorrow"})
         ]
     );
 }
@@ -786,7 +793,7 @@ fn a_continuation_merges_fragments_into_one_turn() {
     rig.speak(10, 25);
     assert_eq!(
         events(&captured()).last().unwrap(),
-        &json!({"event":"turn","text":"Tell me about the history","slow":false})
+        &json!({"event":"turn","text":"Tell me about the history"})
     );
     assert!(rig.voice.thinking);
     rig.swap(&["OF THE ROMAN EMPIRE"], "OF THE ROMAN EMPIRE");
@@ -798,7 +805,7 @@ fn a_continuation_merges_fragments_into_one_turn() {
     );
     assert_eq!(
         all.last().unwrap(),
-        &json!({"event":"turn","text":"Tell me about the history of the roman empire","slow":false})
+        &json!({"event":"turn","text":"Tell me about the history of the roman empire"})
     );
 }
 
@@ -845,7 +852,7 @@ fn a_turn_settles_after_quiet_but_a_continued_fragment_never_does() {
     assert!(all.iter().any(|e| e["continuation"] == true));
     assert_eq!(
         all.last().unwrap(),
-        &json!({"event":"turn","text":"Tell me about the history of the roman empire","slow":false})
+        &json!({"event":"turn","text":"Tell me about the history of the roman empire"})
     );
     for _ in 0..windows {
         rig.voice.settle_window();
@@ -1232,4 +1239,60 @@ fn an_explicit_hold_in_a_revised_final_is_kept() {
     rig.revise("Actually hold on");
     rig.voice.end_turn();
     assert_eq!(count(&captured(), "turn"), 0);
+}
+
+fn acks(all: &[Value]) -> Vec<Value> {
+    all.iter()
+        .filter(|e| e["event"] == "ack_draft" || e["event"] == "ack_cancel" || e["event"] == "turn")
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn an_acknowledgement_is_drafted_at_the_pause_and_claimed_by_the_matching_turn() {
+    let mut rig = open("CHECK THE BUILD", "CHECK THE BUILD");
+    for _ in 0..30 {
+        if !rig.voice.in_speech {
+            break;
+        }
+        rig.hear(false);
+    }
+    let all = acks(&captured());
+    assert_eq!(all.len(), 2);
+    assert_eq!(
+        (&all[0]["event"], &all[0]["text"]),
+        (&json!("ack_draft"), &json!("Check the build"))
+    );
+    assert_eq!(all[1]["event"], "turn");
+    assert_eq!(all[1]["ack"], all[0]["token"]);
+}
+
+#[test]
+fn a_changed_request_cancels_its_acknowledgement() {
+    let mut changed = open("CHECK THE BUILD", "CHECK THE BUILD AND THE TESTS");
+    for _ in 0..30 {
+        if !changed.voice.in_speech {
+            break;
+        }
+        changed.hear(false);
+    }
+    let all = acks(&captured());
+    let names: Vec<_> = all.iter().map(|e| e["event"].as_str().unwrap()).collect();
+    assert_eq!(names, ["ack_draft", "ack_cancel", "turn"]);
+    assert_eq!(all[1]["token"], all[0]["token"]);
+    assert!(all[2].get("ack").is_none());
+}
+
+#[test]
+fn no_acknowledgement_is_drafted_for_backchannels_or_unfinished_phrases() {
+    for phrase in ["MM OKAY", "CAN YOU PUT IT ON THE"] {
+        let mut rig = open(phrase, phrase);
+        for _ in 0..12 {
+            rig.hear(false);
+        }
+        assert!(
+            acks(&captured()).iter().all(|e| e["event"] != "ack_draft"),
+            "{phrase}"
+        );
+    }
 }

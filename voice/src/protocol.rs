@@ -85,19 +85,32 @@ pub fn diagnostic_message(message: &Value) -> Option<(&str, Value)> {
         "task_update",
         "task_update_dropped",
         "waiting_config",
+        "ack_decision",
     ]
     .contains(&stage)
     {
         return None;
     }
     let mut fields = serde_json::Map::new();
-    for key in ["visible", "ui_sequence", "flight_alpha", "generation"] {
+    for key in [
+        "visible",
+        "ui_sequence",
+        "flight_alpha",
+        "generation",
+        "speculative",
+    ] {
         let value = &message[key];
         if value.is_boolean() || value.is_number() {
             fields.insert(key.into(), value.clone());
         }
     }
-    for key in ["turn_id", "request", "canonical_request", "completion"] {
+    for key in [
+        "turn_id",
+        "request",
+        "canonical_request",
+        "completion",
+        "when",
+    ] {
         let value = match &message[key] {
             Value::String(s) if !s.is_empty() => Some(s.clone()),
             Value::Number(n) => Some(n.to_string()),

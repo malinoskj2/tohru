@@ -120,7 +120,7 @@ pub fn voice_failure(value: Value) -> Value {
     Value::Object(event)
 }
 
-fn spoken_line(text: Option<&Value>, limit: usize) -> bool {
+pub(super) fn spoken_line(text: Option<&Value>, limit: usize) -> bool {
     let Some(Value::String(text)) = text else {
         return false;
     };
@@ -252,7 +252,12 @@ pub fn quick_claude(
 }
 
 /// A one-off Claude CLI call with its own system prompt, no settings and only `tools`.
-fn bare_claude(model: &str, effort: &str, system: &str, tools: &str) -> Option<Vec<String>> {
+pub(super) fn bare_claude(
+    model: &str,
+    effort: &str,
+    system: &str,
+    tools: &str,
+) -> Option<Vec<String>> {
     let session = Session {
         ephemeral: true,
         ..Session::default()
@@ -430,6 +435,7 @@ pub fn quick_api(
     let request = super::claude_api::Request {
         model: &model,
         effort: &effort,
+        thinking: "between_tools",
         system: &[(&persona, true), (&stable, true)],
         user: &user,
         max_tokens: 1024,

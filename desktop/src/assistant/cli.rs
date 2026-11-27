@@ -128,6 +128,15 @@ pub struct ChatArgs {
     pub settle_gate: Option<std::sync::Arc<super::chat::SettleGate>>,
 }
 
+/// Reads the owner's words as `{"text": ...}` on stdin.
+#[derive(Args, Clone, Debug)]
+pub struct AckArgs {
+    #[arg(long, value_enum, default_value_t = Switch::On)]
+    pub persona: Switch,
+    #[arg(long = "persona-file", default_value = "")]
+    pub persona_file: String,
+}
+
 #[derive(Args, Clone, Debug)]
 pub struct RememberArgs {
     #[command(flatten)]
@@ -194,6 +203,7 @@ pub enum Command {
         provider: String,
     },
     Chat(Box<ChatArgs>),
+    Ack(AckArgs),
     Remember(RememberArgs),
     Commit {
         #[arg(long)]

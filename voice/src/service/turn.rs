@@ -139,6 +139,7 @@ impl Voice {
         if !self.draft.is_empty() && policy::normalize(&self.candidate(&partial)) != self.draft {
             self.discard();
         }
+        self.drop_stale_ack(&partial);
         if self.quiet_ms >= 220 && !self.turn_checked && !self.spotting {
             self.turn_checked = true;
             if let Some(turn) = &mut self.turn {
@@ -159,6 +160,7 @@ impl Voice {
         }
         if !speech && self.quiet_ms >= 220 {
             self.maybe_draft(&partial);
+            self.maybe_ack(&partial);
         }
         let unfinished = !self.spotting && policy::unfinished(&partial);
         let hold = if unfinished || self.turn_complete == Some(false) {
@@ -325,8 +327,12 @@ impl Voice {
             }
             self.confirm_barge();
         }
+        self.delivering_ack = self.ack.take();
         self.reset();
         self.deliver(&transcript, &draft);
+        if let Some(ack) = self.delivering_ack.take() {
+            ack.cancel();
+        }
     }
 
     /// The high profile's final-pass recogniser when it is loaded; the streaming transcript
@@ -445,9 +451,11 @@ impl Voice {
             emit(
                 json!({"event":"transcript","text":request.chars().take(240).collect::<String>(),"final":true}),
             );
-            emit(
-                json!({"event":"turn","text":request,"turn_id":self.turn_id,"slow":policy::slow_request(&request)}),
-            );
+            let mut turn = json!({"event":"turn","text":request,"turn_id":self.turn_id});
+            if let Some(token) = self.claim_ack(&request) {
+                turn["ack"] = json!(token);
+            }
+            emit(turn);
         } else if !draft.is_empty() {
             emit(json!({"event":"draft_cancel"}));
         }

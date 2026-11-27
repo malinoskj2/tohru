@@ -101,86 +101,6 @@ pub fn backchannel(text: &str) -> bool {
     words(text).iter().all(|w| BACK.contains(&w.as_str()))
 }
 
-// Verbs that open a request for work: these turns go to the slow agent, so they earn an
-// acknowledgement before any model has answered. Questions about the work are not requests.
-const WORK: &[&str] = &[
-    "add",
-    "build",
-    "change",
-    "check",
-    "clean",
-    "close",
-    "commit",
-    "create",
-    "delete",
-    "deploy",
-    "download",
-    "draft",
-    "edit",
-    "find",
-    "fix",
-    "implement",
-    "install",
-    "investigate",
-    "kill",
-    "launch",
-    "look",
-    "make",
-    "merge",
-    "move",
-    "open",
-    "push",
-    "refactor",
-    "remove",
-    "rename",
-    "research",
-    "restart",
-    "review",
-    "run",
-    "schedule",
-    "search",
-    "send",
-    "set",
-    "start",
-    "stop",
-    "summarise",
-    "summarize",
-    "switch",
-    "test",
-    "turn",
-    "update",
-    "upgrade",
-    "write",
-];
-const POLITE: &[&str] = &[
-    "please", "can", "could", "would", "will", "you", "go", "ahead", "and", "i", "need", "want",
-    "to", "now", "just", "quickly", "also", "then", "so", "okay", "ok", "alright", "right", "hey",
-    "tohru", "let's", "lets",
-];
-const ASK: &[&str] = &[
-    "what", "what's", "whats", "how", "how's", "hows", "why", "when", "where", "who", "which",
-    "is", "are", "was", "were", "did", "do", "does", "have", "has", "tell",
-];
-
-/// Whether a spoken request asks for work rather than an answer, judged from its words alone.
-pub fn slow_request(text: &str) -> bool {
-    let words = words(text);
-    let Some(first) = words.iter().position(|w| !POLITE.contains(&w.as_str())) else {
-        return false;
-    };
-    let lead = words[first].as_str();
-    // "can you please have a look at", "take a look", "give it a go"
-    if matches!(lead, "have" | "take" | "get" | "give")
-        && words[first + 1..]
-            .iter()
-            .take(3)
-            .any(|w| ["look", "go", "started", "done", "shot"].contains(&w.as_str()))
-    {
-        return true;
-    }
-    !ASK.contains(&lead) && WORK.contains(&lead)
-}
-
 pub fn unfinished(text: &str) -> bool {
     text.trim_end().ends_with([',', ';', ':', '—', '-'])
         || normalize(text)
@@ -555,39 +475,5 @@ mod tests {
             "{spoken}"
         );
         assert!(!speakable("See https://example.com/long/path").contains("https"));
-    }
-}
-
-#[cfg(test)]
-mod slow_tests {
-    use super::slow_request;
-
-    #[test]
-    fn work_requests_are_slow_and_questions_are_not() {
-        for slow in [
-            "Fix the calendar rail colours",
-            "Can you check why the build failed",
-            "Please open the settings window",
-            "Could you have a look at the lock screen",
-            "I need you to merge the voice branch",
-            "Go ahead and run the tests",
-            "Make a new worktree for the launcher",
-            "Okay, start the review",
-        ] {
-            assert!(slow_request(slow), "{slow}");
-        }
-        for quick in [
-            "What's the capital of France",
-            "How is the build going",
-            "Are you still working on the lock screen",
-            "Tell me a fun fact about dragons",
-            "Can you recommend a good book",
-            "Did the tests pass",
-            "Thanks",
-            "Good morning",
-            "Which worker is on Tomoko's voice",
-        ] {
-            assert!(!slow_request(quick), "{quick}");
-        }
     }
 }

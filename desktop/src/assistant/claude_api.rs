@@ -170,7 +170,7 @@ impl Client {
             "stream": true,
             "system": system,
             "messages": [{"role": "user", "content": request.user}],
-            "thinking": {"type": "between_tools"},
+            "thinking": {"type": request.thinking},
             "output_config": {"effort": request.effort},
         });
         let deadline = Instant::now() + request.timeout;
@@ -231,6 +231,7 @@ impl Client {
 pub struct Request<'a> {
     pub model: &'a str,
     pub effort: &'a str,
+    pub thinking: &'a str,
     pub system: &'a [(&'a str, bool)],
     pub user: &'a str,
     pub max_tokens: u32,
@@ -422,6 +423,7 @@ mod tests {
                 &Request {
                     model: "claude-sonnet-5-5",
                     effort: "low",
+                    thinking: "between_tools",
                     system: &[("persona", true)],
                     user: "hi",
                     max_tokens: 64,

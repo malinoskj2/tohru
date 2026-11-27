@@ -19,7 +19,6 @@ import json
 import os
 from pathlib import Path
 import queue
-import random
 import re
 import shutil
 import statistics
@@ -209,8 +208,6 @@ def normalize(text):
     return " ".join(re.sub(r"[^a-z0-9' ]", " ", text.lower()).split())
 
 
-ACKS = ["Mm, let me look.", "One moment.", "Let me check.", "On it.", "Give me a second.", "Let me see.",
-        "Right, one moment.", "Okay, let me look into that."]
 ACK_AFTER = 1.5
 
 
@@ -234,7 +231,7 @@ class Outbox:
                     turn_id=self.turn["turn_id"], path=self.label, **extra)
         self.started = True
 
-    def acknowledge(self, text=None, path="ack"):
+    def acknowledge(self, text, path="ack"):
         with self.lock:
             if self.closed or self.started or self.acked:
                 return
@@ -242,7 +239,7 @@ class Outbox:
             self.h.acks[self.generation] = self
             self.h.send(cmd="speech_start", generation=self.generation, conversation="bench",
                         turn_id=self.turn["turn_id"], path=path)
-            self.h.send(cmd="speech_end", generation=self.generation, text=text or self.h.pick_ack())
+            self.h.send(cmd="speech_end", generation=self.generation, text=text)
 
     def ended(self):
         with self.lock:
@@ -341,7 +338,7 @@ class Harness:
         self.draft = None
         self.lock = threading.Lock()
         self.acks = {}
-        self.acked = []
+        self.ack_jobs = {}
         self.answer_after = None
 
     def start_voice(self):
@@ -378,12 +375,8 @@ class Harness:
         self.wait(lambda e: e.get("event") == "ready", 120)
         self.wait(lambda e: e.get("event") == "listening" and e.get("on"), 60)
         self.send(cmd="presence", visible=True)
-        if self.args.ack:
-            self.send(cmd="prepare", texts=ACKS)
         if self.args.profile == "tomoko":
             self.wait(lambda e: e.get("event") == "profile" and e.get("active") == "high", self.args.load_timeout)
-            if self.args.ack:
-                self.send(cmd="prepare", texts=ACKS)
 
     def read_voice(self):
         for line in self.voice.stdout:
@@ -398,7 +391,11 @@ class Harness:
                 ack = self.acks.pop(event.get("generation"), None)
                 if ack:
                     ack.ended()
-            if event.get("event") == "draft":
+            if event.get("event") == "ack_draft" and self.args.ack:
+                self.draft_ack(event.get("token", ""), event.get("text", ""))
+            elif event.get("event") == "ack_cancel":
+                self.drop_ack(event.get("token", ""))
+            elif event.get("event") == "draft":
                 self.on_draft(event)
             elif event.get("event") == "draft_cancel":
                 self.cancel_draft()
@@ -423,10 +420,54 @@ class Harness:
                 return event
         raise TimeoutError("voice event deadline")
 
-    def pick_ack(self):
-        line = random.choice([a for a in ACKS if a not in self.acked])
-        self.acked = [line, *self.acked][:3]
-        return line
+    def draft_ack(self, token, words):
+        """As the bar does: the helper writes a line for these words while the owner talks."""
+        argv = [str(ROOT / "bin/tohru-assistant"), "ack", "--persona", "on",
+                "--persona-file", str(ROOT / "shell/assistant/persona.md")]
+        process = subprocess.Popen(argv, env=self.helper_env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=(self.out / "helper-stderr.log").open("a"), text=True)
+        job = {"process": process, "done": threading.Event(), "when": "none", "text": "", "ready_ns": None}
+        with self.lock:
+            self.ack_jobs[token] = job
+
+        def read():
+            process.stdin.write(json.dumps({"text": words}))
+            process.stdin.close()
+            for line in process.stdout:
+                try:
+                    item = json.loads(line)
+                except ValueError:
+                    continue
+                if item.get("event") == "ack":
+                    job["when"], job["text"] = item.get("when", "none"), item.get("text", "")
+                    if job["when"] != "none" and job["text"]:
+                        self.send(cmd="prepare", texts=[job["text"]])
+            process.wait()
+            job["ready_ns"] = time.monotonic_ns()
+            job["done"].set()
+        threading.Thread(target=read, daemon=True).start()
+        return job
+
+    def drop_ack(self, token):
+        with self.lock:
+            job = self.ack_jobs.pop(token, None)
+        if job and job["process"].poll() is None:
+            job["process"].send_signal(2)
+
+    def claim_ack(self, token, words):
+        with self.lock:
+            job = self.ack_jobs.pop(token, None) if token else None
+            others = list(self.ack_jobs)
+        for other in others:
+            self.drop_ack(other)
+        if job:
+            job["speculative"] = True
+            return job
+        job = self.draft_ack("turn", words)
+        with self.lock:
+            self.ack_jobs.pop("turn", None)
+        job["speculative"] = False
+        return job
 
     def send(self, **message):
         self.voice.stdin.write(json.dumps(message) + "\n")
@@ -500,13 +541,20 @@ class Harness:
         self.answer_after = None
         self.generation += 1
         out = Outbox(self, turn)
+        self.last_out = out
+        self.ack = None
         if self.args.ack:
-            if turn.get("slow"):
-                out.acknowledge()
-            else:
-                timer = threading.Timer(ACK_AFTER, out.acknowledge)
-                timer.daemon = True
-                timer.start()
+            job = self.claim_ack(turn.get("ack"), turn["text"])
+            self.ack = job
+            asked = time.monotonic()
+
+            def speak():
+                if not job["done"].wait(30) or job["when"] == "none":
+                    return
+                if job["when"] == "late":
+                    time.sleep(max(0, asked + ACK_AFTER - time.monotonic()))
+                out.acknowledge(job["text"])
+            threading.Thread(target=speak, daemon=True).start()
         try:
             return self.answer(turn, out)
         finally:
@@ -616,6 +664,11 @@ class Harness:
                                 "turn_ms": (turn_at - eou) / 1e6 if eou else None,
                                 "first_audio_ms": (after[0] - eou) / 1e6 if after else None,
                                 "answer_audio_ms": (answer[0] - eou) / 1e6 if answer else None,
+                                "ack_when": self.ack["when"] if self.ack else None,
+                                "ack_speculative": self.ack.get("speculative") if self.ack else None,
+                                "ack_ready_ms": (self.ack["ready_ns"] - eou) / 1e6
+                                if self.ack and self.ack["ready_ns"] and eou else None,
+                                "acked": self.last_out.acked,
                                 "load": os.getloadavg()[0]})
                 print(json.dumps(results[-1]), flush=True)
                 awake_until = time.monotonic() + 45
@@ -658,7 +711,8 @@ def main():
     parser.add_argument("--draft-effort", default="low")
     parser.add_argument("--config", help="config.toml for the isolated helper")
     parser.add_argument("--corpus", choices=("chat", "work", "trailing"), default="chat")
-    parser.add_argument("--ack", action="store_true", help="Acknowledge slow turns as the controller does")
+    parser.add_argument("--ack", action="store_true", help="Acknowledge turns as the controller does, with "
+                        "lines the helper drafts from the owner's words")
     parser.add_argument("--load-timeout", type=float, default=600)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
@@ -685,10 +739,12 @@ def main():
                                   "mean": statistics.fmean(measured) if measured else None},
                "answer_audio_ms": {"p50": percentile(answers, 50), "p95": percentile(answers, 95)},
                "eou_to_turn_ms": {"p50": percentile(turns, 50), "p95": percentile(turns, 95)},
+               "acked": sum(1 for r in results if r["acked"]),
                "load": statistics.fmean(r["load"] for r in results) if results else None,
                "service_report": internal, "results": results}
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    print(json.dumps({k: summary[k] for k in ("path", "ack", "profile", "turns", "silent", "first_audio_ms", "answer_audio_ms", "eou_to_turn_ms", "load")}))
+    print(json.dumps({k: summary[k] for k in ("path", "ack", "profile", "turns", "silent", "acked", "first_audio_ms",
+                                              "answer_audio_ms", "eou_to_turn_ms", "load")}))
 
 
 if __name__ == "__main__":

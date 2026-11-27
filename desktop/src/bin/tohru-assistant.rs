@@ -9,7 +9,7 @@ use tohru_desktop::assistant::chat::{self, CommitArgs, resolve_backend_config};
 use tohru_desktop::assistant::cli::{BackendKind, Cli, Command, NeedsYou, Offline, OrcaCommand};
 use tohru_desktop::assistant::store::{check_id, connect, load, search};
 use tohru_desktop::assistant::{
-    AssistantError, Result, emit, home, models, needs_you, orca, quick, transfer,
+    AssistantError, Result, ack, emit, home, models, needs_you, orca, quick, transfer,
 };
 
 static VOICE_REQUEST: LazyLock<Regex> =
@@ -80,6 +80,7 @@ fn run(command: Command) -> Result<u8> {
             emit(Value::Array(rows));
             Ok(0)
         }
+        Command::Ack(args) => ack::ack_command(&args),
         Command::Signin { provider } => models::signin(&provider).map(|()| 0),
         Command::Chat(mut args) => {
             if args.voice && !args.draft && !args.semantic {

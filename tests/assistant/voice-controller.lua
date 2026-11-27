@@ -23,7 +23,12 @@ _G.write = function(id, line)
     elseif line.value.cmd == "prepare" then prepared[#prepared + 1] = line.value.texts
     else written[#written + 1] = {id = id, message = line.value} end
 end
+local helpers = {}
 _G.spawn = function(command, args, line, exit, how)
+    if command == "tohru-assistant" then
+        helpers[#helpers + 1] = {command = command, args = args, line = line, exit = exit, how = how}
+        return "helper-" .. #helpers
+    end
     spawned[#spawned + 1] = {command = command, args = args, line = line, exit = exit, how = how}
     return #spawned
 end
@@ -699,8 +704,9 @@ events.assistant_dismiss()
 assert(#written == idle_written, "a right-click with her hidden sends nothing")
 print("Right-click dismiss passed")
 
--- Acknowledgements: a request for work is acknowledged at once; any other turn only when no
--- answer has started by the deadline. The answer streams in behind the acknowledgement.
+-- Acknowledgements are written by a small model, drafted while the owner is still talking:
+-- a "now" line plays as the turn starts, a "late" one only when no answer has started by the
+-- deadline, "none" never. A changed request drops its draft. The answer streams in behind it.
 do
     local busy, asks = false, {}
     local speech
@@ -713,7 +719,7 @@ do
     stub.on_speech = function(listener) speech = listener end
     fact.ai_dragon_open, fact.ai_voice_paused, fact.notices_dnd, fact.ai_speaking = true, false, false, false
     local acking = assert(loadfile("shell/assistant/voice.luau"))()(stub, puppet)
-    acking.configure(settings({["assistant.voice"] = true}))
+    acking.configure(settings({["assistant.voice"] = true, ["assistant.persona_file"] = "/p.md"}))
     local me = #spawned
     local proc = spawned[me]
     proc.line({event = "ready"})
@@ -722,17 +728,37 @@ do
         for _, w in ipairs(written) do if w.id == me then out[#out + 1] = w.message end end
         return out
     end
-    assert(#prepared > 0 and #prepared[#prepared] >= 6, "the service is asked to keep the acknowledgements ready")
-    local lines = {}
-    for _, line in ipairs(prepared[#prepared]) do lines[line] = true end
+    local function ack_helper()
+        local job = helpers[#helpers]
+        assert(job.command == "tohru-assistant" and job.args[1] == "ack" and has(job.args, "--persona-file", "/p.md"))
+        return job
+    end
+    local function decision(at, stage)
+        for i = #diagnostics, 1, -1 do if diagnostics[i].stage == "ack_decision" then return diagnostics[i] end end
+    end
+    assert(#prepared == 0, "no stock lines are prepared")
     proc.line({event = "conversation", on = true})
 
-    proc.line({event = "turn", text = "Fix the calendar rail", turn_id = "t1", slow = true})
+    -- A draft whose request changed is cancelled before the turn.
+    proc.line({event = "ack_draft", text = "Fix the calendar", token = "a0"})
+    local stale = ack_helper()
+    assert(stale.how.input.value.text == "Fix the calendar")
+    local kills = #killed
+    proc.line({event = "ack_cancel", token = "a0"})
+    assert(#killed == kills + 1 and killed[#killed][1] == "helper-" .. #helpers and killed[#killed][2] == "int")
+
+    proc.line({event = "ack_draft", text = "Fix the calendar rail", token = "a1"})
+    local drafted_ack = ack_helper()
+    drafted_ack.line({event = "ack", when = "now", text = "I'll look at the calendar rail."})
+    assert(prepared[#prepared][1] == "I'll look at the calendar rail.", "the drafted line is synthesized ahead")
+    local started = #helpers
+    proc.line({event = "turn", text = "Fix the calendar rail", turn_id = "t1", ack = "a1"})
+    assert(#helpers == started, "a matching draft is used, not redrafted")
     local out = mine()
     local generation = asks[#asks].voice_generation
     assert(out[#out - 1].cmd == "speech_start" and out[#out - 1].path == "ack" and out[#out - 1].turn_id == "t1")
-    assert(out[#out].cmd == "speech_end" and lines[out[#out].text], "a slow request is acknowledged at once")
-    local first_ack = out[#out].text
+    assert(out[#out].cmd == "speech_end" and out[#out].text == "I'll look at the calendar rail.", "a now line plays at once")
+    assert(decision().when == "now" and decision().speculative == true)
     local count = #out
     speech("start", "home-chat", "", true, generation, "", "home")
     speech("delta", "home-chat", "I'm on", true, generation)
@@ -748,11 +774,24 @@ do
     speech("done", "home-chat", "I'm on it now.", true, generation)
     assert(mine()[count + 4].cmd == "speech_end" and mine()[count + 4].text == nil)
 
-    -- A quick turn whose answer has started speaking gets no acknowledgement.
-    local timers_before = #ack_timers
-    proc.line({event = "turn", text = "What's the time", turn_id = "t2", slow = false})
+    -- A turn without a matching draft drafts one from the final words; "none" says nothing.
+    proc.line({event = "turn", text = "Thanks", turn_id = "t2"})
+    local fresh = ack_helper()
+    assert(fresh.how.input.value.text == "Thanks")
+    count = #mine()
+    fresh.line({event = "ack", when = "none", text = ""})
+    ack_timers[#ack_timers]()
+    assert(#mine() == count and decision().when == "none" and decision().speculative == false)
+    busy = false
+    speech("done", "home-chat", "Any time.", true, asks[#asks].voice_generation)
+
+    -- A late line waits for the deadline and is skipped when the answer has already started.
+    proc.line({event = "ack_draft", text = "What's the time", token = "a2"})
+    ack_helper().line({event = "ack", when = "late", text = "Let me see."})
+    proc.line({event = "turn", text = "What's the time", turn_id = "t3", ack = "a2"})
     generation = asks[#asks].voice_generation
-    assert(#ack_timers == timers_before + 1)
+    count = #mine()
+    assert(count == #mine(), "a late line does not play at once")
     speech("start", "home-chat", "", true, generation, "", "quick")
     speech("delta", "home-chat", "Half past two.", true, generation)
     count = #mine()
@@ -761,12 +800,15 @@ do
     busy = false
     speech("done", "home-chat", "Half past two.", true, generation)
 
-    -- A quick-looking turn still waiting at the deadline is acknowledged, with a fresh line.
-    proc.line({event = "turn", text = "How's the build", turn_id = "t3", slow = false})
-    generation = asks[#asks].voice_generation
-    speech("start", "home-chat", "", true, generation, "", "quick")
+    proc.line({event = "ack_draft", text = "Tell me about Rome", token = "a3"})
+    local slow = ack_helper()
+    proc.line({event = "turn", text = "Tell me about Rome", turn_id = "t4", ack = "a3"})
+    speech("start", "home-chat", "", true, asks[#asks].voice_generation, "", "quick")
+    count = #mine()
     ack_timers[#ack_timers]()
+    assert(#mine() == count, "an undecided draft says nothing at the deadline")
+    slow.line({event = "ack", when = "late", text = "Hmm, where to begin."})
     out = mine()
-    assert(out[#out - 1].path == "ack" and lines[out[#out].text] and out[#out].text ~= first_ack)
-    print("Acknowledgements: immediate for work, deadline for the rest, varied, answer streams behind passed")
+    assert(out[#out - 1].path == "ack" and out[#out].text == "Hmm, where to begin.", "a late line that arrives after the deadline still covers the wait")
+    print("Acknowledgements: model-written, drafted ahead, now/late/none, answer streams behind passed")
 end
