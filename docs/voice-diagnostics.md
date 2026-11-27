@@ -41,6 +41,16 @@ Measured on an RTX 5090 desktop with synthesized utterances, in milliseconds (p5
 
 The canned-reply p95 fell because a lagging transcript no longer triggers the 1050 ms unfinished-phrase hold.
 
+Model-written acknowledgements against the fixed lines they replaced, Kokoro, eight turns each, with the acknowledgement model reached through the Claude CLI (no API key was available for the measurement):
+
+| Turns | Fixed lines: first sound, acknowledged | Model-written: first sound, acknowledged |
+| --- | --- | --- |
+| Request for work, 4 s reply | 843 / 1433, 8 of 8 | 2391 / 3513, 8 of 8 |
+| Other turn, 4 s reply | 2326 / 2346, 8 of 8 | 4823 / 5022, 4 of 8 |
+| Quick answer (Sonnet through the CLI) | 2335 / 2375, 8 of 8 | 3327 / 10702, 4 of 8 |
+
+Through the CLI the line is ready 1.8 to 3.0 s after end of speech, later than the turn starts (about 580 ms), so a work turn's first sound waits for it. The other turns acknowledged were "late" lines; the rest were judged to need none and wait silently for the answer. Over the Messages API the call is expected to finish before the turn starts, but that path was not measured.
+
 ## Analyzed background results
 
 An Orca worker completion can return the coordinating bot's final analyzed answer to the voice request that started the work. Raw worker reports, commentary and text-origin requests do not become speech. A new owner turn or voice interruption retires the older request's speech eligibility.
