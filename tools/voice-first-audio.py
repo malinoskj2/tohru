@@ -681,7 +681,7 @@ class Harness:
             for n in range(self.args.turns):
                 name, wav = wavs[n % len(wavs)]
                 shown = None
-                if time.monotonic() > awake_until:
+                if time.monotonic() > awake_until and not self.args.named:
                     self.utter(f"wake-{n:03d}", wake_wav)
                     woke = self.wait(lambda e: e.get("event") in ("wake", "turn"), 30)
                     if self.args.hidden and n > 0:
@@ -692,7 +692,20 @@ class Harness:
                     time.sleep(1.0)
                 tag = f"{n:03d}-{name}"
                 self.utter(tag, wav)
-                turn = self.wait(lambda e: e.get("event") == "turn", 40)
+                if self.args.named and self.args.hidden and n > 0:
+                    try:
+                        opened = self.wait(lambda e: e.get("event") == "turn"
+                                           or (e.get("event") == "conversation" and e.get("on")), 15)
+                    except TimeoutError:
+                        results.append({"turn": n, "utterance": name, "missed_wake": True})
+                        print(json.dumps(results[-1]), flush=True)
+                        continue
+                    shown = time.monotonic_ns()
+                    self.send(cmd="presence", visible=True)
+                    turn = opened if opened.get("event") == "turn" else \
+                        self.wait(lambda e: e.get("event") == "turn", 40)
+                else:
+                    turn = self.wait(lambda e: e.get("event") == "turn", 40)
                 eou = None
                 for line in (self.audio / "eou.jsonl").read_text().splitlines():
                     record = json.loads(line)
@@ -724,6 +737,7 @@ class Harness:
                 if shown:
                     high = self.profile_at.get("high", 0)
                     results[-1]["reload_ms"] = (high - shown) / 1e6 if high > shown else None
+                    results[-1]["high_vs_first_audio_ms"] = (high - after[0]) / 1e6 if high > shown and after else None
                 print(json.dumps(results[-1]), flush=True)
                 awake_until = time.monotonic() + 45
                 if self.args.hidden:
@@ -790,6 +804,8 @@ def main():
     parser.add_argument("--hidden", action="store_true",
                         help="Hide her after each turn and show her on the next wake word, as the controller does")
     parser.add_argument("--output", required=True)
+    parser.add_argument("--named", action="store_true",
+                        help="Say her name and the request in one breath, with no separate wake word")
     parser.add_argument("--queue-timeout", type=int, default=60, help="assistant.voice_profiles.queue_timeout_seconds")
     args = parser.parse_args()
     if args.hidden and args.profile != "tomoko":
@@ -799,10 +815,14 @@ def main():
     corpus = out / "corpus"
     corpus.mkdir(exist_ok=True)
     texts = {"work": WORK_UTTERANCES, "trailing": TRAILING_UTTERANCES}.get(args.corpus, UTTERANCES)
-    wavs = [(f"u{n}", corpus / f"u{n}.wav") for n in range(len(texts))]
+    if args.named:
+        texts = [f"Tohru, {t[0].lower()}{t[1:]}" for t in texts]
+    wavs = [(f"{'n' if args.named else 'u'}{n}", corpus / f"{'n' if args.named else 'u'}{n}.wav") for n in range(len(texts))]
     wake = corpus / "wake.wav"
     speak([*zip(texts, (p for _, p in wavs)), (WAKE, wake)], str(Path(args.native).resolve()))
     results = Harness(args, out).run(wavs, wake)
+    missed = sum(1 for r in results if r.get("missed_wake"))
+    results = [r for r in results if not r.get("missed_wake")]
     measured = [r["first_audio_ms"] for r in results if r["first_audio_ms"] is not None]
     turns = [r["turn_ms"] for r in results if r["turn_ms"] is not None]
     answers = [r["answer_audio_ms"] for r in results if r["answer_audio_ms"] is not None]
@@ -813,7 +833,9 @@ def main():
     except (ValueError, IndexError):
         internal = {"error": report.stderr[-500:]}
     reloads = [r["reload_ms"] for r in results if r.get("reload_ms") is not None]
-    summary = {"path": args.path, "ack": args.ack, "profile": args.profile, "hidden": args.hidden,
+    spoke = [r.get("profile") for r in results if "reload_ms" in r]
+    summary = {"path": args.path, "ack": args.ack, "profile": args.profile, "hidden": args.hidden, "named": args.named, "missed_wakes": missed,
+               "after_reload": {"high": spoke.count("high"), "low": spoke.count("low")},
                "reload_ms": {"p50": percentile(reloads, 50), "p95": percentile(reloads, 95)}, "turns": len(results), "silent": len(results) - len(measured),
                "first_audio_ms": {"p50": percentile(measured, 50), "p95": percentile(measured, 95),
                                   "mean": statistics.fmean(measured) if measured else None},
@@ -823,8 +845,9 @@ def main():
                "load": statistics.fmean(r["load"] for r in results) if results else None,
                "service_report": internal, "results": results}
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    print(json.dumps({k: summary[k] for k in ("path", "ack", "profile", "hidden", "reload_ms", "turns", "silent", "acked",
-                                              "first_audio_ms", "answer_audio_ms", "eou_to_turn_ms", "load")}))
+    print(json.dumps({k: summary[k] for k in ("path", "ack", "profile", "hidden", "named", "missed_wakes", "after_reload",
+                                              "reload_ms", "turns", "silent", "acked", "first_audio_ms", "answer_audio_ms",
+                                              "eou_to_turn_ms", "load")}))
 
 
 if __name__ == "__main__":
