@@ -250,7 +250,7 @@ in {
         hiddenUnloadSeconds = lib.mkOption {
           type = lib.types.nullOr (lib.types.ints.between 0 86400);
           default = null;
-          description = "How long Tohru stays hidden (no dragon, no popup) before the high-VRAM profile unloads and releases its GPU reservation; 0 unloads at once. Written to `assistant.voice_profiles.hidden_unload_seconds`; `null` leaves it to the user's config (120).";
+          description = "How long Tohru stays hidden (no dragon, no popup) before the high-VRAM profile unloads and releases its GPU reservation; 0 unloads at once. Written to `assistant.voice_profiles.hidden_unload_seconds`; `null` leaves it to the user's config (5).";
         };
         queueTimeoutSeconds = lib.mkOption {
           type = lib.types.nullOr (lib.types.ints.between 1 3600);

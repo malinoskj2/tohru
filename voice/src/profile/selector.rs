@@ -129,6 +129,9 @@ pub(super) type Notify = Box<dyn FnMut(Active, &str) + Send>;
 /// The loaded high profile that answers use, published by the selector thread.
 pub(super) type Published = Arc<Mutex<Option<(u64, Arc<dyn HighVoice>)>>>;
 
+/// When the reservation now queued or loading was requested; `None` while none is.
+pub(super) type Loading = Arc<Mutex<Option<Instant>>>;
+
 enum Worker {
     Idle,
     Starting { id: u64, cancel: Arc<AtomicBool> },
@@ -141,6 +144,7 @@ pub(super) struct Core<B: Backend> {
     backend: B,
     events: Sender<Event>,
     published: Published,
+    loading: Loading,
     notify: Notify,
     worker: Worker,
     next_id: u64,
@@ -155,6 +159,7 @@ impl<B: Backend> Core<B> {
         backend: B,
         events: Sender<Event>,
         published: Published,
+        loading: Loading,
         notify: Notify,
     ) -> Self {
         Self {
@@ -163,6 +168,7 @@ impl<B: Backend> Core<B> {
             backend,
             events,
             published,
+            loading,
             notify,
             worker: Worker::Idle,
             next_id: 1,
@@ -189,6 +195,13 @@ impl<B: Backend> Core<B> {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = voice;
     }
 
+    fn mark_loading(&self, since: Option<Instant>) {
+        *self
+            .loading
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = since;
+    }
+
     /// Returns false once the selector has shut down.
     pub(super) fn handle(&mut self, event: Event) -> bool {
         match event {
@@ -198,6 +211,7 @@ impl<B: Backend> Core<B> {
                     return true;
                 }
                 self.publish(Some((id, loaded.voice())));
+                self.mark_loading(None);
                 self.worker = Worker::Ready {
                     id,
                     _loaded: loaded,
@@ -318,6 +332,7 @@ impl<B: Backend> Core<B> {
             id,
             cancel: cancel.clone(),
         };
+        self.mark_loading(Some(Instant::now()));
         let events = self.events.clone();
         thread::spawn(move || {
             let event = match launch.wait(&cancel) {
@@ -331,6 +346,7 @@ impl<B: Backend> Core<B> {
     /// True when a reservation was held or requested.
     fn stop(&mut self) -> bool {
         self.publish(None);
+        self.mark_loading(None);
         match std::mem::replace(&mut self.worker, Worker::Idle) {
             Worker::Idle => false,
             Worker::Starting { cancel, .. } => {
@@ -498,6 +514,7 @@ mod tests {
         core: Core<Fake>,
         events: Receiver<Event>,
         published: Published,
+        loading: Loading,
         record: Arc<Mutex<Record>>,
     }
 
@@ -522,6 +539,7 @@ mod tests {
             };
             let (sender, events) = mpsc::channel();
             let published = Published::default();
+            let loading = Loading::default();
             let notices = record.clone();
             let notify = Box::new(move |active, reason: &str| {
                 notices
@@ -530,11 +548,20 @@ mod tests {
                     .notices
                     .push((active, reason.to_owned()))
             });
-            let core = Core::new(config, high(extra), fake, sender, published.clone(), notify);
+            let core = Core::new(
+                config,
+                high(extra),
+                fake,
+                sender,
+                published.clone(),
+                loading.clone(),
+                notify,
+            );
             Self {
                 core,
                 events,
                 published,
+                loading,
                 record,
             }
         }
@@ -582,8 +609,13 @@ mod tests {
             1,
             "showing again never queues a second reservation"
         );
+        assert!(
+            harness.loading.lock().unwrap().is_some(),
+            "answers can see that a load is under way"
+        );
         harness.settle();
         assert_eq!(harness.active(), Active::High);
+        assert!(harness.loading.lock().unwrap().is_none());
         assert_eq!(harness.last_notice(), Some((Active::High, "loaded".into())));
     }
 
@@ -703,6 +735,7 @@ mod tests {
         let mut harness = Harness::new(0, json!({}), |_| {});
         harness.core.handle(Event::Presence(true));
         harness.core.handle(Event::Presence(false));
+        assert!(harness.loading.lock().unwrap().is_none());
         harness.settle();
         assert_eq!((harness.active(), harness.stopped()), (Active::Low, 1));
     }
@@ -728,6 +761,7 @@ mod tests {
             harness.core.backend,
             sender.clone(),
             published,
+            Loading::default(),
             Box::new(|_, _| {}),
         );
         let thread = thread::spawn(move || run(core, events));

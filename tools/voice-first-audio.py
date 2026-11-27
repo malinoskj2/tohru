@@ -340,6 +340,8 @@ class Harness:
         self.acks = {}
         self.ack_jobs = {}
         self.answer_after = None
+        self.write_lock = threading.Lock()
+        self.profile_at = {}
 
     def start_voice(self):
         native = Path(self.args.native).resolve()
@@ -359,6 +361,7 @@ class Harness:
                  "--tts-model", str(MODELS / "voice-kokoro"), "--source", "test-source"]
         if self.args.profile == "tomoko":
             argv += ["--profiles", json.dumps({"model_root": str(MODELS.parent), "vram_threshold_percent": 95,
+                                               "queue_timeout_seconds": self.args.queue_timeout,
                                                "high": {"enabled": True, "python": self.args.python,
                                                         "tts_model": "voice-tomoko", "tts_speaker": "kuroki_tomoko"}})]
         espeak = Path(find_espeak()).parent
@@ -386,6 +389,8 @@ class Harness:
                 continue
             if event.get("event") not in ("mouth",):
                 self.log.write(json.dumps({"t": time.monotonic_ns(), **event}) + "\n")
+            if event.get("event") == "profile":
+                self.profile_at[event.get("active")] = time.monotonic_ns()
             self.events.put(event)
             if event.get("event") == "speaking" and not event.get("on"):
                 ack = self.acks.pop(event.get("generation"), None)
@@ -470,8 +475,48 @@ class Harness:
         return job
 
     def send(self, **message):
-        self.voice.stdin.write(json.dumps(message) + "\n")
-        self.voice.stdin.flush()
+        with self.write_lock:
+            self.voice.stdin.write(json.dumps(message) + "\n")
+            self.voice.stdin.flush()
+
+    def reservation_pid(self):
+        """The gpu-run under this voice service, whose pid gpu-status reports for the lease."""
+        for task in Path(f"/proc/{self.voice.pid}/task").iterdir():
+            for child in (task / "children").read_text().split():
+                try:
+                    if "gpu_scheduler" in Path(f"/proc/{child}/cmdline").read_text():
+                        return int(child)
+                except OSError:
+                    pass
+        return None
+
+    def speech_profile(self, generation):
+        for line in (self.out / "voice-stderr.log").read_text(errors="ignore").splitlines():
+            if '"speech_profile"' not in line or "{" not in line:
+                continue
+            try:
+                record = json.loads(line[line.index("{"):])
+            except ValueError:
+                continue
+            if record.get("generation") == generation:
+                return record.get("profile")
+        return None
+
+    def hide(self):
+        """Ends the conversation and hides her as the controller does, then times the release."""
+        pid = self.reservation_pid()
+        used_before = gpu_used_mib()
+        self.send(cmd="end")
+        hidden = time.monotonic_ns()
+        self.send(cmd="presence", visible=False)
+        self.wait(lambda e: e.get("event") == "profile" and e.get("active") == "low", 60)
+        unloaded = time.monotonic_ns()
+        while pid and any(j.get("pid") == pid for j in gpu_jobs()) and time.monotonic_ns() - hidden < 60e9:
+            time.sleep(0.05)
+        released = time.monotonic_ns()
+        time.sleep(1.0)
+        return {"reservation_pid": pid, "unload_ms": (unloaded - hidden) / 1e6, "lease_gone_ms": (released - hidden) / 1e6,
+                "gpu_used_mib_before": used_before, "gpu_used_mib_after": gpu_used_mib()}
 
     def utter(self, name, wav):
         shutil.copy(wav, self.audio / "spool" / f"{name}.wav.tmp")
@@ -635,9 +680,13 @@ class Harness:
             awake_until = 0
             for n in range(self.args.turns):
                 name, wav = wavs[n % len(wavs)]
+                shown = None
                 if time.monotonic() > awake_until:
                     self.utter(f"wake-{n:03d}", wake_wav)
                     woke = self.wait(lambda e: e.get("event") in ("wake", "turn"), 30)
+                    if self.args.hidden and n > 0:
+                        shown = time.monotonic_ns()
+                        self.send(cmd="presence", visible=True)
                     if woke.get("event") == "turn":
                         self.send(cmd="thinking", on=False)
                     time.sleep(1.0)
@@ -670,8 +719,17 @@ class Harness:
                                 if self.ack and self.ack["ready_ns"] and eou else None,
                                 "acked": self.last_out.acked,
                                 "load": os.getloadavg()[0]})
+                if self.args.profile == "tomoko":
+                    results[-1]["profile"] = self.speech_profile(generation)
+                if shown:
+                    high = self.profile_at.get("high", 0)
+                    results[-1]["reload_ms"] = (high - shown) / 1e6 if high > shown else None
                 print(json.dumps(results[-1]), flush=True)
                 awake_until = time.monotonic() + 45
+                if self.args.hidden:
+                    results[-1]["hide"] = self.hide()
+                    print(json.dumps({"hide": results[-1]["hide"]}), flush=True)
+                    awake_until = 0
                 time.sleep(self.args.gap)
         finally:
             self.cancel_draft()
@@ -683,6 +741,21 @@ class Harness:
                     self.voice.kill()
             self.stderr.close()
         return results
+
+
+def gpu_jobs():
+    try:
+        return json.loads(subprocess.run(["gpu-status", "--json"], capture_output=True, text=True, timeout=10).stdout)["jobs"]
+    except (OSError, ValueError, KeyError, subprocess.TimeoutExpired):
+        return []
+
+
+def gpu_used_mib():
+    try:
+        return int(subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+                                  capture_output=True, text=True, timeout=10).stdout.split()[0])
+    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+        return None
 
 
 def percentile(values, p):
@@ -714,8 +787,13 @@ def main():
     parser.add_argument("--ack", action="store_true", help="Acknowledge turns as the controller does, with "
                         "lines the helper drafts from the owner's words")
     parser.add_argument("--load-timeout", type=float, default=600)
+    parser.add_argument("--hidden", action="store_true",
+                        help="Hide her after each turn and show her on the next wake word, as the controller does")
     parser.add_argument("--output", required=True)
+    parser.add_argument("--queue-timeout", type=int, default=60, help="assistant.voice_profiles.queue_timeout_seconds")
     args = parser.parse_args()
+    if args.hidden and args.profile != "tomoko":
+        parser.error("--hidden needs --profile tomoko")
     out = Path(args.output).resolve()
     out.mkdir(parents=True, exist_ok=True)
     corpus = out / "corpus"
@@ -734,7 +812,9 @@ def main():
         internal = json.loads(report.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
         internal = {"error": report.stderr[-500:]}
-    summary = {"path": args.path, "ack": args.ack, "profile": args.profile, "turns": len(results), "silent": len(results) - len(measured),
+    reloads = [r["reload_ms"] for r in results if r.get("reload_ms") is not None]
+    summary = {"path": args.path, "ack": args.ack, "profile": args.profile, "hidden": args.hidden,
+               "reload_ms": {"p50": percentile(reloads, 50), "p95": percentile(reloads, 95)}, "turns": len(results), "silent": len(results) - len(measured),
                "first_audio_ms": {"p50": percentile(measured, 50), "p95": percentile(measured, 95),
                                   "mean": statistics.fmean(measured) if measured else None},
                "answer_audio_ms": {"p50": percentile(answers, 50), "p95": percentile(answers, 95)},
@@ -743,8 +823,8 @@ def main():
                "load": statistics.fmean(r["load"] for r in results) if results else None,
                "service_report": internal, "results": results}
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    print(json.dumps({k: summary[k] for k in ("path", "ack", "profile", "turns", "silent", "acked", "first_audio_ms",
-                                              "answer_audio_ms", "eou_to_turn_ms", "load")}))
+    print(json.dumps({k: summary[k] for k in ("path", "ack", "profile", "hidden", "reload_ms", "turns", "silent", "acked",
+                                              "first_audio_ms", "answer_audio_ms", "eou_to_turn_ms", "load")}))
 
 
 if __name__ == "__main__":

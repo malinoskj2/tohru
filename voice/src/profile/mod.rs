@@ -11,20 +11,26 @@ mod worker;
 use crate::protocol::{emit, log};
 pub use config::{LowPrecision, ProfileConfig};
 pub use selector::Active;
-use selector::{Core, Event, Machine, Published};
+use selector::{Core, Event, Loading, Machine, Published};
 use serde_json::json;
 use std::{
     path::PathBuf,
     sync::{Arc, mpsc},
     thread::JoinHandle,
+    time::Duration,
 };
 pub use worker::{HighError, HighVoice};
+
+/// How long after a reload starts an answer waits for it rather than speaking with low. The
+/// warm worker loads in about a second, so a show or wake turn keeps the high voice.
+const RELOAD_WAIT: Duration = Duration::from_secs(3);
 
 /// The handle the voice service and speaker share; cheap to clone.
 #[derive(Clone, Default)]
 pub struct Profiles {
     events: Option<mpsc::Sender<Event>>,
     published: Published,
+    loading: Loading,
 }
 
 pub struct Selector {
@@ -56,6 +62,7 @@ impl Selector {
         ));
         let (sender, events) = mpsc::channel();
         let published = Published::default();
+        let loading = Loading::default();
         let notify = Box::new(|active: Active, reason: &str| {
             emit(json!({"event":"profile","active":active.name(),"reason":reason}));
         });
@@ -65,6 +72,7 @@ impl Selector {
             Machine { script },
             sender.clone(),
             published.clone(),
+            loading.clone(),
             notify,
         );
         let thread = std::thread::Builder::new()
@@ -75,6 +83,7 @@ impl Selector {
             profiles: Profiles {
                 events: thread.is_some().then_some(sender),
                 published,
+                loading,
             },
             thread,
         }
@@ -108,6 +117,23 @@ impl Profiles {
             .clone()
     }
 
+    /// As `high`, but first waits out a reload requested under `RELOAD_WAIT` ago, until `stale`.
+    pub fn high_soon(&self, stale: &dyn Fn() -> bool) -> Option<(u64, Arc<dyn HighVoice>)> {
+        loop {
+            if let Some(high) = self.high() {
+                return Some(high);
+            }
+            let since = *self
+                .loading
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if stale() || since.is_none_or(|at| at.elapsed() >= RELOAD_WAIT) {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     /// The worker broke; answers return to the low profile at once.
     pub fn failed(&self, id: u64, reason: String) {
         let mut published = self
@@ -129,6 +155,75 @@ impl Profiles {
         Self {
             events: None,
             published: Arc::new(std::sync::Mutex::new(Some((1, voice)))),
+            loading: Loading::default(),
         }
+    }
+
+    /// A reload that the selector publishes `after` from now.
+    #[cfg(test)]
+    pub fn reloading(voice: Arc<dyn HighVoice>, after: Duration) -> Self {
+        let profiles = Self::default();
+        *profiles.loading.lock().unwrap() = Some(std::time::Instant::now());
+        let (published, loading) = (profiles.published.clone(), profiles.loading.clone());
+        std::thread::spawn(move || {
+            std::thread::sleep(after);
+            *published.lock().unwrap() = Some((1, voice));
+            *loading.lock().unwrap() = None;
+        });
+        profiles
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    struct Mute;
+
+    impl HighVoice for Mute {
+        fn transcribes(&self) -> bool {
+            false
+        }
+
+        fn engine(&self) -> &str {
+            "mute"
+        }
+
+        fn speak(
+            &self,
+            _: &str,
+            _: &dyn Fn() -> bool,
+        ) -> Result<Option<(Vec<f32>, u32)>, HighError> {
+            Ok(None)
+        }
+
+        fn transcribe(&self, _: &[f32], _: Instant) -> Result<Option<String>, HighError> {
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn an_answer_waits_for_a_fresh_reload_but_not_for_a_stale_or_absent_one() {
+        let started = Instant::now();
+        let profiles = Profiles::reloading(Arc::new(Mute), Duration::from_millis(200));
+        assert!(profiles.high_soon(&|| false).is_some());
+        assert!(started.elapsed() >= Duration::from_millis(200));
+
+        let started = Instant::now();
+        assert!(Profiles::default().high_soon(&|| false).is_none());
+        let profiles = Profiles::reloading(Arc::new(Mute), Duration::from_secs(30));
+        assert!(
+            profiles.high_soon(&|| true).is_none(),
+            "a hushed answer stops waiting"
+        );
+        assert!(started.elapsed() < Duration::from_millis(100));
+
+        *profiles.loading.lock().unwrap() = Instant::now().checked_sub(RELOAD_WAIT);
+        assert!(
+            profiles.high_soon(&|| false).is_none(),
+            "a load still queued past the wait answers with low"
+        );
+        assert!(started.elapsed() < Duration::from_millis(100));
     }
 }

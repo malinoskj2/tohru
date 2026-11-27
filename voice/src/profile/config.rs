@@ -111,7 +111,7 @@ impl Default for ProfileConfig {
         Self {
             model_root: None,
             threshold_percent: 50,
-            unload_after: Duration::from_secs(120),
+            unload_after: Duration::from_secs(5),
             queue_timeout: Duration::from_secs(60),
             low_precision: LowPrecision::Int8,
             high: None,
@@ -194,7 +194,7 @@ pub fn parse(raw: &Value) -> Result<ProfileConfig, ConfigError> {
         Some(other) => return Err(ConfigError::ModelRoot(shown(other))),
     };
     let threshold_percent = integer(root, "vram_threshold_percent", 1, 100, 50)?;
-    let unload_after = integer(root, "hidden_unload_seconds", 0, 86_400, 120)?;
+    let unload_after = integer(root, "hidden_unload_seconds", 0, 86_400, 5)?;
     let queue_timeout = integer(root, "queue_timeout_seconds", 1, 3600, 60)?;
     choice(low, "low.device", "cpu", &[("cpu", ())])?;
     let low_precision = choice(

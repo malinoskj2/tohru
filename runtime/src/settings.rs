@@ -808,7 +808,7 @@ impl Key {
             Self::AssistantTtsSpeed => Value::Integer(100),
             Self::AssistantTtsPitch => Value::Integer(3),
             Self::AssistantVoiceProfileThreshold => Value::Integer(50),
-            Self::AssistantVoiceProfileUnloadSeconds => Value::Integer(120),
+            Self::AssistantVoiceProfileUnloadSeconds => Value::Integer(5),
             Self::AssistantVoiceProfileQueueSeconds => Value::Integer(60),
             Self::AssistantVoiceHighVramMib => Value::Integer(0),
             Self::AssistantVoiceLowDevice => Value::Text(VOICE_LOW_DEVICES[0].to_owned()),

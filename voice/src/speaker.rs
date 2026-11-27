@@ -119,7 +119,8 @@ pub struct Control {
     profiles: Profiles,
 }
 
-/// One answer's voice: the high profile when it was loaded as the answer began.
+/// One answer's voice: the high profile when it was loaded, or finished reloading, as the answer
+/// began.
 struct Voices<'a> {
     low: &'a mut Engine,
     high: Option<(u64, Arc<dyn HighVoice>)>,
@@ -823,7 +824,7 @@ impl Control {
         use std::sync::atomic::Ordering;
         let mut voices = Voices {
             low: engine,
-            high: self.profiles.high(),
+            high: self.profiles.high_soon(&|| self.stale(job.id)),
         };
         let profile_key = |voices: &Voices<'_>| {
             voices
