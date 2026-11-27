@@ -26,6 +26,11 @@ const RELOAD_WAIT: Duration = Duration::from_secs(3);
 /// A reload older than this is stuck in the scheduler's queue, not loading, so nothing waits.
 const RELOAD_FRESH: Duration = Duration::from_secs(20);
 
+/// The selector's event queue, which its waiter threads also post their results to.
+fn queue() -> (mpsc::Sender<Event>, mpsc::Receiver<Event>) {
+    mpsc::channel()
+}
+
 /// The handle the voice service and speaker share; cheap to clone.
 #[derive(Clone, Default)]
 pub struct Profiles {
@@ -61,7 +66,7 @@ impl Selector {
             high.precision.name(),
             config.threshold_percent
         ));
-        let (sender, events) = mpsc::channel();
+        let (sender, events) = queue();
         let published = Published::default();
         let loading = Loading::default();
         let notify = Box::new(|active: Active, reason: &str| {
@@ -172,7 +177,7 @@ impl Profiles {
     /// Profiles whose requests are counted instead of handled.
     #[cfg(test)]
     pub fn watched() -> (Self, Watch) {
-        let (sender, events) = mpsc::channel();
+        let (sender, events) = queue();
         let profiles = Self {
             events: Some(sender),
             ..Self::default()
@@ -199,6 +204,13 @@ impl Profiles {
 pub struct Watch(mpsc::Receiver<Event>);
 
 #[cfg(test)]
+impl std::fmt::Debug for Watch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Watch").finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
 impl Watch {
     pub fn wakes(&self) -> usize {
         self.0
@@ -220,7 +232,7 @@ mod tests {
             false
         }
 
-        fn engine(&self) -> &str {
+        fn engine(&self) -> &'static str {
             "mute"
         }
 
