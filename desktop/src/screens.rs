@@ -23,7 +23,9 @@ pub const DIRECTORY: &str = "tohru-screens";
 pub const INDEX: &str = "index.json";
 pub const LATEST: &str = "latest.jpg";
 pub const COMBINED: &str = "all";
-const GRIM_LIMIT: Duration = Duration::from_secs(5);
+const CHILD_LIMIT: Duration = Duration::from_secs(5);
+const PROBE_LIMIT: usize = 256 * 1024;
+const LOCK_POLL: Duration = Duration::from_millis(250);
 const OUTPUT_REFRESH_TICKS: u32 = 20;
 
 #[derive(Debug, thiserror::Error)]
@@ -209,7 +211,8 @@ pub fn clear(dir: &Path) -> Result<bool, ScreensError> {
 
 /// Writes one monitor's image to `path`, giving up as soon as `cancelled` is true.
 pub trait Capture {
-    fn outputs(&mut self) -> Vec<String>;
+    /// The named outputs; `None` when `cancelled` became true while asking.
+    fn outputs(&mut self, cancelled: &dyn Fn() -> bool) -> Option<Vec<String>>;
     fn grab(&mut self, output: Option<&str>, path: &Path, cancelled: &dyn Fn() -> bool) -> bool;
 }
 
@@ -225,12 +228,20 @@ pub struct Grim {
 }
 
 impl Capture for Grim {
-    fn outputs(&mut self) -> Vec<String> {
-        crate::wayland::outputs()
-            .0
-            .into_iter()
-            .filter_map(|o| o.get("name").and_then(Value::as_str).map(str::to_owned))
-            .collect()
+    fn outputs(&mut self, cancelled: &dyn Fn() -> bool) -> Option<Vec<String>> {
+        let mut command = Command::new("wayland-info");
+        command.stdout(Stdio::piped());
+        let report = match finish(command, PROBE_LIMIT, cancelled) {
+            Finished::Done(Some(report)) => report,
+            Finished::Done(None) => Vec::new(),
+            Finished::Cancelled => return None,
+        };
+        Some(
+            crate::wayland::parse_outputs(&String::from_utf8_lossy(&report))
+                .into_iter()
+                .filter_map(|o| o.get("name").and_then(Value::as_str).map(str::to_owned))
+                .collect(),
+        )
     }
 
     fn grab(&mut self, output: Option<&str>, path: &Path, cancelled: &dyn Fn() -> bool) -> bool {
@@ -239,30 +250,51 @@ impl Capture for Grim {
         if let Some(output) = output {
             command.args(["-o", output]);
         }
-        let Ok(mut child) = command
-            .arg(path)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-        else {
-            return false;
-        };
-        let deadline = Instant::now() + GRIM_LIMIT;
-        loop {
-            match child.try_wait() {
-                Ok(Some(status)) => return status.success(),
-                Ok(None) if Instant::now() < deadline && !cancelled() => {
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-                _ => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return false;
-                }
+        command.arg(path).stdout(Stdio::null());
+        matches!(finish(command, 0, cancelled), Finished::Done(Some(_)))
+    }
+}
+
+enum Finished {
+    /// Its stdout when it succeeded in time, `None` when it failed, timed out or overflowed.
+    Done(Option<Vec<u8>>),
+    Cancelled,
+}
+
+/// Runs `command` for up to `CHILD_LIMIT`, killing it the moment `cancelled` is true.
+fn finish(mut command: Command, limit: usize, cancelled: &dyn Fn() -> bool) -> Finished {
+    let Ok(mut child) = command.stdin(Stdio::null()).stderr(Stdio::null()).spawn() else {
+        return Finished::Done(None);
+    };
+    let reader = child.stdout.take().map(|stdout| {
+        std::thread::spawn(move || {
+            let mut out = Vec::new();
+            let taken = std::io::Read::read_to_end(
+                &mut std::io::Read::take(stdout, u64::try_from(limit).unwrap_or(0) + 1),
+                &mut out,
+            );
+            (taken.is_ok() && out.len() <= limit).then_some(out)
+        })
+    });
+    let deadline = Instant::now() + CHILD_LIMIT;
+    let status = loop {
+        if cancelled() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Finished::Cancelled;
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
             }
         }
-    }
+    };
+    let out = reader.map_or(Some(Vec::new()), |r| r.join().ok().flatten());
+    Finished::Done(status.filter(std::process::ExitStatus::success).and(out))
 }
 
 /// logind's view of this session, and Tohru's own lock cycle.
@@ -343,7 +375,10 @@ impl Store {
         cancelled: &dyn Fn() -> bool,
     ) -> std::io::Result<Option<usize>> {
         if refresh || self.outputs.is_empty() {
-            self.outputs = capture.outputs();
+            match capture.outputs(cancelled) {
+                Some(outputs) => self.outputs = outputs,
+                None => return Ok(None),
+            }
         }
         self.serial += 1;
         let taken = now_ms();
@@ -505,6 +540,20 @@ pub fn serve(
     let mut ticks: u32 = 0;
     let mut next = Instant::now();
     let stopped = || stop.load(Ordering::SeqCst);
+    let gate = std::cell::RefCell::new(gate);
+    let locked = || gate.borrow_mut().locked();
+    // While a child runs, the lock is asked at most every LOCK_POLL, so it revokes promptly.
+    let polled = std::cell::Cell::new(Instant::now());
+    let revoked = || {
+        if stopped() {
+            return true;
+        }
+        if polled.get().elapsed() < LOCK_POLL {
+            return false;
+        }
+        polled.set(Instant::now());
+        locked()
+    };
     let result = loop {
         if stopped() {
             break Ok(());
@@ -524,8 +573,9 @@ pub fn serve(
         next = Instant::now() + policy.interval;
         let refresh = ticks.is_multiple_of(OUTPUT_REFRESH_TICKS);
         ticks = ticks.wrapping_add(1);
-        let mut abort = || stopped() || gate.locked();
-        match store.capture(capture, refresh, &mut abort, &stopped) {
+        let mut abort = || stopped() || locked();
+        polled.set(Instant::now());
+        match store.capture(capture, refresh, &mut abort, &revoked) {
             Ok(Some(_)) => {}
             Ok(None) if stopped() => break Ok(()),
             Ok(None) => {

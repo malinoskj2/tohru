@@ -20,6 +20,8 @@ struct Fake {
     outputs: Arc<Mutex<Vec<String>>>,
     grabs: Arc<Mutex<Vec<Option<String>>>>,
     delay: Duration,
+    fast_grabs: usize,
+    stall_outputs: bool,
     lock_after_grab: Option<Arc<Mutex<bool>>>,
 }
 
@@ -32,13 +34,30 @@ impl Fake {
 }
 
 impl Capture for Fake {
-    fn outputs(&mut self) -> Vec<String> {
-        self.outputs.lock().unwrap().clone()
+    fn outputs(&mut self, cancelled: &dyn Fn() -> bool) -> Option<Vec<String>> {
+        if self.stall_outputs {
+            loop {
+                if cancelled() {
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+        Some(self.outputs.lock().unwrap().clone())
     }
 
     fn grab(&mut self, output: Option<&str>, path: &Path, cancelled: &dyn Fn() -> bool) -> bool {
-        self.grabs.lock().unwrap().push(output.map(str::to_owned));
-        let deadline = Instant::now() + self.delay;
+        let count = {
+            let mut grabs = self.grabs.lock().unwrap();
+            grabs.push(output.map(str::to_owned));
+            grabs.len()
+        };
+        let delay = if count > self.fast_grabs {
+            self.delay
+        } else {
+            Duration::ZERO
+        };
+        let deadline = Instant::now() + delay;
         while Instant::now() < deadline {
             if cancelled() {
                 return false;
@@ -261,6 +280,57 @@ fn a_lock_in_the_middle_of_a_batch_publishes_nothing_more_and_purges() {
     serve.stop().unwrap();
 }
 
+fn seed(dir: &Path) {
+    fs::create_dir_all(dir.join("DP-1")).unwrap();
+    fs::write(dir.join("DP-1/1-000001.jpg"), b"published").unwrap();
+}
+
+#[test]
+fn a_stop_during_stalled_discovery_ends_at_once_and_purges() {
+    let root = memory();
+    let (dir, _owner) = owned(&root);
+    seed(&dir);
+    let mut fake = Fake::with(&["DP-1"]);
+    fake.stall_outputs = true;
+    let serve = serving(&dir, &fake, &Arc::new(Mutex::new(false)));
+    std::thread::sleep(Duration::from_millis(100));
+    let asked = Instant::now();
+    serve.stop().unwrap();
+    assert!(
+        asked.elapsed() < Duration::from_millis(300),
+        "{:?}",
+        asked.elapsed()
+    );
+    assert!(fake.grabs.lock().unwrap().is_empty());
+    assert!(entries(&dir).is_empty());
+}
+
+#[test]
+fn a_lock_during_a_slow_grab_revokes_published_frames_promptly() {
+    let root = memory();
+    let (dir, _owner) = owned(&root);
+    let locked = Arc::new(Mutex::new(false));
+    let mut fake = Fake::with(&["DP-1", "HDMI-A-1"]);
+    fake.delay = Duration::from_secs(3);
+    fake.fast_grabs = 2;
+    let serve = serving(&dir, &fake, &locked);
+    common::wait_for(|| dir.join("HDMI-A-1").join(LATEST).exists().then_some(()));
+    serve.send.send(Event::Capture).unwrap();
+    common::wait_for(|| (fake.grabs.lock().unwrap().len() == 3).then_some(()));
+    let locked_at = Instant::now();
+    *locked.lock().unwrap() = true;
+    common::wait_for(|| entries(&dir).is_empty().then_some(()));
+    assert!(
+        locked_at.elapsed() < Duration::from_millis(600),
+        "{:?}",
+        locked_at.elapsed()
+    );
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(fake.grabs.lock().unwrap().len(), 3);
+    assert!(entries(&dir).is_empty());
+    serve.stop().unwrap();
+}
+
 #[test]
 fn locking_purges_and_stops_capturing() {
     let root = memory();
@@ -476,5 +546,32 @@ fn sigterm_during_a_slow_grim_exits_at_once_without_the_other_monitors() {
         asked.elapsed()
     );
     assert_eq!(fs::read_to_string(&log).unwrap().lines().count(), 1);
+    assert!(entries(&bin.dir()).is_empty());
+}
+
+#[test]
+fn sigterm_during_a_stalled_wayland_info_exits_at_once() {
+    let bin = Bin::new();
+    let started = bin.root.path().join("asked");
+    common::script(
+        &bin.fakes,
+        "wayland-info",
+        &format!("touch {}\nsleep 5\n", started.display()),
+    );
+    let mut child = bin
+        .command(&["run", "--interval-ms", "500"])
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
+    common::wait_for(|| started.exists().then_some(()));
+    let pid = rustix::process::Pid::from_raw(child.id().cast_signed()).unwrap();
+    let asked = Instant::now();
+    rustix::process::kill_process(pid, rustix::process::Signal::TERM).unwrap();
+    assert!(exited(&mut child).success());
+    assert!(
+        asked.elapsed() < Duration::from_millis(600),
+        "{:?}",
+        asked.elapsed()
+    );
     assert!(entries(&bin.dir()).is_empty());
 }

@@ -38,7 +38,9 @@ filed under `HEADLESS-1` rather than `all`.
 - **Lifecycle tests.** `cargo test --manifest-path desktop/Cargo.toml --test screens`
   covers start, ring buffer, outputs, lock purge, stop, stdin EOF, SIGTERM,
   SIGKILL reaping, `clear`, runner takeover, a stop during a slow grab, a lock
-  in the middle of a round and refusing a persistent disk, with fake
+  in the middle of a round, a stop during stalled output discovery, a lock
+  during a slow grab with frames already published, and refusing a persistent
+  disk, with fake
   `grim`/`wayland-info`.
   `lua5.4 tests/assistant/screens.lua` covers the bar's start/stop and back-off.
 
