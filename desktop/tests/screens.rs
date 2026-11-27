@@ -5,9 +5,10 @@ use std::io::Write;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tempfile::TempDir;
 use tohru_desktop::screens::{self, Capture, Event, Gate, INDEX, LATEST, Owner, Policy, Store};
@@ -18,6 +19,8 @@ const SCREENS: &str = env!("CARGO_BIN_EXE_tohru-screens");
 struct Fake {
     outputs: Arc<Mutex<Vec<String>>>,
     grabs: Arc<Mutex<Vec<Option<String>>>>,
+    delay: Duration,
+    lock_after_grab: Option<Arc<Mutex<bool>>>,
 }
 
 impl Fake {
@@ -33,8 +36,18 @@ impl Capture for Fake {
         self.outputs.lock().unwrap().clone()
     }
 
-    fn grab(&mut self, output: Option<&str>, path: &Path) -> bool {
+    fn grab(&mut self, output: Option<&str>, path: &Path, cancelled: &dyn Fn() -> bool) -> bool {
         self.grabs.lock().unwrap().push(output.map(str::to_owned));
+        let deadline = Instant::now() + self.delay;
+        while Instant::now() < deadline {
+            if cancelled() {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        if let Some(locked) = &self.lock_after_grab {
+            *locked.lock().unwrap() = true;
+        }
         fs::write(path, b"jpeg").is_ok()
     }
 }
@@ -45,6 +58,15 @@ impl Gate for Lock {
     fn locked(&mut self) -> bool {
         *self.0.lock().unwrap()
     }
+}
+
+/// A scratch folder on tmpfs, as the runner refuses persistent disks.
+fn memory() -> TempDir {
+    TempDir::new_in("/dev/shm").unwrap()
+}
+
+fn never() -> bool {
+    false
 }
 
 fn entries(dir: &Path) -> Vec<String> {
@@ -71,7 +93,7 @@ fn owned(root: &TempDir) -> (PathBuf, Owner) {
 
 #[test]
 fn start_removes_leftovers_and_makes_a_private_folder() {
-    let root = TempDir::new().unwrap();
+    let root = memory();
     let dir = root.path().join("screens");
     fs::create_dir_all(dir.join("DP-1")).unwrap();
     fs::write(dir.join("DP-1/1-000001.jpg"), b"old").unwrap();
@@ -83,7 +105,7 @@ fn start_removes_leftovers_and_makes_a_private_folder() {
 
 #[test]
 fn a_symlinked_folder_is_refused() {
-    let root = TempDir::new().unwrap();
+    let root = memory();
     let elsewhere = root.path().join("elsewhere");
     fs::create_dir(&elsewhere).unwrap();
     fs::write(elsewhere.join("keep"), b"x").unwrap();
@@ -96,12 +118,15 @@ fn a_symlinked_folder_is_refused() {
 
 #[test]
 fn captures_every_monitor_into_a_bounded_ring_with_latest_links() {
-    let root = TempDir::new().unwrap();
+    let root = memory();
     let (dir, _owner) = owned(&root);
     let mut fake = Fake::with(&["DP-1", "HDMI-A-1"]);
     let mut store = Store::new(dir.clone(), 3);
     for _ in 0..5 {
-        assert_eq!(store.capture(&mut fake, false).unwrap(), 2);
+        assert_eq!(
+            store.capture(&mut fake, false, &mut never, &never).unwrap(),
+            Some(2)
+        );
     }
     for output in ["DP-1", "HDMI-A-1"] {
         let folder = dir.join(output);
@@ -133,93 +158,147 @@ fn captures_every_monitor_into_a_bounded_ring_with_latest_links() {
 
 #[test]
 fn unnamed_outputs_fall_back_to_one_combined_image_and_unplugged_ones_are_dropped() {
-    let root = TempDir::new().unwrap();
+    let root = memory();
     let (dir, _owner) = owned(&root);
     let mut fake = Fake::with(&["DP-1", "eDP-1"]);
     let mut store = Store::new(dir.clone(), 10);
-    store.capture(&mut fake, true).unwrap();
+    store.capture(&mut fake, true, &mut never, &never).unwrap();
     *fake.outputs.lock().unwrap() = vec!["eDP-1".into()];
-    store.capture(&mut fake, true).unwrap();
+    store.capture(&mut fake, true, &mut never, &never).unwrap();
     assert_eq!(entries(&dir), ["eDP-1", INDEX]);
     fake.outputs.lock().unwrap().clear();
-    store.capture(&mut fake, true).unwrap();
+    store.capture(&mut fake, true, &mut never, &never).unwrap();
     assert_eq!(entries(&dir), ["all", INDEX]);
     assert_eq!(fake.grabs.lock().unwrap().last().unwrap(), &None);
 }
 
-fn serving(
-    dir: &Path,
-    fake: &Fake,
-    locked: &Arc<Mutex<bool>>,
-) -> (
-    mpsc::Sender<Event>,
-    std::thread::JoinHandle<std::io::Result<()>>,
-) {
+struct Serving {
+    send: mpsc::Sender<Event>,
+    stop: Arc<AtomicBool>,
+    thread: std::thread::JoinHandle<std::io::Result<()>>,
+}
+
+impl Serving {
+    fn stop(self) -> std::io::Result<()> {
+        self.stop.store(true, Ordering::SeqCst);
+        let _ = self.send.send(Event::Stop);
+        self.thread.join().unwrap()
+    }
+}
+
+fn serving(dir: &Path, fake: &Fake, locked: &Arc<Mutex<bool>>) -> Serving {
     let (send, events) = mpsc::channel();
+    let stop = Arc::new(AtomicBool::new(false));
+    let flag = stop.clone();
     let (dir, mut fake, mut gate) = (dir.to_owned(), fake.clone(), Lock(locked.clone()));
     let policy = Policy {
         interval: Duration::from_secs(3600),
         keep: 10,
     };
-    let thread =
-        std::thread::spawn(move || screens::serve(&dir, policy, &mut fake, &mut gate, &events));
-    (send, thread)
+    let thread = std::thread::spawn(move || {
+        screens::serve(&dir, policy, &mut fake, &mut gate, &events, &flag)
+    });
+    Serving { send, stop, thread }
 }
 
 #[test]
 fn serving_captures_at_once_and_stop_deletes_everything() {
-    let root = TempDir::new().unwrap();
+    let root = memory();
     let (dir, _owner) = owned(&root);
     let fake = Fake::with(&["DP-1"]);
     let locked = Arc::new(Mutex::new(false));
-    let (send, thread) = serving(&dir, &fake, &locked);
+    let serve = serving(&dir, &fake, &locked);
     common::wait_for(|| dir.join("DP-1").join(LATEST).exists().then_some(()));
-    send.send(Event::Capture).unwrap();
+    serve.send.send(Event::Capture).unwrap();
     common::wait_for(|| (fake.grabs.lock().unwrap().len() >= 2).then_some(()));
-    send.send(Event::Stop).unwrap();
-    thread.join().unwrap().unwrap();
+    serve.stop().unwrap();
     assert!(entries(&dir).is_empty());
 }
 
 #[test]
 fn a_closed_channel_also_deletes_everything() {
-    let root = TempDir::new().unwrap();
+    let root = memory();
     let (dir, _owner) = owned(&root);
     let fake = Fake::with(&["DP-1"]);
-    let (send, thread) = serving(&dir, &fake, &Arc::new(Mutex::new(false)));
+    let serve = serving(&dir, &fake, &Arc::new(Mutex::new(false)));
     common::wait_for(|| dir.join(INDEX).exists().then_some(()));
-    drop(send);
-    thread.join().unwrap().unwrap();
+    drop(serve.send);
+    serve.thread.join().unwrap().unwrap();
     assert!(entries(&dir).is_empty());
+}
+
+#[test]
+fn a_stop_during_a_slow_grab_cancels_the_rest_of_the_batch() {
+    let root = memory();
+    let (dir, _owner) = owned(&root);
+    let mut fake = Fake::with(&["DP-1", "HDMI-A-1"]);
+    fake.delay = Duration::from_secs(2);
+    let serve = serving(&dir, &fake, &Arc::new(Mutex::new(false)));
+    common::wait_for(|| (!fake.grabs.lock().unwrap().is_empty()).then_some(()));
+    let asked = Instant::now();
+    serve.stop().unwrap();
+    assert!(
+        asked.elapsed() < Duration::from_millis(500),
+        "{:?}",
+        asked.elapsed()
+    );
+    assert_eq!(fake.grabs.lock().unwrap().len(), 1);
+    assert!(entries(&dir).is_empty());
+}
+
+#[test]
+fn a_lock_in_the_middle_of_a_batch_publishes_nothing_more_and_purges() {
+    let root = memory();
+    let (dir, _owner) = owned(&root);
+    let locked = Arc::new(Mutex::new(false));
+    let mut fake = Fake::with(&["DP-1", "HDMI-A-1"]);
+    fake.lock_after_grab = Some(locked.clone());
+    let serve = serving(&dir, &fake, &locked);
+    common::wait_for(|| (!fake.grabs.lock().unwrap().is_empty()).then_some(()));
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!(fake.grabs.lock().unwrap().len(), 1);
+    assert!(entries(&dir).is_empty(), "{:?}", entries(&dir));
+    serve.stop().unwrap();
 }
 
 #[test]
 fn locking_purges_and_stops_capturing() {
-    let root = TempDir::new().unwrap();
+    let root = memory();
     let (dir, _owner) = owned(&root);
     let fake = Fake::with(&["DP-1"]);
     let locked = Arc::new(Mutex::new(false));
-    let (send, thread) = serving(&dir, &fake, &locked);
+    let serve = serving(&dir, &fake, &locked);
     common::wait_for(|| dir.join(INDEX).exists().then_some(()));
     *locked.lock().unwrap() = true;
-    send.send(Event::Capture).unwrap();
+    serve.send.send(Event::Capture).unwrap();
     common::wait_for(|| entries(&dir).is_empty().then_some(()));
     let grabs = fake.grabs.lock().unwrap().len();
-    send.send(Event::Capture).unwrap();
+    serve.send.send(Event::Capture).unwrap();
     std::thread::sleep(Duration::from_millis(50));
     assert_eq!(fake.grabs.lock().unwrap().len(), grabs);
     assert!(entries(&dir).is_empty());
     *locked.lock().unwrap() = false;
-    send.send(Event::Capture).unwrap();
+    serve.send.send(Event::Capture).unwrap();
     common::wait_for(|| dir.join(INDEX).exists().then_some(()));
-    send.send(Event::Stop).unwrap();
-    thread.join().unwrap().unwrap();
+    serve.stop().unwrap();
     assert!(entries(&dir).is_empty());
 }
 
 #[test]
+fn a_folder_on_a_persistent_disk_is_refused() {
+    let root = TempDir::new_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+    if screens::in_memory(root.path()) {
+        return;
+    }
+    assert!(matches!(
+        Owner::take(&root.path().join("screens"), Duration::from_millis(200)),
+        Err(screens::ScreensError::Persistent(_))
+    ));
+}
+
+#[test]
 fn clear_leaves_a_live_runner_alone() {
-    let root = TempDir::new().unwrap();
+    let root = memory();
     let (dir, owner) = owned(&root);
     fs::write(dir.join("x"), b"x").unwrap();
     assert!(!screens::clear(&dir).unwrap());
@@ -238,14 +317,16 @@ fn stdin_lines() {
 
 struct Bin {
     root: TempDir,
+    _scripts: TempDir,
     fakes: PathBuf,
 }
 
 impl Bin {
     fn new() -> Self {
-        let root = TempDir::new().unwrap();
-        let fakes = root.path().join("fakes");
-        fs::create_dir(&fakes).unwrap();
+        let root = memory();
+        // tmpfs may be mounted noexec, so the fake commands live on disk.
+        let scripts = TempDir::new().unwrap();
+        let fakes = scripts.path().to_owned();
         common::script(
             &fakes,
             "wayland-info",
@@ -256,7 +337,11 @@ impl Bin {
             "grim",
             "for last; do :; done\nprintf jpeg > \"$last\"\n",
         );
-        Self { root, fakes }
+        Self {
+            root,
+            _scripts: scripts,
+            fakes,
+        }
     }
 
     fn dir(&self) -> PathBuf {
@@ -361,4 +446,35 @@ fn a_new_runner_takes_over_from_an_old_one() {
     drop(new.stdin.take());
     assert!(exited(&mut new).success());
     assert!(entries(&dir).is_empty());
+}
+
+#[test]
+fn sigterm_during_a_slow_grim_exits_at_once_without_the_other_monitors() {
+    let bin = Bin::new();
+    let log = bin.root.path().join("grabs");
+    common::script(
+        &bin.fakes,
+        "grim",
+        &format!(
+            "echo \"$*\" >> {}\nsleep 2\nfor last; do :; done\nprintf jpeg > \"$last\"\n",
+            log.display()
+        ),
+    );
+    let mut child = bin
+        .command(&["run", "--interval-ms", "500"])
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
+    common::wait_for(|| log.exists().then_some(()));
+    let pid = rustix::process::Pid::from_raw(child.id().cast_signed()).unwrap();
+    let asked = Instant::now();
+    rustix::process::kill_process(pid, rustix::process::Signal::TERM).unwrap();
+    assert!(exited(&mut child).success());
+    assert!(
+        asked.elapsed() < Duration::from_millis(600),
+        "{:?}",
+        asked.elapsed()
+    );
+    assert_eq!(fs::read_to_string(&log).unwrap().lines().count(), 1);
+    assert!(entries(&bin.dir()).is_empty());
 }

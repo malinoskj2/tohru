@@ -10,6 +10,8 @@ use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsE
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -30,6 +32,8 @@ pub enum ScreensError {
     Runtime,
     #[error("{0} is not a private directory owned by this user")]
     Unsafe(PathBuf),
+    #[error("{0} is not on tmpfs; captures never go to a persistent disk")]
+    Persistent(PathBuf),
     #[error("another capture runner kept its lock")]
     Busy,
     #[error(transparent)]
@@ -95,7 +99,25 @@ fn ensure_private(dir: &Path) -> Result<(), ScreensError> {
         Err(err) => return Err(err.into()),
     }
     fs::set_permissions(dir, Permissions::from_mode(0o700))?;
+    if !in_memory(dir) {
+        return Err(ScreensError::Persistent(dir.to_owned()));
+    }
     Ok(())
+}
+
+/// Whether `dir` is on tmpfs or ramfs, so no capture can outlive a reboot on disk.
+#[must_use]
+pub fn in_memory(dir: &Path) -> bool {
+    const TMPFS: u64 = 0x0102_1994;
+    const RAMFS: u64 = 0x8584_58f6;
+    rustix::fs::statfs(dir).is_ok_and(|fs| {
+        #[expect(
+            clippy::cast_sign_loss,
+            reason = "filesystem magic numbers are positive"
+        )]
+        let kind = fs.f_type as u64;
+        kind == TMPFS || kind == RAMFS
+    })
 }
 
 /// Removes everything inside `dir`, keeping the directory itself.
@@ -185,10 +207,10 @@ pub fn clear(dir: &Path) -> Result<bool, ScreensError> {
     Ok(true)
 }
 
-/// Writes one monitor's image to `path`.
+/// Writes one monitor's image to `path`, giving up as soon as `cancelled` is true.
 pub trait Capture {
     fn outputs(&mut self) -> Vec<String>;
-    fn grab(&mut self, output: Option<&str>, path: &Path) -> bool;
+    fn grab(&mut self, output: Option<&str>, path: &Path, cancelled: &dyn Fn() -> bool) -> bool;
 }
 
 /// Whether the session is locked or inactive, when captures must not exist.
@@ -197,6 +219,7 @@ pub trait Gate {
 }
 
 /// `grim` against the session's compositor, outputs from `wayland-info`.
+#[derive(Debug)]
 pub struct Grim {
     pub quality: u8,
 }
@@ -210,7 +233,7 @@ impl Capture for Grim {
             .collect()
     }
 
-    fn grab(&mut self, output: Option<&str>, path: &Path) -> bool {
+    fn grab(&mut self, output: Option<&str>, path: &Path, cancelled: &dyn Fn() -> bool) -> bool {
         let mut command = Command::new("grim");
         command.args(["-t", "jpeg", "-q", &self.quality.to_string()]);
         if let Some(output) = output {
@@ -229,7 +252,7 @@ impl Capture for Grim {
         loop {
             match child.try_wait() {
                 Ok(Some(status)) => return status.success(),
-                Ok(None) if Instant::now() < deadline => {
+                Ok(None) if Instant::now() < deadline && !cancelled() => {
                     std::thread::sleep(Duration::from_millis(10));
                 }
                 _ => {
@@ -243,6 +266,7 @@ impl Capture for Grim {
 }
 
 /// logind's view of this session, and Tohru's own lock cycle.
+#[derive(Debug)]
 pub struct Session {
     runtime: Option<PathBuf>,
 }
@@ -288,6 +312,7 @@ impl Default for Policy {
 }
 
 /// The ring of captures for every monitor in one owned folder.
+#[derive(Debug)]
 pub struct Store {
     dir: PathBuf,
     keep: usize,
@@ -307,8 +332,16 @@ impl Store {
     }
 
     /// One capture of every output; falls back to one combined image when no output is named.
-    /// Returns how many images were written.
-    pub fn capture(&mut self, capture: &mut dyn Capture, refresh: bool) -> std::io::Result<usize> {
+    /// `abort` is asked before each grab and before each image is published, and `cancelled`
+    /// during a grab; either ends the batch with `None`, leaving nothing of it behind.
+    /// Otherwise returns how many images were written.
+    pub fn capture(
+        &mut self,
+        capture: &mut dyn Capture,
+        refresh: bool,
+        abort: &mut dyn FnMut() -> bool,
+        cancelled: &dyn Fn() -> bool,
+    ) -> std::io::Result<Option<usize>> {
         if refresh || self.outputs.is_empty() {
             self.outputs = capture.outputs();
         }
@@ -333,7 +366,15 @@ impl Store {
                 .create(&folder)?;
             let name = format!("{taken}-{:06}.jpg", self.serial);
             let partial = folder.join(format!(".{name}.part"));
-            if !capture.grab(output.as_deref(), &partial) || !partial.is_file() {
+            if abort() {
+                return Ok(None);
+            }
+            let grabbed = capture.grab(output.as_deref(), &partial, cancelled);
+            if cancelled() || abort() {
+                let _ = fs::remove_file(&partial);
+                return Ok(None);
+            }
+            if !grabbed || !partial.is_file() {
                 let _ = fs::remove_file(&partial);
                 failed = true;
                 continue;
@@ -352,7 +393,7 @@ impl Store {
         }
         self.prune_outputs(&names)?;
         self.write_index(&names)?;
-        Ok(written)
+        Ok(Some(written))
     }
 
     fn frames(folder: &Path) -> std::io::Result<Vec<String>> {
@@ -449,41 +490,60 @@ pub fn parse(line: &str) -> Option<Event> {
 }
 
 /// Captures until a stop, then deletes every capture. The first capture is immediate.
+///
+/// `stop` is set by whoever sends `Event::Stop`, so a batch in flight ends at once rather than
+/// after its remaining monitors.
 pub fn serve(
     dir: &Path,
     policy: Policy,
     capture: &mut dyn Capture,
     gate: &mut dyn Gate,
     events: &mpsc::Receiver<Event>,
+    stop: &AtomicBool,
 ) -> std::io::Result<()> {
     let mut store = Store::new(dir.to_owned(), policy.keep);
     let mut ticks: u32 = 0;
     let mut next = Instant::now();
+    let stopped = || stop.load(Ordering::SeqCst);
     let result = loop {
+        if stopped() {
+            break Ok(());
+        }
         let wait = next.saturating_duration_since(Instant::now());
         let forced = match events.recv_timeout(wait) {
             Ok(Event::Stop) | Err(RecvTimeoutError::Disconnected) => break Ok(()),
             Ok(Event::Capture) => true,
             Err(RecvTimeoutError::Timeout) => false,
         };
+        if stopped() {
+            break Ok(());
+        }
         if !forced && Instant::now() < next {
             continue;
         }
         next = Instant::now() + policy.interval;
-        if gate.locked() {
-            if let Err(err) = store.purge() {
-                break Err(err);
-            }
-            continue;
-        }
         let refresh = ticks.is_multiple_of(OUTPUT_REFRESH_TICKS);
         ticks = ticks.wrapping_add(1);
-        if let Err(err) = store.capture(capture, refresh) {
-            break Err(err);
+        let mut abort = || stopped() || gate.locked();
+        match store.capture(capture, refresh, &mut abort, &stopped) {
+            Ok(Some(_)) => {}
+            Ok(None) if stopped() => break Ok(()),
+            Ok(None) => {
+                if let Err(err) = store.purge() {
+                    break Err(err);
+                }
+            }
+            Err(err) => break Err(err),
         }
     };
     let purged = store.purge();
     result.and(purged)
+}
+
+/// Sets `stop` and wakes the runner; a full queue already holds a wake-up.
+fn send_stop(send: &mpsc::SyncSender<Event>, stop: &AtomicBool) {
+    stop.store(true, Ordering::SeqCst);
+    let _ = send.try_send(Event::Stop);
 }
 
 /// The `run` command: owns the folder, captures until stdin closes or a signal, then cleans up.
@@ -493,29 +553,33 @@ pub fn run(policy: Policy, quality: u8) -> Result<(), ScreensError> {
     let dir = directory()?;
     let owner = Owner::take(&dir, Duration::from_secs(3))?;
     let _reaper = reaper();
-    let (send, events) = mpsc::channel();
-    let signals = send.clone();
+    let (send, events) = mpsc::sync_channel(8);
+    let stop = Arc::new(AtomicBool::new(false));
+    let (signals, signal_stop) = (send.clone(), stop.clone());
     let mut hooks = signal_hook::iterator::Signals::new([
         signal_hook::consts::SIGTERM,
         signal_hook::consts::SIGINT,
         signal_hook::consts::SIGHUP,
     ])?;
-    std::thread::spawn(move || {
+    // Both threads block for the whole run; the process exits without joining them.
+    let _signal_thread = std::thread::spawn(move || {
         if hooks.forever().next().is_some() {
-            let _ = signals.send(Event::Stop);
+            send_stop(&signals, &signal_stop);
         }
     });
-    std::thread::spawn(move || {
+    let input_stop = stop.clone();
+    let _input_thread = std::thread::spawn(move || {
         for line in std::io::stdin().lock().lines() {
             let Ok(line) = line else { break };
-            if let Some(event) = parse(&line) {
-                let stop = event == Event::Stop;
-                if send.send(event).is_err() || stop {
-                    return;
+            match parse(&line) {
+                Some(Event::Stop) => break,
+                Some(Event::Capture) => {
+                    let _ = send.try_send(Event::Capture);
                 }
+                None => {}
             }
         }
-        let _ = send.send(Event::Stop);
+        send_stop(&send, &input_stop);
     });
     let result = serve(
         &dir,
@@ -523,6 +587,7 @@ pub fn run(policy: Policy, quality: u8) -> Result<(), ScreensError> {
         &mut Grim { quality },
         &mut Session::from_env(),
         &events,
+        &stop,
     );
     drop(owner);
     Ok(result?)

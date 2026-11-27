@@ -127,7 +127,9 @@ Outputs are read with `wayland-info` at the start, every 20 captures and after a
 
 Every capture is deleted when she goes (SIGTERM), when the bar closes its stdin or exits, and by a reaper process outside the runner's process group when the runner is killed outright. `tohru-screens clear` at bar start and every new runner remove what a lost reaper left. One runner owns the folder through `tohru-screens.lock` beside it; a new one stops the old one first. The folder itself stays, so it can be bind-mounted.
 
-`tohru-assistant chat` adds a `[Screen captures: …]` note with each monitor's `latest.jpg` and age to the system prompt, and Orca turns carry the same note, so a question about the screen reads these instead of a new screenshot; `persona.md` and the Orca soul addendum fall back to `grim` when there are none. An Orca bot on another machine or in a sandbox cannot read the host's runtime directory and takes its own screenshot.
+`tohru-assistant chat` adds a `[Screen captures: …]` note with each monitor's `latest.jpg` and age to the system prompt, and Orca turns carry the same note, so a question about the screen reads these instead of a new screenshot; `persona.md` and the Orca soul addendum fall back to `grim` when there are none. The agent sandbox launcher in `~/nix` mounts the folder read-only at the same path into Tohru's bot sandbox only, so her Home turns read these frames; a bot on another machine falls back to a screenshot of the desktop. The folder must be on tmpfs or ramfs: the runner refuses a persistent disk, including a `TOHRU_SCREENS_DIR` override.
+
+Only the summoned dragon and the popup count. The AFK scenes (`ai_actor_open`) and the standalone sheet turn (`ai_turn_shown`) also draw her, but play while the owner is away, so they take no captures. A stop or a lock during a capture ends it at once: the grab in flight is killed and nothing more of that round is kept.
 
 ## Streaming voice diagnostics
 

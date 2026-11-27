@@ -25,7 +25,8 @@ instead of taking a new screenshot. They must exist only while she is shown.
 ## Driving it with the desktop driver
 
 Preconditions: baseline private native instance and runtime/GPU lease from the
-[index](README.md#desktop-driver), and `wayland-info` on `PATH` so frames are
+[index](README.md#desktop-driver), a writable `/dev/shm` (the driver puts the
+captures there through `TOHRU_SCREENS_DIR`), and `wayland-info` on `PATH` so frames are
 filed under `HEADLESS-1` rather than `all`.
 
 - **Journey.** `tools/verify/desktop.py run --feature screens --runtime "$verify_runtime"`
@@ -36,7 +37,9 @@ filed under `HEADLESS-1` rather than `all`.
   Images are never copied into evidence.
 - **Lifecycle tests.** `cargo test --manifest-path desktop/Cargo.toml --test screens`
   covers start, ring buffer, outputs, lock purge, stop, stdin EOF, SIGTERM,
-  SIGKILL reaping, `clear` and runner takeover with fake `grim`/`wayland-info`.
+  SIGKILL reaping, `clear`, runner takeover, a stop during a slow grab, a lock
+  in the middle of a round and refusing a persistent disk, with fake
+  `grim`/`wayland-info`.
   `lua5.4 tests/assistant/screens.lua` covers the bar's start/stop and back-off.
 
 ## Unverified
@@ -45,4 +48,5 @@ filed under `HEADLESS-1` rather than `all`.
   path is driven.
 - The lock gate needs a real logind session or the native locker; it is covered
   only by the fake gate in the lifecycle tests.
-- Whether a provider actually reads the captures is not checked.
+- Whether a provider actually reads the captures is not checked, nor Tohru's
+  bot sandbox reading them through the `~/nix` read-only mount.

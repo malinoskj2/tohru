@@ -104,6 +104,9 @@ class Run:
         (self.scratch / "config/tohru/config.toml").write_text(
             "[assistant]\nvoice = false\n[assistant.discord]\nenabled = false\n"
             "[polkit]\nagent = false\n[appearance]\ncorners = false\n")
+        # Captures refuse a persistent disk; the scratch runtime is on one.
+        self.screens_dir = Path(tempfile.mkdtemp(prefix="tohru-screens-verify-", dir="/dev/shm")) / "screens"
+        self.env["TOHRU_SCREENS_DIR"] = str(self.screens_dir)
         self.owners = []
         self.handles = []
         self.events = (self.evidence / "commands.jsonl").open("w")
@@ -246,7 +249,7 @@ class Run:
 
     def screens(self):
         self.phase("drive", feature="screens")
-        folder = self.scratch / "run/tohru-screens"
+        folder = self.screens_dir
 
         def frames():
             return sorted(p.name for p in folder.glob("*/[0-9]*.jpg")) if folder.is_dir() else []
@@ -339,6 +342,7 @@ class Run:
             reader.join(timeout=5)
             if reader.is_alive():
                 failures.append("log reader did not finish")
+        shutil.rmtree(self.screens_dir.parent, ignore_errors=True)
         if not failures:
             shutil.rmtree(self.scratch)
         (self.evidence / "cleanup.json").write_text(json.dumps({"failures": failures,
