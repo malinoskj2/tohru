@@ -16,7 +16,7 @@ To investigate a missed wake, follow `utterance_start`, `wake_decision`, `asr_fi
 
 ## First audio
 
-`first_audio` marks the first write of each reply's audio, with the voice profile and `onset_ms`, the offset of its first audible sample. `speech_stream_start` and `committed_answer_ready` name the reply's path: `draft`, `normal`, `quick`, `home`, `ack` (an acknowledgement), `notice`, `greeting`, `task`, `alert` or `result`. `smart_turn` records the end-of-turn model's score and `endpoint` the hold that ended the turn. `speech_yield` records how long speech ran on to reach a gap between words after the owner interrupted it, and `high_stream_gap` any late chunk while the high voice streams.
+`first_audio` marks the first write of each reply's audio, with the voice profile and `onset_ms`, the offset of its first audible sample. `speech_stream_start` and `committed_answer_ready` name the reply's path: `draft`, `normal`, `quick`, `home`, `ack` (an acknowledgement), `notice`, `greeting`, `task`, `alert` or `result`. `ack_decision` records the acknowledgement model's `when` (`now`, `late` or `none`) for each turn, and whether it was drafted while the owner was talking (`speculative`). `smart_turn` records the end-of-turn model's score and `endpoint` the hold that ended the turn. `speech_yield` records how long speech ran on to reach a gap between words after the owner interrupted it, and `high_stream_gap` any late chunk while the high voice streams.
 
 Summarize end of speech to first audible sound per path and profile, at p50 and p95:
 
